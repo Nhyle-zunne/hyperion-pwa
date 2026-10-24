@@ -32,6 +32,7 @@ interface PracticeState {
     randomizeOrder?: boolean;
     shuffleChoices?: boolean;
     startItem?: number;
+    part?: number;
   }) => Promise<void>;
   selectAnswer: (index: number) => void;
   setAnswerSilent: (index: number) => void;
@@ -114,7 +115,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   streak: 0,
   bestStreak: 0,
 
-  startSession: async ({ mode, track, competenceId, limit, timeLimitSec, free, randomizeOrder, shuffleChoices, startItem }) => {
+  startSession: async ({ mode, track, competenceId, limit, timeLimitSec, free, randomizeOrder, shuffleChoices, startItem, part }) => {
     const defaultLimit = mode === 'MOCK' ? 30 : mode === 'DRILL' ? 12 : 15;
     const finalLimit = Math.max(1, Math.floor(limit ?? defaultLimit));
     const time = Math.max(0, Math.floor(timeLimitSec ?? (mode === 'MOCK' ? finalLimit * 60 : 0)));
@@ -144,6 +145,10 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         qs = competenceId
           ? await getQuestionsByCompetence(track, competenceId)
           : await getQuestionsByTrack(track);
+      }
+
+      if (track === 'GMDSS_GOC' && part != null) {
+        qs = qs.filter((q) => q.id.includes(`-P${part}-`));
       }
 
       if (qs.length === 0) {
