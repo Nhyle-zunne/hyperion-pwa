@@ -221,12 +221,27 @@ export const useLicenseStore = create<LicenseState>()(
         const s = get();
         if (s.isAllAccessUnlocked) return true;
         const t = track.toUpperCase();
-        if (t.includes('OIC') || t.includes('DECK') && !t.includes('MGT')) return s.isOicNwUnlocked;
-        if (t.includes('GMDSS') || t.includes('GOC')) return s.isGmdssUnlocked;
-        if (t.includes('EW') || t.includes('ENGINE') && !t.includes('MGT')) return s.isEngineEwUnlocked;
-        if (t.includes('DM') || (t.includes('DECK') && t.includes('MGT'))) return s.isDeckMgtUnlocked;
-        if (t.includes('EM') || (t.includes('ENGINE') && t.includes('MGT'))) return s.isEngineMgtUnlocked;
-        return false;
+        // Exact ids first (track ids and plan codes), so e.g. ENGINE_OIC_EW is never read as OIC.
+        switch (t) {
+          case 'DECK_OIC_NW':
+          case 'OIC':
+            return s.isOicNwUnlocked;
+          case 'GMDSS_GOC':
+          case 'GOC':
+          case 'GMDSS':
+            return s.isGmdssUnlocked;
+          case 'ENGINE_OIC_EW':
+          case 'EW':
+            return s.isEngineEwUnlocked;
+          case 'DECK_MGT':
+          case 'DM':
+            return s.isDeckMgtUnlocked;
+          case 'ENGINE_MGT':
+          case 'EM':
+            return s.isEngineMgtUnlocked;
+          default:
+            return false;
+        }
       },
 
       getRemainingLabel: () => {

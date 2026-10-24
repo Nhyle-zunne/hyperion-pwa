@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
-import { useUIStore } from '../stores/uiStore'
 import { useHistoryStore } from '../stores/historyStore'
 import { useVaultStore } from '../stores/vaultStore'
 import { useStudyTimeStore, formatDurationMs } from '../stores/studyTimeStore'
@@ -96,7 +95,6 @@ export default function TrackSelectionScreen() {
 
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
-  const openPaywall = useUIStore((s) => s.openPaywall)
   const segments = useStudyTimeStore((s) => s.segments)
   const vaultCount = useVaultStore((s) => s.items.length)
   const history = useHistoryStore((s) => s.entries)
@@ -127,11 +125,6 @@ export default function TrackSelectionScreen() {
   const streakCount = streakDays.filter(Boolean).length
 
   const select = (track: (typeof TRACKS)[0]) => {
-    const unlocked = isAllAccessUnlocked || isTrackUnlocked(track.tierCheck)
-    if (!unlocked) {
-      openPaywall(track.title)
-      return
-    }
     navigate(`/practice?track=${track.id}`)
   }
 
@@ -299,7 +292,7 @@ export default function TrackSelectionScreen() {
                   {t.icon}
                 </span>
                 <span className="badge-verified" style={{ fontSize: '0.58rem', padding: '0.15rem 0.35rem' }}>
-                  {unlocked ? 'VERIFIED' : 'LOCKED'}
+                  {unlocked ? 'VERIFIED' : 'FREE TIER'}
                 </span>
               </div>
               <div className="track-title">{t.title}</div>

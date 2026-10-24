@@ -1,6 +1,5 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
-import { useUIStore } from '../stores/uiStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
@@ -28,16 +27,11 @@ export default function PracticeConfigScreen() {
   const trackId = TRACK_MAP[trackParam] || 'DECK_OIC_NW'
 
   const isUnlocked = useLicenseStore((s) => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
-  const openPaywall = useUIStore((s) => s.openPaywall)
   const startSession = usePracticeStore((s) => s.startSession)
 
   const competences = listAvailableCompetences(trackId)
 
   const start = async (competenceId?: string) => {
-    if (!isUnlocked) {
-      openPaywall(TRACK_LABELS[trackId])
-      return
-    }
     await startSession({
       mode: 'PRACTICE',
       track: trackId,
@@ -64,7 +58,7 @@ export default function PracticeConfigScreen() {
           className="card"
           style={{ marginBottom: '1rem', borderColor: 'var(--warning)', color: 'var(--warning)' }}
         >
-          This track is locked. Activate a key to unlock full practice.
+          FREE ACCESS: sample questions only. Activate a key to unlock the full question bank, Drill, Mock Exam, Flashcards and Search.
         </div>
       )}
 

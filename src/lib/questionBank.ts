@@ -414,6 +414,27 @@ export async function getQuestionsByCompetence(
   return results.flat();
 }
 
+/**
+ * FREE ACCESS sample, same rule as the Android app:
+ * OIC-NW / GMDSS -> first 5 questions of each competence;
+ * Engine EW / Deck Mgt / Engine Mgt -> first 40% of each competence (min 1).
+ */
+export function freeSample(list: Question[], track: TrackId): Question[] {
+  const byComp = new Map<string, Question[]>();
+  for (const q of list) {
+    const key = q.competenceId;
+    if (!byComp.has(key)) byComp.set(key, []);
+    byComp.get(key)!.push(q);
+  }
+  const pct = track === 'ENGINE_OIC_EW' || track === 'DECK_MGT' || track === 'ENGINE_MGT';
+  const out: Question[] = [];
+  for (const items of byComp.values()) {
+    const n = pct ? Math.max(1, Math.round(items.length * 0.4)) : 5;
+    out.push(...items.slice(0, n));
+  }
+  return out;
+}
+
 export async function getQuestionsByTrack(track: TrackId): Promise<Question[]> {
   const sources = SOURCES.filter((s) => s.track === track);
   const results = await Promise.all(sources.map(loadSource));

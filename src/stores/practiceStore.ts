@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Question, UserAnswer, TrackId } from '../types/question';
-import { getQuestionsByCompetence, getQuestionsByTrack } from '../lib/questionBank';
+import { getQuestionsByCompetence, getQuestionsByTrack, freeSample } from '../lib/questionBank';
+import { useLicenseStore } from './licenseStore';
 import { useHistoryStore, type SessionMode } from './historyStore';
 import { useVaultStore } from './vaultStore';
 import { useStudyTimeStore } from './studyTimeStore';
@@ -128,6 +129,12 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       let qs = competenceId
         ? await getQuestionsByCompetence(track, competenceId)
         : await getQuestionsByTrack(track);
+
+      // FREE ACCESS: without a license for this track, only the sample questions are served
+      const lic = useLicenseStore.getState();
+      if (!(lic.isAllAccessUnlocked || lic.isTrackUnlocked(track))) {
+        qs = freeSample(qs, track);
+      }
 
       if (qs.length === 0) {
         set({ loading: false, error: 'No questions available for this selection yet.' });
