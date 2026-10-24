@@ -19,7 +19,7 @@ function applyTheme(theme: ThemeMode) {
   // Update browser chrome color
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) {
-    meta.setAttribute('content', theme === 'dark' ? '#0F141C' : '#F1F5F9')
+    meta.setAttribute('content', theme === 'dark' ? '#0B1220' : '#EEF2F6')
   }
 }
 

@@ -2,8 +2,8 @@ import { NavLink } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
 
 const items = [
-  { to: '/', label: 'Home', icon: '🏠' },
-  { to: '/tracks', label: 'Tracks', icon: '📚' },
+  { to: '/', label: 'Dashboard', icon: '🏠' },
+  { to: '/practice', label: 'Practice', icon: '📚' },
   { to: '/history', label: 'History', icon: '📊' },
   { to: '/license', label: 'License', icon: '🔑' }
 ]

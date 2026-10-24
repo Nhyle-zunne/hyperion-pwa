@@ -47,8 +47,9 @@ export default function App() {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <main style={{ flex: 1 }}>
         <Routes>
-          <Route path="/" element={<HomeScreen />} />
+          <Route path="/" element={<TrackSelectionScreen />} />
           <Route path="/tracks" element={<TrackSelectionScreen />} />
+          <Route path="/home" element={<HomeScreen />} />
           <Route path="/activation" element={<ActivationScreen />} />
           <Route path="/license" element={<LicenseScreen />} />
           <Route path="/howto" element={<HowToAvailScreen />} />
@@ -66,7 +67,7 @@ export default function App() {
           <Route path="/vault" element={<VaultScreen />} />
           <Route path="/studytime" element={<StudyTimeScreen />} />
           <Route path="/streak" element={<StudyTimeScreen />} />
-          <Route path="*" element={<HomeScreen />} />
+          <Route path="*" element={<TrackSelectionScreen />} />
         </Routes>
       </main>
 

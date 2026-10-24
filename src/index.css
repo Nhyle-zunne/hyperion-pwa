@@ -1,34 +1,41 @@
+/* Hyperion theme – aligned with Android app (green primary) */
 :root,
 [data-theme='dark'] {
-  --bg: #0f141c;
-  --bg-card: #1a2332;
-  --bg-elevated: #243044;
+  --bg: #0b1220;
+  --bg-card: #151d2e;
+  --bg-elevated: #1c2740;
+  --bg-header: #0f1729;
   --text: #f1f5f9;
-  --text-muted: #94a3b8;
-  --accent: #38bdf8;
-  --accent-dim: #0ea5e9;
+  --text-muted: #8b9bb4;
+  --accent: #22c55e;
+  --accent-dim: #16a34a;
+  --accent-soft: rgba(34, 197, 94, 0.14);
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
-  --border: #334155;
-  --btn-primary-text: #0f141c;
+  --border: #2a3548;
+  --btn-primary-text: #04110a;
   --radius: 12px;
+  --streak-empty: #1e293b;
   color-scheme: dark;
 }
 
 [data-theme='light'] {
-  --bg: #f1f5f9;
+  --bg: #eef2f6;
   --bg-card: #ffffff;
-  --bg-elevated: #e2e8f0;
+  --bg-elevated: #f1f5f9;
+  --bg-header: #ffffff;
   --text: #0f172a;
   --text-muted: #64748b;
-  --accent: #0284c7;
-  --accent-dim: #0369a1;
+  --accent: #15803d;
+  --accent-dim: #166534;
+  --accent-soft: rgba(21, 128, 61, 0.1);
   --success: #16a34a;
   --warning: #d97706;
   --danger: #dc2626;
-  --border: #cbd5e1;
+  --border: #d0d7e2;
   --btn-primary-text: #ffffff;
+  --streak-empty: #e2e8f0;
   color-scheme: light;
 }
 
@@ -174,4 +181,126 @@ a {
 
 .theme-toggle:hover {
   background: var(--bg-elevated);
+}
+
+/* Dashboard helpers */
+.dash-header {
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 1rem 0.85rem;
+  margin: -1rem -1rem 1rem;
+}
+
+.dash-header h1 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.dash-header .sub {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.badge-verified {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+}
+
+.track-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 420px) {
+  .track-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.track-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem;
+  text-align: left;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  min-height: 168px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.track-card:hover {
+  border-color: var(--accent);
+}
+
+.track-card .qcount {
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1.1;
+  margin: 0.35rem 0 0.15rem;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 200;
+}
+
+.drawer-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(300px, 86vw);
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
+  z-index: 210;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0.75rem;
+  overflow-y: auto;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+}
+
+.drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  width: 100%;
+  text-align: left;
+}
+
+.drawer-item:hover,
+.drawer-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.drawer-section {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 0.85rem 0.75rem 0.35rem;
+  text-transform: uppercase;
 }
