@@ -151,10 +151,10 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         return;
       }
 
-      // The configured item range is applied to the selected pool before delivery.
-      const ordered = randomizeOrder === false ? [...qs] : shuffle(qs);
+      // Apply the configured item range first, then optionally randomize only that range.
       const start = Math.max(1, Math.floor(startItem ?? 1)) - 1;
-      const selected = ordered.slice(start, start + finalLimit);
+      const range = qs.slice(start, start + finalLimit);
+      const selected = randomizeOrder === false ? range : shuffle(range);
       const delivered = shuffleChoices ? selected.map(shuffleQuestionChoices) : selected;
 
       if (delivered.length === 0) {
