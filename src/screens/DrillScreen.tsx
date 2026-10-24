@@ -2,7 +2,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
 import { listAvailableCompetences } from '../lib/questionBank'
-import type { TrackId' from '../types/question'
+import type { TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = {
   oic_nw: 'DECK_OIC_NW',
