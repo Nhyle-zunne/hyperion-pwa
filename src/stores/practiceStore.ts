@@ -30,6 +30,8 @@ interface PracticeState {
     competenceId?: string;
     limit?: number;
     timeLimitSec?: number;
+    /** Force the FREE ACCESS sample even when the track is licensed */
+    free?: boolean;
   }) => Promise<void>;
   selectAnswer: (index: number) => void;
   /** Mock: answer without revealing correctness UI still stores it */
@@ -104,7 +106,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   streak: 0,
   bestStreak: 0,
 
-  startSession: async ({ mode, track, competenceId, limit, timeLimitSec }) => {
+  startSession: async ({ mode, track, competenceId, limit, timeLimitSec, free }) => {
     const defaultLimit = mode === 'MOCK' ? 30 : mode === 'DRILL' ? 12 : 15;
     const finalLimit = limit ?? defaultLimit;
     const time =
@@ -126,14 +128,17 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     });
 
     try {
-      let qs = competenceId
-        ? await getQuestionsByCompetence(track, competenceId)
-        : await getQuestionsByTrack(track);
-
-      // FREE ACCESS: without a license for this track, only the sample questions are served
+      // FREE ACCESS: without a license for this track (or when asked), only the free sample is served
       const lic = useLicenseStore.getState();
-      if (!(lic.isAllAccessUnlocked || lic.isTrackUnlocked(track))) {
-        qs = freeSample(qs, track);
+      const licensed = lic.isAllAccessUnlocked || lic.isTrackUnlocked(track);
+      let qs: Question[];
+      if (free || !licensed) {
+        const sample = freeSample(await getQuestionsByTrack(track), track);
+        qs = competenceId ? sample.filter((q) => q.competenceId === competenceId) : sample;
+      } else {
+        qs = competenceId
+          ? await getQuestionsByCompetence(track, competenceId)
+          : await getQuestionsByTrack(track);
       }
 
       if (qs.length === 0) {

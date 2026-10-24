@@ -5,6 +5,7 @@ import HomeScreen from './screens/HomeScreen'
 import ActivationScreen from './screens/ActivationScreen'
 import LicenseScreen from './screens/LicenseScreen'
 import TrackSelectionScreen from './screens/TrackSelectionScreen'
+import TrackHubScreen from './screens/TrackHubScreen'
 import HowToAvailScreen from './screens/HowToAvailScreen'
 import AboutScreen from './screens/AboutScreen'
 import TermsScreen from './screens/TermsScreen'
@@ -49,6 +50,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<TrackSelectionScreen />} />
           <Route path="/tracks" element={<TrackSelectionScreen />} />
+          <Route path="/track" element={<TrackHubScreen />} />
           <Route path="/home" element={<HomeScreen />} />
           <Route path="/activation" element={<ActivationScreen />} />
           <Route path="/license" element={<LicenseScreen />} />

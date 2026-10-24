@@ -125,7 +125,7 @@ export default function TrackSelectionScreen() {
   const streakCount = streakDays.filter(Boolean).length
 
   const select = (track: (typeof TRACKS)[0]) => {
-    navigate(`/practice?track=${track.id}`)
+    navigate(`/track?track=${track.id}`)
   }
 
   const saveTarget = () => {
@@ -406,21 +406,6 @@ export default function TrackSelectionScreen() {
             </span>
           </div>
         </a>
-      </div>
-
-      <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <button className="btn btn-outline" style={{ fontSize: '0.8rem' }} onClick={() => navigate('/drill')}>
-          Drill
-        </button>
-        <button className="btn btn-outline" style={{ fontSize: '0.8rem' }} onClick={() => navigate('/mock')}>
-          Mock exam
-        </button>
-        <button className="btn btn-outline" style={{ fontSize: '0.8rem' }} onClick={() => navigate('/flashcards')}>
-          Flashcards
-        </button>
-        <button className="btn btn-outline" style={{ fontSize: '0.8rem' }} onClick={() => navigate('/search')}>
-          Search
-        </button>
       </div>
     </div>
   )

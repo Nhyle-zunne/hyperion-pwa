@@ -25,6 +25,7 @@ export default function PracticeConfigScreen() {
   const [params] = useSearchParams()
   const trackParam = params.get('track') || 'oic_nw'
   const trackId = TRACK_MAP[trackParam] || 'DECK_OIC_NW'
+  const freeMode = params.get('free') === '1'
 
   const isUnlocked = useLicenseStore((s) => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
   const startSession = usePracticeStore((s) => s.startSession)
@@ -36,7 +37,8 @@ export default function PracticeConfigScreen() {
       mode: 'PRACTICE',
       track: trackId,
       competenceId,
-      limit: 15
+      limit: 15,
+      free: freeMode
     })
     navigate('/practice/quiz')
   }
@@ -44,7 +46,7 @@ export default function PracticeConfigScreen() {
   return (
     <div className="screen">
       <button
-        onClick={() => navigate('/tracks')}
+        onClick={() => navigate(`/track?track=${trackParam}`)}
         style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}
       >
         ← Tracks
@@ -53,12 +55,12 @@ export default function PracticeConfigScreen() {
       <h1 className="page-title">Practice</h1>
       <p className="subtitle">{TRACK_LABELS[trackId]} · instant feedback</p>
 
-      {!isUnlocked && (
+      {(freeMode || !isUnlocked) && (
         <div
           className="card"
           style={{ marginBottom: '1rem', borderColor: 'var(--warning)', color: 'var(--warning)' }}
         >
-          FREE ACCESS: sample questions only. Activate a key to unlock the full question bank, Drill, Mock Exam, Flashcards and Search.
+          FREE ACCESS: free reviewer questions only. Activate a key to unlock the full question bank, Drill, Mock Exam, Flashcards and Search.
         </div>
       )}
 

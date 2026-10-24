@@ -414,23 +414,79 @@ export async function getQuestionsByCompetence(
   return results.flat();
 }
 
+/** Minimal java.util.Random so the free OIC-NW sample matches the Android app exactly. */
+class JavaRandom {
+  private seed: bigint;
+  private static readonly MASK = (1n << 48n) - 1n;
+  constructor(seed: number) {
+    this.seed = (BigInt(seed) ^ 0x5deece66dn) & JavaRandom.MASK;
+  }
+  next(bits: number): number {
+    this.seed = (this.seed * 0x5deece66dn + 0xbn) & JavaRandom.MASK;
+    return Number(BigInt.asIntN(32, this.seed >> BigInt(48 - bits)));
+  }
+  nextInt(bound: number): number {
+    let r = this.next(31);
+    const m = bound - 1;
+    if ((bound & m) === 0) return Number((BigInt(bound) * BigInt(r)) >> 31n);
+    for (let u = r; ((u - (r = u % bound) + m) | 0) < 0; u = this.next(31)) {
+      /* retry */
+    }
+    return r;
+  }
+}
+
+/** Same as Kotlin shuffled(java.util.Random) = Collections.shuffle(list, rnd). */
+function javaShuffle<T>(items: T[], rnd: JavaRandom): T[] {
+  const list = items.slice();
+  for (let i = list.length; i > 1; i--) {
+    const j = rnd.nextInt(i);
+    const tmp = list[i - 1];
+    list[i - 1] = list[j];
+    list[j] = tmp;
+  }
+  return list;
+}
+
+/** OIC-NW free CRP quota per competence (2,065 total), from MaritimeCompetenceRegistry.CRP_DECK_DISTRIBUTION. */
+const CRP_DECK_DISTRIBUTION: [string, number][] = [
+  ['C1', 420], ['C2', 221], ['C3', 258], ['C4', 160], ['C5', 100], ['C7', 196],
+  ['C9', 176], ['C10', 109], ['C11', 96], ['C12', 110], ['C13', 122], ['C17', 97]
+];
+/** These competences keep their original order (first N); the rest are shuffled with seed 2065. */
+const CRP_FIXED_ORDER = new Set(['C17', 'C13', 'C9', 'C10', 'C7']);
+
 /**
- * FREE ACCESS sample, same rule as the Android app:
- * OIC-NW / GMDSS -> first 5 questions of each competence;
- * Engine EW / Deck Mgt / Engine Mgt -> first 40% of each competence (min 1).
+ * FREE ACCESS sample, same rules as the Android app. Pass the WHOLE track's questions.
+ * - OIC-NW: 2,065 items across 12 competences (fixed seed shuffle, like getMarinaCrpQuestions)
+ * - GMDSS: first 1,000 of C1 and first 150 of C2 (like getMarinaCrpGmdssQuestions)
+ * - Engine EW / Deck Mgt / Engine Mgt: first 40% of each competence, min 1
  */
 export function freeSample(list: Question[], track: TrackId): Question[] {
   const byComp = new Map<string, Question[]>();
   for (const q of list) {
-    const key = q.competenceId;
-    if (!byComp.has(key)) byComp.set(key, []);
-    byComp.get(key)!.push(q);
+    if (!byComp.has(q.competenceId)) byComp.set(q.competenceId, []);
+    byComp.get(q.competenceId)!.push(q);
   }
-  const pct = track === 'ENGINE_OIC_EW' || track === 'DECK_MGT' || track === 'ENGINE_MGT';
+
+  if (track === 'DECK_OIC_NW') {
+    const rnd = new JavaRandom(2065);
+    const out: Question[] = [];
+    for (const [compId, quota] of CRP_DECK_DISTRIBUTION) {
+      const comp = byComp.get(compId) ?? [];
+      const picked = CRP_FIXED_ORDER.has(compId) ? comp : javaShuffle(comp, rnd);
+      out.push(...picked.slice(0, quota));
+    }
+    return out;
+  }
+
+  if (track === 'GMDSS_GOC') {
+    return [...(byComp.get('C1') ?? []).slice(0, 1000), ...(byComp.get('C2') ?? []).slice(0, 150)];
+  }
+
   const out: Question[] = [];
   for (const items of byComp.values()) {
-    const n = pct ? Math.max(1, Math.round(items.length * 0.4)) : 5;
-    out.push(...items.slice(0, n));
+    out.push(...items.slice(0, Math.max(1, Math.round(items.length * 0.4))));
   }
   return out;
 }
