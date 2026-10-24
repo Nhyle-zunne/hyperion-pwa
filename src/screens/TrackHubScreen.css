@@ -1,0 +1,320 @@
+/* Track dashboard layout modeled after the native Hyperion reviewer. */
+.track-hub-screen {
+  max-width: 900px;
+  padding-top: 0.5rem;
+  padding-bottom: 6.25rem;
+}
+
+.hub-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.7rem;
+  padding: 0.25rem 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.hub-hero {
+  border: 2px solid #344256;
+  border-top: 3px solid var(--accent);
+  background: var(--bg-elevated);
+  padding: 1rem 0.9rem 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.hub-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.95rem;
+}
+
+.hub-regulation,
+.hub-terminal,
+.hub-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.8rem;
+  padding: 0.25rem 0.45rem;
+  background: #344256;
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.hub-terminal {
+  background: transparent;
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  text-align: center;
+}
+
+.hub-terminal.is-free {
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
+.hub-eyebrow {
+  margin-bottom: 0.1rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.hub-hero h1 {
+  color: var(--text);
+  font-size: clamp(1.05rem, 4.4vw, 1.65rem);
+  font-weight: 850;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  margin-bottom: 0.85rem;
+}
+
+.hub-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.hub-meta span {
+  min-height: 0;
+  font-size: 0.66rem;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+}
+
+.hub-section-title {
+  padding: 0.65rem 0 0.55rem;
+  border-top: 3px solid #344256;
+  margin: 0 0 0.65rem;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 850;
+  letter-spacing: 0.07em;
+  line-height: 1.25;
+}
+
+.hub-performance {
+  margin-bottom: 1rem;
+}
+
+.hub-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  background: var(--bg-elevated);
+  border: 2px solid #344256;
+  padding: 0.75rem 0.35rem;
+}
+
+.hub-stat {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.1rem 0.35rem;
+  border-right: 2px solid #344256;
+}
+
+.hub-stat:last-child {
+  border-right: 0;
+}
+
+.hub-stat strong {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: var(--text);
+  font-size: clamp(1.15rem, 5vw, 1.75rem);
+  font-weight: 850;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.hub-stat span {
+  color: var(--text-muted);
+  font-size: clamp(0.52rem, 2.15vw, 0.68rem);
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.hub-modes {
+  margin-bottom: 0.75rem;
+}
+
+.hub-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.hub-mode-card {
+  --mode-accent: var(--accent);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 215px;
+  padding: 0.7rem;
+  border: 2px solid #344256;
+  border-top: 3px solid var(--mode-accent);
+  border-radius: 2px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  text-align: left;
+  overflow-wrap: anywhere;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hub-mode-card:active {
+  transform: scale(0.99);
+}
+
+.hub-mode-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hub-mode-card.hub-mode-free {
+  --mode-accent: #e2e8f0;
+  border-top-color: #e2e8f0;
+}
+
+.hub-mode-card.is-locked {
+  --mode-accent: var(--accent);
+}
+
+.hub-mode-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-height: 2.4rem;
+  margin-bottom: 0.7rem;
+}
+
+.hub-mode-icon {
+  display: inline-flex;
+  flex: 0 0 2rem;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid color-mix(in srgb, var(--mode-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--mode-accent) 12%, transparent);
+  color: var(--mode-accent);
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.hub-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.8rem;
+  max-width: 68%;
+  padding: 0.25rem 0.35rem;
+  border: 2px solid var(--mode-accent);
+  color: var(--mode-accent);
+  font-size: clamp(0.54rem, 2.1vw, 0.72rem);
+  font-weight: 750;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.hub-mode-badge.badge-muted {
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
+.hub-mode-card h3 {
+  margin: 0 0 0.35rem;
+  color: var(--text);
+  font-size: clamp(0.78rem, 3vw, 1rem);
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.hub-mode-card p {
+  color: var(--text-muted);
+  font-size: clamp(0.68rem, 2.5vw, 0.82rem);
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.hub-mode-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  margin-top: auto;
+  padding-top: 1rem;
+  color: var(--mode-accent);
+  font-size: clamp(0.62rem, 2.4vw, 0.78rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.hub-activate {
+  width: 100%;
+  margin: 0.35rem 0 0.75rem;
+  border-radius: 2px;
+  min-height: 3rem;
+  font-weight: 850;
+}
+
+@media (min-width: 600px) {
+  .track-hub-screen {
+    padding: 1rem;
+    padding-bottom: 6rem;
+  }
+
+  .hub-hero {
+    padding: 1.25rem 1.2rem 1rem;
+  }
+
+  .hub-mode-grid {
+    gap: 0.85rem;
+  }
+
+  .hub-mode-card {
+    min-height: 230px;
+    padding: 1rem;
+  }
+
+  .hub-mode-card h3 {
+    font-size: 1.05rem;
+  }
+
+  .hub-mode-card p {
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 350px) {
+  .hub-stats {
+    padding-inline: 0.15rem;
+  }
+
+  .hub-stat {
+    padding-inline: 0.2rem;
+  }
+
+  .hub-mode-grid {
+    gap: 0.45rem;
+  }
+
+  .hub-mode-card {
+    min-height: 225px;
+    padding: 0.55rem;
+  }
+}
