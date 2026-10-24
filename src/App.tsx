@@ -120,6 +120,7 @@ export default function App() {
         </header>
       )}
       <main style={{ flex: 1 }}>
+        <div key={`${location.pathname}${location.search}`} className="route-transition">
         <Routes>
           <Route path="/" element={<TrackSelectionScreen />} />
           <Route path="/tracks" element={<TrackSelectionScreen />} />
@@ -147,6 +148,7 @@ export default function App() {
           <Route path="/streak" element={<StudyTimeScreen />} />
           <Route path="*" element={<TrackSelectionScreen />} />
         </Routes>
+        </div>
       </main>
 
       {!hideNav && <BottomNav />}
