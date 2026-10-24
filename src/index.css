@@ -404,3 +404,91 @@ a {
   padding: 0.85rem 0.75rem 0.35rem;
   text-transform: uppercase;
 }
+
+
+/* Smooth, app-like interaction and navigation motion */
+:root {
+  --motion-fast: 140ms;
+  --motion-medium: 220ms;
+  --motion-ease: cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .route-transition {
+    animation: page-enter 240ms var(--motion-ease) both;
+  }
+
+  @keyframes page-enter {
+    from { opacity: 0.72; transform: translateY(7px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .drawer-backdrop {
+    animation: backdrop-enter 180ms ease-out both;
+  }
+
+  .drawer-panel {
+    animation: drawer-enter 230ms var(--motion-ease) both;
+    will-change: transform;
+  }
+
+  @keyframes drawer-enter {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+
+  @keyframes backdrop-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
+/* Consistent tactile feedback for clickable cards, buttons and navigation items */
+button,
+a,
+[role="button"],
+.track-card,
+.drawer-item {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button,
+a,
+[role="button"],
+.track-card,
+.drawer-item {
+  transition:
+    color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) ease;
+}
+
+button:active,
+a:active,
+[role="button"]:active,
+.track-card:active,
+.drawer-item:active {
+  transform: scale(0.985);
+}
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
