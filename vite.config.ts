@@ -19,8 +19,8 @@ export default defineConfig({
         short_name: 'Hyperion',
         description:
           'Maritime Licensure Reviewer for OIC-NW, GMDSS, Engine and Management tracks',
-        theme_color: '#0F141C',
-        background_color: '#0F141C',
+        theme_color: '#002060',
+        background_color: '#002060',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
