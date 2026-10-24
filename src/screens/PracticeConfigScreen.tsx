@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { usePracticeStore } from '../stores/practiceStore'
+import { useUIStore } from '../stores/uiStore'
 import { listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
 
@@ -27,33 +28,40 @@ export default function PracticeConfigScreen() {
   const trackParam = params.get('track') || 'oic_nw'
   const trackId = TRACK_MAP[trackParam] || 'DECK_OIC_NW'
   const freeMode = params.get('free') === '1'
+  const isDrill = params.get('mode') === 'drill'
+  const sessionMode = isDrill ? 'DRILL' : 'PRACTICE'
+  const openPaywall = useUIStore((s) => s.openPaywall)
   const isUnlocked = useLicenseStore((s) => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
   const startSession = usePracticeStore((s) => s.startSession)
   const competences = listAvailableCompetences(trackId)
 
   const [competenceId, setCompetenceId] = useState<string | undefined>()
   const [startItem, setStartItem] = useState(1)
-  const [endItem, setEndItem] = useState(freeMode || !isUnlocked ? 5 : 15)
+  const [endItem, setEndItem] = useState(isDrill && isUnlocked ? 12 : freeMode || !isUnlocked ? 5 : 15)
   const [randomizeOrder, setRandomizeOrder] = useState(false)
   const [shuffleChoices, setShuffleChoices] = useState(isUnlocked)
   const [starting, setStarting] = useState(false)
-  const maxRange = freeMode || !isUnlocked ? 5 : 2000
+  const maxRange = isDrill && isUnlocked ? 2000 : freeMode || !isUnlocked ? 5 : 2000
   const actualStart = Math.max(1, Math.min(startItem, maxRange))
   const actualEnd = Math.max(actualStart, Math.min(endItem, maxRange))
   const itemCount = actualEnd - actualStart + 1
 
   const start = async () => {
+    if (isDrill && !isUnlocked) {
+      openPaywall('Drill')
+      return
+    }
     setStarting(true)
     try {
       await startSession({
-        mode: 'PRACTICE',
+        mode: sessionMode,
         track: trackId,
         competenceId,
         limit: itemCount,
         startItem: actualStart,
         randomizeOrder,
         shuffleChoices,
-        free: freeMode
+        free: freeMode && !isDrill
       })
       navigate('/practice/quiz')
     } finally {
@@ -84,13 +92,19 @@ export default function PracticeConfigScreen() {
 
       <div className="card" style={{ borderRadius: 2, borderTop: '3px solid var(--accent)', marginBottom: '1rem' }}>
         <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', letterSpacing: '0.12em', fontWeight: 800 }}>
-          STEP 2 OF 2 · PRACTICE CONFIGURATION
+          {isDrill ? 'STEP 2 OF 2 · DRILL CONFIGURATION' : 'STEP 2 OF 2 · PRACTICE CONFIGURATION'}
         </div>
-        <h1 className="page-title" style={{ marginTop: 8, marginBottom: 4 }}>Configure Practice</h1>
+        <h1 className="page-title" style={{ marginTop: 8, marginBottom: 4 }}>{isDrill ? 'Configure Drill' : 'Configure Practice'}</h1>
         <p className="subtitle" style={{ marginBottom: 0 }}>{TRACK_LABELS[trackId]} · choose your question pool and delivery settings</p>
       </div>
 
-      {(freeMode || !isUnlocked) && (
+      {isDrill && !isUnlocked && (
+        <div className="card" style={{ marginBottom: '1rem', borderColor: 'var(--warning)', color: 'var(--warning)' }}>
+          Drill requires an activated license. Configure your session, then activate your key to start.
+        </div>
+      )}
+
+      {!isDrill && (freeMode || !isUnlocked) && (
         <div className="card" style={{ marginBottom: '1rem', borderColor: 'var(--warning)', color: 'var(--warning)' }}>
           FREE ACCESS: up to 5 questions per session. Activate a key to configure a larger question range.
         </div>
@@ -164,7 +178,7 @@ export default function PracticeConfigScreen() {
       </section>
 
       <button className="btn btn-primary" type="button" disabled={starting} onClick={start} style={{ width: '100%', minHeight: 48 }}>
-        {starting ? 'Preparing Questions…' : `START PRACTICE · ${itemCount} QUESTIONS`}
+        {starting ? 'Preparing Questions…' : `START ${isDrill ? 'DRILL' : 'PRACTICE'} · ${itemCount} QUESTIONS`}
       </button>
     </div>
   )
