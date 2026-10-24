@@ -22,7 +22,7 @@ const smallButton: React.CSSProperties = { background: '#334155', border: '1px s
 
 export default function PracticeConfigScreen() {
   const navigate = useNavigate()
-  const [params] = useSearchParams()
+  const [params, setSearchParams] = useSearchParams()
   const trackParam = params.get('track') || 'oic_nw'
   const trackId = TRACK_MAP[trackParam] || 'DECK_OIC_NW'
   const freeMode = params.get('free') === '1'
@@ -34,6 +34,8 @@ export default function PracticeConfigScreen() {
   const competences = listAvailableCompetences(trackId)
   const competenceId = params.get('competence') || undefined
   const competence = competences.find(c => c.id === competenceId)
+  const selectedPart = trackId === 'GMDSS_GOC' && competenceId ? Number(params.get('part') || '0') || undefined : undefined
+  const gmdssParts = competenceId === 'C1' ? Array.from({ length: 10 }, (_, i) => i + 1) : competenceId === 'C2' ? [1, 2] : []
   const [availableQuestionCount, setAvailableQuestionCount] = useState(0)
   const [startItem, setStartItem] = useState(1)
   const [endItem, setEndItem] = useState(1)
@@ -48,7 +50,8 @@ export default function PracticeConfigScreen() {
     async function load() {
       const all = await getQuestionsByTrack(trackId)
       const pool = freeMode || !isUnlocked ? freeSample(all, trackId) : all
-      const selected = competenceId ? pool.filter(q => q.competenceId === competenceId) : pool
+      let selected = competenceId ? pool.filter(q => q.competenceId === competenceId) : pool
+      if (selectedPart != null) selected = selected.filter(q => q.id.includes('-P' + selectedPart + '-'))
       if (cancelled) return
       const count = selected.length
       setAvailableQuestionCount(count)
@@ -57,7 +60,7 @@ export default function PracticeConfigScreen() {
     }
     void load()
     return () => { cancelled = true }
-  }, [trackId, competenceId, freeMode, isUnlocked])
+  }, [trackId, competenceId, freeMode, isUnlocked, selectedPart])
 
   const maxRange = Math.max(1, availableQuestionCount)
   const actualStart = Math.max(1, Math.min(startItem, maxRange))
@@ -74,7 +77,7 @@ export default function PracticeConfigScreen() {
     try {
       await startSession({
         mode: sessionMode, track: trackId, competenceId, limit: itemCount,
-        startItem: actualStart, randomizeOrder: randomizeOrder || prioritizeUnseen,
+        startItem: actualStart, part: selectedPart, randomizeOrder: randomizeOrder || prioritizeUnseen,
         shuffleChoices, free: freeMode || !isUnlocked
       })
       navigate('/practice/quiz')
@@ -109,6 +112,21 @@ export default function PracticeConfigScreen() {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: '#38bdf8', fontWeight: 900, letterSpacing: '.08em', fontSize: '.8rem', margin: '.7rem 0' }}><span>RECENT SESSIONS</span><span>SESSION HISTORY »</span></div>
       <div style={{ border: '1px solid #1e293b', padding: '.8rem', ...muted, fontSize: '.85rem', lineHeight: 1.6 }}>Session history for this competence will appear here after you complete a session.</div>
     </section>
+
+    {trackId === 'GMDSS_GOC' && competenceId && gmdssParts.length > 0 && <section style={panel}>
+      <h2 style={sectionTitle}>SELECT QUESTION PART</h2>
+      <p style={{ ...muted, lineHeight: 1.5, marginTop: 0 }}>This competence is divided into separate question-bank parts. Choose a part to limit this session to those questions, or choose all parts.</p>
+      <select aria-label="GMDSS question part" value={selectedPart ?? 'all'} onChange={e => {
+        const next = new URLSearchParams(params)
+        if (e.target.value === 'all') next.delete('part')
+        else next.set('part', e.target.value)
+        setSearchParams(next)
+      }} style={{ ...fieldStyle, minHeight: 52 }}>
+        <option value="all">All parts · full available pool</option>
+        {gmdssParts.map(part => <option key={part} value={part}>Part {part}</option>)}
+      </select>
+      <div style={{ ...muted, fontSize: '.82rem', marginTop: '.65rem' }}>Available in selection: <strong style={{ color: '#22c55e' }}>{availableQuestionCount.toLocaleString()} questions</strong></div>
+    </section>}
 
     <section style={panel}>
       <h2 style={sectionTitle}>♟ 1. DRILL DELIVERY FORMAT</h2>
