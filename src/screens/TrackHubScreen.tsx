@@ -106,7 +106,7 @@ export default function TrackHubScreen() {
       icon: '▰',
       locked: false,
       className: 'hub-mode-free',
-      onClick: () => navigate(`/practice?track=${key}&free=1`)
+      onClick: () => navigate(`/practice/competences?track=${key}&free=1`)
     },
     {
       title: 'PRACTICE ALL QUESTIONS',
@@ -114,7 +114,7 @@ export default function TrackHubScreen() {
       badge: unlocked ? 'CUSTOMIZABLE' : 'LOCKED',
       icon: '☷',
       locked: !unlocked,
-      onClick: gated('Practice', `/practice?track=${key}`)
+      onClick: gated('Practice', `/practice/competences?track=${key}`)
     },
     {
       title: 'QUICK SCAN MODE',
