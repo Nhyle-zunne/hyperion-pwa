@@ -55,7 +55,7 @@ export default function MockExamScreen() {
     getQuestionsByTrack(trackId).then((items) => {
       if (cancelled) return
       setQuestions(items)
-      setSelectedFunctions(Array.from(new Set(items.map((q) => q.functionId))).sort())
+      setSelectedFunctions([])
       setLoading(false)
     }).catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -82,13 +82,14 @@ export default function MockExamScreen() {
   const start = async (competenceId: string) => {
     if (!isUnlocked) { openPaywall('Mock Exam'); return }
     const pool = questions.filter((q) => q.competenceId === competenceId && selectedFunctions.includes(q.functionId))
+    const examItemCount = trackId === 'DECK_OIC_NW' ? (OIC_NW_ITEMS[competenceId] || pool.length) : pool.length
     if (!pool.length) return
     setStartingCompetence(competenceId)
     setStarting(true)
     try {
       await startSession({
-        mode: 'MOCK', track: trackId, competenceId, limit: pool.length, startItem: 1,
-        timeLimitSec: (trackId === 'DECK_OIC_NW' ? (OIC_NW_ITEMS[competenceId] || pool.length) : pool.length) * 60,
+        mode: 'MOCK', track: trackId, competenceId, limit: Math.min(examItemCount, pool.length), startItem: 1,
+        timeLimitSec: examItemCount * 60,
         randomizeOrder, shuffleChoices
       })
       navigate('/mock/exam')
