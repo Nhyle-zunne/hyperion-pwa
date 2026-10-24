@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useUIStore } from '../stores/uiStore'
-import { freeSample, getQuestionsByCompetence, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import { freeSample, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = {
@@ -14,8 +15,7 @@ const TRACK_LABELS: Record<TrackId, string> = {
   DECK_OIC_NW: 'OIC-NW', GMDSS_GOC: 'GMDSS GOC', ENGINE_OIC_EW: 'OIC-EW',
   DECK_MGT: 'Deck Management', ENGINE_MGT: 'Engine Management'
 }
-const FUNCTION_LABELS: Record<string, string> = { F1: 'Navigation at the Operational Level', F2: 'Cargo Handling and Stowage', F3: 'Controlling the Operation of the Ship' }
-const panel: React.CSSProperties = { background: '#1e293b', border: '1px solid #334155', borderRadius: 0, padding: '1.1rem', marginBottom: '1rem' }
+const panel: CSSProperties = { background: '#1e293b', border: '1px solid #334155', borderRadius: 0, padding: '1.1rem', marginBottom: '1rem' }
 const sectionTitle: React.CSSProperties = { color: '#22c55e', fontSize: '.95rem', letterSpacing: '.07em', fontWeight: 900, margin: '0 0 1rem' }
 const muted: React.CSSProperties = { color: '#94a3b8' }
 const smallButton: React.CSSProperties = { background: '#334155', border: '1px solid #475569', color: '#cbd5e1', padding: '.6rem .7rem', fontWeight: 800, minHeight: 40 }
@@ -100,7 +100,7 @@ export default function PracticeConfigScreen() {
     <div style={{ ...panel, borderTop: '3px solid #00e5a0', background: 'linear-gradient(120deg,#172b31,#1e293b)', marginBottom: '1.2rem' }}>
       <div style={{ ...muted, background: '#334155', display: 'inline-block', padding: '.2rem .5rem', fontWeight: 900, letterSpacing: '.12em', fontSize: '.75rem' }}>STEP 2 OF 2 · {freeMode ? 'FREE REVIEWER' : isDrill ? 'DRILL CONFIGURATION' : 'PRACTICE ALL QUESTIONS'}</div>
       <h1 style={{ fontSize: '1.25rem', lineHeight: 1.35, fontWeight: 900, margin: '.65rem 0 .25rem' }}>{freeMode ? `${TRACK_LABELS[trackId]} Free Reviewer` : isDrill ? 'Configure Drill' : 'Configure Practice: ' + (competence ? competence.label : TRACK_LABELS[trackId])}</h1>
-      <div style={{ color: '#22c55e', fontWeight: 900, lineHeight: 1.5 }}>{competence ? `${FUNCTION_LABELS[competence.functionId] || competence.functionId} · ${availableQuestionCount} Items` : `${TRACK_LABELS[trackId]} · ${availableQuestionCount} Items`}</div>
+      <div style={{ color: '#22c55e', fontWeight: 900, lineHeight: 1.5 }}>{competence ? `${competenceId} · ${availableQuestionCount} Items` : `${TRACK_LABELS[trackId]} · ${availableQuestionCount} Items`}</div>
       <div style={{ ...muted, fontWeight: 650, lineHeight: 1.5, marginTop: '.25rem' }}>{competence?.label || 'Questions from the selected track, using the available question pool.'}</div>
     </div>
 
