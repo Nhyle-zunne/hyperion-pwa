@@ -10,6 +10,7 @@ import HowToAvailScreen from './screens/HowToAvailScreen'
 import AboutScreen from './screens/AboutScreen'
 import TermsScreen from './screens/TermsScreen'
 import PracticeConfigScreen from './screens/PracticeConfigScreen'
+import PracticeCompetenceScreen from './screens/PracticeCompetenceScreen'
 import PracticeQuizScreen from './screens/PracticeQuizScreen'
 import DrillScreen from './screens/DrillScreen'
 import QuickScanCompetenceScreen from './screens/QuickScanCompetenceScreen'
@@ -129,6 +130,7 @@ export default function App() {
           <Route path="/howto" element={<HowToAvailScreen />} />
           <Route path="/about" element={<AboutScreen />} />
           <Route path="/terms" element={<TermsScreen />} />
+          <Route path="/practice/competences" element={<PracticeCompetenceScreen />} />
           <Route path="/practice" element={<PracticeConfigScreen />} />
           <Route path="/practice/quiz" element={<PracticeQuizScreen />} />
           <Route path="/drill" element={<DrillScreen />} />
