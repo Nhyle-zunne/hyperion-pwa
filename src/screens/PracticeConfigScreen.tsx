@@ -35,7 +35,7 @@ export default function PracticeConfigScreen() {
   const startSession = usePracticeStore((s) => s.startSession)
   const competences = listAvailableCompetences(trackId)
 
-  const [competenceId, setCompetenceId] = useState<string | undefined>()
+  const [competenceId, setCompetenceId] = useState<string | undefined>(() => params.get('competence') || undefined)
   const [startItem, setStartItem] = useState(1)
   const [endItem, setEndItem] = useState(isDrill && isUnlocked ? 12 : freeMode || !isUnlocked ? 5 : 15)
   const [randomizeOrder, setRandomizeOrder] = useState(false)
