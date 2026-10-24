@@ -175,21 +175,30 @@ export const useLicenseStore = create<LicenseState>()(
         const now = Date.now();
         const highWater = Math.max(state.highWaterMarkEpoch, now);
 
-        // Update high water mark
-        if (now > state.highWaterMarkEpoch) {
+        // Only bump high-water mark if clock moved meaningfully (avoids render loops)
+        if (now - state.highWaterMarkEpoch > 5_000) {
           set({ highWaterMarkEpoch: now });
         }
 
         // Re-evaluate unlocks if expired
         if (isExpired(state.offlineLicense, highWater)) {
-          set({
-            isOicNwUnlocked: false,
-            isGmdssUnlocked: false,
-            isEngineEwUnlocked: false,
-            isDeckMgtUnlocked: false,
-            isEngineMgtUnlocked: false,
-            isAllAccessUnlocked: false
-          });
+          if (
+            state.isOicNwUnlocked ||
+            state.isGmdssUnlocked ||
+            state.isEngineEwUnlocked ||
+            state.isDeckMgtUnlocked ||
+            state.isEngineMgtUnlocked ||
+            state.isAllAccessUnlocked
+          ) {
+            set({
+              isOicNwUnlocked: false,
+              isGmdssUnlocked: false,
+              isEngineEwUnlocked: false,
+              isDeckMgtUnlocked: false,
+              isEngineMgtUnlocked: false,
+              isAllAccessUnlocked: false
+            });
+          }
         }
       },
 

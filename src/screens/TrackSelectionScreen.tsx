@@ -94,13 +94,23 @@ export default function TrackSelectionScreen() {
     }
   })
 
-  const { isAllAccessUnlocked, isTrackUnlocked } = useLicenseStore()
+  const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
+  const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
   const openPaywall = useUIStore((s) => s.openPaywall)
-  const todayMs = useStudyTimeStore((s) => s.todayMs())
   const segments = useStudyTimeStore((s) => s.segments)
   const vaultCount = useVaultStore((s) => s.items.length)
   const history = useHistoryStore((s) => s.entries)
-  const stats = useHistoryStore((s) => s.stats())
+
+  const todayMs = useMemo(() => {
+    const key = dayKey()
+    return segments.filter((s) => s.day === key).reduce((a, s) => a + s.durationMs, 0)
+  }, [segments])
+
+  const avgPercent = useMemo(() => {
+    if (history.length === 0) return 0
+    const sum = history.reduce((a, e) => a + e.percent, 0)
+    return Math.round(sum / history.length)
+  }, [history])
 
   const streakDays = useMemo(() => {
     const active = new Set<string>()
@@ -211,7 +221,7 @@ export default function TrackSelectionScreen() {
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>
               OVERALL ACCURACY
             </div>
-            <div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{stats.avgPercent}%</div>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{avgPercent}%</div>
           </div>
           <div>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>

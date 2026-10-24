@@ -40,8 +40,16 @@ function formatDuration(ms: number) {
 
 export default function HistoryScreen() {
   const entries = useHistoryStore((s) => s.entries)
-  const stats = useHistoryStore((s) => s.stats())
   const clear = useHistoryStore((s) => s.clear)
+
+  const totalSessions = entries.length
+  const avgPercent =
+    totalSessions === 0
+      ? 0
+      : Math.round(entries.reduce((a, e) => a + e.percent, 0) / totalSessions)
+  const bestPercent = totalSessions === 0 ? 0 : Math.max(...entries.map((e) => e.percent))
+  const byMode = { PRACTICE: 0, DRILL: 0, MOCK: 0 }
+  for (const e of entries) byMode[e.mode]++
 
   return (
     <div className="screen">
@@ -58,25 +66,25 @@ export default function HistoryScreen() {
       >
         <div className="card" style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>
-            {stats.totalSessions}
+            {totalSessions}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Sessions</div>
         </div>
         <div className="card" style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>
-            {stats.avgPercent}%
+            {avgPercent}%
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Avg score</div>
         </div>
         <div className="card" style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--success)' }}>
-            {stats.bestPercent}%
+            {bestPercent}%
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Best</div>
         </div>
         <div className="card" style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            P {stats.byMode.PRACTICE} · D {stats.byMode.DRILL} · M {stats.byMode.MOCK}
+            P {byMode.PRACTICE} · D {byMode.DRILL} · M {byMode.MOCK}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>By mode</div>
         </div>

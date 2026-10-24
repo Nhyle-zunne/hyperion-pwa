@@ -51,10 +51,13 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
     <>
       <div className="drawer-backdrop" onClick={onClose} />
       <aside className="drawer-panel">
-        <div style={{ padding: '0.5rem 0.75rem 1rem' }}>
-          <div style={{ fontWeight: 800, fontSize: '1.15rem', letterSpacing: 0.04 }}>HYPERION</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-            MARITIME LICENSURE REVIEWER
+        <div style={{ padding: '0.5rem 0.75rem 1rem', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src="/logo.png" alt="Hyperion" width={44} height={44} style={{ borderRadius: 8 }} />
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '1.15rem', letterSpacing: 0.04 }}>HYPERION</div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              MARITIME LICENSURE REVIEWER
+            </div>
           </div>
         </div>
 

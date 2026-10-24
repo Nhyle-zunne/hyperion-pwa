@@ -1,15 +1,47 @@
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStudyTimeStore, formatDurationMs } from '../stores/studyTimeStore'
 import { useHistoryStore } from '../stores/historyStore'
 
+function dayKey(ts = Date.now()) {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export default function StudyTimeScreen() {
   const navigate = useNavigate()
-  const todayMs = useStudyTimeStore((s) => s.todayMs())
-  const weekMs = useStudyTimeStore((s) => s.weekMs())
-  const totalMs = useStudyTimeStore((s) => s.totalMs())
-  const byDay = useStudyTimeStore((s) => s.byDay(14))
+  const segments = useStudyTimeStore((s) => s.segments)
   const clear = useStudyTimeStore((s) => s.clear)
   const historyCount = useHistoryStore((s) => s.entries.length)
+
+  const todayMs = useMemo(() => {
+    const key = dayKey()
+    return segments.filter((s) => s.day === key).reduce((a, s) => a + s.durationMs, 0)
+  }, [segments])
+
+  const weekMs = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 86_400_000
+    return segments.filter((s) => s.at >= weekAgo).reduce((a, s) => a + s.durationMs, 0)
+  }, [segments])
+
+  const totalMs = useMemo(
+    () => segments.reduce((a, s) => a + s.durationMs, 0),
+    [segments]
+  )
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const s of segments) {
+      map.set(s.day, (map.get(s.day) || 0) + s.durationMs)
+    }
+    const days: { day: string; ms: number }[] = []
+    for (let i = 0; i < 14; i++) {
+      const key = dayKey(Date.now() - i * 86_400_000)
+      days.push({ day: key, ms: map.get(key) || 0 })
+    }
+    return days
+  }, [segments])
+
   const maxDay = Math.max(1, ...byDay.map((d) => d.ms))
 
   return (
@@ -54,7 +86,7 @@ export default function StudyTimeScreen() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {byDay.map(({ day, ms }) => {
             const pct = Math.round((ms / maxDay) * 100)
-            const label = day.slice(5) // MM-DD
+            const label = day.slice(5)
             return (
               <div key={day} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span
@@ -101,7 +133,11 @@ export default function StudyTimeScreen() {
         </div>
       </div>
 
-      <button className="btn btn-outline" style={{ width: '100%', marginBottom: 8 }} onClick={() => navigate('/history')}>
+      <button
+        className="btn btn-outline"
+        style={{ width: '100%', marginBottom: 8 }}
+        onClick={() => navigate('/history')}
+      >
         View session history
       </button>
 
