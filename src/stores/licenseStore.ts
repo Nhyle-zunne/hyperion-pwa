@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { verify, isSignedFormat } from '../lib/signedLicenseVerifier';
+import { isSignedFormat, verifyDetailed } from '../lib/signedLicenseVerifier';
 import { getDeviceToken } from '../lib/deviceId';
 
 export type ProTierCode = 'ALL' | 'OIC' | 'GOC' | 'EW' | 'DM' | 'EM';
@@ -88,16 +88,31 @@ export const useLicenseStore = create<LicenseState>()(
       activateKey: async (rawKey: string) => {
         const clean = rawKey.trim().toUpperCase().replace(/\s+/g, '');
         if (!clean) {
-          return { success: false, message: 'ERR: INVALID OR UNRECOGNIZED ACTIVATION KEY' };
+          return { success: false, message: 'ERR: Please paste your HYPE2 activation key.' };
         }
 
         const deviceToken = getDeviceToken();
 
         if (isSignedFormat(clean)) {
-          const signed = await verify(clean, deviceToken);
-          if (!signed) {
-            return { success: false, message: 'ERR: INVALID OR UNRECOGNIZED ACTIVATION KEY' };
+          const result = await verifyDetailed(clean, deviceToken);
+          if (!result.ok) {
+            const messages: Record<string, string> = {
+              format: 'ERR: Key must start with HYPE2-',
+              decode: 'ERR: Key could not be decoded (check for missing characters when pasting).',
+              signature:
+                'ERR: Invalid signature. Key was not signed with the Hyperion key that matches this app, or the key is corrupted.',
+              version: 'ERR: Unsupported key version.',
+              plan: 'ERR: Invalid plan or duration in key.',
+              dates: 'ERR: Key dates are invalid (end must be after issue).',
+              device: `ERR: This key is bound to a different device. Generate a new key using this device’s code (${deviceToken}).`,
+              error: 'ERR: Could not verify key.'
+            };
+            return {
+              success: false,
+              message: messages[result.reason] || 'ERR: INVALID OR UNRECOGNIZED ACTIVATION KEY'
+            };
           }
+          const signed = result.key;
 
           const now = Date.now();
           if (now >= signed.expiryEpoch) {
