@@ -268,8 +268,16 @@ export default function TrackSelectionScreen() {
         </div>
       </div>
 
-      {/* Track grid */}
-      <div className="track-grid">
+      {/* Track grid — forced 2 columns for all screen sizes */}
+      <div
+        className="track-grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: '0.55rem',
+          width: '100%'
+        }}
+      >
         {TRACKS.map((t) => {
           const unlocked = isAllAccessUnlocked || isTrackUnlocked(t.tierCheck)
           return (
