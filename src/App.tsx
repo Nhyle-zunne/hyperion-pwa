@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useLicenseStore } from './stores/licenseStore'
 import HomeScreen from './screens/HomeScreen'
 import ActivationScreen from './screens/ActivationScreen'
@@ -27,12 +27,18 @@ export default function App() {
   const checkLicenseStatus = useLicenseStore((s) => s.checkLicenseStatus)
   const showPaywall = useUIStore((s) => s.showPaywall)
   const location = useLocation()
+  const navigate = useNavigate()
 
   useEffect(() => {
     checkLicenseStatus()
     const interval = setInterval(checkLicenseStatus, 60_000)
     return () => clearInterval(interval)
   }, [checkLicenseStatus])
+
+  const isPracticeQuiz = location.pathname === '/practice/quiz'
+  const isMockRunner = location.pathname === '/mock/exam'
+  const isQuestionRunner = isPracticeQuiz || isMockRunner
+  const backTarget = isMockRunner ? '/mock' : '/practice'
 
   const hideNav = [
     '/activation',
@@ -46,6 +52,70 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {isQuestionRunner && (
+        <header
+          aria-label="Question navigation"
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '0.7rem 1rem',
+            paddingTop: 'calc(0.7rem + env(safe-area-inset-top))',
+            background: 'var(--bg-card)',
+            borderBottom: '1px solid var(--border)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.18)'
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => navigate(backTarget)}
+            aria-label={isMockRunner ? 'Back to mock exam overview' : 'Back to practice setup'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+              minHeight: 42,
+              padding: '0.45rem 0.7rem',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              background: 'var(--bg-elevated)',
+              color: 'var(--text)',
+              fontWeight: 700
+            }}
+          >
+            <span aria-hidden="true">←</span>
+            Back
+          </button>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 700 }}>
+            {isMockRunner ? 'MOCK EXAM' : 'PRACTICE'}
+          </span>
+          <button
+            type="button"
+            onClick={() => navigate('/tracks')}
+            aria-label="Go to Home"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 7,
+              minHeight: 42,
+              padding: '0.45rem 0.7rem',
+              border: '1px solid var(--accent)',
+              borderRadius: 8,
+              background: 'transparent',
+              color: 'var(--accent)',
+              fontWeight: 800
+            }}
+          >
+            <span aria-hidden="true">⌂</span>
+            Home
+          </button>
+        </header>
+      )}
       <main style={{ flex: 1 }}>
         <Routes>
           <Route path="/" element={<TrackSelectionScreen />} />
