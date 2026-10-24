@@ -124,7 +124,7 @@ export default function PracticeConfigScreen() {
         </div>
       )}
 
-      {!isDrill && (freeMode || !isUnlocked) && (
+      {!isDrill && !freeMode && !isUnlocked && (
         <div className="card" style={{ marginBottom: '1rem', borderColor: 'var(--warning)', color: 'var(--warning)' }}>
           FREE ACCESS: up to 5 questions per session. Activate a key to configure a larger question range.
         </div>
@@ -160,23 +160,23 @@ export default function PracticeConfigScreen() {
       <section className="card" style={{ marginBottom: '1rem', borderRadius: 2 }}>
         <h2 style={{ fontSize: '0.95rem', letterSpacing: '0.06em', margin: '0 0 0.35rem' }}>2. QUESTION RANGE</h2>
         <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0 0 0.85rem' }}>
-          Choose which item numbers to include. Your session will contain {itemCount} question{itemCount === 1 ? '' : 's'}.
+          {freeMode ? `This reviewer uses a fixed ${itemCount}-question session.` : `Choose which item numbers to include. Your session will contain ${itemCount} question${itemCount === 1 ? '' : 's'}.`}
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {!freeMode && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             START ITEM
-            <input type="number" min={1} max={maxRange} value={actualStart} disabled={maxRange === 5}
+            <input type="number" min={1} max={maxRange} value={actualStart} disabled={!isUnlocked && maxRange <= 5}
               onChange={(e) => { const n = Number(e.target.value) || 1; setStartItem(Math.max(1, Math.min(n, actualEnd))); }}
               style={{ ...controlStyle, display: 'block', marginTop: 5 }} />
           </label>
           <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             END ITEM
-            <input type="number" min={actualStart} max={maxRange} value={actualEnd} disabled={maxRange === 5}
+            <input type="number" min={actualStart} max={maxRange} value={actualEnd} disabled={!isUnlocked && maxRange <= 5}
               onChange={(e) => { const n = Number(e.target.value) || actualStart; setEndItem(Math.max(actualStart, Math.min(n, maxRange))); }}
               style={{ ...controlStyle, display: 'block', marginTop: 5 }} />
           </label>
-        </div>
-        {(freeMode || !isUnlocked) && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 0 }}>Free access is limited to 5 questions, or fewer if this question pool is smaller.</p>}
+        </div>}
+        {!freeMode && !isUnlocked && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 0 }}>Free access is limited to 5 questions, or fewer if this question pool is smaller.</p>}
         <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 0 }}>Available in this question pool: {availableQuestionCount}.</p>
       </section>
 
