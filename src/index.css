@@ -147,10 +147,17 @@ a {
 
 .screen {
   min-height: 100%;
-  padding: 1rem;
-  padding-bottom: 5rem;
+  padding: 0.75rem;
+  padding-bottom: 5.5rem;
   max-width: 720px;
   margin: 0 auto;
+}
+
+@media (min-width: 480px) {
+  .screen {
+    padding: 1rem;
+    padding-bottom: 5rem;
+  }
 }
 
 .page-title {
@@ -216,15 +223,16 @@ a {
   color: var(--accent);
 }
 
+/* Always 2 columns — matches Android phone layout */
 .track-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0.55rem;
 }
 
-@media (max-width: 420px) {
+@media (min-width: 480px) {
   .track-grid {
-    grid-template-columns: 1fr;
+    gap: 0.75rem;
   }
 }
 
@@ -232,26 +240,79 @@ a {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 0.9rem;
+  padding: 0.7rem;
   text-align: left;
   color: var(--text);
   display: flex;
   flex-direction: column;
-  min-height: 168px;
+  min-height: 0;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
 }
 
-.track-card:hover {
+@media (min-width: 480px) {
+  .track-card {
+    padding: 0.9rem;
+    min-height: 168px;
+  }
+}
+
+/* Hover only on real pointer devices — avoids stuck green border on iOS */
+@media (hover: hover) and (pointer: fine) {
+  .track-card:hover {
+    border-color: var(--accent);
+  }
+}
+
+.track-card:focus-visible {
   border-color: var(--accent);
 }
 
 .track-card .qcount {
-  font-size: 1.65rem;
+  font-size: 1.35rem;
   font-weight: 800;
   color: var(--accent);
   line-height: 1.1;
-  margin: 0.35rem 0 0.15rem;
+  margin: 0.3rem 0 0.1rem;
+}
+
+@media (min-width: 480px) {
+  .track-card .qcount {
+    font-size: 1.65rem;
+    margin: 0.35rem 0 0.15rem;
+  }
+}
+
+.track-card .track-title {
+  font-weight: 800;
+  font-size: 0.78rem;
+  margin-top: 8px;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+}
+
+@media (min-width: 480px) {
+  .track-card .track-title {
+    font-size: 0.88rem;
+    margin-top: 10px;
+  }
+}
+
+.track-card .track-reg,
+.track-card .track-meta {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+@media (min-width: 480px) {
+  .track-card .track-reg,
+  .track-card .track-meta {
+    font-size: 0.68rem;
+  }
 }
 
 .drawer-backdrop {

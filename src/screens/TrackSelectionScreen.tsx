@@ -274,57 +274,58 @@ export default function TrackSelectionScreen() {
           const unlocked = isAllAccessUnlocked || isTrackUnlocked(t.tierCheck)
           return (
             <button key={t.id} type="button" className="track-card" onClick={() => select(t)}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 4 }}>
                 <span
                   style={{
-                    width: 32,
-                    height: 32,
+                    width: 28,
+                    height: 28,
                     borderRadius: 8,
                     background: 'var(--bg-elevated)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '1rem'
+                    fontSize: '0.9rem',
+                    flexShrink: 0
                   }}
                 >
                   {t.icon}
                 </span>
-                <span className="badge-verified">{unlocked ? 'VERIFIED' : 'LOCKED'}</span>
+                <span className="badge-verified" style={{ fontSize: '0.58rem', padding: '0.15rem 0.35rem' }}>
+                  {unlocked ? 'VERIFIED' : 'LOCKED'}
+                </span>
               </div>
-              <div style={{ fontWeight: 800, fontSize: '0.88rem', marginTop: 10, letterSpacing: 0.02 }}>
-                {t.title}
-              </div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>
+              <div className="track-title">{t.title}</div>
+              <div className="track-reg" style={{ marginTop: 2 }}>
                 {t.regulation}
               </div>
               <div className="qcount">{t.questions}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                QUESTIONS AVAILABLE
+              <div className="track-meta">QUESTIONS AVAILABLE</div>
+              <div className="track-meta" style={{ marginTop: 4 }}>
+                {t.meta}
               </div>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4 }}>{t.meta}</div>
               <div
                 style={{
                   marginTop: 'auto',
-                  paddingTop: 10,
+                  paddingTop: 8,
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center'
                 }}
               >
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  PROGRESS 0%
-                </span>
+                <span className="track-meta">PROGRESS 0%</span>
                 <span
                   style={{
-                    width: 28,
-                    height: 28,
+                    width: 26,
+                    height: 26,
                     borderRadius: 6,
                     background: 'var(--accent)',
                     color: 'var(--btn-primary-text)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontWeight: 800
+                    fontWeight: 800,
+                    fontSize: '0.85rem',
+                    flexShrink: 0
                   }}
                 >
                   →
