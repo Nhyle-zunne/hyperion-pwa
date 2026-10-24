@@ -17,10 +17,8 @@ interface PracticeState {
   finished: boolean;
   mode: SessionMode;
   startedAt: number;
-  // Mock-only: time limit in seconds (0 = none)
   timeLimitSec: number;
   timeLeftSec: number;
-  // Drill streak of consecutive correct
   streak: number;
   bestStreak: number;
 
@@ -30,11 +28,12 @@ interface PracticeState {
     competenceId?: string;
     limit?: number;
     timeLimitSec?: number;
-    /** Force the FREE ACCESS sample even when the track is licensed */
     free?: boolean;
+    randomizeOrder?: boolean;
+    shuffleChoices?: boolean;
+    startItem?: number;
   }) => Promise<void>;
   selectAnswer: (index: number) => void;
-  /** Mock: answer without revealing correctness UI still stores it */
   setAnswerSilent: (index: number) => void;
   toggleFlag: () => void;
   goTo: (index: number) => void;
@@ -55,6 +54,16 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+function shuffleQuestionChoices(question: Question): Question {
+  const options = question.options.map((text, originalIndex) => ({ text, originalIndex }));
+  const shuffled = shuffle(options);
+  return {
+    ...question,
+    options: shuffled.map((option) => option.text),
+    correctAnswerIndex: shuffled.findIndex((option) => option.originalIndex === question.correctAnswerIndex)
+  };
+}
+
 function recordHistory(get: () => PracticeState) {
   const s = get();
   if (!s.track || s.questions.length === 0) return;
@@ -62,7 +71,6 @@ function recordHistory(get: () => PracticeState) {
   for (const q of s.questions) {
     const a = s.answers[q.id];
     if (a?.isCorrect) correct++;
-    // Practice/Drill already record on wrong answer; Mock records on submit
     else if (s.mode === 'MOCK' && a && a.selectedIndex != null && !a.isCorrect) {
       useVaultStore.getState().addMistake(q, a.selectedIndex);
     }
@@ -106,12 +114,10 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   streak: 0,
   bestStreak: 0,
 
-  startSession: async ({ mode, track, competenceId, limit, timeLimitSec, free }) => {
+  startSession: async ({ mode, track, competenceId, limit, timeLimitSec, free, randomizeOrder, shuffleChoices, startItem }) => {
     const defaultLimit = mode === 'MOCK' ? 30 : mode === 'DRILL' ? 12 : 15;
-    const finalLimit = limit ?? defaultLimit;
-    const time =
-      timeLimitSec ??
-      (mode === 'MOCK' ? finalLimit * 60 : 0); // 1 min per question for mock default
+    const finalLimit = Math.max(1, Math.floor(limit ?? defaultLimit));
+    const time = Math.max(0, Math.floor(timeLimitSec ?? (mode === 'MOCK' ? finalLimit * 60 : 0)));
 
     set({
       loading: true,
@@ -128,7 +134,6 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     });
 
     try {
-      // FREE ACCESS: without a license for this track (or when asked), only the free sample is served
       const lic = useLicenseStore.getState();
       const licensed = lic.isAllAccessUnlocked || lic.isTrackUnlocked(track);
       let qs: Question[];
@@ -146,9 +151,19 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         return;
       }
 
-      qs = shuffle(qs).slice(0, Math.min(finalLimit, qs.length));
+      // Apply the configured item range first, then optionally randomize only that range.
+      const start = Math.max(1, Math.floor(startItem ?? 1)) - 1;
+      const range = qs.slice(start, start + finalLimit);
+      const selected = randomizeOrder === false ? range : shuffle(range);
+      const delivered = shuffleChoices ? selected.map(shuffleQuestionChoices) : selected;
+
+      if (delivered.length === 0) {
+        set({ loading: false, error: 'The selected item range contains no questions. Please adjust the range.' });
+        return;
+      }
+
       set({
-        questions: qs,
+        questions: delivered,
         track,
         competenceId: competenceId ?? null,
         loading: false,
@@ -163,7 +178,6 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     const { questions, currentIndex, answers, mode, streak, bestStreak } = get();
     const q = questions[currentIndex];
     if (!q) return;
-    // In mock mode answers can be changed until submit
     if (mode !== 'MOCK' && answers[q.id]?.selectedIndex != null) return;
 
     const isCorrect = index === q.correctAnswerIndex;
@@ -172,9 +186,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     if (mode === 'DRILL' || mode === 'PRACTICE') {
       nextStreak = isCorrect ? streak + 1 : 0;
       nextBest = Math.max(bestStreak, nextStreak);
-      if (!isCorrect) {
-        useVaultStore.getState().addMistake(q, index);
-      }
+      if (!isCorrect) useVaultStore.getState().addMistake(q, index);
     }
 
     set({
@@ -192,9 +204,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     });
   },
 
-  setAnswerSilent: (index) => {
-    get().selectAnswer(index);
-  },
+  setAnswerSilent: (index) => get().selectAnswer(index),
 
   toggleFlag: () => {
     const { questions, currentIndex, answers } = get();
@@ -222,10 +232,8 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   next: () => {
     const { currentIndex, questions, mode, finished } = get();
     if (finished) return;
-    if (currentIndex < questions.length - 1) {
-      set({ currentIndex: currentIndex + 1 });
-    } else if (mode !== 'MOCK') {
-      // Auto-finish practice/drill on last next
+    if (currentIndex < questions.length - 1) set({ currentIndex: currentIndex + 1 });
+    else if (mode !== 'MOCK') {
       recordHistory(get);
       set({ finished: true });
     }
@@ -233,7 +241,6 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
 
   prev: () => {
     const { currentIndex, mode } = get();
-    // Drill is forward-only
     if (mode === 'DRILL') return;
     if (currentIndex > 0) set({ currentIndex: currentIndex - 1 });
   },
@@ -251,40 +258,30 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     if (next <= 0) {
       recordHistory(get);
       set({ timeLeftSec: 0, finished: true });
-    } else {
-      set({ timeLeftSec: next });
-    }
+    } else set({ timeLeftSec: next });
   },
 
-  reset: () =>
-    set({
-      questions: [],
-      answers: {},
-      currentIndex: 0,
-      loading: false,
-      error: null,
-      track: null,
-      competenceId: null,
-      finished: false,
-      mode: 'PRACTICE',
-      startedAt: 0,
-      timeLimitSec: 0,
-      timeLeftSec: 0,
-      streak: 0,
-      bestStreak: 0
-    }),
+  reset: () => set({
+    questions: [],
+    answers: {},
+    currentIndex: 0,
+    loading: false,
+    error: null,
+    track: null,
+    competenceId: null,
+    finished: false,
+    mode: 'PRACTICE',
+    startedAt: 0,
+    timeLimitSec: 0,
+    timeLeftSec: 0,
+    streak: 0,
+    bestStreak: 0
+  }),
 
   score: () => {
     const { questions, answers } = get();
-    let correct = 0;
-    for (const q of questions) {
-      if (answers[q.id]?.isCorrect) correct++;
-    }
+    const correct = questions.reduce((count, q) => count + (answers[q.id]?.isCorrect ? 1 : 0), 0);
     const total = questions.length;
-    return {
-      correct,
-      total,
-      percent: total === 0 ? 0 : Math.round((correct / total) * 100)
-    };
+    return { correct, total, percent: total === 0 ? 0 : Math.round((correct / total) * 100) };
   }
 }));
