@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import { useLicenseStore } from './stores/licenseStore'
 import HomeScreen from './screens/HomeScreen'
 import ActivationScreen from './screens/ActivationScreen'
