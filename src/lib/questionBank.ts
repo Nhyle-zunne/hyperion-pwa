@@ -481,7 +481,7 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
   }
 
   if (track === 'GMDSS_GOC') {
-    return [...(byComp.get('C1') ?? []).slice(0, 1000), ...(byComp.get('C2') ?? []).slice(0, 150)];
+    return [...(byComp.get('C1') ?? []).slice(0, 900), ...(byComp.get('C2') ?? []).slice(0, 130)];
   }
 
   const out: Question[] = [];
