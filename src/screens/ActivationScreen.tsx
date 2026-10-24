@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
-import { getDeviceToken } from '../lib/deviceId'
+import { getDeviceCodeDisplay } from '../lib/deviceId'
 
 export default function ActivationScreen() {
   const navigate = useNavigate()
@@ -9,6 +9,18 @@ export default function ActivationScreen() {
   const [key, setKey] = useState('')
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const deviceCode = getDeviceCodeDisplay()
+
+  const copyDeviceCode = async () => {
+    try {
+      await navigator.clipboard.writeText(deviceCode)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* ignore */
+    }
+  }
 
   const handleActivate = async () => {
     setLoading(true)
@@ -39,21 +51,31 @@ export default function ActivationScreen() {
 
       <div className="card" style={{ marginBottom: '1.25rem' }}>
         <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 6 }}>
-          Device ID (share this when requesting a key)
+          Device code (copy & share when requesting a key)
         </label>
         <div
           style={{
             fontFamily: 'monospace',
-            fontSize: '1.1rem',
-            letterSpacing: 1,
-            padding: '0.6rem',
+            fontSize: '0.95rem',
+            letterSpacing: 0.5,
+            padding: '0.75rem',
             background: 'var(--bg-elevated)',
             borderRadius: 8,
-            textAlign: 'center'
+            textAlign: 'center',
+            wordBreak: 'break-all',
+            lineHeight: 1.4
           }}
         >
-          {getDeviceToken()}
+          {deviceCode}
         </div>
+        <button
+          type="button"
+          className="btn btn-outline"
+          style={{ width: '100%', marginTop: 8, fontSize: '0.85rem' }}
+          onClick={copyDeviceCode}
+        >
+          {copied ? 'Copied' : 'Copy device code'}
+        </button>
       </div>
 
       <div style={{ marginBottom: '1rem' }}>

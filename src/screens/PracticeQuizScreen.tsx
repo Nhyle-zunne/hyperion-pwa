@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
+import { useBookmarksStore } from '../stores/bookmarksStore'
 
 export default function PracticeQuizScreen() {
   const navigate = useNavigate()
@@ -19,6 +20,8 @@ export default function PracticeQuizScreen() {
     score,
     reset
   } = usePracticeStore()
+  const toggleBookmark = useBookmarksStore((s) => s.toggle)
+  const isBookmarked = useBookmarksStore((s) => s.isBookmarked)
 
   if (loading) {
     return (
@@ -106,6 +109,7 @@ export default function PracticeQuizScreen() {
   const answer = answers[q.id]
   const hasAnswered = answer?.selectedIndex != null
   const showFeedback = mode !== 'MOCK' && hasAnswered
+  const bookmarked = isBookmarked(q.id)
 
   return (
     <div className="screen" style={{ paddingBottom: '6rem' }}>
@@ -122,7 +126,21 @@ export default function PracticeQuizScreen() {
         <span>
           Q {currentIndex + 1} / {questions.length}
         </span>
-        <span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => toggleBookmark(q)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: bookmarked ? 'var(--warning)' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontSize: '1rem'
+            }}
+            aria-label={bookmarked ? 'Remove bookmark' : 'Add bookmark'}
+          >
+            {bookmarked ? '★' : '☆'}
+          </button>
           {mode === 'DRILL' && streak > 0 ? `Streak ${streak}` : null}
           {mode !== 'DRILL' ? `${q.competenceId} · ${q.difficulty}` : q.competenceId}
         </span>

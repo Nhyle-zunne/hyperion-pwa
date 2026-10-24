@@ -441,3 +441,23 @@ export function listAvailableCompetences(
 export function listRegisteredSourceCount(): number {
   return SOURCES.length;
 }
+
+/** Search questions within a track (loads that track’s banks, then filters). */
+export async function searchQuestions(
+  track: TrackId,
+  query: string,
+  limit = 40
+): Promise<Question[]> {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  const all = await getQuestionsByTrack(track);
+  const hits: Question[] = [];
+  for (const item of all) {
+    const hay = `${item.questionText} ${item.topic} ${item.competenceId} ${item.options.join(' ')}`.toLowerCase();
+    if (hay.includes(q)) {
+      hits.push(item);
+      if (hits.length >= limit) break;
+    }
+  }
+  return hits;
+}

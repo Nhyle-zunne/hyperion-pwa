@@ -1,0 +1,89 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { Question, TrackId } from '../types/question';
+
+export interface VaultItem {
+  id: string;
+  track: TrackId;
+  functionId: string;
+  competenceId: string;
+  topic: string;
+  questionText: string;
+  options: string[];
+  correctAnswerIndex: number;
+  explanation: string;
+  difficulty: string;
+  wrongCount: number;
+  lastWrongAt: number;
+  lastSelectedIndex: number | null;
+}
+
+interface VaultState {
+  items: VaultItem[];
+  addMistake: (q: Question, selectedIndex: number | null) => void;
+  remove: (id: string) => void;
+  clear: () => void;
+  asQuestions: () => Question[];
+}
+
+export const useVaultStore = create<VaultState>()(
+  persist(
+    (set, get) => ({
+      items: [],
+
+      addMistake: (q, selectedIndex) => {
+        const existing = get().items.find((i) => i.id === q.id);
+        if (existing) {
+          set({
+            items: get().items.map((i) =>
+              i.id === q.id
+                ? {
+                    ...i,
+                    wrongCount: i.wrongCount + 1,
+                    lastWrongAt: Date.now(),
+                    lastSelectedIndex: selectedIndex
+                  }
+                : i
+            )
+          });
+          return;
+        }
+        const entry: VaultItem = {
+          id: q.id,
+          track: q.track,
+          functionId: q.functionId,
+          competenceId: q.competenceId,
+          topic: q.topic,
+          questionText: q.questionText,
+          options: q.options,
+          correctAnswerIndex: q.correctAnswerIndex,
+          explanation: q.explanation,
+          difficulty: q.difficulty,
+          wrongCount: 1,
+          lastWrongAt: Date.now(),
+          lastSelectedIndex: selectedIndex
+        };
+        set({ items: [entry, ...get().items].slice(0, 500) });
+      },
+
+      remove: (id) => set({ items: get().items.filter((i) => i.id !== id) }),
+
+      clear: () => set({ items: [] }),
+
+      asQuestions: () =>
+        get().items.map((i) => ({
+          id: i.id,
+          track: i.track,
+          functionId: i.functionId,
+          competenceId: i.competenceId,
+          topic: i.topic,
+          questionText: i.questionText,
+          options: i.options,
+          correctAnswerIndex: i.correctAnswerIndex,
+          explanation: i.explanation,
+          difficulty: i.difficulty as Question['difficulty']
+        }))
+    }),
+    { name: 'hyperion-vault' }
+  )
+);

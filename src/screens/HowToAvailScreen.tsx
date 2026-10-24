@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { getDeviceToken } from '../lib/deviceId'
+import { getDeviceCodeDisplay } from '../lib/deviceId'
 
 export default function HowToAvailScreen() {
   const navigate = useNavigate()
@@ -38,7 +38,7 @@ export default function HowToAvailScreen() {
           Your Device ID
         </div>
         <div style={{ fontFamily: 'monospace', fontSize: '1.15rem', letterSpacing: 1.5 }}>
-          {getDeviceToken()}
+          {getDeviceCodeDisplay()}
         </div>
       </div>
 

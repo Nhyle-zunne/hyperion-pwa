@@ -13,6 +13,11 @@ import PracticeQuizScreen from './screens/PracticeQuizScreen'
 import DrillScreen from './screens/DrillScreen'
 import MockExamScreen, { MockExamRunner } from './screens/MockExamScreen'
 import HistoryScreen from './screens/HistoryScreen'
+import FlashcardsScreen from './screens/FlashcardsScreen'
+import BookmarksScreen from './screens/BookmarksScreen'
+import SearchScreen from './screens/SearchScreen'
+import VaultScreen from './screens/VaultScreen'
+import StudyTimeScreen from './screens/StudyTimeScreen'
 import PaywallDialog from './components/PaywallDialog'
 import BottomNav from './components/BottomNav'
 import { useUIStore } from './stores/uiStore'
@@ -55,33 +60,18 @@ export default function App() {
           <Route path="/mock" element={<MockExamScreen />} />
           <Route path="/mock/exam" element={<MockExamRunner />} />
           <Route path="/history" element={<HistoryScreen />} />
-          <Route path="/flashcards" element={<Placeholder title="Flashcards" />} />
-          <Route path="/search" element={<Placeholder title="Search" />} />
-          <Route path="/bookmarks" element={<Placeholder title="Bookmarks" />} />
-          <Route path="/vault" element={<Placeholder title="Mistakes Vault" />} />
-          <Route path="/streak" element={<Placeholder title="Streak" />} />
-          <Route path="/studytime" element={<Placeholder title="Study Time" />} />
+          <Route path="/flashcards" element={<FlashcardsScreen />} />
+          <Route path="/bookmarks" element={<BookmarksScreen />} />
+          <Route path="/search" element={<SearchScreen />} />
+          <Route path="/vault" element={<VaultScreen />} />
+          <Route path="/studytime" element={<StudyTimeScreen />} />
+          <Route path="/streak" element={<StudyTimeScreen />} />
           <Route path="*" element={<HomeScreen />} />
         </Routes>
       </main>
 
       {!hideNav && <BottomNav />}
       {showPaywall && <PaywallDialog />}
-    </div>
-  )
-}
-
-function Placeholder({ title }: { title: string }) {
-  const navigate = useNavigate()
-  return (
-    <div className="screen">
-      <h1 className="page-title">{title}</h1>
-      <p className="subtitle">
-        Coming next. Practice, Drill, Mock Exam, and History are ready.
-      </p>
-      <button className="btn btn-primary" onClick={() => navigate('/')}>
-        Back to Home
-      </button>
     </div>
   )
 }

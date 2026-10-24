@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
-import { getDeviceToken } from '../lib/deviceId'
+import { getDeviceCodeDisplay } from '../lib/deviceId'
+import ThemeToggle from '../components/ThemeToggle'
+import InstallPrompt from '../components/InstallPrompt'
 
 export default function HomeScreen() {
   const navigate = useNavigate()
@@ -35,14 +37,27 @@ export default function HomeScreen() {
 
   return (
     <div className="screen">
-      <header style={{ marginBottom: '1.5rem' }}>
-        <h1 className="page-title" style={{ fontSize: '1.6rem' }}>
-          Hyperion
-        </h1>
-        <p className="subtitle" style={{ marginBottom: 0 }}>
-          Maritime Licensure Reviewer
-        </p>
+      <header
+        style={{
+          marginBottom: '1.5rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 12
+        }}
+      >
+        <div>
+          <h1 className="page-title" style={{ fontSize: '1.6rem', marginBottom: 4 }}>
+            Hyperion
+          </h1>
+          <p className="subtitle" style={{ marginBottom: 0 }}>
+            Maritime Licensure Reviewer
+          </p>
+        </div>
+        <ThemeToggle />
       </header>
+
+      <InstallPrompt />
 
       {/* License status card */}
       <div className="card" style={{ marginBottom: '1.25rem' }}>
@@ -93,19 +108,39 @@ export default function HomeScreen() {
           onClick={() => requireLicense('Drill', () => navigate('/drill'))}
         />
         <ActionCard
+          title="Flashcards"
+          desc="Flip cards · Knew / Still learning"
+          onClick={() => requireLicense('Flashcards', () => navigate('/flashcards'))}
+        />
+        <ActionCard
+          title="Search"
+          desc="Find questions by keyword"
+          onClick={() => requireLicense('Search', () => navigate('/search'))}
+        />
+        <ActionCard
+          title="Mistakes Vault"
+          desc="Review and drill wrong answers"
+          onClick={() => navigate('/vault')}
+        />
+        <ActionCard
           title="History & Progress"
           desc="Sessions, scores, averages"
           onClick={() => navigate('/history')}
         />
         <ActionCard
-          title="Bookmarks & Mistakes"
-          desc="Saved questions and vault"
-          onClick={() => requireLicense('Bookmarks', () => navigate('/bookmarks'))}
+          title="Study Time"
+          desc="Today · week · 14-day chart"
+          onClick={() => navigate('/studytime')}
+        />
+        <ActionCard
+          title="Bookmarks"
+          desc="Saved questions · practice later"
+          onClick={() => navigate('/bookmarks')}
         />
       </div>
 
       <div style={{ marginTop: '2rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-        Device ID: {getDeviceToken()}
+        Device: {getDeviceCodeDisplay()}
         <br />
         <button
           style={{ color: 'var(--accent)', marginTop: 8, background: 'none', border: 'none', cursor: 'pointer' }}

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { Question, UserAnswer, TrackId } from '../types/question';
 import { getQuestionsByCompetence, getQuestionsByTrack } from '../lib/questionBank';
 import { useHistoryStore, type SessionMode } from './historyStore';
+import { useVaultStore } from './vaultStore';
+import { useStudyTimeStore } from './studyTimeStore';
 
 interface PracticeState {
   questions: Question[];
@@ -55,11 +57,17 @@ function recordHistory(get: () => PracticeState) {
   if (!s.track || s.questions.length === 0) return;
   let correct = 0;
   for (const q of s.questions) {
-    if (s.answers[q.id]?.isCorrect) correct++;
+    const a = s.answers[q.id];
+    if (a?.isCorrect) correct++;
+    // Practice/Drill already record on wrong answer; Mock records on submit
+    else if (s.mode === 'MOCK' && a && a.selectedIndex != null && !a.isCorrect) {
+      useVaultStore.getState().addMistake(q, a.selectedIndex);
+    }
   }
   const total = s.questions.length;
   const percent = total === 0 ? 0 : Math.round((correct / total) * 100);
   const finishedAt = Date.now();
+  const durationMs = Math.max(0, finishedAt - (s.startedAt || finishedAt));
   useHistoryStore.getState().addEntry({
     mode: s.mode,
     track: s.track,
@@ -67,9 +75,15 @@ function recordHistory(get: () => PracticeState) {
     correct,
     total,
     percent,
-    durationMs: Math.max(0, finishedAt - (s.startedAt || finishedAt)),
+    durationMs,
     startedAt: s.startedAt || finishedAt,
     finishedAt
+  });
+  useStudyTimeStore.getState().addSegment({
+    mode: s.mode,
+    track: s.track,
+    durationMs,
+    at: finishedAt
   });
 }
 
@@ -146,6 +160,9 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     if (mode === 'DRILL' || mode === 'PRACTICE') {
       nextStreak = isCorrect ? streak + 1 : 0;
       nextBest = Math.max(bestStreak, nextStreak);
+      if (!isCorrect) {
+        useVaultStore.getState().addMistake(q, index);
+      }
     }
 
     set({

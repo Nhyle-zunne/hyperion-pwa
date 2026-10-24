@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
-import { getDeviceToken } from '../lib/deviceId'
+import { getDeviceCodeDisplay } from '../lib/deviceId'
 
 export default function LicenseScreen() {
   const navigate = useNavigate()
@@ -94,7 +94,7 @@ export default function LicenseScreen() {
 
       <div className="card" style={{ marginBottom: '1.25rem' }}>
         <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 4 }}>Device ID</div>
-        <div style={{ fontFamily: 'monospace', letterSpacing: 1 }}>{getDeviceToken()}</div>
+        <div style={{ fontFamily: 'monospace', letterSpacing: 1 }}>{getDeviceCodeDisplay()}</div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
