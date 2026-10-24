@@ -1,7 +1,8 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
-import type { TrackId } from '../types/question'
+import { listAvailableCompetences } from '../lib/questionBank'
+import type { TrackId' from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = {
   oic_nw: 'DECK_OIC_NW',
@@ -26,6 +27,7 @@ export default function DrillScreen() {
   const trackId = TRACK_MAP[trackParam] || 'DECK_OIC_NW'
   const isUnlocked = useLicenseStore((s) => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
   const openPaywall = useUIStore((s) => s.openPaywall)
+  const competences = listAvailableCompetences(trackId)
 
   const configure = (competenceId?: string) => {
     if (!isUnlocked) {
@@ -71,27 +73,7 @@ export default function DrillScreen() {
         <h2 style={{ fontSize: '0.95rem', letterSpacing: '0.06em', margin: '0 0 0.6rem' }}>FOCUS ON A COMPETENCE</h2>
         <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Select a competence to preselect it in the configuration page.</p>
         <div style={{ display: 'grid', gap: 8 }}>
-          {[
-            { id: 'C1', label: 'Competence C1' },
-            { id: 'C2', label: 'Competence C2' },
-            { id: 'C3', label: 'Competence C3' },
-            { id: 'C4', label: 'Competence C4' },
-            { id: 'C5', label: 'Competence C5' },
-            { id: 'C6', label: 'Competence C6' },
-            { id: 'C7', label: 'Competence C7' },
-            { id: 'C8', label: 'Competence C8' },
-            { id: 'C9', label: 'Competence C9' },
-            { id: 'C10', label: 'Competence C10' },
-            { id: 'C11', label: 'Competence C11' },
-            { id: 'C12', label: 'Competence C12' },
-            { id: 'C13', label: 'Competence C13' },
-            { id: 'C14', label: 'Competence C14' },
-            { id: 'C15', label: 'Competence C15' },
-            { id: 'C16', label: 'Competence C16' },
-            { id: 'C17', label: 'Competence C17' },
-            { id: 'C18', label: 'Competence C18' },
-            { id: 'C20', label: 'Competence C20' }
-          ].map((c) => (
+          {competences.map((c) => (
             <button key={c.id} type="button" className="card" style={{ textAlign: 'left', width: '100%', borderRadius: 2 }} onClick={() => configure(c.id)}>
               <div style={{ fontWeight: 800 }}>{c.label}</div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 3 }}>Configure session →</div>
