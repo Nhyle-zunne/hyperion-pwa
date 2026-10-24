@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useUIStore } from '../stores/uiStore'
-import { getQuestionsByCompetence, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import { freeSample, getQuestionsByCompetence, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = {
@@ -44,13 +44,18 @@ export default function PracticeConfigScreen() {
   useEffect(() => {
     let cancelled = false
     const loadQuestionCount = async () => {
-      const questions = competenceId
+      let questions = competenceId
         ? await getQuestionsByCompetence(trackId, competenceId)
         : await getQuestionsByTrack(trackId)
+      if (freeMode) {
+        const fullTrack = await getQuestionsByTrack(trackId)
+        const sample = freeSample(fullTrack, trackId)
+        questions = competenceId ? sample.filter((q) => q.competenceId === competenceId) : sample
+      }
       if (cancelled) return
       const count = questions.length
       setAvailableQuestionCount(count)
-      const limit = freeMode || !isUnlocked ? Math.min(5, count) : count
+      const limit = freeMode ? count : !isUnlocked ? Math.min(5, count) : count
       setStartItem((current) => Math.max(1, Math.min(current, Math.max(1, limit))))
       setEndItem(Math.max(1, limit))
     }
@@ -60,7 +65,7 @@ export default function PracticeConfigScreen() {
   const [randomizeOrder, setRandomizeOrder] = useState(false)
   const [shuffleChoices, setShuffleChoices] = useState(isUnlocked)
   const [starting, setStarting] = useState(false)
-  const accessLimit = freeMode || !isUnlocked ? 5 : Number.MAX_SAFE_INTEGER
+  const accessLimit = freeMode ? Number.MAX_SAFE_INTEGER : !isUnlocked ? 5 : Number.MAX_SAFE_INTEGER
   const maxRange = Math.max(1, Math.min(availableQuestionCount || 1, accessLimit))
   const actualStart = Math.max(1, Math.min(startItem, maxRange))
   const actualEnd = Math.max(actualStart, Math.min(endItem, maxRange))
@@ -126,7 +131,7 @@ export default function PracticeConfigScreen() {
 
       {!isDrill && !freeMode && !isUnlocked && (
         <div className="card" style={{ marginBottom: '1rem', borderColor: 'var(--warning)', color: 'var(--warning)' }}>
-          FREE ACCESS: up to 5 questions per session. Activate a key to configure a larger question range.
+          FREE ACCESS: fixed question pool for this competence.
         </div>
       )}
 
@@ -158,14 +163,14 @@ export default function PracticeConfigScreen() {
       </section>}
 
       <section className="card" style={{ marginBottom: '1rem', borderRadius: 2 }}>
-        <h2 style={{ fontSize: '0.95rem', letterSpacing: '0.06em', margin: '0 0 0.35rem' }}>2. QUESTION RANGE</h2>
+        <h2 style={{ fontSize: '0.95rem', letterSpacing: '0.06em', margin: '0 0 0.35rem' }}>3. QUESTION COUNT</h2>
         <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0 0 0.85rem' }}>
-          {freeMode ? `This reviewer uses a fixed ${itemCount}-question session.` : `Choose which item numbers to include. Your session will contain ${itemCount} question${itemCount === 1 ? '' : 's'}.`}
+          {freeMode ? `Free reviewer uses a fixed ${itemCount}-question pool.` : `Choose which item numbers to include. Your session will contain ${itemCount} question${itemCount === 1 ? '' : 's'}.`}
         </p>
         {!freeMode && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             START ITEM
-            <input type="number" min={1} max={maxRange} value={actualStart} disabled={!isUnlocked && maxRange <= 5}
+            <input type="number" min={1} max={maxRange} value={actualStart} disabled={!isUnlocked && !freeMode && maxRange <= 5}
               onChange={(e) => { const n = Number(e.target.value) || 1; setStartItem(Math.max(1, Math.min(n, actualEnd))); }}
               style={{ ...controlStyle, display: 'block', marginTop: 5 }} />
           </label>
@@ -176,12 +181,12 @@ export default function PracticeConfigScreen() {
               style={{ ...controlStyle, display: 'block', marginTop: 5 }} />
           </label>
         </div>}
-        {!freeMode && !isUnlocked && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 0 }}>Free access is limited to 5 questions, or fewer if this question pool is smaller.</p>}
+        {!freeMode && !isUnlocked && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 0 }}>Activate a key to customize the question range.</p>}
         <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 0 }}>Available in this question pool: {availableQuestionCount}.</p>
       </section>
 
       <section className="card" style={{ marginBottom: '1rem', borderRadius: 2 }}>
-        <h2 style={{ fontSize: '0.95rem', letterSpacing: '0.06em', margin: '0 0 0.75rem' }}>3. DELIVERY SETTINGS</h2>
+        <h2 style={{ fontSize: '0.95rem', letterSpacing: '0.06em', margin: '0 0 0.75rem' }}>2. RANDOMIZATION & SEQUENCING</h2>
         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.7rem 0', borderBottom: '1px solid var(--border)' }}>
           <span>
             <strong style={{ display: 'block' }}>Randomize question order</strong>
