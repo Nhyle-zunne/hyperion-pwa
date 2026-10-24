@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
 import { usePracticeStore } from '../stores/practiceStore'
+import PracticeQuizScreen from './PracticeQuizScreen'
 import { listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
 
@@ -195,4 +196,10 @@ export default function MockExamScreen() {
       </button>
     </div>
   )
+}
+
+
+// Reuse the shared question runner for timed mock sessions.
+export function MockExamRunner() {
+  return <PracticeQuizScreen />
 }
