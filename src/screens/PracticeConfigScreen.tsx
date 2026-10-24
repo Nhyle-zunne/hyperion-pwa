@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useUIStore } from '../stores/uiStore'
-import { listAvailableCompetences } from '../lib/questionBank'
+import { getQuestionsByCompetence, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = {
@@ -38,10 +38,29 @@ export default function PracticeConfigScreen() {
   const [competenceId, setCompetenceId] = useState<string | undefined>(() => params.get('competence') || undefined)
   const [startItem, setStartItem] = useState(1)
   const [endItem, setEndItem] = useState(isDrill && isUnlocked ? 12 : freeMode || !isUnlocked ? 5 : 15)
+  const [availableQuestionCount, setAvailableQuestionCount] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    const loadQuestionCount = async () => {
+      const questions = competenceId
+        ? await getQuestionsByCompetence(trackId, competenceId)
+        : await getQuestionsByTrack(trackId)
+      if (cancelled) return
+      const count = questions.length
+      setAvailableQuestionCount(count)
+      const limit = freeMode || !isUnlocked ? Math.min(5, count) : count
+      setStartItem((current) => Math.max(1, Math.min(current, Math.max(1, limit))))
+      setEndItem(Math.max(1, limit))
+    }
+    void loadQuestionCount()
+    return () => { cancelled = true }
+  }, [trackId, competenceId, freeMode, isUnlocked])
   const [randomizeOrder, setRandomizeOrder] = useState(false)
   const [shuffleChoices, setShuffleChoices] = useState(isUnlocked)
   const [starting, setStarting] = useState(false)
-  const maxRange = isDrill && isUnlocked ? 2000 : freeMode || !isUnlocked ? 5 : 2000
+  const accessLimit = freeMode || !isUnlocked ? 5 : Number.MAX_SAFE_INTEGER
+  const maxRange = Math.max(1, Math.min(availableQuestionCount || 1, accessLimit))
   const actualStart = Math.max(1, Math.min(startItem, maxRange))
   const actualEnd = Math.max(actualStart, Math.min(endItem, maxRange))
   const itemCount = actualEnd - actualStart + 1
@@ -156,7 +175,8 @@ export default function PracticeConfigScreen() {
               style={{ ...controlStyle, display: 'block', marginTop: 5 }} />
           </label>
         </div>
-        {maxRange === 5 && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 0 }}>The free tier uses a fixed 1–5 question range.</p>}
+        {(freeMode || !isUnlocked) && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 0 }}>Free access is limited to 5 questions, or fewer if this question pool is smaller.</p>}
+        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 0 }}>Available in this question pool: {availableQuestionCount}.</p>
       </section>
 
       <section className="card" style={{ marginBottom: '1rem', borderRadius: 2 }}>
