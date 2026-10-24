@@ -11,6 +11,7 @@ const items = [
 export default function BottomNav() {
   return (
     <nav
+      className="app-bottom-nav"
       style={{
         position: 'fixed',
         bottom: 0,
@@ -30,7 +31,8 @@ export default function BottomNav() {
           key={item.to}
           to={item.to}
           end={item.to === '/'}
-          className={({ isActive }) => isActive ? "active" : ""}\n          style={({ isActive }) => ({
+          className={({ isActive }) => (isActive ? 'active' : '')}
+          style={({ isActive }) => ({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
