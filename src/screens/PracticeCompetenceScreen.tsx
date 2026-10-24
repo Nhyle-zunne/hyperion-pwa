@@ -19,13 +19,6 @@ const LABELS: Record<TrackId, string> = {
   DECK_MGT: 'Deck Management',
   ENGINE_MGT: 'Engine Management'
 }
-const TOTALS: Record<TrackId, string> = {
-  DECK_OIC_NW: '2,065',
-  GMDSS_GOC: '1,150',
-  ENGINE_OIC_EW: '40% sample',
-  DECK_MGT: '40% sample',
-  ENGINE_MGT: '40% sample'
-}
 const SUBTITLES: Record<TrackId, string> = {
   DECK_OIC_NW: 'Select an official STCW competence below to begin sequential or customized practice drilling (2,065 total questions).',
   GMDSS_GOC: 'Select a GMDSS competence below to begin practice from the free question pool (1,150 total questions).',
