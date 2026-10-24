@@ -12,6 +12,8 @@ import TermsScreen from './screens/TermsScreen'
 import PracticeConfigScreen from './screens/PracticeConfigScreen'
 import PracticeQuizScreen from './screens/PracticeQuizScreen'
 import DrillScreen from './screens/DrillScreen'
+import QuickScanCompetenceScreen from './screens/QuickScanCompetenceScreen'
+import QuickScanViewerScreen from './screens/QuickScanViewerScreen'
 import MockExamScreen, { MockExamRunner } from './screens/MockExamScreen'
 import HistoryScreen from './screens/HistoryScreen'
 import FlashcardsScreen from './screens/FlashcardsScreen'
@@ -130,6 +132,8 @@ export default function App() {
           <Route path="/practice" element={<PracticeConfigScreen />} />
           <Route path="/practice/quiz" element={<PracticeQuizScreen />} />
           <Route path="/drill" element={<DrillScreen />} />
+          <Route path="/quick-scan" element={<QuickScanCompetenceScreen />} />
+          <Route path="/quick-scan/view" element={<QuickScanViewerScreen />} />
           <Route path="/mock" element={<MockExamScreen />} />
           <Route path="/mock/exam" element={<MockExamRunner />} />
           <Route path="/history" element={<HistoryScreen />} />
