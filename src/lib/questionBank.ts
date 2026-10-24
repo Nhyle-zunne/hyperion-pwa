@@ -387,7 +387,8 @@ async function loadSource(src: BankSource): Promise<Question[]> {
     const buffer = await res.arrayBuffer();
     const text = await decryptToText(buffer);
     const rows = parseCsvText(text);
-    if (rows.length <= 1) return [];
+    // GMDSS exports may be flattened into a single CSV row; parse those with the GMDSS fallback.
+    if (rows.length <= 1 && src.format !== 'gmdss') return [];
 
     const headerIdx = findHeaderRow(rows, src.format);
     const list =
@@ -405,10 +406,12 @@ async function loadSource(src: BankSource): Promise<Question[]> {
 
 export async function getQuestionsByCompetence(
   track: TrackId,
-  competenceId: string
+  competenceId: string,
+  part?: number
 ): Promise<Question[]> {
   const sources = SOURCES.filter(
-    (s) => s.track === track && s.competenceId === competenceId
+    (s) => s.track === track && s.competenceId === competenceId &&
+      (part == null || (track === 'GMDSS_GOC' && s.path.includes(`part${part}.csv.enc`)))
   );
   const results = await Promise.all(sources.map(loadSource));
   return results.flat();
@@ -459,7 +462,7 @@ const CRP_FIXED_ORDER = new Set(['C17', 'C13', 'C9', 'C10', 'C7']);
 /**
  * FREE ACCESS sample, same rules as the Android app. Pass the WHOLE track's questions.
  * - OIC-NW: 2,065 items across 12 competences (fixed seed shuffle, like getMarinaCrpQuestions)
- * - GMDSS: first 1,000 of C1 and first 150 of C2 (like getMarinaCrpGmdssQuestions)
+ * - GMDSS: first 900 of C1 and first 130 of C2
  * - Engine EW / Deck Mgt / Engine Mgt: first 40% of each competence, min 1
  */
 export function freeSample(list: Question[], track: TrackId): Question[] {
