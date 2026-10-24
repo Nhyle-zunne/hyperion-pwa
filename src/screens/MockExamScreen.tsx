@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import PracticeQuizScreen from './PracticeQuizScreen'
-import { listAvailableCompetences } from '../lib/questionBank'
+import { getQuestionsByCompetence, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = {
@@ -36,12 +36,29 @@ export default function MockExamScreen() {
   const [competenceId, setCompetenceId] = useState<string | undefined>()
   const [startItem, setStartItem] = useState(1)
   const [endItem, setEndItem] = useState(30)
+  const [availableQuestionCount, setAvailableQuestionCount] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    const loadQuestionCount = async () => {
+      const questions = competenceId
+        ? await getQuestionsByCompetence(trackId, competenceId)
+        : await getQuestionsByTrack(trackId)
+      if (cancelled) return
+      const count = questions.length
+      setAvailableQuestionCount(count)
+      setStartItem((current) => Math.max(1, Math.min(current, Math.max(1, count))))
+      setEndItem(Math.max(1, count))
+    }
+    void loadQuestionCount()
+    return () => { cancelled = true }
+  }, [trackId, competenceId])
   const [secondsPerQuestion, setSecondsPerQuestion] = useState(60)
   const [randomizeOrder, setRandomizeOrder] = useState(true)
   const [shuffleChoices, setShuffleChoices] = useState(true)
   const [starting, setStarting] = useState(false)
 
-  const maxRange = 2000
+  const maxRange = Math.max(1, availableQuestionCount || 1)
   const actualStart = Math.max(1, Math.min(startItem, maxRange))
   const actualEnd = Math.max(actualStart, Math.min(endItem, maxRange))
   const itemCount = actualEnd - actualStart + 1
@@ -159,6 +176,7 @@ export default function MockExamScreen() {
           </label>
         </div>
         <div style={{ marginTop: 8, fontSize: '0.85rem', color: 'var(--accent)', fontWeight: 800 }}>{itemCount} QUESTIONS SELECTED</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 4 }}>Available in this question pool: {availableQuestionCount}.</div>
       </section>
 
       <section className="card" style={{ marginBottom: '1rem', borderRadius: 2 }}>
