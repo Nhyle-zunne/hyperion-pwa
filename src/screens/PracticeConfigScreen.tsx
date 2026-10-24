@@ -34,6 +34,7 @@ export default function PracticeConfigScreen() {
   const isUnlocked = useLicenseStore((s) => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
   const startSession = usePracticeStore((s) => s.startSession)
   const competences = listAvailableCompetences(trackId)
+  const selectedCompetence = params.get('competence') || undefined
 
   const [competenceId, setCompetenceId] = useState<string | undefined>(() => params.get('competence') || undefined)
   const [startItem, setStartItem] = useState(1)
@@ -103,7 +104,7 @@ export default function PracticeConfigScreen() {
     <div className="screen" style={{ paddingBottom: '2rem' }}>
       <button
         type="button"
-        onClick={() => navigate(`/track?track=${trackParam}`)}
+        onClick={() => navigate(selectedCompetence ? `/practice/competences?track=${trackParam}${freeMode ? '&free=1' : ''}` : `/track?track=${trackParam}`)}
         style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}
       >
         ← Back to Track
@@ -129,7 +130,7 @@ export default function PracticeConfigScreen() {
         </div>
       )}
 
-      <section style={{ marginBottom: '1rem' }}>
+      {!selectedCompetence && <section style={{ marginBottom: '1rem' }}>
         <h2 style={{ fontSize: '0.95rem', letterSpacing: '0.06em', margin: '0 0 0.6rem' }}>1. SELECT COMPETENCE</h2>
         <div style={{ display: 'grid', gap: 8 }}>
           <button
@@ -154,7 +155,7 @@ export default function PracticeConfigScreen() {
             </button>
           ))}
         </div>
-      </section>
+      </section>}
 
       <section className="card" style={{ marginBottom: '1rem', borderRadius: 2 }}>
         <h2 style={{ fontSize: '0.95rem', letterSpacing: '0.06em', margin: '0 0 0.35rem' }}>2. QUESTION RANGE</h2>
