@@ -492,3 +492,127 @@ a:focus-visible,
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* Adaptive desktop/tablet layout: preserve the compact mobile experience. */
+@media (min-width: 900px) {
+  .screen {
+    width: min(100% - 4rem, 1320px);
+    max-width: 1320px;
+    padding: 1.75rem 0 2.5rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .screen[style*="padding-top: 0"] {
+    padding-top: 0;
+  }
+
+  .dash-header {
+    padding: 1.25rem 1.5rem 1rem;
+    margin: 0 0 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0 0 14px 14px;
+  }
+
+  .dash-header h1 {
+    font-size: 1.3rem;
+  }
+
+  .track-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 1rem !important;
+  }
+
+  .track-card {
+    padding: 1.25rem;
+    min-height: 210px;
+  }
+
+  .track-card .track-title {
+    font-size: 1rem;
+  }
+
+  .track-card .track-reg,
+  .track-card .track-meta {
+    font-size: 0.76rem;
+  }
+
+  .track-card .qcount {
+    font-size: 2rem;
+    margin: 0.6rem 0 0.25rem;
+  }
+
+  .app-bottom-nav {
+    position: sticky !important;
+    top: 0;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100%;
+    min-height: 64px;
+    justify-content: center !important;
+    gap: clamp(1rem, 3vw, 3.5rem);
+    padding: 0.75rem 2rem !important;
+    border-top: 0;
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    order: -1;
+  }
+
+  .app-bottom-nav a {
+    flex-direction: row !important;
+    gap: 0.55rem !important;
+    min-width: auto !important;
+    padding: 0.6rem 0.85rem;
+    border-radius: 9px;
+    font-size: 0.85rem !important;
+    font-weight: 700;
+  }
+
+  .app-bottom-nav a.active {
+    background: var(--accent-soft);
+  }
+
+  .app-bottom-nav a span {
+    font-size: 1.1rem !important;
+  }
+
+  .app-bottom-nav > div {
+    margin-left: auto;
+  }
+
+  /* Keep pages and dialogs comfortably readable on wide screens. */
+  .card {
+    padding: 1.25rem;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 899px) {
+  .screen {
+    max-width: 900px;
+    padding: 1.25rem;
+    padding-bottom: 6rem;
+  }
+
+  .track-grid {
+    gap: 0.85rem !important;
+  }
+
+  .track-card {
+    padding: 1rem;
+  }
+}
+
+@media (min-width: 1400px) {
+  .track-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 1.25rem !important;
+  }
+}
+
+@media (max-width: 599px) {
+  .app-bottom-nav {
+    position: fixed;
+  }
+}
