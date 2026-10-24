@@ -117,12 +117,12 @@ export default function TrackHubScreen() {
       onClick: gated('Practice', `/practice?track=${key}`)
     },
     {
-      title: 'DRILL',
-      desc: 'Rapid-fire · streak tracking · forward-only.',
-      badge: unlocked ? 'RAPID FIRE' : 'LOCKED',
-      icon: '✣',
+      title: 'QUICK SCAN MODE',
+      desc: 'Browse questions sequentially with correct answers highlighted. Select a competence to begin.',
+      badge: unlocked ? 'READ-ONLY REVIEW' : 'LOCKED',
+      icon: '⌕',
       locked: !unlocked,
-      onClick: gated('Drill', `/drill?track=${key}`)
+      onClick: gated('Quick Scan', `/quick-scan?track=${key}`)
     },
     {
       title: 'TIMED MOCK EXAM',
