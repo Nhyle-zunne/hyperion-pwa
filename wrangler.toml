@@ -1,0 +1,8 @@
+# Optional: only needed if deploy command is `npx wrangler deploy`.
+# Prefer Cloudflare Pages with deploy command left empty (build output = dist).
+name = "hyperion-pwa"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
