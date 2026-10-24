@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { verify, isSignedFormat, type SignedKey } from '../lib/signedLicenseVerifier';
+import { verify, isSignedFormat } from '../lib/signedLicenseVerifier';
 import { getDeviceToken } from '../lib/deviceId';
 
 export type ProTierCode = 'ALL' | 'OIC' | 'GOC' | 'EW' | 'DM' | 'EM';
@@ -62,7 +62,6 @@ function formatRemaining(info: OfflineLicenseInfo | null, highWater: number): st
   const totalMins = Math.floor(totalSecs / 60);
   const totalHours = Math.floor(totalMins / 60);
   const days = Math.floor((totalHours + 23) / 24);
-  const hours = totalHours % 24;
   const mins = totalMins % 60;
 
   if (days > 1) return `${days} days remaining`;

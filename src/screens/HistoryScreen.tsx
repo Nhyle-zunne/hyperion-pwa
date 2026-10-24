@@ -1,4 +1,3 @@
-import { useNavigate } from 'react-router-dom'
 import { useHistoryStore, type SessionMode } from '../stores/historyStore'
 import type { TrackId } from '../types/question'
 
@@ -40,7 +39,6 @@ function formatDuration(ms: number) {
 }
 
 export default function HistoryScreen() {
-  const navigate = useNavigate()
   const entries = useHistoryStore((s) => s.entries)
   const stats = useHistoryStore((s) => s.stats())
   const clear = useHistoryStore((s) => s.clear)
