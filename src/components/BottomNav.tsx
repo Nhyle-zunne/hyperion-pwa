@@ -30,7 +30,7 @@ export default function BottomNav() {
           key={item.to}
           to={item.to}
           end={item.to === '/'}
-          style={({ isActive }) => ({
+          className={({ isActive }) => isActive ? "active" : ""}\n          style={({ isActive }) => ({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
