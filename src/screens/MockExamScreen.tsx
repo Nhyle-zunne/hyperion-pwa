@@ -12,12 +12,12 @@ const TRACK_LABELS: Record<TrackId, string> = {
   DECK_OIC_NW: 'OIC-NW OPERATIONAL TRACK', GMDSS_GOC: 'GMDSS GOC TRACK',
   ENGINE_OIC_EW: 'OIC-EW OPERATIONAL TRACK', DECK_MGT: 'DECK MANAGEMENT TRACK', ENGINE_MGT: 'ENGINE MANAGEMENT TRACK'
 }
-const FUNCTION_LABELS: Record<string, string> = {
-  F1: 'NAVIGATION AT THE OPERATIONAL LEVEL',
-  F2: 'CARGO HANDLING AND STOWAGE AT THE OPERATIONAL LEVEL',
-  F3: 'CONTROLLING OF OPERATION OF THE SHIP AT THE OPERATIONAL LEVEL',
-  GMDSS: 'GMDSS GENERAL OPERATOR CERTIFICATE', EW: 'ENGINEERING AT THE OPERATIONAL LEVEL',
-  DM: 'DECK MANAGEMENT LEVEL', EM: 'ENGINE MANAGEMENT LEVEL'
+const FUNCTION_LABELS: Record<TrackId, Record<string, string>> = {
+  DECK_OIC_NW: { F1: 'NAVIGATION AT THE OPERATIONAL LEVEL', F2: 'CARGO HANDLING AND STOWAGE AT THE OPERATIONAL LEVEL', F3: 'CONTROLLING OF OPERATION OF THE SHIP AT THE OPERATIONAL LEVEL' },
+  GMDSS_GOC: { GMDSS: 'GMDSS GENERAL OPERATOR CERTIFICATE' },
+  ENGINE_OIC_EW: { F1: 'MARINE ENGINEERING AT THE OPERATIONAL LEVEL', F2: 'ELECTRICAL, ELECTRONIC AND CONTROL ENGINEERING AT THE OPERATIONAL LEVEL', F3: 'MAINTENANCE AND REPAIR AT THE OPERATIONAL LEVEL', F4: 'CONTROLLING SHIP OPERATIONS AND CARE FOR PERSONS ON BOARD' },
+  DECK_MGT: { F1: 'NAVIGATION AT THE MANAGEMENT LEVEL', F2: 'CARGO HANDLING AND STOWAGE AT THE MANAGEMENT LEVEL', F3: 'CONTROLLING SHIP OPERATIONS AND CARE FOR PERSONS ON BOARD' },
+  ENGINE_MGT: { F1: 'MARINE ENGINEERING AT THE MANAGEMENT LEVEL', F2: 'ELECTRICAL, ELECTRONIC AND CONTROL ENGINEERING AT THE MANAGEMENT LEVEL', F3: 'MAINTENANCE AND REPAIR AT THE MANAGEMENT LEVEL', F4: 'CONTROLLING SHIP OPERATIONS AND CARE FOR PERSONS ON BOARD' }
 }
 const FUNCTION_DESCRIPTIONS: Record<string, string> = {
   F1: 'Navigation, watchkeeping, position fixing and safe navigation procedures.',
@@ -64,7 +64,7 @@ export default function MockExamScreen() {
   const functions = useMemo(() => {
     const counts = new Map<string, number>()
     questions.forEach((q) => counts.set(q.functionId, (counts.get(q.functionId) || 0) + 1))
-    return Array.from(counts.entries()).map(([id, count]) => ({ id, count, label: FUNCTION_LABELS[id] || id }))
+    return Array.from(counts.entries()).map(([id, count]) => ({ id, count, label: FUNCTION_LABELS[trackId][id] || id }))
   }, [questions])
   const competences = listAvailableCompetences(trackId)
   const visibleCompetences = useMemo(() => competences.map((c) => {
@@ -96,21 +96,21 @@ export default function MockExamScreen() {
     } finally { setStarting(false); setStartingCompetence(null) }
   }
 
-  const overlay: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(3,8,18,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', animation: 'backdrop-enter 180ms ease-out both' }
-  const dialog: React.CSSProperties = { width: '100%', maxWidth: 530, maxHeight: '88dvh', overflowY: 'auto', background: 'var(--bg-card)', border: '2px solid var(--border)', padding: '1.25rem', boxShadow: '0 24px 70px rgba(0,0,0,.4)', animation: 'page-enter 220ms ease-out both' }
+  const overlay: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(3,8,18,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'max(0.75rem, env(safe-area-inset-top)) 0.75rem max(0.75rem, env(safe-area-inset-bottom))', animation: 'backdrop-enter 180ms ease-out both', overflowY: 'auto' }
+  const dialog: React.CSSProperties = { width: '100%', maxWidth: 570, maxHeight: 'min(88dvh, 900px)', overflowY: 'auto', overscrollBehavior: 'contain', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 16, padding: 'clamp(1rem, 3vw, 1.5rem)', boxShadow: '0 24px 70px rgba(0,0,0,.4)', animation: 'page-enter 220ms ease-out both' }
   const greenLine = { height: 5, background: 'var(--accent)', marginBottom: '1rem' } as const
   const secondaryButton: React.CSSProperties = { minHeight: 48, padding: '0.7rem 1rem', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontWeight: 800, cursor: 'pointer' }
   const primaryButton: React.CSSProperties = { ...secondaryButton, borderColor: 'var(--accent)', background: 'var(--accent)', color: 'var(--bg)' }
 
   return (
-    <div className="screen" style={{ paddingBottom: '2rem' }}>
+    <div className="screen" style={{ paddingBottom: '2rem', minHeight: 'calc(100dvh - 64px)', background: 'var(--bg)', color: 'var(--text)' }}>
       <button type="button" onClick={() => navigate('/track?track=' + trackParam)} style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>← Back to Track</button>
-      <div className="card" style={{ borderRadius: 2, borderTop: '3px solid var(--accent)', marginBottom: '1rem' }}>
+      <div className="card" style={{ borderRadius: 14, borderTop: '3px solid var(--accent)', marginBottom: '1rem' }}>
         <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', letterSpacing: '0.12em', fontWeight: 800 }}>STCW '78 AS AMENDED · OFFICIAL TIMED MOCK</div>
         <h1 className="page-title" style={{ marginTop: 8, marginBottom: 4 }}>{TRACK_LABELS[trackId]}</h1>
         <p className="subtitle" style={{ marginBottom: 0 }}>MARINA-format timed mock examination · 70% passing cutoff · 1 minute per item</p>
       </div>
-      <div className="card" style={{ borderRadius: 2 }}>
+      <div className="card" style={{ borderRadius: 14 }}>
         <h2 style={{ marginTop: 0 }}>EXAMINATION PROTOCOL</h2>
         <p style={{ color: 'var(--text-muted)' }}>Choose the functions to include, then select a competence to begin. The timer runs only while answering that competence.</p>
         <p>{loading ? 'Loading question bank…' : questions.length.toLocaleString() + ' questions available across ' + competences.length + ' competences.'}</p>
@@ -138,7 +138,7 @@ export default function MockExamScreen() {
             <button type="button" onClick={() => setSelectedFunctions(selectedFunctions.length === functions.length ? [] : functions.map((f) => f.id))} style={{ border: 0, background: 'transparent', color: 'var(--accent)', fontWeight: 900 }}>{selectedFunctions.length === functions.length ? 'CLEAR ALL' : 'SELECT ALL'}</button>
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            {functions.map((fn) => <button key={fn.id} type="button" onClick={() => toggleFunction(fn.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '0.8rem', textAlign: 'left', border: '1px solid ' + (selectedFunctions.includes(fn.id) ? 'var(--accent)' : 'var(--border)'), background: selectedFunctions.includes(fn.id) ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)' }}>
+            {functions.map((fn) => <button key={fn.id} type="button" onClick={() => toggleFunction(fn.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '0.8rem', textAlign: 'left', border: '1px solid ' + (selectedFunctions.includes(fn.id) ? 'var(--accent)' : 'var(--border)'), borderRadius: 10, background: selectedFunctions.includes(fn.id) ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)' }}>
               <span aria-hidden="true" style={{ width: 22, height: 22, flexShrink: 0, border: '2px solid ' + (selectedFunctions.includes(fn.id) ? 'var(--accent)' : 'var(--text-muted)'), display: 'grid', placeItems: 'center', color: 'var(--accent)' }}>{selectedFunctions.includes(fn.id) ? '✓' : ''}</span>
               <span style={{ flex: 1 }}><strong style={{ display: 'block' }}>{fn.id}</strong><span style={{ display: 'block', fontWeight: 800, lineHeight: 1.35 }}>{fn.label}</span></span>
               <span style={{ color: 'var(--text-muted)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fn.count.toLocaleString()} items</span>
@@ -153,7 +153,7 @@ export default function MockExamScreen() {
       </div>}
 
       {stage === 'competences' && <section style={{ marginTop: '1rem' }}>
-        <div className="card" style={{ borderTop: '3px solid var(--accent)', borderRadius: 2, marginBottom: '1rem' }}>
+        <div className="card" style={{ borderTop: '3px solid var(--accent)', borderRadius: 14, marginBottom: '1rem' }}>
           <h2 style={{ marginTop: 0 }}>SELECT A COMPETENCE TO BEGIN</h2>
           <p style={{ color: 'var(--text-muted)', marginBottom: 0 }}>{TRACK_LABELS[trackId]} · {selectedFunctions.join(', ')} · 70% passing cutoff · 1 minute per item</p>
         </div>
@@ -166,7 +166,7 @@ export default function MockExamScreen() {
           <h3 style={{ color: 'var(--accent)', fontSize: '0.85rem', letterSpacing: '0.08em', marginBottom: 2 }}>{group.label}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 800, marginTop: 0 }}>{group.competences.reduce((sum, c) => sum + c.count, 0).toLocaleString()} items · {group.id} function</p>
           <div style={{ display: 'grid', gap: 8 }}>
-            {group.competences.map((c) => <button key={c.id} type="button" disabled={starting || !c.count} onClick={() => void start(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '1rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', cursor: 'pointer' }}>
+            {group.competences.map((c) => <button key={c.id} type="button" disabled={starting || !c.count} onClick={() => void start(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '1rem', border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-card)', color: 'var(--text)', cursor: 'pointer' }}>
               <span style={{ minWidth: 44, minHeight: 44, display: 'grid', placeItems: 'center', background: 'var(--bg-elevated)', fontWeight: 900 }}>{c.id}</span>
               <span style={{ flex: 1 }}><strong style={{ display: 'block', lineHeight: 1.35 }}>{c.id}: {c.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</strong><span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 5 }}>{c.count} questions · {FUNCTION_DESCRIPTIONS[group.id] || 'Timed competence-based mock examination.'}</span></span>
               <span style={{ color: 'var(--text-muted)', fontWeight: 800 }}>{startingCompetence === c.id ? '…' : '→'}</span>
