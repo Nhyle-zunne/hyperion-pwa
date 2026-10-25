@@ -790,3 +790,18 @@ a:focus-visible,
 [data-theme='light'] .screen:has(h2) > .card:first-of-type { background:var(--bg-card)!important; color:var(--text)!important; }
 [data-theme='light'] .screen:has(h2) > .card:first-of-type p { color:var(--text-muted)!important; }
 [data-theme='light'] .screen:has(input[type="range"]) div[style*="linear-gradient"] { background:var(--bg-elevated)!important; }
+
+/* Remove remaining hard-coded dark text/surfaces on configuration screens in light mode. */
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#f8fafc"],
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#f1f5f9"],
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#cbd5e1"] { color:var(--text)!important; }
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#1e293b"],
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#172b31"],
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#17252d"],
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#0f172a"],
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#334155"] { background:var(--bg-elevated)!important; }
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#94a3b8"] { color:var(--text-muted)!important; }
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#22c55e"],
+[data-theme='light'] .screen:has(input[type="range"]) [style*="#00e5a0"] { color:var(--accent)!important; }
+[data-theme='light'] .screen:has(input[type="range"]) button[style*="background: rgb(74, 222, 128)"],
+[data-theme='light'] .screen:has(input[type="range"]) button[style*="#4ade80"] { background:var(--accent)!important; color:#fff!important; }
