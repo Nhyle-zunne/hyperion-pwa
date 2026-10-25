@@ -129,8 +129,8 @@ export default function App() {
           </div>
         </header>
       )}
-      <main style={{ flex: 1 }}>
-        <div key={`${location.pathname}${location.search}`} className="route-transition">
+      <main style={{ flex: 1, minHeight: 0, background: 'var(--bg)' }}>
+        <div key={`${location.pathname}${location.search}`} className="route-transition" style={{ minHeight: "100%" }}>
         <Routes>
           <Route path="/" element={<TrackSelectionScreen />} />
           <Route path="/tracks" element={<TrackSelectionScreen />} />
