@@ -46,10 +46,14 @@ function gmdss(file: string, competenceId: string, part: number, title: string):
 }
 
 function ew(file: string, competenceId: string, title: string): BankSource {
+  const functionId =
+    ['C1', 'C2', 'C3', 'C4', 'C5'].includes(competenceId) ? 'F1' :
+    ['C6', 'C7'].includes(competenceId) ? 'F2' :
+    ['C8', 'C9'].includes(competenceId) ? 'F3' : 'F4';
   return {
     path: `engine_ew/${file}`,
     track: 'ENGINE_OIC_EW',
-    functionId: 'EW',
+    functionId,
     competenceId,
     idPrefix: `EW-${competenceId}`,
     title,
@@ -58,10 +62,12 @@ function ew(file: string, competenceId: string, title: string): BankSource {
 }
 
 function dm(file: string, competenceId: string, title: string): BankSource {
+  const n = Number(competenceId.replace('C', ''));
+  const functionId = n <= 11 ? 'F1' : n <= 14 ? 'F2' : 'F3';
   return {
     path: `deck_mgt/${file}`,
     track: 'DECK_MGT',
-    functionId: 'DM',
+    functionId,
     competenceId,
     idPrefix: `DM-${competenceId}`,
     title,
@@ -70,10 +76,12 @@ function dm(file: string, competenceId: string, title: string): BankSource {
 }
 
 function em(file: string, competenceId: string, title: string): BankSource {
+  const n = Number(competenceId.replace('C', ''));
+  const functionId = n <= 4 ? 'F1' : n <= 6 ? 'F2' : n <= 9 ? 'F3' : 'F4';
   return {
     path: `engine_mgt/${file}`,
     track: 'ENGINE_MGT',
-    functionId: 'EM',
+    functionId,
     competenceId,
     idPrefix: `EM-${competenceId}`,
     title,
