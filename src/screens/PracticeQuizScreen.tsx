@@ -211,7 +211,10 @@ export default function PracticeQuizScreen() {
               border = 'var(--danger)'
               bg = 'rgba(239,68,68,0.12)'
             }
-          } else if (hasAnswered && idx === answer!.selectedIndex) {
+          } else if (
+            (hasAnswered && idx === answer!.selectedIndex) ||
+            (!hasAnswered && pendingAnswer === idx)
+          ) {
             border = 'var(--accent)'
             bg = 'rgba(56,189,248,0.12)'
           }
@@ -241,8 +244,6 @@ export default function PracticeQuizScreen() {
           )
         })}
       </div>
-
-      {!hasAnswered && pendingAnswer != null && mode !== 'MOCK' && !automations.directAnswer && <button className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }} onClick={confirmAnswer}>Check Answer</button>}
 
       {showFeedback && q.explanation && (
         <div
