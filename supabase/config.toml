@@ -1,5 +1,5 @@
-[functions.create-checkout]
+[functions.submit-manual-payment]
 verify_jwt = true
 
-[functions.paymongo-webhook]
-verify_jwt = false
+[functions.admin-payment-review]
+verify_jwt = true
