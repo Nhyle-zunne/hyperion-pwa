@@ -17,7 +17,11 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
   const raw = await req.text()
   const header = req.headers.get('Paymongo-Signature') || req.headers.get('X-Paymongo-Signature') || ''
-  const parts = Object.fromEntries(header.split(',').map(part => part.trim().split('=').map(value => value.trim())))
+  const parts: Record<string, string> = {}
+  for (const item of header.split(',')) {
+    const separator = item.indexOf('=')
+    if (separator > 0) parts[item.slice(0, separator).trim()] = item.slice(separator + 1).trim()
+  }
   const timestamp = parts.t
   const secret = Deno.env.get('PAYMONGO_WEBHOOK_SECRET')
   if (!secret || !timestamp || (!parts.te && !parts.li)) return new Response('Webhook not configured or signature missing', { status: 401 })
