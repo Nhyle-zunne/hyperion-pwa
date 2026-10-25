@@ -2,13 +2,10 @@ import { useEffect } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useLicenseStore } from './stores/licenseStore'
 import HomeScreen from './screens/HomeScreen'
-import ActivationScreen from './screens/ActivationScreen'
-import LicenseScreen from './screens/LicenseScreen'
 import TrackSelectionScreen from './screens/TrackSelectionScreen'
 import AccountScreen from './screens/AccountScreen'
 import AdminPaymentsScreen from './screens/AdminPaymentsScreen'
 import TrackHubScreen from './screens/TrackHubScreen'
-import HowToAvailScreen from './screens/HowToAvailScreen'
 import AboutScreen from './screens/AboutScreen'
 import TermsScreen from './screens/TermsScreen'
 import PracticeConfigScreen from './screens/PracticeConfigScreen'
@@ -70,9 +67,6 @@ export default function App() {
   const backTarget = isMockRunner ? '/mock' : '/practice'
 
   const hideNav = [
-    '/activation',
-    '/license',
-    '/howto',
     '/terms',
     '/about',
     '/practice/quiz',
@@ -144,9 +138,6 @@ export default function App() {
           <Route path="/tracks" element={<TrackSelectionScreen />} />
           <Route path="/track" element={<TrackHubScreen />} />
           <Route path="/home" element={<HomeScreen />} />
-          <Route path="/activation" element={<ActivationScreen />} />
-          <Route path="/license" element={<LicenseScreen />} />
-          <Route path="/howto" element={<HowToAvailScreen />} />
           <Route path="/about" element={<AboutScreen />} />
           <Route path="/terms" element={<TermsScreen />} />
           <Route path="/practice/competences" element={<PracticeCompetenceScreen />} />
