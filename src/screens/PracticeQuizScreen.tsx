@@ -143,7 +143,6 @@ export default function PracticeQuizScreen() {
             <p>Your current question and answers will be saved so you can continue reviewing later.</p>
             <button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => { saveProgress(); setShowExitDialog(false); navigate('/practice') }}>Save Progress &amp; Exit</button>
             <button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => setShowExitDialog(false)}>Continue Reviewing</button>
-            <button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => { reset(); setShowExitDialog(false); navigate('/tracks') }}>Exit Without Saving</button>
           </section>
         </div>
       )}
