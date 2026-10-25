@@ -759,3 +759,34 @@ a:focus-visible,
 [data-theme='light'] .screen:has(h2) button.card span[style*="color: rgb(148, 163, 184)"] {
   color: var(--text-muted) !important;
 }
+
+
+/* Responsive navigation: retain the bottom tabs on mobile, use a top app bar on desktop. */
+.desktop-menu-button, .desktop-contact-link { display: none; }
+.app-bottom-nav a { display:flex; flex-direction:column; align-items:center; gap:2px; font-size:.7rem; text-decoration:none; min-width:52px; }
+.app-bottom-nav a span { font-size:1.25rem; }
+.nav-theme-toggle { display:flex; align-items:center; justify-content:center; min-width:52px; }
+.facebook-mark { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:4px; color:#fff; background:#1877f2; font-weight:900; font-family:Arial,sans-serif; font-size:1.2rem; }
+.exit-dialog-backdrop { position:fixed; inset:0; z-index:500; display:grid; place-items:center; padding:1rem; background:rgba(2,6,23,.72); }
+.exit-dialog { width:min(100%,440px); padding:1.4rem; background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-top:3px solid var(--accent); box-shadow:0 24px 80px rgba(0,0,0,.3); }
+.exit-dialog h2 { font-size:1.25rem; margin-bottom:.5rem; }
+.exit-dialog p { color:var(--text-muted); line-height:1.55; }
+@media (min-width:900px) {
+  .app-bottom-nav { position:sticky!important; top:0; bottom:auto!important; left:auto!important; right:auto!important; width:100%; min-height:68px; justify-content:flex-start!important; gap:.5rem; padding:.65rem clamp(1.25rem,3vw,3rem)!important; border-top:0; border-bottom:1px solid var(--border); box-shadow:0 8px 24px rgba(0,0,0,.10); order:-1; }
+  .desktop-menu-button { display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px; margin-right:.5rem; color:var(--text); border:1px solid var(--border); background:var(--bg-elevated); font-size:1.35rem; }
+  .app-bottom-nav a { flex-direction:row!important; gap:.55rem!important; min-width:auto!important; padding:.65rem .85rem; border-radius:9px; font-size:.9rem!important; font-weight:700; color:var(--text-muted); }
+  .app-bottom-nav a span { font-size:1.1rem!important; }
+  .app-bottom-nav a.active { background:var(--accent-soft); color:var(--accent); }
+  .app-bottom-nav a[href="/practice"] { display:none!important; }
+  .desktop-contact-link { display:inline-flex!important; align-items:center; gap:.55rem; padding:.65rem .85rem; margin-left:0; color:var(--text-muted); font-weight:800; }
+  .nav-theme-toggle { margin-left:auto; }
+}
+@media (max-width:899px) { .desktop-menu-button,.desktop-contact-link { display:none!important; } }
+
+/* Light mode contrast fixes for the screenshots: preserve theme-aware text and surfaces. */
+[data-theme='light'] .track-hub-screen .hub-hero { background:var(--bg-card)!important; }
+[data-theme='light'] .track-hub-screen .hub-hero p,
+[data-theme='light'] .track-hub-screen .hub-mode-card p { color:var(--text-muted)!important; }
+[data-theme='light'] .screen:has(h2) > .card:first-of-type { background:var(--bg-card)!important; color:var(--text)!important; }
+[data-theme='light'] .screen:has(h2) > .card:first-of-type p { color:var(--text-muted)!important; }
+[data-theme='light'] .screen:has(input[type="range"]) div[style*="linear-gradient"] { background:var(--bg-elevated)!important; }
