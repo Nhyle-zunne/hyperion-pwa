@@ -670,3 +670,74 @@ a:focus-visible,
     gap: 1.5rem !important;
   }
 }
+
+
+/* Light-theme contrast corrections for the track, competence and practice setup screens.
+   Keep the same Hyperion layout while replacing dark-only surfaces and text colors. */
+[data-theme='light'] .track-hub-screen .hub-hero,
+[data-theme='light'] .track-hub-screen .hub-stats,
+[data-theme='light'] .track-hub-screen .hub-mode-card {
+  background: var(--bg-card);
+  border-color: var(--border);
+}
+[data-theme='light'] .track-hub-screen .hub-regulation,
+[data-theme='light'] .track-hub-screen .hub-meta span {
+  background: #e2e8f0;
+  color: #334155;
+}
+[data-theme='light'] .track-hub-screen .hub-section-title,
+[data-theme='light'] .track-hub-screen .hub-stat,
+[data-theme='light'] .track-hub-screen .hub-mode-card {
+  border-color: var(--border);
+}
+[data-theme='light'] .track-hub-screen .hub-mode-card.hub-mode-free {
+  --mode-accent: #64748b;
+  border-top-color: #64748b;
+}
+[data-theme='light'] .track-hub-screen .hub-mode-icon {
+  background: var(--accent-soft);
+}
+[data-theme='light'] .track-hub-screen .hub-mode-card h3,
+[data-theme='light'] .track-hub-screen .hub-hero h1 {
+  color: var(--text);
+}
+
+/* Practice configuration uses inline styling to preserve the dark native look.
+   Override only its dark surfaces when the app is explicitly in light mode. */
+[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) {
+  color: var(--text) !important;
+}
+[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) > div,
+[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) section {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) section:first-of-type {
+  background: var(--bg-elevated) !important;
+}
+[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) select,
+[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) input[type="number"] {
+  background: var(--bg-elevated) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) button[role="switch"],
+[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) section button {
+  color: var(--text) !important;
+}
+[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) section button[style*="background: rgb(34, 197, 94)"],
+[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) > button:last-child {
+  color: #ffffff !important;
+}
+
+/* Competence directory cards and banner: use theme tokens, not dark-only navy fills. */
+[data-theme='light'] .screen:has(h2) .card,
+[data-theme='light'] .screen:has(h2) button.card {
+  background: var(--bg-card) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+[data-theme='light'] .screen:has(h2) button.card strong {
+  color: var(--text) !important;
+}
