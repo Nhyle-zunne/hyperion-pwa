@@ -1269,3 +1269,28 @@ a:focus-visible,
   }
   .app-bottom-nav > a[href="/practice"] { display: none !important; }
 }
+
+
+/* Practice quiz: theme-aware pending selection and proportional text scaling. */
+.practice-quiz-screen {
+  --quiz-selection-bg: rgba(255, 255, 255, 0.12);
+}
+[data-theme='light'] .practice-quiz-screen {
+  --quiz-selection-bg: rgba(71, 85, 105, 0.14);
+}
+.practice-quiz-screen > header > div:nth-child(2) > div:first-child {
+  font-size: calc(1rem * var(--quiz-text-scale)) !important;
+}
+.practice-quiz-screen > header > div:nth-child(2) > div:last-child {
+  font-size: calc(.82rem * var(--quiz-text-scale)) !important;
+}
+.practice-quiz-screen > div[style*="justify-content: space-between"] {
+  font-size: calc(.85rem * var(--quiz-text-scale)) !important;
+}
+.practice-quiz-screen .card,
+.practice-quiz-screen .card p,
+.practice-quiz-screen .card strong,
+.practice-quiz-screen label,
+.practice-quiz-screen small {
+  font-size: calc(1em * var(--quiz-text-scale));
+}
