@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
   const parts = Object.fromEntries(header.split(',').map(part => part.trim().split('=').map(value => value.trim())))
   const timestamp = parts.t
   const secret = Deno.env.get('PAYMONGO_WEBHOOK_SECRET')
-  if (!secret || !timestamp || !parts.te || !parts.li) return new Response('Webhook not configured or signature missing', { status: 401 })
+  if (!secret || !timestamp || (!parts.te && !parts.li)) return new Response('Webhook not configured or signature missing', { status: 401 })
   if (!/^\d+$/.test(timestamp) || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return new Response('Stale webhook', { status: 401 })
   const expected = await hmacHex(secret, `${timestamp}.${raw}`)
   let event: any
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
   if (order.status === 'paid') return Response.json({ received: true, duplicate: true })
   if (order.paymongo_checkout_session_id !== session.id || order.product_code !== sessionAttrs?.metadata?.product_code || order.user_id !== sessionAttrs?.metadata?.user_id) return new Response('Order metadata mismatch', { status: 400 })
   const paymentAttrs = payment.attributes
-  if (paymentAttrs.currency !== 'PHP' || Number(paymentAttrs.net_amount) !== order.amount_php * 100) return new Response('Payment amount mismatch', { status: 400 })
+  if (paymentAttrs.currency !== 'PHP' || Number(paymentAttrs.amount) !== order.amount_php * 100) return new Response('Payment amount mismatch', { status: 400 })
 
   const { error: updateError } = await admin.from('orders').update({ status: 'paid', paymongo_payment_id: payment.id, paid_at: new Date().toISOString() }).eq('id', order.id).neq('status', 'paid')
   if (updateError) return new Response('Could not update order', { status: 500 })
