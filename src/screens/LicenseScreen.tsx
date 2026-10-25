@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { getDeviceCodeDisplay } from '../lib/deviceId'
 
-export default function LicenseScreen() {
+export default function LicenseScreen({ hideBack = false }: { hideBack?: boolean }) {
   const navigate = useNavigate()
   const {
     isAllAccessUnlocked,
@@ -34,12 +34,12 @@ export default function LicenseScreen() {
 
   return (
     <div className="screen">
-      <button
+      {!hideBack && <button
         onClick={() => navigate(-1)}
         style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}
       >
         ← Back
-      </button>
+      </button>}
 
       <h1 className="page-title">License</h1>
       <p className="subtitle">Offline signed-key status for this device</p>
