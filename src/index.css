@@ -741,3 +741,21 @@ a:focus-visible,
 [data-theme='light'] .screen:has(h2) button.card strong {
   color: var(--text) !important;
 }
+
+[data-theme='light'] .screen:has(input[type="range"]) [style*="color: rgb(148, 163, 184)"],
+[data-theme='light'] .screen:has(input[type="range"]) [style*="color: #94a3b8"],
+[data-theme='light'] .screen:has(input[type="range"]) [style*="color: rgb(203, 213, 225)"] {
+  color: var(--text-muted) !important;
+}
+[data-theme='light'] .screen:has(input[type="range"]) [style*="background: rgb(51, 65, 85)"] {
+  background: var(--bg-elevated) !important;
+  color: var(--text) !important;
+}
+[data-theme='light'] .screen:has(input[type="range"]) h1,
+[data-theme='light'] .screen:has(input[type="range"]) h2,
+[data-theme='light'] .screen:has(input[type="range"]) strong {
+  color: var(--text) !important;
+}
+[data-theme='light'] .screen:has(h2) button.card span[style*="color: rgb(148, 163, 184)"] {
+  color: var(--text-muted) !important;
+}
