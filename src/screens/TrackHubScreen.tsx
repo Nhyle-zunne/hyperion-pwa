@@ -243,7 +243,7 @@ export default function TrackHubScreen() {
       </section>
 
       {!unlocked && (
-        <button className="btn btn-primary hub-activate" onClick={() => navigate('/account')>
+        <button className="btn btn-primary hub-activate" onClick={() => navigate('/account')}>
           VIEW SUBSCRIPTION OPTIONS
         </button>
       )}
