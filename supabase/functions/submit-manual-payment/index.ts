@@ -6,7 +6,6 @@ const products = {
   engine_ew: { env: 'PRICE_ENGINE_EW_PHP', track: 'ENGINE_OIC_EW' },
   deck_mgt: { env: 'PRICE_DECK_MGT_PHP', track: 'DECK_MGT' },
   engine_mgt: { env: 'PRICE_ENGINE_MGT_PHP', track: 'ENGINE_MGT' },
-  all_access: { env: 'PRICE_ALL_ACCESS_PHP', track: 'ALL' },
 } as const
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 
