@@ -980,3 +980,159 @@ a:focus-visible,
   color: #ffffff !important;
   border: 1px solid var(--accent) !important;
 }
+
+
+/* Mobile Safari/Chrome layout hardening.
+   Keep the drawer as an overlay (never part of document flow) and keep the
+   dashboard cards inside the viewport on narrow screens. */
+@media (max-width: 899px) {
+  .drawer-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 1000 !important;
+    background: rgba(2, 6, 23, .62) !important;
+  }
+
+  .drawer-panel {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: auto !important;
+    width: min(320px, 88vw) !important;
+    max-width: 88vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    padding: calc(1rem + env(safe-area-inset-top)) .75rem calc(1rem + env(safe-area-inset-bottom)) !important;
+    z-index: 1001 !important;
+    background: var(--bg-card) !important;
+    color: var(--text) !important;
+  }
+
+  .drawer-panel .drawer-item {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  .app-bottom-nav {
+    position: fixed !important;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    min-height: calc(62px + env(safe-area-inset-bottom)) !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-around !important;
+    gap: 0 !important;
+    padding: .45rem .35rem calc(.45rem + env(safe-area-inset-bottom)) !important;
+    background: var(--bg-card) !important;
+    border-top: 1px solid var(--border) !important;
+    border-bottom: 0 !important;
+    z-index: 150 !important;
+  }
+
+  .app-bottom-nav > a:not(.desktop-contact-link) {
+    display: flex !important;
+    flex: 1 1 0 !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 0 !important;
+    padding: .35rem .15rem !important;
+    gap: 2px !important;
+    font-size: .68rem !important;
+    line-height: 1.15 !important;
+    white-space: nowrap !important;
+  }
+
+  .app-bottom-nav > a span {
+    font-size: 1.15rem !important;
+  }
+
+  .app-bottom-nav .desktop-menu-button,
+  .app-bottom-nav .desktop-contact-link {
+    display: none !important;
+  }
+
+  .app-bottom-nav .nav-theme-toggle {
+    display: flex !important;
+    flex: 0 0 42px !important;
+    min-width: 42px !important;
+    margin-left: 0 !important;
+    justify-content: center !important;
+  }
+
+  .screen:has(.dash-header) {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding-left: .75rem !important;
+    padding-right: .75rem !important;
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom)) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .screen:has(.dash-header) .dash-header {
+    width: auto !important;
+    max-width: none !important;
+    margin-left: -.75rem !important;
+    margin-right: -.75rem !important;
+    box-sizing: border-box !important;
+  }
+
+  .screen:has(.dash-header) .track-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: .65rem !important;
+  }
+
+  .screen:has(.dash-header) .track-card {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-wrap: anywhere !important;
+    padding: .7rem !important;
+  }
+
+  .screen:has(.dash-header) .track-card .track-title {
+    font-size: clamp(.78rem, 3.2vw, .95rem) !important;
+    line-height: 1.25 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .screen:has(.dash-header) .track-card .track-reg,
+  .screen:has(.dash-header) .track-card .track-meta {
+    font-size: clamp(.58rem, 2.5vw, .68rem) !important;
+    line-height: 1.35 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .screen:has(.dash-header) .track-card .qcount {
+    font-size: clamp(1.45rem, 7vw, 2rem) !important;
+    line-height: 1.1 !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .screen:has(.dash-header) .track-grid {
+    gap: .45rem !important;
+  }
+  .screen:has(.dash-header) .track-card {
+    padding: .55rem !important;
+  }
+}
