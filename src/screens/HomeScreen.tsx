@@ -1,31 +1,15 @@
 import { useNavigate } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
-import { getDeviceCodeDisplay } from '../lib/deviceId'
 import ThemeToggle from '../components/ThemeToggle'
 import InstallPrompt from '../components/InstallPrompt'
 
 export default function HomeScreen() {
   const navigate = useNavigate()
-  const {
-    isAllAccessUnlocked,
-    isOicNwUnlocked,
-    isGmdssUnlocked,
-    isEngineEwUnlocked,
-    isDeckMgtUnlocked,
-    isEngineMgtUnlocked,
-    offlineLicense,
-    getRemainingLabel
-  } = useLicenseStore()
+  const { cloudTrackIds, getRemainingLabel } = useLicenseStore()
   const openPaywall = useUIStore((s) => s.openPaywall)
 
-  const hasAnyLicense =
-    isAllAccessUnlocked ||
-    isOicNwUnlocked ||
-    isGmdssUnlocked ||
-    isEngineEwUnlocked ||
-    isDeckMgtUnlocked ||
-    isEngineMgtUnlocked
+  const hasAnyLicense = cloudTrackIds.length > 0
 
   const requireLicense = (feature: string, action: () => void) => {
     if (hasAnyLicense) {
@@ -67,22 +51,17 @@ export default function HomeScreen() {
               {hasAnyLicense ? 'License Active' : 'Free Tier'}
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              {hasAnyLicense ? getRemainingLabel() : 'Activate a key to unlock full access'}
+              {hasAnyLicense ? getRemainingLabel() : 'Sign in and subscribe to unlock a review track'}
             </div>
           </div>
           <button
             className="btn btn-outline"
             style={{ padding: '0.5rem 0.85rem', fontSize: '0.85rem' }}
-            onClick={() => navigate('/license')}
+            onClick={() => navigate('/account')}
           >
-            {hasAnyLicense ? 'Details' : 'Activate'}
+            {hasAnyLicense ? 'View account' : 'View plans'}
           </button>
         </div>
-        {offlineLicense && (
-          <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Tier: {offlineLicense.tier} · {offlineLicense.duration}
-          </div>
-        )}
       </div>
 
       {/* Main actions */}
@@ -140,15 +119,6 @@ export default function HomeScreen() {
       </div>
 
       <div style={{ marginTop: '2rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-        Device: {getDeviceCodeDisplay()}
-        <br />
-        <button
-          style={{ color: 'var(--accent)', marginTop: 8, background: 'none', border: 'none', cursor: 'pointer' }}
-          onClick={() => navigate('/howto')}
-        >
-          How to avail a license
-        </button>
-        {' · '}
         <button
           style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}
           onClick={() => navigate('/about')}
