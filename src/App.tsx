@@ -25,12 +25,32 @@ import StudyTimeScreen from './screens/StudyTimeScreen'
 import PaywallDialog from './components/PaywallDialog'
 import BottomNav from './components/BottomNav'
 import { useUIStore } from './stores/uiStore'
+import { usePracticeStore } from './stores/practiceStore'
+import { useBookmarksStore } from './stores/bookmarksStore'
+import { useState } from 'react'
 
 export default function App() {
   const checkLicenseStatus = useLicenseStore((s) => s.checkLicenseStatus)
   const showPaywall = useUIStore((s) => s.showPaywall)
   const location = useLocation()
   const navigate = useNavigate()
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const theme = useUIStore((s) => s.theme)
+  const toggleTheme = useUIStore((s) => s.toggleTheme)
+  const q = usePracticeStore((s) => s.questions[s.currentIndex])
+  const bookmarked = useBookmarksStore((s) => q ? s.isBookmarked(q.id) : false)
+  const toggleBookmark = useBookmarksStore((s) => s.toggle)
+  const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
+  const [automations, setAutomations] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as { directAnswer: boolean; autoNextCorrect: boolean; autoNextWrong: boolean } }
+    catch { return { directAnswer: false, autoNextCorrect: false, autoNextWrong: false } }
+  })
+  const updateAutomation = (key: 'directAnswer' | 'autoNextCorrect' | 'autoNextWrong', value: boolean) => setAutomations(old => {
+    const updated = { ...old, [key]: value }
+    localStorage.setItem('hyperion-practice-automations', JSON.stringify(updated))
+    window.dispatchEvent(new CustomEvent('hyperion:practice-settings', { detail: updated }))
+    return updated
+  })
 
   useEffect(() => {
     checkLicenseStatus()
@@ -96,27 +116,17 @@ export default function App() {
           <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 700 }}>
             {isMockRunner ? 'MOCK EXAM' : 'PRACTICE'}
           </span>
-          <button
-            type="button"
-            onClick={() => navigate('/tracks')}
-            aria-label="Go to Home"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 7,
-              minHeight: 42,
-              padding: '0.45rem 0.7rem',
-              border: '1px solid var(--accent)',
-              borderRadius: 8,
-              background: 'transparent',
-              color: 'var(--accent)',
-              fontWeight: 800
-            }}
-          >
-            <span aria-hidden="true">⌂</span>
-            Home
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }}>
+            <button type="button" onClick={() => { if (q) toggleBookmark(q) }} aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'} style={{ border: 0, background: 'transparent', color: bookmarked ? 'var(--accent)' : 'var(--text)', fontSize: '1.5rem', padding: 6 }}> {bookmarked ? '▮' : '♧'} </button>
+            <button type="button" onClick={() => setSettingsOpen(v => !v)} aria-label="Question settings" style={{ border: 0, background: 'transparent', color: 'var(--text)', fontSize: '1.5rem', padding: 6 }}>⚙</button>
+            {settingsOpen && <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 300, width: 'min(310px, calc(100vw - 24px))', maxHeight: '75vh', overflowY: 'auto', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 8px 28px rgba(0,0,0,.22)' }}>
+              <div style={{ padding: 12, fontWeight: 800, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>DISPLAY SETTINGS</div>
+              <button type="button" onClick={toggleTheme} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'space-between', background: 'transparent', border: 0, borderBottom: '1px solid var(--border)', color: 'var(--text)' }}><span>{theme === 'light' ? '☀ Daylight' : '☾ Night Ops'}</span><span>{theme === 'light' ? 'ON' : 'OFF'}</span></button>
+              <div style={{ padding: 12, borderBottom: '1px solid var(--border)' }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}><strong>Ｔ Text Size</strong><strong style={{ color: 'var(--accent)' }}>{textScale}%</strong></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>{[80,100,120].map(size => <button key={size} onClick={() => { setTextScale(size); localStorage.setItem('hyperion-question-text-scale', String(size)); window.dispatchEvent(new CustomEvent('hyperion:text-scale', { detail: size })) }} style={{ padding: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)' }}>{size === 80 ? 'A−' : size === 100 ? '100%' : 'A+'}</button>)}</div></div>
+              <div style={{ padding: 12, fontWeight: 800, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>PRACTICE AUTOMATIONS</div>
+              {([['directAnswer','Direct Answer','Confirm without Check button'],['autoNextCorrect','Auto-Next (Correct)','Advance when correct'],['autoNextWrong','Auto-Next (Wrong)','Advance when incorrect']] as const).map(([key,title,desc]) => <button key={key} onClick={() => updateAutomation(key, !automations[key])} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'space-between', gap: 8, background: 'transparent', border: 0, borderBottom: '1px solid var(--border)', color: 'var(--text)', textAlign: 'left' }}><span><strong>{title}</strong><small style={{ display: 'block', color: 'var(--text-muted)' }}>{desc}</small></span><strong>{automations[key] ? 'ON' : 'OFF'}</strong></button>)}
+            </div>}
+          </div>
         </header>
       )}
       <main style={{ flex: 1 }}>
