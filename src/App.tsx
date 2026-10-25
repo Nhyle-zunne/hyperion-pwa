@@ -75,7 +75,7 @@ export default function App() {
         >
           <button
             type="button"
-            onClick={() => navigate(backTarget)}
+            onClick={() => { if (isPracticeQuiz) window.dispatchEvent(new Event('hyperion:request-exit-practice')); else navigate(backTarget) }}
             aria-label={isMockRunner ? 'Back to mock exam overview' : 'Back to practice setup'}
             style={{
               display: 'inline-flex',
