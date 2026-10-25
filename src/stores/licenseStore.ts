@@ -93,7 +93,7 @@ export const useLicenseStore = create<LicenseState>()(
         if (!supabase) { set({ cloudTrackIds: [] }); return; }
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.user) { set({ cloudTrackIds: [] }); return; }
-        const { data, error } = await supabase.from('entitlements').select('track_id').eq('user_id', session.user.id).eq('status', 'active');
+        const { data, error } = await supabase.from('entitlements').select('track_id').eq('user_id', session.user.id).eq('status', 'active').gt('expires_at', new Date().toISOString());
         set({ cloudTrackIds: error ? [] : Array.from(new Set((data ?? []).map(row => row.track_id))) });
       },
 
