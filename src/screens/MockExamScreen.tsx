@@ -5,7 +5,6 @@ import { useUIStore } from '../stores/uiStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { Question, TrackId } from '../types/question'
-import PracticeQuizScreen from './PracticeQuizScreen'
 
 const TRACK_MAP: Record<string, TrackId> = { oic_nw: 'DECK_OIC_NW', gmdss: 'GMDSS_GOC', engine_ew: 'ENGINE_OIC_EW', deck_mgt: 'DECK_MGT', engine_mgt: 'ENGINE_MGT' }
 const TRACK_LABELS: Record<TrackId, string> = {
@@ -200,5 +199,63 @@ export default function MockExamScreen() {
 }
 
 export function MockExamRunner() {
-  return <PracticeQuizScreen />
+  const navigate = useNavigate()
+  const { questions, answers, finished, timeLeftSec, selectAnswer, finish, tick, score, reset } = usePracticeStore()
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
+  const [showLockNotice, setShowLockNotice] = useState(false)
+
+  useEffect(() => {
+    if (finished) return
+    const timer = window.setInterval(() => tick(), 1000)
+    return () => window.clearInterval(timer)
+  }, [finished, tick])
+
+  useEffect(() => {
+    const blockExit = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    const blockPop = () => {
+      window.history.pushState({ hyperionMockExam: true }, '')
+      setShowLockNotice(true)
+    }
+    const blockAppBack = () => setShowLockNotice(true)
+    window.addEventListener('beforeunload', blockExit)
+    window.addEventListener('hyperion:request-exit-mock', blockAppBack)
+    window.history.pushState({ hyperionMockExam: true }, '')
+    window.addEventListener('popstate', blockPop)
+    return () => { window.removeEventListener('beforeunload', blockExit); window.removeEventListener('hyperion:request-exit-mock', blockAppBack); window.removeEventListener('popstate', blockPop) }
+  }, [])
+
+  const answered = questions.reduce((count, q) => count + (answers[q.id]?.selectedIndex != null ? 1 : 0), 0)
+  const formatTime = (seconds: number) => String(Math.floor(Math.max(0, seconds) / 60)).padStart(2, '0') + ':' + String(Math.max(0, seconds) % 60).padStart(2, '0')
+  const card: React.CSSProperties = { border: '1px solid var(--border)', borderRadius: 10, padding: '1rem', background: 'var(--bg-card)', color: 'var(--text)' }
+  const s = score()
+
+  if (finished) return <div className="screen" style={{ paddingBottom: '2rem' }}><h1 className="page-title">Mock Exam Results</h1><div className="card" style={{ textAlign: 'center' }}><div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--accent)' }}>{s.percent}%</div><p>{s.correct} / {s.total} correct</p><p>{s.percent >= 70 ? 'PASS' : 'NOT YET PASSED'} · 70% passing cutoff</p></div><button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => { reset(); navigate('/mock') }}>Return to Mock Exams</button><button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => { reset(); navigate('/history') }}>View History</button></div>
+
+  return <div className="screen" style={{ paddingBottom: '7rem', maxWidth: 900, margin: '0 auto' }}>
+    <header style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '0.8rem 0.25rem', background: 'var(--bg)', borderBottom: '3px solid var(--accent)' }}>
+      <div><strong style={{ display: 'block' }}>SIMULATED MOCK EXAM</strong><span style={{ color: 'var(--text-muted)', fontSize: '.85rem' }}>{answered}/{questions.length} answered</span></div>
+      <div aria-live="polite" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, color: timeLeftSec < 60 ? 'var(--danger)' : 'var(--accent)', border: '1px solid var(--border)', padding: '.45rem .7rem', borderRadius: 6 }}>⏱ {formatTime(timeLeftSec)}</div>
+    </header>
+    <div style={{ ...card, margin: '1rem 0', fontSize: '.9rem', color: 'var(--text-muted)' }}>Answer questions on this continuous scroll page. You cannot return to a previous question or leave the exam. Use <strong>Submit Exam</strong> at the bottom to finish; unanswered items will be counted as incorrect.</div>
+    <div style={{ display: 'grid', gap: 12 }}>
+      {questions.map((q, index) => {
+        const selected = answers[q.id]?.selectedIndex
+        return <section key={q.id} style={card} aria-labelledby={'mock-question-' + index}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--text-muted)', fontSize: '.8rem', fontWeight: 800, marginBottom: 8 }}><span>QUESTION {index + 1} OF {questions.length}</span><span>{q.competenceId}</span></div>
+          {q.topic && <div style={{ color: 'var(--text-muted)', fontSize: '.82rem', marginBottom: 6 }}>{q.topic}</div>}
+          <h2 id={'mock-question-' + index} style={{ fontSize: '1.05rem', lineHeight: 1.55, margin: '0 0 1rem' }}>{q.questionText}</h2>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {q.options.map((option, optionIndex) => <button key={optionIndex} type="button" disabled={finished} onClick={() => selectAnswer(optionIndex)} aria-pressed={selected === optionIndex} style={{ textAlign: 'left', padding: '.8rem .9rem', borderRadius: 8, border: '1px solid ' + (selected === optionIndex ? 'var(--accent)' : 'var(--border)'), background: selected === optionIndex ? 'var(--quiz-selection-bg)' : 'transparent', color: 'var(--text)', cursor: finished ? 'default' : 'pointer' }}><strong style={{ marginRight: 8 }}>{String.fromCharCode(65 + optionIndex)}.</strong>{option}</button>)}
+          </div>
+          {selected != null && <p style={{ marginBottom: 0, color: 'var(--success)', fontSize: '.82rem', fontWeight: 700 }}>Answer recorded</p>}
+        </section>
+      })}
+    </div>
+    <div style={{ ...card, marginTop: 16, position: 'sticky', bottom: 0, zIndex: 15, boxShadow: '0 -5px 20px rgba(0,0,0,.08)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}><strong>{answered} / {questions.length} answered</strong><span style={{ color: 'var(--text-muted)', fontSize: '.85rem' }}>{questions.length - answered} unanswered</span></div>
+      <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowSubmitConfirm(true)}>SUBMIT EXAM</button>
+    </div>
+    {showSubmitConfirm && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', padding: 16 }}><section role="dialog" aria-modal="true" aria-labelledby="submit-mock-title" className="card" style={{ width: 'min(100%, 460px)', padding: 20 }}><h2 id="submit-mock-title" style={{ marginTop: 0 }}>Submit this mock exam?</h2><p>You answered {answered} of {questions.length} questions. {questions.length - answered ? 'Unanswered questions will be marked incorrect.' : 'All questions have been answered.'} You cannot change your answers after submission.</p><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button className="btn btn-outline" onClick={() => setShowSubmitConfirm(false)}>CONTINUE EXAM</button><button className="btn btn-primary" onClick={() => { setShowSubmitConfirm(false); finish() }}>CONFIRM SUBMISSION</button></div></section></div>}
+    {showLockNotice && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', padding: 16 }}><section role="dialog" aria-modal="true" aria-labelledby="mock-lock-title" className="card" style={{ width: 'min(100%, 420px)', padding: 20 }}><h2 id="mock-lock-title" style={{ marginTop: 0 }}>Exam in progress</h2><p>You cannot go back or leave while the mock exam is active. Submit the exam to finish.</p><button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowLockNotice(false)}>RETURN TO EXAM</button></section></div>}
+  </div>
 }
