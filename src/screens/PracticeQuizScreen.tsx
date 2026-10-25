@@ -26,10 +26,10 @@ export default function PracticeQuizScreen() {
   } = usePracticeStore()
 
   const [showExitDialog, setShowExitDialog] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const theme = useUIStore((s) => s.theme)
-  const toggleTheme = useUIStore((s) => s.toggleTheme)
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
+  const [pendingAnswer, setPendingAnswer] = useState<number | null>(null)
+  const [automations, setAutomations] = useState(() => { try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as {directAnswer:boolean;autoNextCorrect:boolean;autoNextWrong:boolean} } catch { return {directAnswer:false,autoNextCorrect:false,autoNextWrong:false} } })
+  useEffect(() => { const settings = (e: Event) => setAutomations((e as CustomEvent).detail); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
   const [automations, setAutomations] = useState(() => {
     try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as { directAnswer: boolean; autoNextCorrect: boolean; autoNextWrong: boolean } }
     catch { return { directAnswer: false, autoNextCorrect: false, autoNextWrong: false } }
@@ -148,6 +148,7 @@ export default function PracticeQuizScreen() {
   const q = questions[currentIndex]
   const answer = answers[q.id]
   const hasAnswered = answer?.selectedIndex != null
+  const confirmAnswer = () => { if (pendingAnswer != null) { selectAnswer(pendingAnswer); setPendingAnswer(null) } }
   const showFeedback = mode !== 'MOCK' && hasAnswered
   const bookmarked = isBookmarked(q.id)
 
@@ -168,17 +169,7 @@ export default function PracticeQuizScreen() {
         <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {mode === 'DRILL' && streak > 0 ? `Streak ${streak}` : null}
           {mode !== 'DRILL' ? `${q.competenceId} · ${q.difficulty}` : q.competenceId}
-          <button type="button" onClick={() => toggleBookmark(q)} aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'} style={{ border: 0, background: 'transparent', color: bookmarked ? 'var(--accent)' : 'var(--text)', fontSize: '1.4rem' }}>{bookmarked ? '▮' : '♧'}</button>
-          <div style={{ position: 'relative' }}>
-            <button type="button" onClick={() => setSettingsOpen((v) => !v)} aria-label="Question settings" style={{ border: 0, background: 'transparent', color: 'var(--text)', fontSize: '1.5rem' }}>⚙</button>
-            {settingsOpen && <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, width: 'min(300px, calc(100vw - 32px))', maxHeight: '75vh', overflowY: 'auto', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 8px 28px rgba(0,0,0,.22)' }}>
-              <div style={{ padding: 12, fontWeight: 800, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>DISPLAY SETTINGS</div>
-              <button type="button" onClick={toggleTheme} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'space-between', background: 'transparent', border: 0, borderBottom: '1px solid var(--border)', color: 'var(--text)' }}><span>{theme === 'light' ? '☀ Daylight' : '☾ Night Ops'}</span><span>{theme === 'light' ? 'ON' : 'OFF'}</span></button>
-              <div style={{ padding: 12, borderBottom: '1px solid var(--border)' }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}><strong>Ｔ Text Size</strong><strong style={{ color: 'var(--accent)' }}>{textScale}%</strong></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>{[80,100,120].map((size) => <button key={size} onClick={() => { setTextScale(size); localStorage.setItem('hyperion-question-text-scale', String(size)) }} style={{ padding: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)' }}>{size === 80 ? 'A−' : size === 100 ? '100%' : 'A+'}</button>)}</div></div>
-              <div style={{ padding: 12, fontWeight: 800, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>PRACTICE AUTOMATIONS</div>
-              {([['directAnswer','Direct Answer','Confirm without Check button'],['autoNextCorrect','Auto-Next (Correct)','Advance when correct'],['autoNextWrong','Auto-Next (Wrong)','Advance when incorrect']] as const).map(([key,title,desc]) => <button key={key} onClick={() => updateAutomation(key, !automations[key])} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'space-between', gap: 8, background: 'transparent', border: 0, borderBottom: '1px solid var(--border)', color: 'var(--text)', textAlign: 'left' }}><span><strong>{title}</strong><small style={{ display: 'block', color: 'var(--text-muted)' }}>{desc}</small></span><strong>{automations[key] ? 'ON' : 'OFF'}</strong></button>)}
-            </div>}
-          </div>
+
         </span>
       </div>
 
@@ -209,7 +200,7 @@ export default function PracticeQuizScreen() {
             <button
               key={idx}
               onClick={() => {
-                if (mode === 'MOCK' || !hasAnswered) selectAnswer(idx)
+                if (mode === 'MOCK') selectAnswer(idx); else if (!hasAnswered) { if (automations.directAnswer) selectAnswer(idx); else setPendingAnswer(idx) }
               }}
               disabled={mode !== 'MOCK' && hasAnswered}
               style={{
@@ -231,6 +222,8 @@ export default function PracticeQuizScreen() {
           )
         })}
       </div>
+
+      {!hasAnswered && pendingAnswer != null && mode !== 'MOCK' && !automations.directAnswer && <button className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }} onClick={confirmAnswer}>Check Answer</button>}
 
       {showFeedback && q.explanation && (
         <div
@@ -270,10 +263,10 @@ export default function PracticeQuizScreen() {
         <button
           className="btn btn-primary"
           style={{ flex: 2 }}
-          onClick={next}
-          disabled={mode !== 'MOCK' && !hasAnswered}
+          onClick={() => { if (hasAnswered && (automations.autoNextCorrect && answer?.isCorrect || automations.autoNextWrong && answer && !answer.isCorrect)) { next(); return } next() }}
+          disabled={mode !== 'MOCK' && (!hasAnswered || (pendingAnswer != null))}
         >
-          {currentIndex === questions.length - 1 ? 'Finish' : 'Next'}
+          {hasAnswered ? (currentIndex === questions.length - 1 ? 'Finish' : 'Next') : 'Next'}
         </button>
       </div>
     </div>
