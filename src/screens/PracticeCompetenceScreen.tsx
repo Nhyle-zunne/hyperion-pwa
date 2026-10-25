@@ -61,7 +61,7 @@ export default function PracticeCompetenceScreen() {
     navigate(`/practice?track=${key}&competence=${encodeURIComponent(id)}${freeMode ? '&free=1' : ''}`)
   }
 
-  return <div className="screen" style={{ padding: '0 0 2rem', color: 'var(--text)' }}>
+  return <div className="screen practice-competence-screen" style={{ padding: '0 0 2rem', color: 'var(--text)' }}>
     <button type="button" onClick={() => navigate(`/track?track=${key}`)} style={{ color: 'var(--text-muted)', margin: '0 0 1.2rem', padding: '0.5rem 0' }}>← Back to Track</button>
     <div className="card" style={{ borderRadius: 0, border: '1px solid #087f63', borderTop: '3px solid #00e5a0', background: 'linear-gradient(120deg, #172b31, #17252d)', padding: '1.2rem', marginBottom: '3rem' }}>
       <h1 style={{ fontSize: '1.35rem', lineHeight: 1.25, margin: '0 0 .4rem', fontWeight: 900 }}>{freeMode ? (track === 'DECK_OIC_NW' ? 'MARINA CRP PRACTICE' : `${LABELS[track].toUpperCase()} FREE PRACTICE`) : 'PRACTICE ALL QUESTIONS'}</h1>
