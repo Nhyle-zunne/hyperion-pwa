@@ -17,7 +17,6 @@ export default function AccountScreen() {
   const [product, setProduct] = useState('oic_nw')
   const paymentMethod = 'QR Ph (MariBank / InstaPay)'
   const [reference, setReference] = useState('')
-  const [proofUrl, setProofUrl] = useState('')
   const [note, setNote] = useState('')
   const [instructions, setInstructions] = useState('Payment instructions are being configured. Please check back later.')
   const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
@@ -69,11 +68,11 @@ export default function AccountScreen() {
     if (!supabase || !session) return
     setBusy(true); setMessage('Submitting your payment for manual review…')
     try {
-      const { data, error } = await supabase.functions.invoke('submit-manual-payment', { body: { productCode: product, paymentMethod, paymentReference: reference, proofUrl, customerNote: note } })
+      const { data, error } = await supabase.functions.invoke('submit-manual-payment', { body: { productCode: product, paymentMethod, paymentReference: reference, customerNote: note } })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
       setMessage(`Payment details submitted. Your reference is ${data.order.id}. Please send your payment screenshot to our Facebook page. Access will be enabled after manual verification.`)
-      setReference(''); setProofUrl(''); setNote('')
+      setReference(''); setNote('')
       await refreshAccount()
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to submit payment. Please try again.') }
     finally { setBusy(false) }
@@ -134,9 +133,7 @@ export default function AccountScreen() {
           <label style={label}>Payment method<input value="QR Ph (MariBank / InstaPay)" readOnly style={field} /></label>
           <label style={label}>Transaction/reference number<input required maxLength={160} value={reference} onChange={e => setReference(e.target.value)} style={field} /></label>
           <div style={label}>
-            <label htmlFor="proof-of-payment">Proof of payment screenshot link <span style={{ color: 'var(--danger)' }}>(required)</span></label>
-            <input id="proof-of-payment" type="url" required placeholder="Paste a publicly accessible image link, if available" value={proofUrl} onChange={e => setProofUrl(e.target.value)} style={field} />
-            <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', lineHeight: 1.5 }}>After sending the payment, send your screenshot to our Facebook page using the button below. Proof must be provided before your subscription can be approved.</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', lineHeight: 1.5 }}>After sending the payment, use the button below to send your payment screenshot to our Facebook page. Your subscription can only be approved after the payment is verified.</p>
             <a href={facebookPage} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '.5rem' }}>SEND PROOF TO OUR FACEBOOK PAGE</a>
           </div>
           <label style={label}>Additional notes (optional)<textarea maxLength={1000} rows={3} value={note} onChange={e => setNote(e.target.value)} style={field} /></label>
