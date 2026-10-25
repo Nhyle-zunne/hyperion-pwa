@@ -10,10 +10,10 @@ export const supabase = supabaseConfigured ? createClient(url!, anonKey!, {
 
 export type PaidTrack = 'oic_nw' | 'gmdss' | 'engine_ew' | 'deck_mgt' | 'engine_mgt'
 
-export const PAID_PRODUCTS: { code: PaidTrack; label: string; trackLabel: string }[] = [
-  { code: 'oic_nw', label: 'Deck OIC-NW', trackLabel: 'DECK_OIC_NW' },
-  { code: 'gmdss', label: 'GMDSS GOC', trackLabel: 'GMDSS_GOC' },
-  { code: 'engine_ew', label: 'Engine OIC-EW', trackLabel: 'ENGINE_OIC_EW' },
-  { code: 'deck_mgt', label: 'Deck Management', trackLabel: 'DECK_MGT' },
-  { code: 'engine_mgt', label: 'Engine Management', trackLabel: 'ENGINE_MGT' },
+export const PAID_PRODUCTS: { code: PaidTrack; label: string; trackLabel: string; annualPrice: number }[] = [
+  { code: 'oic_nw', label: 'Deck OIC-NW', trackLabel: 'DECK_OIC_NW', annualPrice: 350 },
+  { code: 'gmdss', label: 'GMDSS GOC', trackLabel: 'GMDSS_GOC', annualPrice: 250 },
+  { code: 'engine_ew', label: 'Engine OIC-EW', trackLabel: 'ENGINE_OIC_EW', annualPrice: 350 },
+  { code: 'deck_mgt', label: 'Deck Management', trackLabel: 'DECK_MGT', annualPrice: 700 },
+  { code: 'engine_mgt', label: 'Engine Management', trackLabel: 'ENGINE_MGT', annualPrice: 700 },
 ]
