@@ -1,60 +1,60 @@
-# Hyperion PWA: Supabase + PayMongo setup
+# Hyperion PWA: Supabase manual payment review setup
 
-This integration uses Supabase Auth/Postgres/Edge Functions and PayMongo Hosted Checkout. Monthly platform cost can remain $0 while usage stays within free quotas; PayMongo charges transaction fees on successful live payments.
+This version uses manual payment confirmation. Students send payment using the instructions you publish, then submit the payment method, transaction/reference number, and optionally a proof link. An admin verifies the transaction and approves or rejects it in the private PWA admin dashboard. PayMongo checkout and payment webhooks are not used by this flow.
 
-## Current status
-
-- Account screen supports email/password signup and sign-in.
-- Checkout is created server-side, with product prices held in Supabase Function secrets.
-- The PayMongo webhook verifies signatures and records paid orders and entitlements.
-- Track access UI is not yet fully wired to cloud entitlements across every screen. Do not launch sales until that integration and end-to-end tests are complete.
-- Existing offline activation-key licensing remains in the app.
-
-## 1. Create Supabase project
+## 1. Supabase project and database
 
 1. Create a Supabase project on the Free plan.
-2. Run \`supabase/schema.sql\` in SQL Editor.
+2. Run `supabase/schema.sql` in the SQL Editor. If the earlier PayMongo schema was already applied, this script creates the additional fields/tables it needs only on a fresh table; for an existing installation, use a migration to add the new columns and update the status check constraint before deploying.
 3. In Authentication > URL Configuration, set your deployed PWA URL as the Site URL and add it to Redirect URLs.
 4. Copy the project URL and public anon/publishable key from Project Settings > API.
-5. In Cloudflare Pages > Settings > Environment variables, set \`VITE_SUPABASE_URL\` and \`VITE_SUPABASE_ANON_KEY\` for Preview and Production. These are public browser values; never use the service-role key here.
+5. In Cloudflare Pages > Settings > Environment variables, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for Preview and Production. Never put the service-role key in the browser.
 
 ## 2. Set server-side secrets
 
 From the repository root, after installing the Supabase CLI:
 
-\`\`\`sh
+```sh
 supabase login
 supabase link --project-ref YOUR_PROJECT_REF
-supabase secrets set PAYMONGO_SECRET_KEY=sk_test_REPLACE_ME
-supabase secrets set PAYMONGO_WEBHOOK_SECRET=REPLACE_WITH_TEST_WEBHOOK_SECRET
-supabase secrets set APP_BASE_URL=https://YOUR_DEPLOYED_PWA_URL
+supabase secrets set ADMIN_EMAILS=your-admin-email@example.com
 supabase secrets set PRICE_OIC_NW_PHP=499
 supabase secrets set PRICE_GMDSS_PHP=499
 supabase secrets set PRICE_ENGINE_EW_PHP=499
 supabase secrets set PRICE_DECK_MGT_PHP=799
 supabase secrets set PRICE_ENGINE_MGT_PHP=799
-# Set PRICE_ALL_ACCESS_PHP only after deciding the bundle price
-supabase functions deploy create-checkout
-supabase functions deploy paymongo-webhook
-\`\`\`
+# Only set this after choosing a bundle price:
+# supabase secrets set PRICE_ALL_ACCESS_PHP=YOUR_WHOLE_PESO_PRICE
+supabase functions deploy submit-manual-payment
+supabase functions deploy admin-payment-review
+```
 
-The five individual-track prices above reflect the prices selected so far. The all-access bundle price is still undecided; do not enable that product until you choose its price. Review all values before enabling checkout. Prices are whole Philippine pesos; the function converts them to centavos. Do not use live keys until test-mode checkout and webhook fulfillment pass.
+Set `ADMIN_EMAILS` to a comma-separated list of exact account email addresses that should have admin access. The check runs server-side; hiding the dashboard button alone is not security. Sign up with the admin email and confirm the account before using the dashboard.
 
-Supabase automatically provides \`SUPABASE_URL\`, \`SUPABASE_ANON_KEY\`, and \`SUPABASE_SERVICE_ROLE_KEY\` to deployed functions. Never expose the service-role key in the browser or commit it to Git.
+Prices are whole Philippine pesos and stored only in Supabase Function secrets. The all-access bundle is unavailable until its price is configured.
 
-## 3. Configure PayMongo test mode
+## 3. Configure the payment instructions
 
-1. Create/complete your PayMongo merchant account and use test API keys first.
-2. Enable the payment methods available to your account (the checkout requests GCash, Maya, QRPh, and cards).
-3. In PayMongo Dashboard > Developer Tools/Webhooks, add endpoint \`https://YOUR_PROJECT_REF.supabase.co/functions/v1/paymongo-webhook\`.
-4. Subscribe to \`checkout_session.payment.paid\` and save that endpoint's webhook secret as \`PAYMONGO_WEBHOOK_SECRET\` in Supabase secrets. Use the test-mode secret with the test API key; configure live mode separately when launching.
-5. Create a test account, start checkout, complete a PayMongo test payment, and confirm the order becomes \`paid\` and an entitlement is inserted in Supabase.
+1. Sign in to the PWA using an email included in `ADMIN_EMAILS`.
+2. Open Account > Admin dashboard.
+3. Edit the payment instructions with your chosen payment method, account name/number or other payment details, exact transfer instructions, and a reminder to include the transaction reference.
+4. Save the instructions. They are displayed to signed-in students on the account page.
 
-## 4. Cost and safety notes
+The payment method is deliberately generic because the final method has not been specified yet. Do not publish sensitive account credentials or payment PINs.
 
-- PayMongo Hosted Checkout has no setup or monthly subscription fee according to its current pricing page, but successful payments incur transaction fees.
-- Keep Supabase within Free-plan quotas; free projects may pause after inactivity and quotas/terms can change.
-- Never grant access from the success redirect alone. Only the signed webhook can mark an order paid.
-- RLS allows users to read only their own orders and entitlements. Writes happen server-side using the service role.
-- Before production, test duplicate webhook deliveries, invalid signatures, wrong amount/session IDs, canceled checkout, refund handling, and each track's access behavior.
-- This PWA currently ships question-bank assets to the client for offline use. UI gating discourages casual access but cannot guarantee content secrecy against a technically determined user. Strong server-enforced content protection requires changing the question delivery model.
+## 4. Manual review flow
+
+1. Student creates an account, selects a track, sends payment using the published instructions, then submits the payment method and transaction/reference number. A proof URL is optional.
+2. The server creates a submitted order with the product price read from secrets. A success message or uploaded proof does not unlock anything.
+3. Admin opens the private dashboard and compares the submission against the actual payment received outside the PWA.
+4. Only after verifying the transfer, admin clicks Approve & unlock. The server creates the entitlement and marks the order paid. Reject marks the submission failed and does not grant access.
+5. The student refreshes the account page or signs in again to refresh entitlements.
+
+## 5. Important safety and launch checks
+
+- Never approve based on a screenshot alone; verify the transaction in the payment provider/bank account.
+- Use a unique transaction reference for every transfer and reconcile duplicate submissions manually.
+- Configure the admin allowlist before deployment. If you lose admin access, update the server secret, redeploy only if required by your setup, and sign in with an allowlisted account.
+- Test signup, email confirmation, sign-in/out, payment submission, RLS isolation, non-admin access denial, approval, rejection, duplicate submissions, and correct track unlock.
+- Existing question-bank assets are bundled with the PWA for offline use. Client-side gating alone cannot keep those assets secret from a technically determined user.
+- Keep Supabase within Free-plan quotas; quotas and inactivity policies can change.
