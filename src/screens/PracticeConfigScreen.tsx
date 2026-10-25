@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { usePracticeStore } from '../stores/practiceStore'
+import { useHistoryStore } from '../stores/historyStore'
 import { useUIStore } from '../stores/uiStore'
 import { freeSample, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
@@ -31,6 +32,8 @@ export default function PracticeConfigScreen() {
   const openPaywall = useUIStore(s => s.openPaywall)
   const isUnlocked = useLicenseStore(s => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
   const startSession = usePracticeStore(s => s.startSession)
+  const historyEntries = useHistoryStore(s => s.entries)
+  const savedSessions = useHistoryStore(s => s.savedSessions)
   const competences = listAvailableCompetences(trackId)
   const competenceId = params.get('competence') || undefined
   const competence = competences.find(c => c.id === competenceId)
@@ -119,8 +122,25 @@ export default function PracticeConfigScreen() {
 
     <section style={{ ...panel, background: 'var(--bg-elevated)', padding: '.75rem' }}>
       <div style={{ ...muted, fontWeight: 900, letterSpacing: '.05em' }}>■ SESSION LOG & TELEMETRY</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--accent)', fontWeight: 900, letterSpacing: '.08em', fontSize: '.8rem', margin: '.7rem 0' }}><span>RECENT SESSIONS</span><span>SESSION HISTORY »</span></div>
-      <div style={{ border: '1px solid var(--border)', padding: '.8rem', ...muted, fontSize: '.85rem', lineHeight: 1.6 }}>Session history for this competence will appear here after you complete a session.</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--accent)', fontWeight: 900, letterSpacing: '.08em', fontSize: '.8rem', margin: '.7rem 0' }}><span>RECENT SESSIONS · THIS COMPETENCE</span><button type="button" onClick={() => navigate('/history')} style={{ color: 'var(--accent)', background: 'transparent', border: 0, fontWeight: 900, cursor: 'pointer' }}>SESSION HISTORY »</button></div>
+      {(() => {
+        const completed = historyEntries
+          .filter(entry => entry.track === trackId && entry.competenceId === (competenceId ?? null))
+          .map(entry => ({ id: entry.id, kind: 'completed' as const, timestamp: entry.finishedAt, mode: entry.mode, detail: `${entry.correct}/${entry.total} correct · ${entry.percent}%`, date: entry.finishedAt }))
+        const saved = savedSessions
+          .filter(entry => entry.track === trackId && entry.competenceId === (competenceId ?? null))
+          .map(entry => ({ id: entry.id, kind: 'saved' as const, timestamp: entry.savedAt, mode: entry.mode, detail: `Question ${Math.min(entry.currentIndex + 1, entry.total)} of ${entry.total} · ${entry.answered} answered`, date: entry.savedAt }))
+        const recent = [...saved, ...completed].sort((a, b) => b.timestamp - a.timestamp).slice(0, 3)
+        return recent.length ? <div style={{ display: 'grid', gap: '.5rem' }}>
+          {recent.map(entry => <div key={entry.id} style={{ border: '1px solid var(--border)', background: 'var(--bg-card)', padding: '.7rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.75rem' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: 'var(--text)', fontWeight: 850, fontSize: '.86rem' }}>{entry.mode === 'DRILL' ? 'Drill' : entry.mode === 'MOCK' ? 'Mock Exam' : 'Practice'} · {entry.kind === 'saved' ? 'Saved progress' : 'Completed'}</div>
+              <div style={{ ...muted, fontSize: '.78rem', marginTop: '.2rem' }}>{new Date(entry.date).toLocaleString()}<br />{entry.detail}</div>
+            </div>
+            {entry.kind === 'saved' && <button type="button" onClick={() => navigate('/practice/quiz')} style={{ ...smallButton, background: 'var(--accent)', color: 'var(--btn-primary-text)', whiteSpace: 'nowrap' }}>Resume</button>}
+          </div>)}
+        </div> : <div style={{ border: '1px solid var(--border)', padding: '.8rem', ...muted, fontSize: '.85rem', lineHeight: 1.6 }}>No sessions recorded for this exact track and competence yet.</div>
+      })()}
     </section>
 
     {trackId === 'GMDSS_GOC' && competenceId && gmdssParts.length > 0 && <section style={panel}>
