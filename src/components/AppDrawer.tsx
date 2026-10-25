@@ -92,7 +92,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
 
         <div className="drawer-section">Account & support</div>
         <Item label="Account & subscriptions" path="/account" icon="👤" />
-        <Item label="How to avail a key" path="/howto" icon="❓" />
+        <Item label="Payment instructions" path="/account" icon="❓" />
         <Item label="About Hyperion" path="/about" icon="ℹ" />
 
         <div className="drawer-section">Legal & compliance</div>
