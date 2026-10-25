@@ -140,19 +140,6 @@ export default function TrackSelectionScreen() {
 
       <div className="dash-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            aria-label="Menu"
-            style={{
-              fontSize: '1.35rem',
-              color: 'var(--text)',
-              padding: 4,
-              lineHeight: 1
-            }}
-          >
-            ☰
-          </button>
           <div>
             <h1>Select examination track</h1>
             <div className="sub">STCW &apos;78 AS AMENDED · MARINA CRP</div>
