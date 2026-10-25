@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useHistoryStore, type SessionMode } from '../stores/historyStore'
 import type { TrackId } from '../types/question'
 
@@ -39,7 +40,9 @@ function formatDuration(ms: number) {
 }
 
 export default function HistoryScreen() {
+  const navigate = useNavigate()
   const entries = useHistoryStore((s) => s.entries)
+  const savedSessions = useHistoryStore((s) => s.savedSessions)
   const clear = useHistoryStore((s) => s.clear)
 
   const totalSessions = entries.length
@@ -90,9 +93,29 @@ export default function HistoryScreen() {
         </div>
       </div>
 
+      {savedSessions.length > 0 && (
+        <section style={{ marginBottom: '1.25rem' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 900, marginBottom: '.65rem' }}>Saved sessions · Resume</h2>
+          <div style={{ display: 'grid', gap: '.6rem' }}>
+            {savedSessions.map((session) => (
+              <div key={session.id} className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{MODE_LABEL[session.mode]} · {session.competenceId || 'All competences'}</div>
+                    <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginTop: 3 }}>{TRACK_LABELS[session.track]} · Saved {formatDate(session.savedAt)}</div>
+                    <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginTop: 3 }}>Question {Math.min(session.currentIndex + 1, session.total)} of {session.total} · {session.answered} answered</div>
+                  </div>
+                  <button className="btn btn-primary" type="button" onClick={() => navigate('/practice/quiz')}>Resume</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {entries.length === 0 ? (
         <div className="card" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-          No sessions yet. Finish a Practice, Drill, or Mock Exam to see it here.
+          No completed sessions yet. Finish a Practice, Drill, or Mock Exam to see results here.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '0.6rem' }}>
