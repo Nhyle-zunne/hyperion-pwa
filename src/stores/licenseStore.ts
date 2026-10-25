@@ -19,13 +19,14 @@ interface LicenseState {
 const TRACK_IDS = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'];
 
 function accessFlags(trackIds: string[]) {
+  const all = trackIds.includes('ALL') || TRACK_IDS.every((id) => trackIds.includes(id));
   return {
-    isOicNwUnlocked: trackIds.includes('DECK_OIC_NW'),
-    isGmdssUnlocked: trackIds.includes('GMDSS_GOC'),
-    isEngineEwUnlocked: trackIds.includes('ENGINE_OIC_EW'),
-    isDeckMgtUnlocked: trackIds.includes('DECK_MGT'),
-    isEngineMgtUnlocked: trackIds.includes('ENGINE_MGT'),
-    isAllAccessUnlocked: TRACK_IDS.every((id) => trackIds.includes(id))
+    isOicNwUnlocked: all || trackIds.includes('DECK_OIC_NW'),
+    isGmdssUnlocked: all || trackIds.includes('GMDSS_GOC'),
+    isEngineEwUnlocked: all || trackIds.includes('ENGINE_OIC_EW'),
+    isDeckMgtUnlocked: all || trackIds.includes('DECK_MGT'),
+    isEngineMgtUnlocked: all || trackIds.includes('ENGINE_MGT'),
+    isAllAccessUnlocked: all
   };
 }
 
@@ -48,6 +49,18 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
       set({ cloudTrackIds: [], ...accessFlags([]) });
       return;
     }
+
+    // Admin status is checked server-side against ADMIN_EMAILS; never trust client metadata.
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-payment-review', { body: { action: 'check-admin' } });
+      if (!error && data?.isAdmin === true) {
+        set({ cloudTrackIds: [...TRACK_IDS], ...accessFlags(TRACK_IDS) });
+        return;
+      }
+    } catch {
+      // If the admin check is unavailable, continue with ordinary subscription lookup.
+    }
+
     const { data, error } = await supabase
       .from('entitlements')
       .select('track_id')
@@ -89,7 +102,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
 
   getRemainingLabel: () => {
     const count = get().cloudTrackIds.length;
-    return count ? `${count} active subscription track${count === 1 ? '' : 's'}` : 'No active subscriptions';
+    return get().isAllAccessUnlocked ? 'Admin · All tracks unlocked' : count ? `${count} active subscription track${count === 1 ? '' : 's'}` : 'No active subscriptions';
   },
 
   clearLicense: () => set({ cloudTrackIds: [], ...accessFlags([]) })
