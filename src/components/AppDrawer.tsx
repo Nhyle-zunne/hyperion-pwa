@@ -91,6 +91,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
         <Item label="Mistakes notebook (vault)" path="/vault" icon="📓" />
 
         <div className="drawer-section">Account & support</div>
+        <Item label="Account & subscriptions" path="/account" icon="👤" />
         <Item label="License & activation" path="/license" icon="🔑" />
         <Item label="How to avail a key" path="/howto" icon="❓" />
         <Item label="About Hyperion" path="/about" icon="ℹ" />
