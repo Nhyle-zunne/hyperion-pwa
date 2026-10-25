@@ -96,7 +96,21 @@ export default function AccountScreen() {
   const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', marginBottom: '1rem', borderRadius: 10 }
   const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '.8rem', marginTop: '.35rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, font: 'inherit' }
   const label: React.CSSProperties = { display: 'block', marginTop: '.8rem' }
-  const statusLabel: Record<string,string> = { submitted: 'Awaiting manual review', pending: 'Awaiting payment review', paid: 'Approved', failed: 'Rejected', refunded: 'Refunded' }
+  const statusLabel: Record<string,string> = { submitted: 'Awaiting manual review', pending: 'Awaiting payment review', paid: 'Approved', failed: 'Rejected', refunded: 'Refunded', cancelled: 'Cancelled by you' }
+  const pendingOrder = orders.find(order => order.product_code === product && ['submitted', 'pending'].includes(order.status))
+  const cancelReview = async () => {
+    if (!supabase || !pendingOrder) return
+    setBusy(true); setMessage('Cancelling your review request…')
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-payment-review', { body: { orderId: pendingOrder.id } })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      setMessage('Your payment review request has been cancelled. You can submit again if needed.')
+      await refreshAccount()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to cancel the review request. Please refresh and try again.')
+    } finally { setBusy(false) }
+  }
 
   return <div className="screen" style={{ width: 'min(calc(100% - 2rem), 760px)', margin: '0 auto', paddingBottom: '2rem' }}>
     <button type="button" onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>← Back</button>
@@ -134,8 +148,13 @@ export default function AccountScreen() {
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Submit payment details</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.5 }}>Each payment covers one individual track for 12 months. Send the exact amount shown for the reviewer track you selected. Incorrect or short payments may delay approval. Access starts only after manual verification.</p>
-        <form onSubmit={submitPayment}>
-          <label style={label}>Choose an individual track (12-month subscription)<select value={product} onChange={e => setProduct(e.target.value)} style={field}>{PAID_PRODUCTS.map(item => <option key={item.code} value={item.code}>{item.label} · ₱{item.annualPrice}/year</option>)}</select></label>
+        <label style={label}>Choose an individual track (12-month subscription)<select value={product} onChange={e => setProduct(e.target.value)} style={field}>{PAID_PRODUCTS.map(item => <option key={item.code} value={item.code}>{item.label} · ₱{item.annualPrice}/year</option>)}</select></label>
+        {pendingOrder ? <div style={{ ...card, marginTop: '.9rem', borderColor: 'var(--warning, #eab308)' }}>
+          <strong>You already submitted this track for review.</strong>
+          <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>Your payment submission is awaiting manual review. You do not need to submit it again. If you submitted the wrong details or want to withdraw this request, cancel it below.</p>
+          <div style={{ fontSize: '.85rem', overflowWrap: 'anywhere', marginBottom: '.8rem' }}>Order: {pendingOrder.id}</div>
+          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelReview()} style={{ width: '100%' }}>{busy ? 'Please wait…' : 'CANCEL REVIEW REQUEST'}</button>
+        </div> : <form onSubmit={submitPayment}>
           <div style={{ ...card, textAlign: 'center', marginTop: '.9rem', background: '#fff', color: '#172033' }}>
             <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: '.25rem' }}>QR Ph · MariBank / InstaPay</div>
             <p style={{ margin: '0 0 .75rem', color: '#4b5563', fontSize: '.9rem' }}>Scan this QR code using your bank or e-wallet app.</p>
@@ -154,7 +173,7 @@ export default function AccountScreen() {
           </div>
           <label style={label}>Additional notes (optional)<textarea maxLength={1000} rows={3} value={note} onChange={e => setNote(e.target.value)} style={field} /></label>
           <button type="submit" className="btn btn-primary" disabled={busy || !supabaseConfigured} style={{ width: '100%', marginTop: '1rem' }}>{busy ? 'Submitting…' : 'SUBMIT FOR REVIEW'}</button>
-        </form>
+        </form>}
       </section>
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Payment submissions</h2>
