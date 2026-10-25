@@ -55,13 +55,29 @@ export default function AccountScreen() {
     event.preventDefault()
     if (!supabase) return
     setBusy(true); setMessage('')
-    const result = mode === 'signup'
-      ? await supabase.auth.signUp({ email: email.trim(), password })
-      : await supabase.auth.signInWithPassword({ email: email.trim(), password })
-    setBusy(false)
-    if (result.error) setMessage(result.error.message)
-    else if (mode === 'signup' && !result.data.session) setMessage('Account created. Check your email to confirm your address, then sign in.')
-    else setMessage(mode === 'signup' ? 'Account created.' : 'Signed in successfully.')
+    try {
+      const result = mode === 'signup'
+        ? await supabase.auth.signUp({ email: email.trim(), password })
+        : await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      if (result.error) {
+        const authMessage = result.error.message
+        if (mode === 'signup' && /already registered|already exists|user already/i.test(authMessage)) {
+          setMessage('An account with this email already exists. Please select Sign in and use your existing password.')
+        } else {
+          setMessage(authMessage)
+        }
+      } else if (mode === 'signup' && (result.data.user?.identities?.length === 0)) {
+        setMessage('An account with this email already exists. Please select Sign in and use your existing password.')
+      } else if (mode === 'signup' && !result.data.session) {
+        setMessage('Account created. Check your email to confirm your address, then sign in.')
+      } else {
+        setMessage(mode === 'signup' ? 'Account created.' : 'Signed in successfully.')
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to process your account request. Please try again.')
+    } finally {
+      setBusy(false)
+    }
   }
   const submitPayment = async (event: FormEvent) => {
     event.preventDefault()
