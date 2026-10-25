@@ -268,7 +268,9 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     } else set({ timeLeftSec: next });
   },
 
-  reset: () => set({
+  reset: () => {
+    try { localStorage.removeItem('hyperion-saved-practice'); } catch { /* storage can be unavailable */ }
+    set({
     questions: [],
     answers: {},
     currentIndex: 0,
@@ -283,7 +285,8 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     timeLeftSec: 0,
     streak: 0,
     bestStreak: 0
-  }),
+    })
+  },
 
   saveProgress: () => {
     const { questions, answers, currentIndex, track, competenceId, finished, mode, startedAt, timeLimitSec, timeLeftSec, streak, bestStreak } = get();
