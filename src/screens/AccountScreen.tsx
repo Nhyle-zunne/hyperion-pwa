@@ -116,9 +116,6 @@ export default function AccountScreen() {
     <button type="button" onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>← Back</button>
     <h1 className="page-title" style={{ textAlign: 'center' }}>Hyperion Account</h1>
     <p className="subtitle" style={{ textAlign: 'center', maxWidth: 520, margin: '0 auto 1.25rem' }}>Create an account to subscribe to individual review tracks for 12 months.</p>
-    {!supabaseConfigured && <div style={{ ...card, borderColor: 'var(--danger)' }}><strong>Supabase is not configured yet.</strong><p style={{ marginBottom: 0, color: 'var(--text-muted)' }}>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.</p></div>}
-    {params.get('payment') === 'success' && <div style={card}>Payments are verified manually. A return to this page does not grant access.</div>}
-    {message && <div role="status" style={{ ...card, lineHeight: 1.5 }}>{message}</div>}
     {!session ? <section style={{ ...card, maxWidth: 460, margin: '1.5rem auto' }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: '1rem' }}>
         <button type="button" className={mode === 'signup' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setMode('signup')} style={{ flex: 1 }}>Create account</button>
@@ -129,6 +126,9 @@ export default function AccountScreen() {
         <label style={{ display: 'block', marginTop: '1rem' }}>Password<input type="password" required minLength={8} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} style={field} /></label>
         <button type="submit" className="btn btn-primary" disabled={!supabaseConfigured || busy} style={{ width: '100%', marginTop: '1rem' }}>{busy ? 'Please wait…' : mode === 'signup' ? 'CREATE ACCOUNT' : 'SIGN IN'}</button>
       </form>
+      {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '1rem', marginBottom: 0 }}>{message}</div>}
+      {!supabaseConfigured && <div role="alert" style={{ ...card, borderColor: 'var(--danger)', marginTop: '1rem', marginBottom: 0 }}><strong>Supabase is not configured yet.</strong><p style={{ marginBottom: 0, color: 'var(--text-muted)' }}>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.</p></div>}
+      {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>Payments are verified manually. A return to this page does not grant access.</div>}
     </section> : <>
       <section style={card}>
         <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>SIGNED IN AS</div><strong style={{ overflowWrap: 'anywhere' }}>{session.user.email}</strong>
