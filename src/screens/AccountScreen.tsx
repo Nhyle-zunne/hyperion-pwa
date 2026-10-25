@@ -6,6 +6,7 @@ import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Order = { id: string; product_code: string; amount_php: number; status: string; payment_reference: string | null; created_at: string; admin_note: string | null }
+type OwnedTrack = { product_code: string; expires_at: string | null }
 export default function AccountScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -21,7 +22,7 @@ export default function AccountScreen() {
   const [instructions, setInstructions] = useState('Payment instructions are being configured. Please check back later.')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-  const [owned, setOwned] = useState<string[]>([])
+  const [owned, setOwned] = useState<OwnedTrack[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
@@ -39,13 +40,14 @@ export default function AccountScreen() {
   const refreshAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); return }
     const [entitlements, orderResult] = await Promise.all([
-      supabase.from('entitlements').select('product_code').eq('user_id', session.user.id).eq('status', 'active'),
+      supabase.from('entitlements').select('product_code,expires_at').eq('user_id', session.user.id).eq('status', 'active').gt('expires_at', new Date().toISOString()),
       supabase.from('orders').select('id,product_code,amount_php,status,payment_reference,created_at,admin_note').eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(50)
     ])
     if (entitlements.error) setMessage(entitlements.error.message)
-    else setOwned((entitlements.data ?? []).map(row => row.product_code))
+    else setOwned((entitlements.data ?? []) as OwnedTrack[])
     if (orderResult.error) setMessage(orderResult.error.message)
     else setOrders((orderResult.data ?? []) as Order[])
+    await refreshCloudEntitlements()
   }
   useEffect(() => { void refreshAccount() }, [session?.user.id])
   const submitAuth = async (event: FormEvent) => {
@@ -82,7 +84,7 @@ export default function AccountScreen() {
   return <div className="screen" style={{ paddingBottom: '2rem' }}>
     <button type="button" onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>← Back</button>
     <h1 className="page-title">Hyperion Account</h1>
-    <p className="subtitle">Create an account to submit payments and keep your purchased review tracks linked to you.</p>
+    <p className="subtitle">Create an account to subscribe to individual review tracks for 12 months.</p>
     {!supabaseConfigured && <div style={{ ...card, borderColor: 'var(--danger)' }}><strong>Supabase is not configured yet.</strong><p style={{ marginBottom: 0, color: 'var(--text-muted)' }}>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.</p></div>}
     {params.get('payment') === 'success' && <div style={card}>Payments are verified manually. A return to this page does not grant access.</div>}
     {message && <div role="status" style={{ ...card, lineHeight: 1.5 }}>{message}</div>}
@@ -106,7 +108,7 @@ export default function AccountScreen() {
       </section>
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Your purchased access</h2>
-        {owned.length ? owned.map(code => <div key={code} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>✓ {PAID_PRODUCTS.find(p => p.code === code)?.label ?? code}</div>) : <p style={{ color: 'var(--text-muted)' }}>No approved purchases are linked to this account yet.</p>}
+        {owned.length ? owned.map(item => <div key={item.product_code} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code} · expires {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>) : <p style={{ color: 'var(--text-muted)' }}>No approved purchases are linked to this account yet.</p>}
       </section>
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Manual payment instructions</h2>
@@ -114,9 +116,9 @@ export default function AccountScreen() {
       </section>
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Submit payment details</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.5 }}>After sending payment using the instructions above, submit the transaction/reference number. A screenshot link is optional. Access is granted only after admin approval.</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.5 }}>Each payment covers one individual track for 12 months. After paying, submit your transaction/reference number. A screenshot link is optional. Access starts after admin approval.</p>
         <form onSubmit={submitPayment}>
-          <label style={label}>Choose track or bundle<select value={product} onChange={e => setProduct(e.target.value)} style={field}>{PAID_PRODUCTS.map(item => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
+          <label style={label}>Choose an individual track (12-month subscription)<select value={product} onChange={e => setProduct(e.target.value)} style={field}>{PAID_PRODUCTS.map(item => <option key={item.code} value={item.code}>{item.label} · ₱{item.annualPrice}/year</option>)}</select></label>
           <label style={label}>Payment method<input required maxLength={80} placeholder="Enter the payment method" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} style={field} /></label>
           <label style={label}>Transaction/reference number<input required maxLength={160} value={reference} onChange={e => setReference(e.target.value)} style={field} /></label>
           <label style={label}>Proof of payment link (optional)<input type="url" placeholder="https://…" value={proofUrl} onChange={e => setProofUrl(e.target.value)} style={field} /></label>
