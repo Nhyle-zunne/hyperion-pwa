@@ -23,15 +23,13 @@ supabase secrets set PRICE_GMDSS_PHP=499
 supabase secrets set PRICE_ENGINE_EW_PHP=499
 supabase secrets set PRICE_DECK_MGT_PHP=799
 supabase secrets set PRICE_ENGINE_MGT_PHP=799
-# Only set this after choosing a bundle price:
-# supabase secrets set PRICE_ALL_ACCESS_PHP=YOUR_WHOLE_PESO_PRICE
 supabase functions deploy submit-manual-payment
 supabase functions deploy admin-payment-review
 ```
 
 Set `ADMIN_EMAILS` to a comma-separated list of exact account email addresses that should have admin access. The check runs server-side; hiding the dashboard button alone is not security. Sign up with the admin email and confirm the account before using the dashboard.
 
-Prices are whole Philippine pesos and stored only in Supabase Function secrets. The all-access bundle is unavailable until its price is configured.
+Prices are whole Philippine pesos and stored only in Supabase Function secrets. Only the five individual tracks are offered; the all-access bundle has been removed.
 
 ## 3. Configure the payment instructions
 
