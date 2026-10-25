@@ -1,60 +1,17 @@
 import { useNavigate } from 'react-router-dom'
-import { getDeviceCodeDisplay } from '../lib/deviceId'
 
 export default function HowToAvailScreen() {
   const navigate = useNavigate()
-
-  return (
-    <div className="screen">
-      <button
-        onClick={() => navigate(-1)}
-        style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}
-      >
-        ← Back
-      </button>
-
-      <h1 className="page-title">How to Avail a License</h1>
-      <p className="subtitle">Offline signed activation keys</p>
-
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <ol style={{ paddingLeft: '1.2rem', lineHeight: 1.7, fontSize: '0.95rem' }}>
-          <li style={{ marginBottom: '0.75rem' }}>
-            Copy your <strong>Device ID</strong> shown below.
-          </li>
-          <li style={{ marginBottom: '0.75rem' }}>
-            Contact us on Facebook and send your Device ID together with the track / plan you need.
-          </li>
-          <li style={{ marginBottom: '0.75rem' }}>
-            You will receive a signed key (starts with <code>HYPE2-</code>).
-          </li>
-          <li>
-            Open <strong>Activate Key</strong> in the app, paste the key, and activate.
-          </li>
-        </ol>
-      </div>
-
-      <div className="card" style={{ marginBottom: '1.25rem', textAlign: 'center' }}>
-        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 6 }}>
-          Your Device ID
-        </div>
-        <div style={{ fontFamily: 'monospace', fontSize: '1.15rem', letterSpacing: 1.5 }}>
-          {getDeviceCodeDisplay()}
-        </div>
-      </div>
-
-      <a
-        href="https://www.facebook.com/hyperionbynhyle/"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn btn-primary"
-        style={{ width: '100%', textAlign: 'center', marginBottom: '0.75rem' }}
-      >
-        Contact us on Facebook
-      </a>
-
-      <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => navigate('/activation')}>
-        Go to Activate Key
-      </button>
-    </div>
-  )
+  return <div className="screen">
+    <button onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '.9rem' }}>← Back</button>
+    <h1 className="page-title">How to Subscribe</h1>
+    <p className="subtitle">Purchase reviewer access through your Hyperion account.</p>
+    <div className="card"><ol style={{ paddingLeft: '1.2rem', lineHeight: 1.7 }}>
+      <li>Create a Hyperion account or sign in.</li>
+      <li>Open Account and choose Payments & profile.</li>
+      <li>Select the exam track and follow the listed annual price.</li>
+      <li>Send payment using the displayed QR code, then provide your transaction/reference number and proof as instructed.</li>
+      <li>Press Submit for Review. Access becomes available after payment is manually approved.</li>
+    </ol><button className="btn btn-primary" style={{ width: '100%' }} onClick={() => navigate('/account')}>Open Account</button></div>
+  </div>
 }
