@@ -4,14 +4,15 @@ import { supabase } from '../lib/supabase'
 
 type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; amount_php: number; status: string; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; admin_note: string | null; created_at: string }
 const names: Record<string,string> = { oic_nw:'Deck OIC-NW', gmdss:'GMDSS GOC', engine_ew:'Engine OIC-EW', deck_mgt:'Deck Management', engine_mgt:'Engine Management', all_access:'All-Access Bundle' }
+
 export default function AdminPaymentsScreen() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState<Order[]>([])
-  const [instructions, setInstructions] = useState('')
   const [note, setNote] = useState<Record<string,string>>({})
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [authorized, setAuthorized] = useState(false)
+
   const call = useCallback(async (body: Record<string,unknown>) => {
     if (!supabase) throw new Error('Supabase is not configured.')
     const { data, error } = await supabase.functions.invoke('admin-payment-review', { body })
@@ -19,51 +20,64 @@ export default function AdminPaymentsScreen() {
     if (data?.error) throw new Error(data.error)
     return data
   }, [])
+
   const load = useCallback(async () => {
     try {
       const result = await call({ action: 'list' })
       setOrders(result.orders || [])
-      const { data } = await supabase!.from('payment_settings').select('instructions').eq('id',1).maybeSingle()
-      setInstructions(data?.instructions || '')
       setAuthorized(true)
-    } catch (e) { setAuthorized(false); setMessage(e instanceof Error ? e.message : 'Unable to load admin payments.') }
+      setMessage('')
+    } catch (e) {
+      setAuthorized(false)
+      setMessage(e instanceof Error ? e.message : 'Unable to load admin payments.')
+    }
   }, [call])
+
   useEffect(() => { void load() }, [load])
+
   const review = async (orderId: string, decision: 'approve'|'reject') => {
-    setBusy(true); setMessage('')
-    try { await call({ action:'review', orderId, decision, adminNote: note[orderId] || '' }); setMessage(decision === 'approve' ? 'Payment approved and access granted.' : 'Payment rejected.'); await load() }
-    catch (e) { setMessage(e instanceof Error ? e.message : 'Review failed.') }
-    finally { setBusy(false) }
+    setBusy(true)
+    setMessage('')
+    try {
+      await call({ action:'review', orderId, decision, adminNote: note[orderId] || '' })
+      setMessage(decision === 'approve' ? 'Payment approved and access granted.' : 'Payment rejected.')
+      await load()
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : 'Review failed.')
+    } finally {
+      setBusy(false)
+    }
   }
-  const saveInstructions = async () => {
-    setBusy(true); setMessage('')
-    try { await call({ action:'instructions', instructions }); setMessage('Payment instructions saved.') }
-    catch (e) { setMessage(e instanceof Error ? e.message : 'Could not save instructions.') }
-    finally { setBusy(false) }
-  }
-  const card: React.CSSProperties = { background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, padding:'1rem', marginBottom:'1rem' }
+
+  const card: React.CSSProperties = { background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, padding:'1rem', marginBottom:'1rem', minWidth:0 }
   const field: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'.8rem', marginTop:'.4rem', background:'var(--bg-elevated)', color:'var(--text)', border:'1px solid var(--border)', borderRadius:6, font:'inherit' }
-  return <div className="screen" style={{ paddingBottom:'2rem' }}>
+
+  return <div className="screen" style={{ maxWidth:760, width:'100%', boxSizing:'border-box', margin:'0 auto', padding:'1rem 1rem 2rem', minWidth:0 }}>
     <button type="button" onClick={() => navigate('/account')} style={{ color:'var(--text-muted)', marginBottom:'1rem' }}>← Account</button>
     <h1 className="page-title">Payment Admin</h1>
-    <p className="subtitle">Only email addresses configured in the server-side ADMIN_EMAILS secret can review payments.</p>
+    <p className="subtitle">Review payment submissions and manage track access.</p>
     {message && <div role="status" style={card}>{message}</div>}
-    {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void load()}>Retry</button></section> : <>
-      <section style={card}>
-        <h2 style={{ marginTop:0 }}>Payment instructions shown to students</h2>
-        <textarea rows={6} maxLength={5000} value={instructions} onChange={e => setInstructions(e.target.value)} style={field} />
-        <button className="btn btn-primary" disabled={busy || !instructions.trim()} style={{ marginTop:'.8rem' }} onClick={() => void saveInstructions()}>Save instructions</button>
-      </section>
-      <h2>Payment submissions ({orders.length})</h2>
+    {!authorized ? <section style={card}>
+      <p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p>
+      <button className="btn btn-outline" onClick={() => void load()}>Retry</button>
+    </section> : <>
+      <h2 style={{ marginTop:0 }}>Payment submissions ({orders.length})</h2>
       {orders.length ? orders.map(order => <section key={order.id} style={card}>
-        <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'space-between', gap:8 }}><strong>{names[order.product_code] || order.product_code} · ₱{order.amount_php}</strong><strong>{order.status.toUpperCase()}</strong></div>
+        <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'space-between', gap:8 }}>
+          <strong>{names[order.product_code] || order.product_code} · ₱{order.amount_php}</strong>
+          <strong>{order.status.toUpperCase()}</strong>
+        </div>
         <p style={{ margin:'.6rem 0', overflowWrap:'anywhere' }}>{order.email}<br/>Submitted: {new Date(order.created_at).toLocaleString()}<br/>Order ID: {order.id}</p>
-        <p style={{ margin:'.4rem 0' }}>Method: {order.payment_method || 'Not provided'}<br/>Transaction reference: {order.payment_reference || 'Not provided'}</p>
+        <p style={{ margin:'.4rem 0', overflowWrap:'anywhere' }}>Method: {order.payment_method || 'Not provided'}<br/>Transaction reference: {order.payment_reference || 'Not provided'}</p>
         {order.proof_url && <p><a href={order.proof_url} target="_blank" rel="noreferrer">Open proof of payment</a></p>}
         {order.customer_note && <p>Student note: {order.customer_note}</p>}
+        {order.admin_note && <p>Previous admin note: {order.admin_note}</p>}
         {order.status !== 'paid' && order.status !== 'failed' && <>
           <label>Admin note<textarea rows={2} value={note[order.id] || ''} onChange={e => setNote(old => ({...old,[order.id]:e.target.value}))} style={field}/></label>
-          <div style={{ display:'flex', gap:8, marginTop:'.8rem' }}><button className="btn btn-primary" disabled={busy} onClick={() => void review(order.id,'approve')}>Approve & unlock</button><button className="btn btn-outline" disabled={busy} onClick={() => void review(order.id,'reject')}>Reject</button></div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:'.8rem' }}>
+            <button className="btn btn-primary" disabled={busy} onClick={() => void review(order.id,'approve')}>Approve & unlock</button>
+            <button className="btn btn-outline" disabled={busy} onClick={() => void review(order.id,'reject')}>Reject</button>
+          </div>
         </>}
       </section>) : <p>No payment submissions yet.</p>}
     </>}
