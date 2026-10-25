@@ -26,6 +26,7 @@ export default function AccountScreen() {
   const [message, setMessage] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
   const [orders, setOrders] = useState<Order[]>([])
+  const [isAdmin, setIsAdmin] = useState(false)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
   useEffect(() => {
@@ -40,12 +41,20 @@ export default function AccountScreen() {
       .then(({ data }) => { if (data?.instructions) setInstructions(data.instructions) })
   }, [])
   const refreshAccount = async () => {
-    if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); return }
+    if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); setIsAdmin(false); return }
+    let adminAccess = false
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-payment-review', { body: { action: 'check-admin' } })
+      adminAccess = !error && data?.isAdmin === true
+    } catch { adminAccess = false }
+    setIsAdmin(adminAccess)
     const [entitlements, orderResult] = await Promise.all([
       supabase.from('entitlements').select('product_code,expires_at').eq('user_id', session.user.id).eq('status', 'active').gt('expires_at', new Date().toISOString()),
       supabase.from('orders').select('id,product_code,amount_php,status,payment_reference,created_at,admin_note').eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(50)
     ])
-    if (entitlements.error) setMessage(entitlements.error.message)
+    if (adminAccess) {
+      setOwned([{ product_code: 'all_access', expires_at: null }])
+    } else if (entitlements.error) setMessage(entitlements.error.message)
     else setOwned((entitlements.data ?? []) as OwnedTrack[])
     if (orderResult.error) setMessage(orderResult.error.message)
     else setOrders((orderResult.data ?? []) as Order[])
@@ -109,9 +118,10 @@ export default function AccountScreen() {
         </div>
       </section>
       <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Your purchased access</h2>
-        {owned.length ? owned.map(item => <div key={item.product_code} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code} · expires {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>) : <p style={{ color: 'var(--text-muted)' }}>No approved purchases are linked to this account yet.</p>}
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>{isAdmin ? 'Admin access' : 'Your purchased access'}</h2>
+        {isAdmin ? <div style={{ padding: '.75rem', border: '1px solid var(--border)', borderRadius: 8 }}><strong>✓ ALL ACCESS — ADMIN</strong><p style={{ margin: '.35rem 0 0', color: 'var(--text-muted)' }}>All five review tracks are unlocked by default for this administrator account.</p><div style={{ marginTop: '.5rem' }}>{PAID_PRODUCTS.map(item => <div key={item.code}>✓ {item.label}</div>)}</div></div> : owned.length ? owned.map(item => <div key={item.product_code} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code} · expires {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>) : <p style={{ color: 'var(--text-muted)' }}>No approved purchases are linked to this account yet.</p>}
       </section>
+      {!isAdmin && <>
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Manual payment instructions</h2>
         <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{instructions}</div>
@@ -153,6 +163,7 @@ export default function AccountScreen() {
           {order.admin_note && <p style={{ marginBottom: 0 }}>Admin note: {order.admin_note}</p>}
         </div>) : <p style={{ color: 'var(--text-muted)' }}>No payment submissions yet.</p>}
       </section>
+      </>}
     </>}
   </div>
 }
