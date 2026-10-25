@@ -1,4 +1,4 @@
--- Run in Supabase SQL Editor. Manual payment review schema.
+-- Manual payment review schema with individual annual track subscriptions.
 -- Safe to rerun: creates missing tables and refreshes the relevant check constraints.
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
@@ -47,8 +47,14 @@ create table if not exists public.entitlements (
   order_id uuid not null references public.orders(id) on delete restrict,
   status text not null default 'active' check (status in ('active','revoked')),
   granted_at timestamptz not null default now(),
+  expires_at timestamptz,
+  renewed_at timestamptz,
   unique (user_id, product_code)
 );
+alter table public.entitlements add column if not exists expires_at timestamptz;
+alter table public.entitlements add column if not exists renewed_at timestamptz;
+update public.entitlements set expires_at = granted_at + interval '1 year' where expires_at is null;
+create index if not exists entitlements_active_expiry_idx on public.entitlements (user_id, expires_at) where status = 'active';
 alter table public.entitlements drop constraint if exists entitlements_product_code_check;
 alter table public.entitlements add constraint entitlements_product_code_check
   check (product_code in ('oic_nw','gmdss','engine_ew','deck_mgt','engine_mgt'));
