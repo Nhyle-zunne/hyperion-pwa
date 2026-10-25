@@ -44,6 +44,11 @@ export default function PracticeConfigScreen() {
   const [prioritizeUnseen, setPrioritizeUnseen] = useState(false)
   const [intensiveMode, setIntensiveMode] = useState(false)
   const [starting, setStarting] = useState(false)
+  const [hasSavedProgress, setHasSavedProgress] = useState(false)
+  useEffect(() => {
+    try { setHasSavedProgress(Boolean(localStorage.getItem('hyperion-saved-practice'))) }
+    catch { setHasSavedProgress(false) }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -99,6 +104,11 @@ export default function PracticeConfigScreen() {
   )
 
   return <div className="screen" style={{ padding: '0 0 2rem', color: '#f8fafc' }}>
+    {hasSavedProgress && <section className="card" style={{ marginBottom: '1rem', borderColor: 'var(--accent)' }}>
+      <strong>Saved practice session available</strong>
+      <p style={{ color: 'var(--text-muted)', margin: '.35rem 0 .75rem' }}>Continue where you left off instead of starting a new session.</p>
+      <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={() => navigate('/practice/quiz')}>Resume Saved Session</button>
+    </section>
     <button type="button" onClick={() => navigate(competenceId ? `/practice/competences?track=${trackParam}${freeMode ? '&free=1' : ''}` : `/track?track=${trackParam}`)} style={{ ...muted, marginBottom: '.8rem', padding: '.4rem 0' }}>← Back</button>
     <div style={{ ...panel, borderTop: '3px solid #00e5a0', background: 'linear-gradient(120deg,#172b31,#1e293b)', marginBottom: '1.2rem' }}>
       <div style={{ ...muted, background: '#334155', display: 'inline-block', padding: '.2rem .5rem', fontWeight: 900, letterSpacing: '.12em', fontSize: '.75rem' }}>STEP 2 OF 2 · {freeMode ? 'FREE REVIEWER' : isDrill ? 'DRILL CONFIGURATION' : 'PRACTICE ALL QUESTIONS'}</div>
