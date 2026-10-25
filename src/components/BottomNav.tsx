@@ -5,7 +5,6 @@ import AppDrawer from './AppDrawer'
 
 const items = [
   { to: '/', label: 'Dashboard', icon: '🏠' },
-  { to: '/practice', label: 'Practice', icon: '📚' },
   { to: '/history', label: 'History', icon: '📊' },
   { to: '/license', label: 'License', icon: '🔑' }
 ]
@@ -24,7 +23,7 @@ export default function BottomNav() {
             {item.label}
           </NavLink>
         ))}
-        <a className="desktop-contact-link" href={FB} target="_blank" rel="noopener noreferrer">
+        <a className="contact-link" href={FB} target="_blank" rel="noopener noreferrer">
           <span className="facebook-mark" aria-hidden="true">f</span> Contact Us
         </a>
         <div className="nav-theme-toggle"><ThemeToggle compact /></div>
