@@ -22,7 +22,6 @@ export default function AccountScreen() {
   const [company, setCompany] = useState('')
   const [school, setSchool] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
-  const [instructions, setInstructions] = useState('Payment instructions are being configured. Please check back later.')
   const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
   const qrPhImage = '/qr-ph.png'
   const [busy, setBusy] = useState(false)
@@ -51,11 +50,6 @@ export default function AccountScreen() {
       .catch(() => { if (active) setIsAdmin(false) })
     return () => { active = false }
   }, [session?.user.id])
-  useEffect(() => {
-    if (!supabase) return
-    void supabase.from('payment_settings').select('instructions').eq('id', 1).maybeSingle()
-      .then(({ data }) => { if (data?.instructions) setInstructions(data.instructions) })
-  }, [])
   const saveProfile = async () => {
     if (!supabase || !session) return
     if (!fullName.trim()) { setMessage('Please enter your full name.'); return }
