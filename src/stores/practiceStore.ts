@@ -44,6 +44,8 @@ interface PracticeState {
   tick: () => void;
   reset: () => void;
   score: () => { correct: number; total: number; percent: number };
+  saveProgress: () => void;
+  restoreSavedProgress: () => boolean;
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -282,6 +284,25 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     streak: 0,
     bestStreak: 0
   }),
+
+  saveProgress: () => {
+    const { questions, answers, currentIndex, track, competenceId, finished, mode, startedAt, timeLimitSec, timeLeftSec, streak, bestStreak } = get();
+    if (!questions.length || !track) return;
+    try {
+      localStorage.setItem('hyperion-saved-practice', JSON.stringify({ questions, answers, currentIndex, track, competenceId, finished, mode, startedAt, timeLimitSec, timeLeftSec, streak, bestStreak }));
+    } catch { /* storage can be unavailable */ }
+  },
+
+  restoreSavedProgress: () => {
+    try {
+      const raw = localStorage.getItem('hyperion-saved-practice');
+      if (!raw) return false;
+      const saved = JSON.parse(raw);
+      if (!Array.isArray(saved.questions) || !saved.questions.length || !saved.track) return false;
+      set({ ...saved, loading: false, error: null, currentIndex: Math.min(Math.max(0, saved.currentIndex || 0), saved.questions.length - 1) });
+      return true;
+    } catch { return false; }
+  },
 
   score: () => {
     const { questions, answers } = get();
