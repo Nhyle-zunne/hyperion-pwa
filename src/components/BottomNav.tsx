@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
+import AppDrawer from './AppDrawer'
 
 const items = [
   { to: '/', label: 'Dashboard', icon: '🏠' },
@@ -7,49 +9,26 @@ const items = [
   { to: '/history', label: 'History', icon: '📊' },
   { to: '/license', label: 'License', icon: '🔑' }
 ]
+const FB = 'https://www.facebook.com/hyperionbynhyle/'
 
 export default function BottomNav() {
+  const [drawerOpen, setDrawerOpen] = useState(false)
   return (
-    <nav
-      className="app-bottom-nav"
-      style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        background: 'var(--bg-card)',
-        borderTop: '1px solid var(--border)',
-        display: 'flex',
-        justifyContent: 'space-around',
-        alignItems: 'center',
-        padding: '0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom))',
-        zIndex: 100
-      }}
-    >
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.to === '/'}
-          className={({ isActive }) => (isActive ? 'active' : '')}
-          style={({ isActive }) => ({
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 2,
-            fontSize: '0.7rem',
-            color: isActive ? 'var(--accent)' : 'var(--text-muted)',
-            textDecoration: 'none',
-            minWidth: 52
-          })}
-        >
-          <span style={{ fontSize: '1.25rem' }}>{item.icon}</span>
-          {item.label}
-        </NavLink>
-      ))}
-      <div style={{ display: 'flex', alignItems: 'center', minWidth: 52, justifyContent: 'center' }}>
-        <ThemeToggle compact />
-      </div>
-    </nav>
+    <>
+      <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <nav className="app-bottom-nav" aria-label="Main navigation">
+        <button type="button" className="desktop-menu-button" onClick={() => setDrawerOpen(true)} aria-label="Open app menu">☰</button>
+        {items.map((item) => (
+          <NavLink key={item.to} to={item.to} end={item.to === '/'} className={({ isActive }) => (isActive ? 'active' : '')}>
+            <span aria-hidden="true">{item.icon}</span>
+            {item.label}
+          </NavLink>
+        ))}
+        <a className="desktop-contact-link" href={FB} target="_blank" rel="noopener noreferrer">
+          <span className="facebook-mark" aria-hidden="true">f</span> Contact Us
+        </a>
+        <div className="nav-theme-toggle"><ThemeToggle compact /></div>
+      </nav>
+    </>
   )
 }
