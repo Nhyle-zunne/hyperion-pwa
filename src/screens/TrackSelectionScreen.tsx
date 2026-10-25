@@ -93,7 +93,7 @@ export default function TrackSelectionScreen() {
     }
   })
 
-  const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
+  const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked || s.cloudTrackIds.includes('ALL'))
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
   const segments = useStudyTimeStore((s) => s.segments)
   const vaultCount = useVaultStore((s) => s.items.length)
