@@ -895,3 +895,74 @@ a:focus-visible,
     flex: 0 0 auto !important;
   }
 }
+
+
+/* Explicit light palette for practice competence directory and configuration. */
+[data-theme='light'] .practice-competence-screen,
+[data-theme='light'] .practice-config-screen {
+  color: var(--text) !important;
+}
+[data-theme='light'] .practice-competence-screen .card,
+[data-theme='light'] .practice-competence-screen button.card {
+  background: var(--bg-card) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+[data-theme='light'] .practice-competence-screen button.card strong,
+[data-theme='light'] .practice-competence-screen h1,
+[data-theme='light'] .practice-competence-screen h2 {
+  color: var(--text) !important;
+}
+[data-theme='light'] .practice-competence-screen button.card span[style*="color"] {
+  color: var(--text-muted) !important;
+}
+[data-theme='light'] .practice-competence-screen button.card > span:first-child {
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+}
+[data-theme='light'] .practice-competence-screen > .card:first-of-type {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+  border-top-color: var(--accent) !important;
+}
+[data-theme='light'] .practice-competence-screen > .card:first-of-type p {
+  color: var(--text-muted) !important;
+}
+[data-theme='light'] .practice-config-screen > section,
+[data-theme='light'] .practice-config-screen > div,
+[data-theme='light'] .practice-config-screen section {
+  background-color: var(--bg-card) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+[data-theme='light'] .practice-config-screen section[style*="linear-gradient"],
+[data-theme='light'] .practice-config-screen > div[style*="linear-gradient"] {
+  background: var(--bg-elevated) !important;
+}
+[data-theme='light'] .practice-config-screen h1,
+[data-theme='light'] .practice-config-screen h2,
+[data-theme='light'] .practice-config-screen strong,
+[data-theme='light'] .practice-config-screen section div {
+  color: var(--text) !important;
+}
+[data-theme='light'] .practice-config-screen p,
+[data-theme='light'] .practice-config-screen label,
+[data-theme='light'] .practice-config-screen section span,
+[data-theme='light'] .practice-config-screen section div[style*="color"] {
+  color: var(--text-muted) !important;
+}
+[data-theme='light'] .practice-config-screen select,
+[data-theme='light'] .practice-config-screen input[type="number"],
+[data-theme='light'] .practice-config-screen button:not([role="switch"]) {
+  background-color: var(--bg-elevated);
+  color: var(--text);
+  border-color: var(--border);
+}
+[data-theme='light'] .practice-config-screen button[role="switch"] {
+  color: #fff !important;
+}
+[data-theme='light'] .practice-config-screen button[style*="background: rgb(34, 197, 94)"],
+[data-theme='light'] .practice-config-screen button[style*="#22c55e"] {
+  background-color: var(--accent) !important;
+  color: #fff !important;
+}
