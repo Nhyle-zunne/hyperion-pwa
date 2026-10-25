@@ -28,10 +28,12 @@ import BottomNav from './components/BottomNav'
 import { useUIStore } from './stores/uiStore'
 import { usePracticeStore } from './stores/practiceStore'
 import { useBookmarksStore } from './stores/bookmarksStore'
+import { supabase } from './lib/supabase'
 import { useState } from 'react'
 
 export default function App() {
   const checkLicenseStatus = useLicenseStore((s) => s.checkLicenseStatus)
+  const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
   const showPaywall = useUIStore((s) => s.showPaywall)
   const location = useLocation()
   const navigate = useNavigate()
@@ -55,9 +57,11 @@ export default function App() {
 
   useEffect(() => {
     checkLicenseStatus()
+    void refreshCloudEntitlements()
     const interval = setInterval(checkLicenseStatus, 60_000)
-    return () => clearInterval(interval)
-  }, [checkLicenseStatus])
+    const authListener = supabase?.auth.onAuthStateChange(() => { void refreshCloudEntitlements() })
+    return () => { clearInterval(interval); authListener?.data.subscription.unsubscribe() }
+  }, [checkLicenseStatus, refreshCloudEntitlements])
 
   const isPracticeQuiz = location.pathname === '/practice/quiz'
   const isMockRunner = location.pathname === '/mock/exam'
