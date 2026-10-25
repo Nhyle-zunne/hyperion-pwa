@@ -318,3 +318,26 @@
     padding: 0.55rem;
   }
 }
+
+/* Rounded Hyperion cards, consistently across phone, tablet and desktop. */
+.track-hub-screen .hub-hero,
+.track-hub-screen .hub-stats,
+.track-hub-screen .hub-mode-card {
+  border-radius: 16px;
+}
+.track-hub-screen .hub-mode-card {
+  border-top-width: 2px;
+}
+.track-hub-screen .hub-regulation,
+.track-hub-screen .hub-terminal,
+.track-hub-screen .hub-meta span,
+.track-hub-screen .hub-mode-icon,
+.track-hub-screen .hub-mode-badge {
+  border-radius: 8px;
+}
+.track-hub-screen .hub-mode-icon {
+  border-width: 0;
+}
+.track-hub-screen .hub-activate {
+  border-radius: 12px;
+}
