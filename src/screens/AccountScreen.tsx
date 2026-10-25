@@ -14,7 +14,7 @@ export default function AccountScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [mode, setMode] = useState<'signin' | 'signup'>('signup')
-  const [accountTab, setAccountTab] = useState<'licenses' | 'payments'>('licenses')
+  const [accountTab, setAccountTab] = useState<'licenses' | 'payments'>('payments')
   const [product, setProduct] = useState('oic_nw')
   const paymentMethod = 'QR Ph (MariBank / InstaPay)'
   const [reference, setReference] = useState('')
