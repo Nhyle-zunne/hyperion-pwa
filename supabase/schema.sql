@@ -37,7 +37,7 @@ alter table public.orders add constraint orders_track_id_check
   check (track_id in ('DECK_OIC_NW','GMDSS_GOC','ENGINE_OIC_EW','DECK_MGT','ENGINE_MGT'));
 alter table public.orders drop constraint if exists orders_status_check;
 alter table public.orders add constraint orders_status_check
-  check (status in ('pending','submitted','paid','failed','refunded'));
+  check (status in ('pending','submitted','paid','failed','refunded','cancelled'));
 
 create table if not exists public.entitlements (
   id uuid primary key default gen_random_uuid(),
