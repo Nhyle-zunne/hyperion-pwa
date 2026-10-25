@@ -168,9 +168,12 @@ export default function TrackHubScreen() {
 
   return (
     <div className="screen track-hub-screen">
-      <button className="hub-back" onClick={() => navigate('/tracks')}>
-        <span aria-hidden="true">←</span> Tracks
-      </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <button className="hub-back" onClick={() => navigate('/tracks')}>
+          <span aria-hidden="true">←</span> Tracks
+        </button>
+        <button type="button" className="btn btn-outline" onClick={() => navigate('/account')}>Account / Purchases</button>
+      </div>
 
       <section className="hub-hero" aria-label="Track information">
         <div className="hub-hero-top">

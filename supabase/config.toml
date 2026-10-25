@@ -1,0 +1,5 @@
+[functions.submit-manual-payment]
+verify_jwt = true
+
+[functions.admin-payment-review]
+verify_jwt = true

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { isSignedFormat, verifyDetailed } from '../lib/signedLicenseVerifier';
 import { getDeviceToken } from '../lib/deviceId';
+import { supabase } from '../lib/supabase';
 
 export type ProTierCode = 'ALL' | 'OIC' | 'GOC' | 'EW' | 'DM' | 'EM';
 
@@ -32,6 +33,7 @@ interface LicenseState {
   lastVerifiedEpoch: number;
   highWaterMarkEpoch: number;
   clockTampered: boolean;
+  cloudTrackIds: string[];
 
   // Actions
   activateKey: (rawKey: string) => Promise<UnlockResult>;
@@ -39,6 +41,7 @@ interface LicenseState {
   isTrackUnlocked: (track: string) => boolean;
   getRemainingLabel: () => string;
   clearLicense: () => void;
+  refreshCloudEntitlements: () => Promise<void>;
 }
 
 function computeEffectiveNow(info: OfflineLicenseInfo | null, highWater: number): number {
@@ -84,6 +87,15 @@ export const useLicenseStore = create<LicenseState>()(
       lastVerifiedEpoch: 0,
       highWaterMarkEpoch: 0,
       clockTampered: false,
+      cloudTrackIds: [],
+
+      refreshCloudEntitlements: async () => {
+        if (!supabase) { set({ cloudTrackIds: [] }); return; }
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) { set({ cloudTrackIds: [] }); return; }
+        const { data, error } = await supabase.from('entitlements').select('track_id').eq('user_id', session.user.id).eq('status', 'active').gt('expires_at', new Date().toISOString());
+        set({ cloudTrackIds: error ? [] : Array.from(new Set((data ?? []).map(row => row.track_id))) });
+      },
 
       activateKey: async (rawKey: string) => {
         const clean = rawKey.trim().toUpperCase().replace(/\s+/g, '');
@@ -219,26 +231,26 @@ export const useLicenseStore = create<LicenseState>()(
 
       isTrackUnlocked: (track: string) => {
         const s = get();
-        if (s.isAllAccessUnlocked) return true;
+        if (s.isAllAccessUnlocked || s.cloudTrackIds.includes('ALL')) return true;
         const t = track.toUpperCase();
         // Exact ids first (track ids and plan codes), so e.g. ENGINE_OIC_EW is never read as OIC.
         switch (t) {
           case 'DECK_OIC_NW':
           case 'OIC':
-            return s.isOicNwUnlocked;
+            return s.isOicNwUnlocked || s.cloudTrackIds.includes('DECK_OIC_NW');
           case 'GMDSS_GOC':
           case 'GOC':
           case 'GMDSS':
-            return s.isGmdssUnlocked;
+            return s.isGmdssUnlocked || s.cloudTrackIds.includes('GMDSS_GOC');
           case 'ENGINE_OIC_EW':
           case 'EW':
-            return s.isEngineEwUnlocked;
+            return s.isEngineEwUnlocked || s.cloudTrackIds.includes('ENGINE_OIC_EW');
           case 'DECK_MGT':
           case 'DM':
-            return s.isDeckMgtUnlocked;
+            return s.isDeckMgtUnlocked || s.cloudTrackIds.includes('DECK_MGT');
           case 'ENGINE_MGT':
           case 'EM':
-            return s.isEngineMgtUnlocked;
+            return s.isEngineMgtUnlocked || s.cloudTrackIds.includes('ENGINE_MGT');
           default:
             return false;
         }
