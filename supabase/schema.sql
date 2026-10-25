@@ -17,6 +17,17 @@ create table if not exists public.orders (
   created_at timestamptz not null default now(),
   paid_at timestamptz
 );
+-- Additive migration for projects where the earlier PayMongo schema was already applied.
+alter table public.orders add column if not exists payment_reference text;
+alter table public.orders add column if not exists payment_method text;
+alter table public.orders add column if not exists proof_url text;
+alter table public.orders add column if not exists customer_note text;
+alter table public.orders add column if not exists admin_note text;
+alter table public.orders add column if not exists reviewed_by text;
+alter table public.orders add column if not exists reviewed_at timestamptz;
+alter table public.orders drop constraint if exists orders_status_check;
+alter table public.orders add constraint orders_status_check check (status in ('pending','submitted','paid','failed','refunded'));
+
 create table if not exists public.entitlements (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
