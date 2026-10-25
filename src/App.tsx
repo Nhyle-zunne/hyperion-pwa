@@ -6,6 +6,7 @@ import ActivationScreen from './screens/ActivationScreen'
 import LicenseScreen from './screens/LicenseScreen'
 import TrackSelectionScreen from './screens/TrackSelectionScreen'
 import AccountScreen from './screens/AccountScreen'
+import AdminPaymentsScreen from './screens/AdminPaymentsScreen'
 import TrackHubScreen from './screens/TrackHubScreen'
 import HowToAvailScreen from './screens/HowToAvailScreen'
 import AboutScreen from './screens/AboutScreen'
@@ -139,6 +140,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<TrackSelectionScreen />} />
           <Route path="/account" element={<AccountScreen />} />
+          <Route path="/admin/payments" element={<AdminPaymentsScreen />} />
           <Route path="/tracks" element={<TrackSelectionScreen />} />
           <Route path="/track" element={<TrackHubScreen />} />
           <Route path="/home" element={<HomeScreen />} />
