@@ -20,8 +20,7 @@ export default function TermsScreen() {
           for verifying all content against official sources.
         </p>
         <p style={{ marginBottom: '1rem' }}>
-          Offline activation keys are device-bound and non-transferable. Sharing, reselling, or reverse-engineering
-          keys or the application is prohibited.
+          Paid review access is linked to your Hyperion account and is available only while the relevant subscription is active. Do not share account credentials or attempt to bypass access controls.
         </p>
         <p style={{ marginBottom: '1rem' }}>
           For license inquiries or support, contact us on Facebook:{' '}
