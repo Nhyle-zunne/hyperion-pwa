@@ -45,9 +45,9 @@ Deno.serve(async (req) => {
   const paymentAttrs = payment.attributes
   if (paymentAttrs.currency !== 'PHP' || Number(paymentAttrs.amount) !== order.amount_php * 100) return new Response('Payment amount mismatch', { status: 400 })
 
-  const { error: updateError } = await admin.from('orders').update({ status: 'paid', paymongo_payment_id: payment.id, paid_at: new Date().toISOString() }).eq('id', order.id).neq('status', 'paid')
-  if (updateError) return new Response('Could not update order', { status: 500 })
   const { error: entitlementError } = await admin.from('entitlements').upsert({ user_id: order.user_id, product_code: order.product_code, track_id: order.track_id, order_id: order.id, status: 'active' }, { onConflict: 'user_id,product_code' })
   if (entitlementError) return new Response('Could not grant entitlement', { status: 500 })
+  const { error: updateError } = await admin.from('orders').update({ status: 'paid', paymongo_payment_id: payment.id, paid_at: new Date().toISOString() }).eq('id', order.id).neq('status', 'paid')
+  if (updateError) return new Response('Could not update order', { status: 500 })
   return Response.json({ received: true })
 })
