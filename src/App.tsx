@@ -33,7 +33,6 @@ export default function App() {
   const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
   const showPaywall = useUIStore((s) => s.showPaywall)
   const location = useLocation()
-  const navigate = useNavigate()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
@@ -61,7 +60,6 @@ export default function App() {
   const isPracticeQuiz = location.pathname === '/practice/quiz'
   const isMockRunner = location.pathname === '/mock/exam'
   const isQuestionRunner = isPracticeQuiz || isMockRunner
-  const backTarget = isMockRunner ? '/mock' : '/practice'
 
   const hideNav = [
     '/terms',
