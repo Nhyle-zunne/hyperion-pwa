@@ -27,7 +27,7 @@ export default function AboutScreen() {
           <li>Engine Management Level</li>
         </ul>
         <p>
-          This Progressive Web App version uses offline signed activation keys. No Google Play purchases.
+          This Progressive Web App uses account-based subscriptions. Purchase requests are reviewed manually, and approved subscriptions are linked to your Hyperion account.
         </p>
       </div>
 
