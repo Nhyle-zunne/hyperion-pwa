@@ -59,7 +59,7 @@ export default function App() {
     checkLicenseStatus()
     void refreshCloudEntitlements()
     const interval = setInterval(checkLicenseStatus, 60_000)
-    const authListener = supabase?.auth.onAuthStateChange(() => { void refreshCloudEntitlements() })
+    const authListener = supabase?.auth.onAuthStateChange(() => { window.setTimeout(() => { void refreshCloudEntitlements() }, 0) })
     return () => { clearInterval(interval); authListener?.data.subscription.unsubscribe() }
   }, [checkLicenseStatus, refreshCloudEntitlements])
 
