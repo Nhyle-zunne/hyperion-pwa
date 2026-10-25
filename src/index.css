@@ -1250,3 +1250,22 @@ a:focus-visible,
   .app-bottom-nav > a { font-size: .55rem !important; }
   .app-bottom-nav .nav-theme-toggle { flex-basis: 38px !important; min-width: 38px !important; }
 }
+
+
+/* Responsive navigation: keep the app drawer available on touch devices too. */
+@media (max-width: 899px) {
+  .app-bottom-nav .desktop-menu-button {
+    display: inline-flex !important;
+    flex: 0 0 38px !important;
+    width: 38px !important;
+    height: 38px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    background: var(--bg-elevated) !important;
+    color: var(--text) !important;
+    font-size: 1.25rem !important;
+  }
+  .app-bottom-nav > a[href="/practice"] { display: none !important; }
+}
