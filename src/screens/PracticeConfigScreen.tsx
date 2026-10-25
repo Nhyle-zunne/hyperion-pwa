@@ -103,7 +103,7 @@ export default function PracticeConfigScreen() {
     </div>
   )
 
-  return <div className="screen" style={{ padding: '0 0 2rem', color: '#f8fafc' }}>
+  return <div className="screen practice-config-screen" style={{ padding: '0 0 2rem', color: '#f8fafc' }}>
     {hasSavedProgress && <section className="card" style={{ marginBottom: '1rem', borderColor: 'var(--accent)' }}>
       <strong>Saved practice session available</strong>
       <p style={{ color: 'var(--text-muted)', margin: '.35rem 0 .75rem' }}>Continue where you left off instead of starting a new session.</p>
