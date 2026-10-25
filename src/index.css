@@ -808,3 +808,90 @@ a:focus-visible,
 [data-theme='light'] .screen:has(input[type="range"]) [style*="#00e5a0"] { color:var(--accent)!important; }
 [data-theme='light'] .screen:has(input[type="range"]) button[style*="background: rgb(74, 222, 128)"],
 [data-theme='light'] .screen:has(input[type="range"]) button[style*="#4ade80"] { background:var(--accent)!important; color:#fff!important; }
+
+
+/* Final desktop app-bar correction: keep all primary navigation in one horizontal row. */
+@media (min-width: 900px) {
+  .app-bottom-nav {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    position: sticky !important;
+    top: 0 !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100% !important;
+    min-height: 68px !important;
+    padding: .65rem clamp(1.25rem, 3vw, 3rem) !important;
+    gap: .5rem !important;
+    background: var(--bg-card) !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--border) !important;
+    z-index: 150 !important;
+    order: -1 !important;
+  }
+
+  .app-bottom-nav .desktop-menu-button {
+    display: inline-flex !important;
+    flex: 0 0 42px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 42px !important;
+    height: 42px !important;
+    margin: 0 .5rem 0 0 !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    background: var(--bg-elevated) !important;
+    color: var(--text) !important;
+    font-size: 1.35rem !important;
+  }
+
+  .app-bottom-nav > a:not(.desktop-contact-link) {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: .55rem !important;
+    min-width: auto !important;
+    padding: .65rem .85rem !important;
+    border-radius: 9px !important;
+    color: var(--text-muted) !important;
+    font-size: .9rem !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+  }
+
+  .app-bottom-nav > a.active {
+    background: var(--accent-soft) !important;
+    color: var(--accent) !important;
+  }
+
+  .app-bottom-nav > a[href="/practice"] {
+    display: none !important;
+  }
+
+  .app-bottom-nav > .desktop-contact-link {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: .55rem !important;
+    margin-left: 0 !important;
+    padding: .65rem .85rem !important;
+    color: var(--text-muted) !important;
+    font-size: .9rem !important;
+    font-weight: 700 !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+  }
+
+  .app-bottom-nav .nav-theme-toggle {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin-left: auto !important;
+    flex: 0 0 auto !important;
+  }
+}
