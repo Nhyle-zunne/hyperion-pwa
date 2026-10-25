@@ -7,7 +7,7 @@ export default function PaywallDialog() {
 
   const goActivate = () => {
     closePaywall()
-    navigate('/activation')
+    navigate('/account')
   }
 
   return (
@@ -29,13 +29,13 @@ export default function PaywallDialog() {
         style={{ maxWidth: 360, width: '100%' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 style={{ fontSize: '1.2rem', marginBottom: '0.75rem' }}>License Required</h2>
+        <h2 style={{ fontSize: '1.2rem', marginBottom: '0.75rem' }}>Subscription Required</h2>
         <p style={{ color: 'var(--text-muted)', marginBottom: '1.25rem', fontSize: '0.95rem' }}>
-          An active license is required to access {paywallFeature}. Activate an offline key to unlock.
+          An active account subscription is required to access {paywallFeature}. Sign in to your account or visit Account to purchase access.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
           <button className="btn btn-primary" onClick={goActivate}>
-            ACTIVATE KEY
+            GO TO ACCOUNT
           </button>
           <button className="btn btn-outline" onClick={closePaywall}>
             Cancel
