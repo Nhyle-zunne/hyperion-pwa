@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
@@ -18,8 +19,30 @@ export default function PracticeQuizScreen() {
     next,
     prev,
     score,
-    reset
+    reset,
+    saveProgress,
+    restoreSavedProgress
   } = usePracticeStore()
+  const [showExitDialog, setShowExitDialog] = useState(false)
+
+  useEffect(() => {
+    if (questions.length === 0) restoreSavedProgress()
+  }, [])
+
+  useEffect(() => {
+    const requestExit = () => setShowExitDialog(true)
+    window.addEventListener('hyperion:request-exit-practice', requestExit)
+    const trapBack = () => {
+      window.history.pushState({ hyperionPractice: true }, '')
+      setShowExitDialog(true)
+    }
+    window.history.pushState({ hyperionPractice: true }, '')
+    window.addEventListener('popstate', trapBack)
+    return () => {
+      window.removeEventListener('hyperion:request-exit-practice', requestExit)
+      window.removeEventListener('popstate', trapBack)
+    }
+  }, [])
   const toggleBookmark = useBookmarksStore((s) => s.toggle)
   const isBookmarked = useBookmarksStore((s) => s.isBookmarked)
 
@@ -113,6 +136,17 @@ export default function PracticeQuizScreen() {
 
   return (
     <div className="screen" style={{ paddingBottom: '6rem' }}>
+      {showExitDialog && (
+        <div className="exit-dialog-backdrop" role="presentation">
+          <section className="exit-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-practice-title">
+            <h2 id="exit-practice-title">Save your progress?</h2>
+            <p>Your current question and answers will be saved so you can continue reviewing later.</p>
+            <button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => { saveProgress(); setShowExitDialog(false); navigate('/practice') }}>Save Progress &amp; Exit</button>
+            <button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => setShowExitDialog(false)}>Continue Reviewing</button>
+            <button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => { reset(); setShowExitDialog(false); navigate('/tracks') }}>Exit Without Saving</button>
+          </section>
+        </div>
+      )}
       <div
         style={{
           display: 'flex',
