@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
+import LicenseScreen from './LicenseScreen'
 
 type Order = { id: string; product_code: string; amount_php: number; status: string; payment_reference: string | null; created_at: string; admin_note: string | null }
 type OwnedTrack = { product_code: string; expires_at: string | null }
@@ -14,6 +15,7 @@ export default function AccountScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [mode, setMode] = useState<'signin' | 'signup'>('signup')
+  const [accountTab, setAccountTab] = useState<'licenses' | 'payments'>('licenses')
   const [product, setProduct] = useState('oic_nw')
   const paymentMethod = 'QR Ph (MariBank / InstaPay)'
   const [reference, setReference] = useState('')
@@ -154,6 +156,15 @@ export default function AccountScreen() {
       {!supabaseConfigured && <div role="alert" style={{ ...card, borderColor: 'var(--danger)', marginTop: '1rem', marginBottom: 0 }}><strong>Supabase is not configured yet.</strong><p style={{ marginBottom: 0, color: 'var(--text-muted)' }}>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.</p></div>}
       {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>Payments are verified manually. A return to this page does not grant access.</div>}
     </section> : <>
+      <div role="tablist" aria-label="Account sections" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: '1rem' }}>
+        <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>Active licenses</button>
+        <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>Payments & profile</button>
+      </div>
+      {accountTab === 'licenses' ? <section style={card}>
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Active licenses</h2>
+        {owned.length ? owned.map(item => <div key={item.product_code} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code} · expires {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>) : <p style={{ color: 'var(--text-muted)' }}>No approved subscriptions are linked to this account yet.</p>}
+        <div style={{ marginTop: '1rem' }}><LicenseScreen hideBack /></div>
+      </section> : <>
       <section style={card}>
         <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>SIGNED IN AS</div><strong style={{ overflowWrap: 'anywhere' }}>{session.user.email}</strong>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: '.8rem' }}>
@@ -223,6 +234,7 @@ export default function AccountScreen() {
           {order.admin_note && <p style={{ marginBottom: 0 }}>Admin note: {order.admin_note}</p>}
         </div>) : <p style={{ color: 'var(--text-muted)' }}>No payment submissions yet.</p>}
       </section>
+      </>}
     </>}
   </div>
 }
