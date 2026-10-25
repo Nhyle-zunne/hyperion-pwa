@@ -18,6 +18,10 @@ export default function AccountScreen() {
   const paymentMethod = 'QR Ph (MariBank / InstaPay)'
   const [reference, setReference] = useState('')
   const [note, setNote] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [company, setCompany] = useState('')
+  const [school, setSchool] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
   const [instructions, setInstructions] = useState('Payment instructions are being configured. Please check back later.')
   const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
   const qrPhImage = '/qr-ph.png'
@@ -34,10 +38,36 @@ export default function AccountScreen() {
     return () => listener.subscription.unsubscribe()
   }, [])
   useEffect(() => {
+    const metadata = session?.user.user_metadata ?? {}
+    setFullName(typeof metadata.full_name === 'string' ? metadata.full_name : '')
+    setCompany(typeof metadata.company === 'string' ? metadata.company : '')
+    setSchool(typeof metadata.school === 'string' ? metadata.school : '')
+  }, [session?.user.id])
+  useEffect(() => {
+    if (!supabase || !session) { setIsAdmin(false); return }
+    let active = true
+    void supabase.functions.invoke('admin-payment-review', { body: { action: 'list' } })
+      .then(({ data, error }) => { if (active) setIsAdmin(!error && !data?.error && Array.isArray(data?.orders)) })
+      .catch(() => { if (active) setIsAdmin(false) })
+    return () => { active = false }
+  }, [session?.user.id])
+  useEffect(() => {
     if (!supabase) return
     void supabase.from('payment_settings').select('instructions').eq('id', 1).maybeSingle()
       .then(({ data }) => { if (data?.instructions) setInstructions(data.instructions) })
   }, [])
+  const saveProfile = async () => {
+    if (!supabase || !session) return
+    if (!fullName.trim()) { setMessage('Please enter your full name.'); return }
+    setBusy(true); setMessage('Saving your profile…')
+    try {
+      const { data, error } = await supabase.auth.updateUser({ data: { full_name: fullName.trim(), company: company.trim(), school: school.trim() } })
+      if (error) throw error
+      if (data.user) setSession(current => current ? { ...current, user: data.user! } : current)
+      setMessage('Profile details saved.')
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not save profile details.') }
+    finally { setBusy(false) }
+  }
   const refreshAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); return }
     const [entitlements, orderResult] = await Promise.all([
@@ -133,17 +163,31 @@ export default function AccountScreen() {
       <section style={card}>
         <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>SIGNED IN AS</div><strong style={{ overflowWrap: 'anywhere' }}>{session.user.email}</strong>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: '.8rem' }}>
-          <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/payments')}>Admin dashboard</button>
+          {isAdmin && <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/payments')}>Admin dashboard</button>}
           <button type="button" className="btn btn-outline" onClick={async () => { await supabase?.auth.signOut(); setMessage('Signed out.') }}>Sign out</button>
         </div>
+      </section>
+      <section style={card}>
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Your profile</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.5 }}>Please provide your full name. Company and school are optional. These details may be displayed on our page when you pass the MARINA Licensure Examination.</p>
+        <label style={label}>Full name<input required maxLength={160} value={fullName} onChange={e => setFullName(e.target.value)} style={field} /></label>
+        <label style={label}>Company (optional)<input maxLength={160} value={company} onChange={e => setCompany(e.target.value)} style={field} /></label>
+        <label style={label}>School (optional)<input maxLength={160} value={school} onChange={e => setSchool(e.target.value)} style={field} /></label>
+        <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim()} onClick={() => void saveProfile()} style={{ width: '100%', marginTop: '1rem' }}>{busy ? 'Please wait…' : 'SAVE PROFILE'}</button>
       </section>
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Your purchased access</h2>
         {owned.length ? owned.map(item => <div key={item.product_code} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code} · expires {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>) : <p style={{ color: 'var(--text-muted)' }}>No approved purchases are linked to this account yet.</p>}
       </section>
       <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Manual payment instructions</h2>
-        <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{instructions}</div>
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Payment Instructions</h2>
+        <ol style={{ paddingLeft: '1.3rem', lineHeight: 1.65, marginBottom: 0 }}>
+          <li>Select the exam/reviewer track you want to purchase from the dropdown below.</li>
+          <li>Scan the QR Ph code and send the exact amount for your selected track. Each payment covers one track for 12 months. Prices: {PAID_PRODUCTS.map((item, index) => <span key={item.code}>{index > 0 ? '; ' : ''}{item.label} ₱{item.annualPrice}/year</span>)}. Double-check the amount before confirming your transfer.</li>
+          <li>After paying, enter your transaction/reference number in the field below. Then tap <strong>Send Proof to Our Facebook Page</strong> and send a screenshot of your payment in Messenger.</li>
+          <li>Use the Additional notes field if you need to explain anything about your payment or proof of purchase.</li>
+          <li>Finally, click <strong>SUBMIT FOR REVIEW</strong>. Your payment will not be sent for review unless you click this button. Access is granted only after manual verification.</li>
+        </ol>
       </section>
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Submit payment details</h2>
