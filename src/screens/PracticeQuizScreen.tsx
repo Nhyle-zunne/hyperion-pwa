@@ -170,7 +170,7 @@ export default function PracticeQuizScreen() {
           <div style={{fontSize:'0.82rem',color:'var(--accent)',fontWeight:700}}>{q.track} · {q.competenceId}</div>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:2}}>
-          <button className="btn btn-outline" style={{padding:'0.5rem',minWidth:38}} onClick={() => toggleBookmark(q)} aria-label="Bookmark question" title="Bookmark">{bookmarked ? '🔖' : '♧'}</button>
+          <button className="btn btn-outline" style={{padding:'0.5rem',minWidth:38}} onClick={() => toggleBookmark(q.id)} aria-label="Bookmark question" title="Bookmark">{bookmarked ? '🔖' : '♧'}</button>
           <button className="btn btn-outline" style={{padding:'0.5rem',minWidth:38}} onClick={() => setSettingsOpen(v => !v)} aria-label="Display settings" title="Display settings">⚙</button>
         </div>
       </header>
