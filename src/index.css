@@ -704,30 +704,30 @@ a:focus-visible,
 
 /* Practice configuration uses inline styling to preserve the dark native look.
    Override only its dark surfaces when the app is explicitly in light mode. */
-[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) {
+[data-theme='light'] .screen:has(input[type="range"]) {
   color: var(--text) !important;
 }
-[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) > div,
-[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) section {
+[data-theme='light'] .screen:has(input[type="range"]) > div,
+[data-theme='light'] .screen:has(input[type="range"]) section {
   background: var(--bg-card) !important;
   border-color: var(--border) !important;
   color: var(--text) !important;
 }
-[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) section:first-of-type {
+[data-theme='light'] .screen:has(input[type="range"]) section:first-of-type {
   background: var(--bg-elevated) !important;
 }
-[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) select,
-[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) input[type="number"] {
+[data-theme='light'] .screen:has(input[type="range"]) select,
+[data-theme='light'] .screen:has(input[type="range"]) input[type="number"] {
   background: var(--bg-elevated) !important;
   color: var(--text) !important;
   border-color: var(--border) !important;
 }
-[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) button[role="switch"],
-[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) section button {
+[data-theme='light'] .screen:has(input[type="range"]) button[role="switch"],
+[data-theme='light'] .screen:has(input[type="range"]) section button {
   color: var(--text) !important;
 }
-[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) section button[style*="background: rgb(34, 197, 94)"],
-[data-theme='light'] .screen:has(select[aria-label="GMDSS question part"]) > button:last-child {
+[data-theme='light'] .screen:has(input[type="range"]) section button[style*="background: rgb(34, 197, 94)"],
+[data-theme='light'] .screen:has(input[type="range"]) > button:last-child {
   color: #ffffff !important;
 }
 
