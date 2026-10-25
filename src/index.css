@@ -772,14 +772,17 @@ a:focus-visible,
 .exit-dialog h2 { font-size:1.25rem; margin-bottom:.5rem; }
 .exit-dialog p { color:var(--text-muted); line-height:1.55; }
 @media (min-width:900px) {
-  .app-bottom-nav { position:sticky!important; top:0; bottom:auto!important; left:auto!important; right:auto!important; width:100%; min-height:68px; justify-content:flex-start!important; gap:.5rem; padding:.65rem clamp(1.25rem,3vw,3rem)!important; border-top:0; border-bottom:1px solid var(--border); box-shadow:0 8px 24px rgba(0,0,0,.10); order:-1; }
-  .desktop-menu-button { display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px; margin-right:.5rem; color:var(--text); border:1px solid var(--border); background:var(--bg-elevated); font-size:1.35rem; }
+  .app-bottom-nav { display:flex!important; flex-direction:row!important; flex-wrap:nowrap!important; align-items:center!important; position:sticky!important; top:0; bottom:auto!important; left:auto!important; right:auto!important; width:100%; min-height:68px; justify-content:flex-start!important; gap:.5rem; padding:.65rem clamp(1.25rem,3vw,3rem)!important; border-top:0; border-bottom:1px solid var(--border); box-shadow:0 8px 24px rgba(0,0,0,.10); order:-1; }
+  .desktop-menu-button { flex:0 0 42px; display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px; margin-right:.5rem; color:var(--text); border:1px solid var(--border); background:var(--bg-elevated); font-size:1.35rem; }
   .app-bottom-nav a { flex-direction:row!important; gap:.55rem!important; min-width:auto!important; padding:.65rem .85rem; border-radius:9px; font-size:.9rem!important; font-weight:700; color:var(--text-muted); }
   .app-bottom-nav a span { font-size:1.1rem!important; }
   .app-bottom-nav a.active { background:var(--accent-soft); color:var(--accent); }
   .app-bottom-nav a[href="/practice"] { display:none!important; }
   .desktop-contact-link { display:inline-flex!important; align-items:center; gap:.55rem; padding:.65rem .85rem; margin-left:0; color:var(--text-muted); font-weight:800; }
-  .nav-theme-toggle { margin-left:auto; }
+  .nav-theme-toggle { margin-left:auto; flex:0 0 auto; }
+  .app-bottom-nav .desktop-contact-link { margin-left:0; }
+  .drawer-panel { position:fixed!important; top:0!important; left:0!important; bottom:0!important; width:min(300px,86vw)!important; height:100dvh!important; z-index:210!important; flex-direction:column!important; align-items:stretch!important; }
+  .drawer-backdrop { position:fixed!important; inset:0!important; z-index:200!important; }
 }
 @media (max-width:899px) { .desktop-menu-button,.desktop-contact-link { display:none!important; } }
 
