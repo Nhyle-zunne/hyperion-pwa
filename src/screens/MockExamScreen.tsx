@@ -28,7 +28,26 @@ const FUNCTION_DESCRIPTIONS: Record<string, string> = {
   DM: 'Voyage planning, ship handling, cargo, stability and management duties.',
   EM: 'Propulsion plant, electrical systems, maintenance and engine-room management.'
 }
-const OIC_NW_ITEMS: Record<string, number> = { C1: 35, C2: 20, C3: 15, C4: 10, C5: 10, C7: 20, C9: 15, C10: 15, C11: 15, C12: 15, C13: 15, C17: 15 }
+// Official mock-exam item distribution mirrored from HYPERION-REVIEWER's
+// MaritimeCompetenceRegistry / NewTrackCompetences permit distributions.
+const MOCK_EXAM_ITEMS: Record<TrackId, Record<string, number>> = {
+  DECK_OIC_NW: { C1: 35, C2: 20, C3: 15, C4: 10, C5: 10, C7: 20, C9: 15, C10: 15, C11: 15, C12: 15, C13: 15, C17: 15 },
+  GMDSS_GOC: { C1: 85, C2: 15 },
+  ENGINE_OIC_EW: { C1: 14, C2: 10, C3: 10, C4: 30, C5: 10, C6: 20, C7: 15, C8: 24, C9: 15, C10: 10, C11: 10, C15: 10, C16: 22 },
+  DECK_MGT: { C1: 10, C2: 10, C3: 10, C4: 10, C5: 10, C6: 10, C8: 10, C9: 10, C10: 20, C11: 10, C12: 15, C13: 10, C14: 10, C15: 15, C16: 10, C17: 10, C18: 10, C20: 10 },
+  ENGINE_MGT: { C1: 10, C2: 26, C3: 28, C4: 10, C5: 20, C6: 20, C7: 10, C8: 10, C9: 10, C10: 10, C11: 10, C12: 10, C13: 10, C14: 16 }
+}
+const mockExamItemCount = (track: TrackId, competenceId: string) => MOCK_EXAM_ITEMS[track][competenceId] ?? (track === 'GMDSS_GOC' ? 50 : 15)
+const competencesForFunction = (track: TrackId, functionId: string) => {
+  const ids: Record<TrackId, Record<string, string[]>> = {
+    DECK_OIC_NW: { F1: ['C1','C2','C3','C4','C5','C7','C9'], F2: ['C10','C11'], F3: ['C12','C13','C17'] },
+    GMDSS_GOC: { GMDSS: ['C1','C2'] },
+    ENGINE_OIC_EW: { F1: ['C1','C2','C3','C4','C5'], F2: ['C6','C7'], F3: ['C8','C9'], F4: ['C10','C11','C15','C16'] },
+    DECK_MGT: { F1: ['C1','C2','C3','C4','C5','C6','C8','C9','C10','C11'], F2: ['C12','C13','C14'], F3: ['C15','C16','C17','C18','C20'] },
+    ENGINE_MGT: { F1: ['C1','C2','C3','C4'], F2: ['C5','C6'], F3: ['C7','C8','C9'], F4: ['C10','C11','C12','C13','C14'] }
+  }
+  return (ids[track][functionId] || []).reduce((sum, id) => sum + mockExamItemCount(track, id), 0)
+}
 type Stage = 'confirm' | 'functions' | 'competences'
 
 export default function MockExamScreen() {
@@ -64,7 +83,7 @@ export default function MockExamScreen() {
   const functions = useMemo(() => {
     const counts = new Map<string, number>()
     questions.forEach((q) => counts.set(q.functionId, (counts.get(q.functionId) || 0) + 1))
-    return Array.from(counts.entries()).map(([id, count]) => ({ id, count, label: FUNCTION_LABELS[trackId][id] || id }))
+    return Array.from(counts.entries()).map(([id]) => ({ id, count: competencesForFunction(trackId, id), label: FUNCTION_LABELS[trackId][id] || id }))
   }, [questions])
   const competences = listAvailableCompetences(trackId)
   const visibleCompetences = useMemo(() => competences.map((c) => {
@@ -82,7 +101,7 @@ export default function MockExamScreen() {
   const start = async (competenceId: string) => {
     if (!isUnlocked) { openPaywall('Mock Exam'); return }
     const pool = questions.filter((q) => q.competenceId === competenceId && selectedFunctions.includes(q.functionId))
-    const examItemCount = trackId === 'DECK_OIC_NW' ? (OIC_NW_ITEMS[competenceId] || pool.length) : pool.length
+    const examItemCount = mockExamItemCount(trackId, competenceId)
     if (!pool.length) return
     setStartingCompetence(competenceId)
     setStarting(true)
@@ -168,7 +187,7 @@ export default function MockExamScreen() {
           <div style={{ display: 'grid', gap: 8 }}>
             {group.competences.map((c) => <button key={c.id} type="button" disabled={starting || !c.count} onClick={() => void start(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '1rem', border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-card)', color: 'var(--text)', cursor: 'pointer' }}>
               <span style={{ minWidth: 44, minHeight: 44, display: 'grid', placeItems: 'center', background: 'var(--bg-elevated)', fontWeight: 900 }}>{c.id}</span>
-              <span style={{ flex: 1 }}><strong style={{ display: 'block', lineHeight: 1.35 }}>{c.id}: {c.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</strong><span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 5 }}>{c.count} questions · {FUNCTION_DESCRIPTIONS[group.id] || 'Timed competence-based mock examination.'}</span></span>
+              <span style={{ flex: 1 }}><strong style={{ display: 'block', lineHeight: 1.35 }}>{c.id}: {c.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</strong><span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 5 }}>{mockExamItemCount(trackId, c.id)} mock exam items · {FUNCTION_DESCRIPTIONS[group.id] || 'Timed competence-based mock examination.'}</span></span>
               <span style={{ color: 'var(--text-muted)', fontWeight: 800 }}>{startingCompetence === c.id ? '…' : '→'}</span>
             </button>)}
           </div>
