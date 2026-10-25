@@ -16,7 +16,7 @@ Deno.serve(async req => {
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
   const admin = createClient(url, service, { auth: { persistSession: false } })
   if (body.action === 'list') {
-    const { data, error } = await admin.from('orders').select('id,user_id,product_code,track_id,amount_php,status,payment_reference,payment_method,proof_url,customer_note,admin_note,created_at,reviewed_at').in('status', ['submitted','pending','paid','failed']).order('created_at', { ascending: false }).limit(200)
+    const { data, error } = await admin.from('orders').select('id,user_id,product_code,track_id,amount_php,status,payment_reference,payment_method,proof_url,customer_note,admin_note,created_at,reviewed_at,paid_at').in('status', ['submitted','pending','paid','failed']).order('created_at', { ascending: false }).limit(200)
     if (error) return json({ error: 'Could not load payment submissions.' }, 500)
     const ids = [...new Set((data || []).map(row => row.user_id))]
     const emails: Record<string,string> = {}
@@ -36,7 +36,14 @@ Deno.serve(async req => {
   if (!['submitted','pending'].includes(order.status)) return json({ error: 'This order is not awaiting review.' }, 409)
   const adminNote = String(body.adminNote || '').trim().slice(0, 1000) || null
   if (body.decision === 'approve') {
-    const { error: entitlementError } = await admin.from('entitlements').upsert({ user_id: order.user_id, product_code: order.product_code, track_id: order.track_id, order_id: order.id, status: 'active' }, { onConflict: 'user_id,product_code' })
+    const now = new Date()
+    const { data: currentEntitlement, error: currentError } = await admin.from('entitlements').select('expires_at').eq('user_id', order.user_id).eq('product_code', order.product_code).maybeSingle()
+    if (currentError) return json({ error: 'Could not check the existing subscription.' }, 500)
+    const currentExpiry = currentEntitlement?.expires_at ? new Date(currentEntitlement.expires_at) : null
+    const renewalBase = currentExpiry && currentExpiry.getTime() > now.getTime() ? currentExpiry : now
+    const expiresAt = new Date(renewalBase)
+    expiresAt.setUTCFullYear(expiresAt.getUTCFullYear() + 1)
+    const { error: entitlementError } = await admin.from('entitlements').upsert({ user_id: order.user_id, product_code: order.product_code, track_id: order.track_id, order_id: order.id, status: 'active', granted_at: now.toISOString(), renewed_at: now.toISOString(), expires_at: expiresAt.toISOString() }, { onConflict: 'user_id,product_code' })
     if (entitlementError) return json({ error: 'Could not grant access. Review was not completed.' }, 500)
     const { error } = await admin.from('orders').update({ status: 'paid', admin_note: adminNote, reviewed_by: user.email, reviewed_at: new Date().toISOString(), paid_at: new Date().toISOString() }).eq('id', order.id).in('status', ['submitted','pending'])
     if (error) return json({ error: 'Access was granted but order status update failed. Please inspect this order.' }, 500)
