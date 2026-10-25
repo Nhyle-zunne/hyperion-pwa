@@ -76,6 +76,22 @@ export default function AccountScreen() {
     await refreshCloudEntitlements()
   }
   useEffect(() => { void refreshAccount() }, [session?.user.id])
+  const signInWithGoogle = async () => {
+    if (!supabase) return
+    setBusy(true)
+    setMessage('')
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/account` },
+      })
+      if (error) throw error
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to start Google sign-in. Please try again.')
+      setBusy(false)
+    }
+  }
+
   const submitAuth = async (event: FormEvent) => {
     event.preventDefault()
     if (!supabase) return
@@ -145,6 +161,26 @@ export default function AccountScreen() {
       <div style={{ display: 'flex', gap: 8, marginBottom: '1rem' }}>
         <button type="button" className={mode === 'signup' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setMode('signup')} style={{ flex: 1 }}>Create account</button>
         <button type="button" className={mode === 'signin' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setMode('signin')} style={{ flex: 1 }}>Sign in</button>
+      </div>
+      <button
+        type="button"
+        className="btn btn-outline"
+        disabled={!supabaseConfigured || busy}
+        onClick={() => void signInWithGoogle()}
+        style={{ width: '100%', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.65rem', minHeight: 46 }}
+      >
+        <svg aria-hidden="true" viewBox="0 0 48 48" width="20" height="20">
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.02 13.22l7.98 6.19C11.89 13.72 17.48 9.5 24 9.5Z"/>
+          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.72 7.18l7.62 5.91c4.45-4.11 7.14-10.16 7.14-17.56Z"/>
+          <path fill="#FBBC05" d="M9.99 28.59A14.4 14.4 0 0 1 9.2 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.9 23.9 0 0 0 0 24c0 3.87.93 7.52 2.57 10.78l7.42-6.19Z"/>
+          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.89l-7.62-5.91c-2.11 1.41-4.81 2.25-8.29 2.25-6.52 0-12.11-4.22-14-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z"/>
+        </svg>
+        Continue with Google
+      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', color: 'var(--text-muted)', fontSize: '.8rem', marginBottom: '1rem' }}>
+        <span style={{ height: 1, background: 'var(--border)', flex: 1 }} />
+        OR CONTINUE WITH EMAIL
+        <span style={{ height: 1, background: 'var(--border)', flex: 1 }} />
       </div>
       <form onSubmit={submitAuth}>
         <label>Email address<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} style={field} /></label>
