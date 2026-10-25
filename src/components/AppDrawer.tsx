@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useUIStore } from '../stores/uiStore'
 
@@ -8,8 +9,26 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
   const location = useLocation()
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
+  const [mounted, setMounted] = useState(open)
+  const [closing, setClosing] = useState(false)
 
-  if (!open) return null
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      setClosing(false)
+      return
+    }
+    if (mounted) setClosing(true)
+  }, [open])
+
+  const finishClose = () => {
+    if (closing && !open) {
+      setMounted(false)
+      setClosing(false)
+    }
+  }
+
+  if (!mounted) return null
 
   const go = (path: string) => {
     onClose()
@@ -49,8 +68,8 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
 
   return (
     <>
-      <div className="drawer-backdrop" onClick={onClose} />
-      <aside className="drawer-panel">
+      <div className={`drawer-backdrop${closing ? ' closing' : ''}`} onClick={onClose} onAnimationEnd={finishClose} />
+      <aside className={`drawer-panel${closing ? ' closing' : ''}`} onAnimationEnd={finishClose}>
         <div style={{ padding: '0.5rem 0.75rem 1rem', display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src="/logo.png" alt="Hyperion" width={44} height={44} style={{ borderRadius: 8 }} />
           <div>
