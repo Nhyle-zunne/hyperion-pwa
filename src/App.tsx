@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useLicenseStore } from './stores/licenseStore'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import HomeScreen from './screens/HomeScreen'
 import TrackSelectionScreen from './screens/TrackSelectionScreen'
