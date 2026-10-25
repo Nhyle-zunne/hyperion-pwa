@@ -31,14 +31,14 @@ supabase secrets set APP_BASE_URL=https://YOUR_DEPLOYED_PWA_URL
 supabase secrets set PRICE_OIC_NW_PHP=499
 supabase secrets set PRICE_GMDSS_PHP=499
 supabase secrets set PRICE_ENGINE_EW_PHP=499
-supabase secrets set PRICE_DECK_MGT_PHP=499
-supabase secrets set PRICE_ENGINE_MGT_PHP=499
-supabase secrets set PRICE_ALL_ACCESS_PHP=1499
+supabase secrets set PRICE_DECK_MGT_PHP=799
+supabase secrets set PRICE_ENGINE_MGT_PHP=799
+# Set PRICE_ALL_ACCESS_PHP only after deciding the bundle price
 supabase functions deploy create-checkout
 supabase functions deploy paymongo-webhook
 \`\`\`
 
-The prices above are placeholders, not a recommendation. Replace them with your actual prices before enabling checkout. Prices are whole Philippine pesos; the function converts them to centavos. Do not use live keys until test-mode checkout and webhook fulfillment pass.
+The five individual-track prices above reflect the prices selected so far. The all-access bundle price is still undecided; do not enable that product until you choose its price. Review all values before enabling checkout. Prices are whole Philippine pesos; the function converts them to centavos. Do not use live keys until test-mode checkout and webhook fulfillment pass.
 
 Supabase automatically provides \`SUPABASE_URL\`, \`SUPABASE_ANON_KEY\`, and \`SUPABASE_SERVICE_ROLE_KEY\` to deployed functions. Never expose the service-role key in the browser or commit it to Git.
 
