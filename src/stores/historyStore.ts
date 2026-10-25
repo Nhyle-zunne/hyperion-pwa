@@ -17,9 +17,23 @@ export interface HistoryEntry {
   finishedAt: number;
 }
 
+export interface SavedSessionEntry {
+  id: string;
+  mode: SessionMode;
+  track: TrackId;
+  competenceId: string | null;
+  currentIndex: number;
+  total: number;
+  answered: number;
+  savedAt: number;
+}
+
 interface HistoryState {
   entries: HistoryEntry[];
+  savedSessions: SavedSessionEntry[];
   addEntry: (entry: Omit<HistoryEntry, 'id'>) => void;
+  saveSession: (entry: Omit<SavedSessionEntry, 'id'>) => void;
+  removeSavedSession: (track?: TrackId | null, competenceId?: string | null) => void;
   clear: () => void;
   stats: () => {
     totalSessions: number;
@@ -33,6 +47,7 @@ export const useHistoryStore = create<HistoryState>()(
   persist(
     (set, get) => ({
       entries: [],
+      savedSessions: [],
 
       addEntry: (entry) => {
         const id = `h-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -41,7 +56,21 @@ export const useHistoryStore = create<HistoryState>()(
         }));
       },
 
-      clear: () => set({ entries: [] }),
+      saveSession: (entry) => {
+        const id = `saved-${entry.track}-${entry.competenceId ?? 'all'}-${entry.mode}`;
+        set((s) => ({
+          savedSessions: [{ ...entry, id }, ...s.savedSessions.filter((item) => item.id !== id)].slice(0, 100)
+        }));
+      },
+
+      removeSavedSession: (track, competenceId) => set((s) => ({
+        savedSessions: s.savedSessions.filter((item) => {
+          if (track == null) return false;
+          return !(item.track === track && (competenceId === undefined || item.competenceId === competenceId));
+        })
+      })),
+
+      clear: () => set({ entries: [], savedSessions: [] }),
 
       stats: () => {
         const entries = get().entries;
