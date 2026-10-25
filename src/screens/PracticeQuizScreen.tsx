@@ -148,11 +148,10 @@ export default function PracticeQuizScreen() {
   const hasAnswered = answer?.selectedIndex != null
   const confirmAnswer = () => { if (pendingAnswer != null) { selectAnswer(pendingAnswer); setPendingAnswer(null) } }
   const showFeedback = mode !== 'MOCK' && hasAnswered
-  const bookmarked = isBookmarked(q.id)
   const jumpTo = (index: number) => { if (index >= 0 && index < questions.length) { const delta = index - currentIndex; if (delta > 0) for (let i = 0; i < delta; i++) next(); else for (let i = 0; i > delta; i--) prev(); setPendingAnswer(null); setPaletteOpen(false) } }
 
   return (
-    <div className="screen" style={{ paddingBottom: "6rem", fontSize: `${textScale}%` }}>
+    <div className="screen practice-quiz-screen" style={{ paddingBottom: "6rem", '--quiz-text-scale': textScale / 100 } as React.CSSProperties}>
       {showExitDialog && (
         <div className="exit-dialog-backdrop" role="presentation">
           <section className="exit-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-practice-title">
@@ -169,10 +168,7 @@ export default function PracticeQuizScreen() {
           <div style={{fontWeight:800,lineHeight:1.2}}>Question {currentIndex + 1} of {questions.length}</div>
           <div style={{fontSize:'0.82rem',color:'var(--accent)',fontWeight:700}}>{q.track} · {q.competenceId}</div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:2}}>
-          <button className="btn btn-outline" style={{padding:'0.5rem',minWidth:38}} onClick={() => toggleBookmark(q)} aria-label="Bookmark question" title="Bookmark">{bookmarked ? '🔖' : '♧'}</button>
-          <button className="btn btn-outline" style={{padding:'0.5rem',minWidth:38}} onClick={() => setSettingsOpen(v => !v)} aria-label="Display settings" title="Display settings">⚙</button>
-        </div>
+
       </header>
       {settingsOpen && <section className="card" style={{marginBottom:'1rem',padding:'1rem'}}>
         <strong style={{display:'block',marginBottom:10}}>DISPLAY SETTINGS</strong>
@@ -193,10 +189,10 @@ export default function PracticeQuizScreen() {
       </div>
 
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 6 }}>
+        <div style={{ fontSize: 'calc(0.8rem * var(--quiz-text-scale))', color: 'var(--text-muted)', marginBottom: 6 }}>
           {q.topic}
         </div>
-        <div style={{ fontSize: '1.05rem', lineHeight: 1.55 }}>{q.questionText}</div>
+        <div style={{ fontSize: 'calc(1.05rem * var(--quiz-text-scale))', lineHeight: 1.55 }}>{q.questionText}</div>
       </div>
 
       <div style={{ display: 'grid', gap: '0.6rem' }}>
@@ -216,7 +212,7 @@ export default function PracticeQuizScreen() {
             (!hasAnswered && pendingAnswer === idx)
           ) {
             border = 'var(--accent)'
-            bg = 'rgba(56,189,248,0.12)'
+            bg = 'var(--quiz-selection-bg)'
           }
           return (
             <button
@@ -232,7 +228,7 @@ export default function PracticeQuizScreen() {
                 border: `1px solid ${border}`,
                 background: bg,
                 color: 'var(--text)',
-                fontSize: '0.95rem',
+                fontSize: 'calc(0.95rem * var(--quiz-text-scale))',
                 cursor: mode !== 'MOCK' && hasAnswered ? 'default' : 'pointer'
               }}
             >
@@ -248,7 +244,7 @@ export default function PracticeQuizScreen() {
       {showFeedback && q.explanation && (
         <div
           className="card"
-          style={{ marginTop: '1rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}
+          style={{ marginTop: '1rem', fontSize: 'calc(0.9rem * var(--quiz-text-scale))', color: 'var(--text-muted)' }}
         >
           <strong style={{ color: 'var(--text)' }}>Explanation</strong>
           <p style={{ marginTop: 4 }}>{q.explanation}</p>
