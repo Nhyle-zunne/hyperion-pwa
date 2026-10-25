@@ -14,6 +14,7 @@ Deno.serve(async req => {
   if (!allowed.includes(user.email.toLowerCase())) return json({ error: 'Admin access denied.' }, 403)
   let body: { action?: string; orderId?: string; decision?: string; adminNote?: string; instructions?: string }
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
+  if (body.action === 'check-admin') return json({ isAdmin: true })
   const admin = createClient(url, service, { auth: { persistSession: false } })
   if (body.action === 'list') {
     const { data, error } = await admin.from('orders').select('id,user_id,product_code,track_id,amount_php,status,payment_reference,payment_method,proof_url,customer_note,admin_note,created_at,reviewed_at,paid_at').in('status', ['submitted','pending','paid','failed']).order('created_at', { ascending: false }).limit(200)
