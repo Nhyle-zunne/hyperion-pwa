@@ -7,7 +7,6 @@ const names: Record<string,string> = { oic_nw:'Deck OIC-NW', gmdss:'GMDSS GOC', 
 export default function AdminPaymentsScreen() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState<Order[]>([])
-  const [instructions, setInstructions] = useState('')
   const [note, setNote] = useState<Record<string,string>>({})
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -23,8 +22,6 @@ export default function AdminPaymentsScreen() {
     try {
       const result = await call({ action: 'list' })
       setOrders(result.orders || [])
-      const { data } = await supabase!.from('payment_settings').select('instructions').eq('id',1).maybeSingle()
-      setInstructions(data?.instructions || '')
       setAuthorized(true)
     } catch (e) { setAuthorized(false); setMessage(e instanceof Error ? e.message : 'Unable to load admin payments.') }
   }, [call])
@@ -35,12 +32,7 @@ export default function AdminPaymentsScreen() {
     catch (e) { setMessage(e instanceof Error ? e.message : 'Review failed.') }
     finally { setBusy(false) }
   }
-  const saveInstructions = async () => {
-    setBusy(true); setMessage('')
-    try { await call({ action:'instructions', instructions }); setMessage('Payment instructions saved.') }
-    catch (e) { setMessage(e instanceof Error ? e.message : 'Could not save instructions.') }
-    finally { setBusy(false) }
-  }
+
   const card: React.CSSProperties = { background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, padding:'1rem', marginBottom:'1rem' }
   const field: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'.8rem', marginTop:'.4rem', background:'var(--bg-elevated)', color:'var(--text)', border:'1px solid var(--border)', borderRadius:6, font:'inherit' }
   return <div className="screen" style={{ paddingBottom:'2rem' }}>
@@ -49,11 +41,6 @@ export default function AdminPaymentsScreen() {
     <p className="subtitle">Only email addresses configured in the server-side ADMIN_EMAILS secret can review payments.</p>
     {message && <div role="status" style={card}>{message}</div>}
     {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void load()}>Retry</button></section> : <>
-      <section style={card}>
-        <h2 style={{ marginTop:0 }}>Payment instructions shown to students</h2>
-        <textarea rows={6} maxLength={5000} value={instructions} onChange={e => setInstructions(e.target.value)} style={field} />
-        <button className="btn btn-primary" disabled={busy || !instructions.trim()} style={{ marginTop:'.8rem' }} onClick={() => void saveInstructions()}>Save instructions</button>
-      </section>
       <h2>Payment submissions ({orders.length})</h2>
       {orders.length ? orders.map(order => <section key={order.id} style={card}>
         <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'space-between', gap:8 }}><strong>{names[order.product_code] || order.product_code} · ₱{order.amount_php}</strong><strong>{order.status.toUpperCase()}</strong></div>
