@@ -28,6 +28,7 @@ export default function PracticeQuizScreen() {
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
   const [pendingAnswer, setPendingAnswer] = useState<number | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [jumpNumber, setJumpNumber] = useState('')
   const [automations, setAutomations] = useState(() => { try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as {directAnswer:boolean;autoNextCorrect:boolean;autoNextWrong:boolean} } catch { return {directAnswer:false,autoNextCorrect:false,autoNextWrong:false} } })
   useEffect(() => { const settings = (e: Event) => setAutomations((e as CustomEvent).detail); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
@@ -162,13 +163,33 @@ export default function PracticeQuizScreen() {
           </section>
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+      <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,margin:'-0.5rem -0.25rem 1rem',padding:'0.4rem 0',borderBottom:'3px solid var(--accent)'}}>
+        <button className="btn btn-outline" onClick={() => setShowExitDialog(true)} aria-label="Back">← Back</button>
+        <div style={{minWidth:0,flex:1,textAlign:'center'}}>
+          <div style={{fontWeight:800,lineHeight:1.2}}>Question {currentIndex + 1} of {questions.length}</div>
+          <div style={{fontSize:'0.82rem',color:'var(--accent)',fontWeight:700}}>{q.track} · {q.competenceId}</div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:2}}>
+          <button className="btn btn-outline" style={{padding:'0.5rem',minWidth:38}} onClick={() => toggleBookmark(q.id)} aria-label="Bookmark question" title="Bookmark">{bookmarked ? '🔖' : '♧'}</button>
+          <button className="btn btn-outline" style={{padding:'0.5rem',minWidth:38}} onClick={() => setSettingsOpen(v => !v)} aria-label="Display settings" title="Display settings">⚙</button>
+        </div>
+      </header>
+      {settingsOpen && <section className="card" style={{marginBottom:'1rem',padding:'1rem'}}>
+        <strong style={{display:'block',marginBottom:10}}>DISPLAY SETTINGS</strong>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:12}}>
+          <span>Ｔ Text Size <strong>{textScale}%</strong></span>
+          <div style={{display:'flex',gap:4}}>
+            <button className="btn btn-outline" onClick={() => {const n=Math.max(70,textScale-10);setTextScale(n);localStorage.setItem('hyperion-question-text-scale',String(n))}}>A−</button>
+            <button className="btn btn-outline" onClick={() => {setTextScale(100);localStorage.setItem('hyperion-question-text-scale','100')}}>100%</button>
+            <button className="btn btn-outline" onClick={() => {const n=Math.min(150,textScale+10);setTextScale(n);localStorage.setItem('hyperion-question-text-scale',String(n))}}>A+</button>
+          </div>
+        </div>
+        <strong style={{display:'block',marginBottom:6}}>PRACTICE AUTOMATIONS</strong>
+        {([{key:'directAnswer',label:'Direct Answer',desc:'Confirm without Check button'},{key:'autoNextCorrect',label:'Auto-Next (Correct)',desc:'Advance when correct'},{key:'autoNextWrong',label:'Auto-Next (Wrong)',desc:'Advance when incorrect'}] as const).map(item => <label key={item.key} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'0.6rem 0',borderTop:'1px solid var(--border)'}}><span><strong>{item.label}</strong><small style={{display:'block',color:'var(--text-muted)'}}>{item.desc}</small></span><input type="checkbox" checked={automations[item.key]} onChange={e => updateAutomation(item.key,e.target.checked)} /></label>)}
+      </section>}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem',fontSize:'0.85rem',color:'var(--text-muted)'}}>
         <span>Q {currentIndex + 1} / {questions.length}</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {mode === 'DRILL' && streak > 0 ? `Streak ${streak}` : null}
-          {mode !== 'DRILL' ? `${q.competenceId} · ${q.difficulty}` : q.competenceId}
-
-        </span>
+        <span>{mode === 'DRILL' && streak > 0 ? 'Streak ' + streak + ' · ' : ''}{q.competenceId}{mode !== 'DRILL' ? ' · ' + q.difficulty : ''}</span>
       </div>
 
       <div className="card" style={{ marginBottom: '1rem' }}>
