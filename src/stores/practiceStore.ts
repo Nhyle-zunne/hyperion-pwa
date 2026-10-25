@@ -82,6 +82,7 @@ function recordHistory(get: () => PracticeState) {
   const percent = total === 0 ? 0 : Math.round((correct / total) * 100);
   const finishedAt = Date.now();
   const durationMs = Math.max(0, finishedAt - (s.startedAt || finishedAt));
+  useHistoryStore.getState().removeSavedSession(s.track, s.competenceId);
   useHistoryStore.getState().addEntry({
     mode: s.mode,
     track: s.track,
@@ -269,7 +270,9 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   },
 
   reset: () => {
+    const current = get();
     try { localStorage.removeItem('hyperion-saved-practice'); } catch { /* storage can be unavailable */ }
+    useHistoryStore.getState().removeSavedSession(current.track, current.competenceId);
     set({
     questions: [],
     answers: {},
@@ -294,6 +297,15 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     try {
       localStorage.setItem('hyperion-saved-practice', JSON.stringify({ questions, answers, currentIndex, track, competenceId, finished, mode, startedAt, timeLimitSec, timeLeftSec, streak, bestStreak }));
     } catch { /* storage can be unavailable */ }
+    if (track && questions.length) {
+      useHistoryStore.getState().saveSession({
+        mode, track, competenceId,
+        currentIndex,
+        total: questions.length,
+        answered: questions.reduce((count, q) => count + (answers[q.id]?.selectedIndex != null ? 1 : 0), 0),
+        savedAt: Date.now()
+      });
+    }
   },
 
   restoreSavedProgress: () => {
