@@ -285,10 +285,12 @@ function MockScrollableRunner() {
       window.history.pushState({ hyperionMockExam: true }, '')
       setShowLockNotice(true)
     }
+    const blockAppBack = () => setShowLockNotice(true)
     window.addEventListener('beforeunload', blockExit)
+    window.addEventListener('hyperion:request-exit-mock', blockAppBack)
     window.history.pushState({ hyperionMockExam: true }, '')
     window.addEventListener('popstate', blockPop)
-    return () => { window.removeEventListener('beforeunload', blockExit); window.removeEventListener('popstate', blockPop) }
+    return () => { window.removeEventListener('beforeunload', blockExit); window.removeEventListener('hyperion:request-exit-mock', blockAppBack); window.removeEventListener('popstate', blockPop) }
   }, [])
 
   const answered = questions.reduce((count, q) => count + (answers[q.id]?.selectedIndex != null ? 1 : 0), 0)
