@@ -312,7 +312,7 @@ function MockScrollableRunner() {
           {q.topic && <div style={{ color: 'var(--text-muted)', fontSize: '.82rem', marginBottom: 6 }}>{q.topic}</div>}
           <h2 id={'mock-question-' + index} style={{ fontSize: '1.05rem', lineHeight: 1.55, margin: '0 0 1rem' }}>{q.questionText}</h2>
           <div style={{ display: 'grid', gap: 8 }}>
-            {q.options.map((option, optionIndex) => <button key={optionIndex} type="button" disabled={selected != null || finished} onClick={() => selectAnswer(optionIndex)} aria-pressed={selected === optionIndex} style={{ textAlign: 'left', padding: '.8rem .9rem', borderRadius: 8, border: '1px solid ' + (selected === optionIndex ? 'var(--accent)' : 'var(--border)'), background: selected === optionIndex ? 'var(--quiz-selection-bg)' : 'transparent', color: 'var(--text)', cursor: selected != null ? 'default' : 'pointer' }}><strong style={{ marginRight: 8 }}>{String.fromCharCode(65 + optionIndex)}.</strong>{option}</button>)}
+            {q.options.map((option, optionIndex) => <button key={optionIndex} type="button" disabled={finished} onClick={() => selectAnswer(optionIndex)} aria-pressed={selected === optionIndex} style={{ textAlign: 'left', padding: '.8rem .9rem', borderRadius: 8, border: '1px solid ' + (selected === optionIndex ? 'var(--accent)' : 'var(--border)'), background: selected === optionIndex ? 'var(--quiz-selection-bg)' : 'transparent', color: 'var(--text)', cursor: finished ? 'default' : 'pointer' }}><strong style={{ marginRight: 8 }}>{String.fromCharCode(65 + optionIndex)}.</strong>{option}</button>)}
           </div>
           {selected != null && <p style={{ marginBottom: 0, color: 'var(--success)', fontSize: '.82rem', fontWeight: 700 }}>Answer recorded</p>}
         </section>
