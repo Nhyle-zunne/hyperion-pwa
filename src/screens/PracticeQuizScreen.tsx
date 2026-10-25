@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
-import { useUIStore } from '../stores/uiStore'
 
 export default function PracticeQuizScreen() {
   const navigate = useNavigate()
@@ -60,7 +59,6 @@ export default function PracticeQuizScreen() {
       window.removeEventListener('popstate', trapBack)
     }
   }, [])
-  const toggleBookmark = useBookmarksStore((s) => s.toggle)
   const isBookmarked = useBookmarksStore((s) => s.isBookmarked)
 
   if (loading) {
