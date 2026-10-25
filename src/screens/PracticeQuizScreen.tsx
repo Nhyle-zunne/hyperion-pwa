@@ -27,12 +27,10 @@ export default function PracticeQuizScreen() {
   const [showExitDialog, setShowExitDialog] = useState(false)
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
   const [pendingAnswer, setPendingAnswer] = useState<number | null>(null)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [jumpNumber, setJumpNumber] = useState('')
   const [automations, setAutomations] = useState(() => { try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as {directAnswer:boolean;autoNextCorrect:boolean;autoNextWrong:boolean} } catch { return {directAnswer:false,autoNextCorrect:false,autoNextWrong:false} } })
   useEffect(() => { const settings = (e: Event) => setAutomations((e as CustomEvent).detail); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
-  const [automations, setAutomations] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as { directAnswer: boolean; autoNextCorrect: boolean; autoNextWrong: boolean } }
-    catch { return { directAnswer: false, autoNextCorrect: false, autoNextWrong: false } }
-  })
   const updateAutomation = (key: 'directAnswer' | 'autoNextCorrect' | 'autoNextWrong', value: boolean) => {
     setAutomations((old) => {
       const updated = { ...old, [key]: value }
@@ -60,6 +58,7 @@ export default function PracticeQuizScreen() {
     }
   }, [])
   const isBookmarked = useBookmarksStore((s) => s.isBookmarked)
+  const toggleBookmark = useBookmarksStore((s) => s.toggle)
 
   if (loading) {
     return (
@@ -149,6 +148,7 @@ export default function PracticeQuizScreen() {
   const confirmAnswer = () => { if (pendingAnswer != null) { selectAnswer(pendingAnswer); setPendingAnswer(null) } }
   const showFeedback = mode !== 'MOCK' && hasAnswered
   const bookmarked = isBookmarked(q.id)
+  const jumpTo = (index: number) => { if (index >= 0 && index < questions.length) { const delta = index - currentIndex; if (delta > 0) for (let i = 0; i < delta; i++) next(); else for (let i = 0; i > delta; i--) prev(); setPendingAnswer(null); setPaletteOpen(false) } }
 
   return (
     <div className="screen" style={{ paddingBottom: "6rem", fontSize: `${textScale}%` }}>
@@ -233,6 +233,20 @@ export default function PracticeQuizScreen() {
         </div>
       )}
 
+      {paletteOpen && <div role="presentation" onClick={() => setPaletteOpen(false)} style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,0.72)',display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+        <section role="dialog" aria-modal="true" aria-labelledby="question-palette-title" onClick={e => e.stopPropagation()} className="card" style={{width:'min(100%,480px)',maxHeight:'85dvh',display:'flex',flexDirection:'column',padding:'1rem',borderTop:'3px solid var(--accent)',boxShadow:'0 20px 60px rgba(0,0,0,.4)'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}><h2 id="question-palette-title" style={{margin:0,fontSize:'1.15rem'}}>QUESTION PALETTE</h2><button className="btn btn-outline" onClick={() => setPaletteOpen(false)} aria-label="Close question palette">✕</button></div>
+          <p style={{color:'var(--text-muted)',fontWeight:700,letterSpacing:1,margin:'0.7rem 0'}}>{questions.length.toLocaleString()} TOTAL QUESTIONS</p>
+          <div style={{overflowY:'auto',display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:6,padding:'2px 2px 1rem'}}>
+            {questions.map((item,index) => { const saved = answers[item.id]; const current = index === currentIndex; return <button key={item.id} onClick={() => jumpTo(index)} aria-label={'Go to question ' + (index + 1)} style={{aspectRatio:'1',minWidth:0,border:'1px solid ' + (current?'var(--accent)':'var(--border)'),background:current?'var(--accent)':saved?'rgba(34,197,94,.18)':'var(--bg-card)',color:current?'white':'var(--text)',fontWeight:800,borderRadius:4}}>{index + 1}</button> })}
+          </div>
+          <form onSubmit={e => { e.preventDefault(); const n = Number(jumpNumber); if (Number.isInteger(n) && n >= 1 && n <= questions.length) jumpTo(n - 1) }} style={{display:'flex',gap:8,alignItems:'stretch',marginTop:8}}>
+            <label style={{flex:1,color:'var(--text-muted)',fontSize:'.8rem',fontWeight:700}}>GO TO QUESTION NO.<input className="input" type="number" min="1" max={questions.length} value={jumpNumber} onChange={e => setJumpNumber(e.target.value)} placeholder={'1–' + questions.length} style={{display:'block',width:'100%',marginTop:6}} /></label>
+            <button className="btn btn-primary" type="submit" disabled={!jumpNumber || Number(jumpNumber)<1 || Number(jumpNumber)>questions.length}>GO</button>
+          </form>
+          <button className="btn btn-primary" style={{width:'100%',marginTop:12}} onClick={() => setPaletteOpen(false)}>CLOSE</button>
+        </section>
+      </div>}
       <div
         style={{
           position: 'fixed',
@@ -248,24 +262,9 @@ export default function PracticeQuizScreen() {
           margin: '0 auto'
         }}
       >
-        {mode !== 'DRILL' && (
-          <button
-            className="btn btn-outline"
-            style={{ flex: 1 }}
-            onClick={prev}
-            disabled={currentIndex === 0}
-          >
-            Prev
-          </button>
-        )}
-        <button
-          className="btn btn-primary"
-          style={{ flex: 2 }}
-          onClick={() => { if (hasAnswered && (automations.autoNextCorrect && answer?.isCorrect || automations.autoNextWrong && answer && !answer.isCorrect)) { next(); return } next() }}
-          disabled={mode !== 'MOCK' && (!hasAnswered || (pendingAnswer != null))}
-        >
-          {hasAnswered ? (currentIndex === questions.length - 1 ? 'Finish' : 'Next') : 'Next'}
-        </button>
+        <button className="btn btn-outline" style={{ flex: 1, minWidth: 0 }} onClick={prev} disabled={currentIndex === 0}>← Previous</button>
+        <button className="btn btn-outline" style={{ minWidth: 54, padding: '0.65rem' }} onClick={() => { setPaletteOpen(true); setJumpNumber('') }} aria-label="Question palette" title="Question palette">▦</button>
+        {mode === 'MOCK' ? <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={() => next()} disabled={!hasAnswered}>{currentIndex === questions.length - 1 ? 'Finish' : 'Next'}</button> : hasAnswered ? <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={() => next()}>{currentIndex === questions.length - 1 ? 'Finish' : 'Next'}</button> : <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={confirmAnswer} disabled={pendingAnswer == null || automations.directAnswer}>Check Answer</button>
       </div>
     </div>
   )
