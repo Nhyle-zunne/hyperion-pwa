@@ -1,9 +1,6 @@
 import { useEffect } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
-import { useLicenseStore } from './stores/licenseStore'
 import HomeScreen from './screens/HomeScreen'
-import ActivationScreen from './screens/ActivationScreen'
-import LicenseScreen from './screens/LicenseScreen'
 import TrackSelectionScreen from './screens/TrackSelectionScreen'
 import AccountScreen from './screens/AccountScreen'
 import AdminPaymentsScreen from './screens/AdminPaymentsScreen'
@@ -33,7 +30,6 @@ import { supabase } from './lib/supabase'
 import { useState } from 'react'
 
 export default function App() {
-  const checkLicenseStatus = useLicenseStore((s) => s.checkLicenseStatus)
   const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
   const showPaywall = useUIStore((s) => s.showPaywall)
   const location = useLocation()
@@ -57,12 +53,10 @@ export default function App() {
   })
 
   useEffect(() => {
-    checkLicenseStatus()
     void refreshCloudEntitlements()
-    const interval = setInterval(checkLicenseStatus, 60_000)
     const authListener = supabase?.auth.onAuthStateChange(() => { window.setTimeout(() => { void refreshCloudEntitlements() }, 0) })
-    return () => { clearInterval(interval); authListener?.data.subscription.unsubscribe() }
-  }, [checkLicenseStatus, refreshCloudEntitlements])
+    return () => { authListener?.data.subscription.unsubscribe() }
+  }, [refreshCloudEntitlements])
 
   const isPracticeQuiz = location.pathname === '/practice/quiz'
   const isMockRunner = location.pathname === '/mock/exam'
@@ -70,7 +64,6 @@ export default function App() {
   const backTarget = isMockRunner ? '/mock' : '/practice'
 
   const hideNav = [
-    '/activation',
     '/license',
     '/howto',
     '/terms',
@@ -144,8 +137,7 @@ export default function App() {
           <Route path="/tracks" element={<TrackSelectionScreen />} />
           <Route path="/track" element={<TrackHubScreen />} />
           <Route path="/home" element={<HomeScreen />} />
-          <Route path="/activation" element={<ActivationScreen />} />
-          <Route path="/license" element={<LicenseScreen />} />
+          <Route path="/license" element={<AccountScreen />} />
           <Route path="/howto" element={<HowToAvailScreen />} />
           <Route path="/about" element={<AboutScreen />} />
           <Route path="/terms" element={<TermsScreen />} />
