@@ -58,7 +58,7 @@ export default function AccountScreen() {
       const { data, error } = await supabase.auth.updateUser({ data: { full_name: fullName.trim(), company: company.trim(), school: school.trim() } })
       if (error) throw error
       if (data.user) setSession(current => current ? { ...current, user: data.user! } : current)
-      setMessage('Profile details saved.')
+      setMessage('Your Profile has been saved.')
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not save profile details.') }
     finally { setBusy(false) }
   }
@@ -108,7 +108,7 @@ export default function AccountScreen() {
     if (!supabase || !session) return
     setBusy(true); setMessage('Submitting your payment for manual review…')
     try {
-      const { data, error } = await supabase.functions.invoke('submit-manual-payment', { body: { productCode: product, paymentMethod, paymentReference: reference, customerNote: note } })
+      const { data, error } = await supabase.functions.invoke('submit-manual-payment', { body: { productCode: product, paymentMethod, paymentReference: reference, customerNote: note, customerProfile: { fullName: fullName.trim(), company: company.trim(), school: school.trim() } } })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
       setMessage(`Payment details submitted. Your reference is ${data.order.id}. Please send your payment screenshot to our Facebook page. Access will be enabled after manual verification.`)
@@ -177,7 +177,7 @@ export default function AccountScreen() {
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Payment Instructions</h2>
         <ol style={{ paddingLeft: '1.3rem', lineHeight: 1.65, marginBottom: 0 }}>
           <li>Select the exam/reviewer track you want to purchase from the dropdown below.</li>
-          <li>Scan the QR Ph code and send the exact amount for your selected track. Each payment covers one track for 12 months. Prices: {PAID_PRODUCTS.map((item, index) => <span key={item.code}>{index > 0 ? '; ' : ''}{item.label} ₱{item.annualPrice}/year</span>)}. Double-check the amount before confirming your transfer.</li>
+          <li>Scan the QR Ph code and send the exact amount for your selected track. Each payment covers one track for 12 months. Double-check the amount before confirming your transfer.<ul style={{ marginTop: '.5rem', paddingLeft: '1.25rem' }}>{PAID_PRODUCTS.map(item => <li key={item.code}>{item.label} - ₱{item.annualPrice}/year</li>)}</ul></li>
           <li>After paying, enter your transaction/reference number in the field below. Then tap <strong>Send Proof to Our Facebook Page</strong> and send a screenshot of your payment in Messenger.</li>
           <li>Use the Additional notes field if you need to explain anything about your payment or proof of purchase.</li>
           <li>Finally, click <strong>SUBMIT FOR REVIEW</strong>. Your payment will not be sent for review unless you click this button. Access is granted only after manual verification.</li>
