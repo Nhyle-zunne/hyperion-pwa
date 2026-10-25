@@ -157,8 +157,8 @@ export default function AccountScreen() {
     </section> : <>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>{isAdmin && <span style={{ display: 'inline-block', border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '0.35rem 0.8rem', fontWeight: 800, fontSize: '0.82rem', letterSpacing: '0.04em' }}>✓ VERIFIED ADMIN · ALL ACCESS</span>}</div>
       <div role="tablist" aria-label="Account sections" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: '1rem' }}>
-        <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>Active licenses</button>
         <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>Payments & profile</button>
+        <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>Active licenses</button>
       </div>
       {accountTab === 'licenses' ? <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Active licenses</h2>
