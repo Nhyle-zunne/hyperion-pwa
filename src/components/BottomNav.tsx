@@ -6,7 +6,6 @@ import AppDrawer from './AppDrawer'
 const items = [
   { to: '/', label: 'Dashboard', icon: '🏠' },
   { to: '/history', label: 'History', icon: '📊' },
-  { to: '/license', label: 'License', icon: '🔑' },
   { to: '/account', label: 'Account', icon: '👤' }
 ]
 const FB = 'https://www.facebook.com/hyperionbynhyle/'
