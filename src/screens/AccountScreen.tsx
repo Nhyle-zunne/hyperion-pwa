@@ -46,8 +46,8 @@ export default function AccountScreen() {
   useEffect(() => {
     if (!supabase || !session) { setIsAdmin(false); return }
     let active = true
-    void supabase.functions.invoke('admin-payment-review', { body: { action: 'list' } })
-      .then(({ data, error }) => { if (active) setIsAdmin(!error && !data?.error && Array.isArray(data?.orders)) })
+    void supabase.functions.invoke('admin-payment-review', { body: { action: 'check-admin' } })
+      .then(({ data, error }) => { if (active) setIsAdmin(!error && data?.isAdmin === true) })
       .catch(() => { if (active) setIsAdmin(false) })
     return () => { active = false }
   }, [session?.user.id])
@@ -155,6 +155,7 @@ export default function AccountScreen() {
       {!supabaseConfigured && <div role="alert" style={{ ...card, borderColor: 'var(--danger)', marginTop: '1rem', marginBottom: 0 }}><strong>Supabase is not configured yet.</strong><p style={{ marginBottom: 0, color: 'var(--text-muted)' }}>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.</p></div>}
       {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>Payments are verified manually. A return to this page does not grant access.</div>}
     </section> : <>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>{isAdmin && <span style={{ display: 'inline-block', border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '0.35rem 0.8rem', fontWeight: 800, fontSize: '0.82rem', letterSpacing: '0.04em' }}>✓ VERIFIED ADMIN · ALL ACCESS</span>}</div>
       <div role="tablist" aria-label="Account sections" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: '1rem' }}>
         <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>Active licenses</button>
         <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>Payments & profile</button>
