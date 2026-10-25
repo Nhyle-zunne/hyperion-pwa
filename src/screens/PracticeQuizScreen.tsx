@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
+import { useUIStore } from '../stores/uiStore'
 
 export default function PracticeQuizScreen() {
   const navigate = useNavigate()
@@ -23,7 +24,23 @@ export default function PracticeQuizScreen() {
     saveProgress,
     restoreSavedProgress
   } = usePracticeStore()
+
   const [showExitDialog, setShowExitDialog] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const theme = useUIStore((s) => s.theme)
+  const toggleTheme = useUIStore((s) => s.toggleTheme)
+  const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
+  const [automations, setAutomations] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as { directAnswer: boolean; autoNextCorrect: boolean; autoNextWrong: boolean } }
+    catch { return { directAnswer: false, autoNextCorrect: false, autoNextWrong: false } }
+  })
+  const updateAutomation = (key: 'directAnswer' | 'autoNextCorrect' | 'autoNextWrong', value: boolean) => {
+    setAutomations((old) => {
+      const updated = { ...old, [key]: value }
+      localStorage.setItem('hyperion-practice-automations', JSON.stringify(updated))
+      return updated
+    })
+  }
 
   useEffect(() => {
     if (questions.length === 0) restoreSavedProgress()
@@ -135,7 +152,7 @@ export default function PracticeQuizScreen() {
   const bookmarked = isBookmarked(q.id)
 
   return (
-    <div className="screen" style={{ paddingBottom: '6rem' }}>
+    <div className="screen" style={{ paddingBottom: "6rem", fontSize: `${textScale}%` }}>
       {showExitDialog && (
         <div className="exit-dialog-backdrop" role="presentation">
           <section className="exit-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-practice-title">
@@ -146,36 +163,22 @@ export default function PracticeQuizScreen() {
           </section>
         </div>
       )}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1rem',
-          fontSize: '0.85rem',
-          color: 'var(--text-muted)'
-        }}
-      >
-        <span>
-          Q {currentIndex + 1} / {questions.length}
-        </span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+        <span>Q {currentIndex + 1} / {questions.length}</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => toggleBookmark(q)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: bookmarked ? 'var(--warning)' : 'var(--text-muted)',
-              cursor: 'pointer',
-              fontSize: '1rem'
-            }}
-            aria-label={bookmarked ? 'Remove bookmark' : 'Add bookmark'}
-          >
-            {bookmarked ? '★' : '☆'}
-          </button>
           {mode === 'DRILL' && streak > 0 ? `Streak ${streak}` : null}
           {mode !== 'DRILL' ? `${q.competenceId} · ${q.difficulty}` : q.competenceId}
+          <button type="button" onClick={() => toggleBookmark(q)} aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'} style={{ border: 0, background: 'transparent', color: bookmarked ? 'var(--accent)' : 'var(--text)', fontSize: '1.4rem' }}>{bookmarked ? '▮' : '♧'}</button>
+          <div style={{ position: 'relative' }}>
+            <button type="button" onClick={() => setSettingsOpen((v) => !v)} aria-label="Question settings" style={{ border: 0, background: 'transparent', color: 'var(--text)', fontSize: '1.5rem' }}>⚙</button>
+            {settingsOpen && <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, width: 'min(300px, calc(100vw - 32px))', maxHeight: '75vh', overflowY: 'auto', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 8px 28px rgba(0,0,0,.22)' }}>
+              <div style={{ padding: 12, fontWeight: 800, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>DISPLAY SETTINGS</div>
+              <button type="button" onClick={toggleTheme} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'space-between', background: 'transparent', border: 0, borderBottom: '1px solid var(--border)', color: 'var(--text)' }}><span>{theme === 'light' ? '☀ Daylight' : '☾ Night Ops'}</span><span>{theme === 'light' ? 'ON' : 'OFF'}</span></button>
+              <div style={{ padding: 12, borderBottom: '1px solid var(--border)' }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}><strong>Ｔ Text Size</strong><strong style={{ color: 'var(--accent)' }}>{textScale}%</strong></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>{[80,100,120].map((size) => <button key={size} onClick={() => { setTextScale(size); localStorage.setItem('hyperion-question-text-scale', String(size)) }} style={{ padding: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)' }}>{size === 80 ? 'A−' : size === 100 ? '100%' : 'A+'}</button>)}</div></div>
+              <div style={{ padding: 12, fontWeight: 800, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>PRACTICE AUTOMATIONS</div>
+              {([['directAnswer','Direct Answer','Confirm without Check button'],['autoNextCorrect','Auto-Next (Correct)','Advance when correct'],['autoNextWrong','Auto-Next (Wrong)','Advance when incorrect']] as const).map(([key,title,desc]) => <button key={key} onClick={() => updateAutomation(key, !automations[key])} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'space-between', gap: 8, background: 'transparent', border: 0, borderBottom: '1px solid var(--border)', color: 'var(--text)', textAlign: 'left' }}><span><strong>{title}</strong><small style={{ display: 'block', color: 'var(--text-muted)' }}>{desc}</small></span><strong>{automations[key] ? 'ON' : 'OFF'}</strong></button>)}
+            </div>}
+          </div>
         </span>
       </div>
 
