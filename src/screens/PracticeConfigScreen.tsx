@@ -183,8 +183,12 @@ export default function PracticeConfigScreen() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: '.4rem', marginBottom: '1.3rem' }}>
         {rangePresets.map(p => <button key={p.label} type="button" onClick={() => { setStartItem(1); setEndItem(Math.min(maxRange, p.count)); }} style={{ ...smallButton, background: startItem === 1 && endItem === Math.min(maxRange, p.count) ? 'var(--accent)' : 'var(--bg-elevated)', color: 'var(--text)', fontSize: '.78rem', padding: '.45rem .2rem' }}>{p.label}</button>)}
       </div>
-      <input aria-label="Question range start" type="range" min={1} max={maxRange} value={actualStart} onChange={e => { const n = Number(e.target.value); setStartItem(n); if (n > endItem) setEndItem(n); }} style={{ width: '100%', accentColor: '#22c55e' }} />
-      <input aria-label="Question range end" type="range" min={actualStart} max={maxRange} value={actualEnd} onChange={e => setEndItem(Number(e.target.value))} style={{ width: '100%', accentColor: '#22c55e', marginTop: '.5rem' }} />
+      <div className="question-range-dual" style={{ '--range-start': `${((actualStart - 1) / Math.max(1, maxRange - 1)) * 100}%`, '--range-end': `${((actualEnd - 1) / Math.max(1, maxRange - 1)) * 100}%` } as CSSProperties}>
+        <div className="question-range-track" />
+        <div className="question-range-selected" />
+        <input aria-label="Question range start" className="question-range-thumb question-range-start" type="range" min={1} max={maxRange} value={actualStart} onChange={e => { const n = Math.min(Number(e.target.value), actualEnd); setStartItem(n); }} />
+        <input aria-label="Question range end" className="question-range-thumb question-range-end" type="range" min={1} max={maxRange} value={actualEnd} onChange={e => { const n = Math.max(Number(e.target.value), actualStart); setEndItem(n); }} />
+      </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', ...muted, fontSize: '.78rem', fontWeight: 800, margin: '.4rem 0 1.2rem' }}><span>Item #{actualStart}</span><span style={{ color: '#22c55e', letterSpacing: '.08em' }}>Selected: {itemCount.toLocaleString()} items</span><span>Item #{actualEnd}</span></div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.8rem' }}>
         <label style={{ ...muted, fontWeight: 800, fontSize: '.8rem' }}>Start Item (#)<input type="number" min={1} max={actualEnd} value={actualStart} onChange={e => { const n = Math.max(1, Math.min(Number(e.target.value) || 1, actualEnd)); setStartItem(n); }} style={{ ...fieldStyle, display: 'block', marginTop: '.35rem' }} /></label>
