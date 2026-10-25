@@ -108,7 +108,7 @@ export default function PracticeConfigScreen() {
       <strong>Saved practice session available</strong>
       <p style={{ color: 'var(--text-muted)', margin: '.35rem 0 .75rem' }}>Continue where you left off instead of starting a new session.</p>
       <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={() => navigate('/practice/quiz')}>Resume Saved Session</button>
-    </section>
+    </section>}
     <button type="button" onClick={() => navigate(competenceId ? `/practice/competences?track=${trackParam}${freeMode ? '&free=1' : ''}` : `/track?track=${trackParam}`)} style={{ ...muted, marginBottom: '.8rem', padding: '.4rem 0' }}>← Back</button>
     <div style={{ ...panel, borderTop: '3px solid #00e5a0', background: 'linear-gradient(120deg,#172b31,#1e293b)', marginBottom: '1.2rem' }}>
       <div style={{ ...muted, background: '#334155', display: 'inline-block', padding: '.2rem .5rem', fontWeight: 900, letterSpacing: '.12em', fontSize: '.75rem' }}>STEP 2 OF 2 · {freeMode ? 'FREE REVIEWER' : isDrill ? 'DRILL CONFIGURATION' : 'PRACTICE ALL QUESTIONS'}</div>
