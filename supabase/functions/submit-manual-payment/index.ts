@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const products = {
-  oic_nw: { env: 'PRICE_OIC_NW_PHP', track: 'DECK_OIC_NW' },
+  oic_nw: { env: 'PRICE_DECK_OIC_NW_PHP', track: 'DECK_OIC_NW' },
   gmdss: { env: 'PRICE_GMDSS_PHP', track: 'GMDSS_GOC' },
   engine_ew: { env: 'PRICE_ENGINE_EW_PHP', track: 'ENGINE_OIC_EW' },
   deck_mgt: { env: 'PRICE_DECK_MGT_PHP', track: 'DECK_MGT' },
