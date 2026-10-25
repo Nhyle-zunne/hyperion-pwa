@@ -4,7 +4,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
-import LicenseScreen from './LicenseScreen'
 
 type Order = { id: string; product_code: string; amount_php: number; status: string; payment_reference: string | null; created_at: string; admin_note: string | null }
 type OwnedTrack = { product_code: string; expires_at: string | null }
@@ -163,7 +162,6 @@ export default function AccountScreen() {
       {accountTab === 'licenses' ? <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Active licenses</h2>
         {owned.length ? owned.map(item => <div key={item.product_code} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code} · expires {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>) : <p style={{ color: 'var(--text-muted)' }}>No approved subscriptions are linked to this account yet.</p>}
-        <div style={{ marginTop: '1rem' }}><LicenseScreen hideBack /></div>
       </section> : <>
       <section style={card}>
         <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>SIGNED IN AS</div><strong style={{ overflowWrap: 'anywhere' }}>{session.user.email}</strong>
