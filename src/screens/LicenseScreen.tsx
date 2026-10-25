@@ -1,121 +1,27 @@
-import { useNavigate } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
-import { getDeviceCodeDisplay } from '../lib/deviceId'
+
+const TRACKS = [
+  { id: 'DECK_OIC_NW', name: 'Deck OIC-NW' },
+  { id: 'GMDSS_GOC', name: 'GMDSS GOC' },
+  { id: 'ENGINE_OIC_EW', name: 'Engine OIC-EW' },
+  { id: 'DECK_MGT', name: 'Deck Management' },
+  { id: 'ENGINE_MGT', name: 'Engine Management' },
+]
 
 export default function LicenseScreen({ hideBack = false }: { hideBack?: boolean }) {
-  const navigate = useNavigate()
-  const {
-    isAllAccessUnlocked,
-    isOicNwUnlocked,
-    isGmdssUnlocked,
-    isEngineEwUnlocked,
-    isDeckMgtUnlocked,
-    isEngineMgtUnlocked,
-    offlineLicense,
-    getRemainingLabel,
-    clearLicense
-  } = useLicenseStore()
-
-  const hasAny =
-    isAllAccessUnlocked ||
-    isOicNwUnlocked ||
-    isGmdssUnlocked ||
-    isEngineEwUnlocked ||
-    isDeckMgtUnlocked ||
-    isEngineMgtUnlocked
-
-  const tracks = [
-    { name: 'OIC-NW Deck (Operational)', unlocked: isOicNwUnlocked || isAllAccessUnlocked },
-    { name: 'GMDSS GOC', unlocked: isGmdssUnlocked || isAllAccessUnlocked },
-    { name: 'OIC-EW Engine (Operational)', unlocked: isEngineEwUnlocked || isAllAccessUnlocked },
-    { name: 'Deck Management', unlocked: isDeckMgtUnlocked || isAllAccessUnlocked },
-    { name: 'Engine Management', unlocked: isEngineMgtUnlocked || isAllAccessUnlocked }
-  ]
-
-  return (
-    <div className="screen">
-      {!hideBack && <button
-        onClick={() => navigate(-1)}
-        style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}
-      >
-        ← Back
-      </button>}
-
-      <h1 className="page-title">License</h1>
-      <p className="subtitle">Offline signed-key status for this device</p>
-
-      <div className="card" style={{ marginBottom: '1.25rem' }}>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>
-          {hasAny ? 'Active License' : 'No Active License'}
-        </div>
-        {offlineLicense ? (
-          <>
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-              Tier: {offlineLicense.tier} · Duration: {offlineLicense.duration}
-            </div>
-            <div style={{ fontSize: '0.9rem', color: 'var(--accent)', marginTop: 6 }}>
-              {getRemainingLabel()}
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>
-              Expires: {new Date(offlineLicense.expiryEpoch).toLocaleDateString(undefined, {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-              })}
-            </div>
-          </>
-        ) : (
-          <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Activate a signed key to unlock tracks.
-          </div>
-        )}
-      </div>
-
-      <div className="card" style={{ marginBottom: '1.25rem' }}>
-        <div style={{ fontWeight: 600, marginBottom: '0.75rem' }}>Track Access</div>
-        {tracks.map((t) => (
-          <div
-            key={t.name}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              padding: '0.4rem 0',
-              borderBottom: '1px solid var(--border)',
-              fontSize: '0.9rem'
-            }}
-          >
-            <span>{t.name}</span>
-            <span style={{ color: t.unlocked ? 'var(--success)' : 'var(--text-muted)' }}>
-              {t.unlocked ? 'Unlocked' : 'Locked'}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div className="card" style={{ marginBottom: '1.25rem' }}>
-        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 4 }}>Device ID</div>
-        <div style={{ fontFamily: 'monospace', letterSpacing: 1 }}>{getDeviceCodeDisplay()}</div>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-        <button className="btn btn-primary" onClick={() => navigate('/activation')}>
-          {hasAny ? 'Activate Another Key' : 'ACTIVATE KEY'}
-        </button>
-        <button className="btn btn-outline" onClick={() => navigate('/howto')}>
-          How to Avail
-        </button>
-        {hasAny && (
-          <button
-            className="btn btn-outline"
-            style={{ color: 'var(--danger)' }}
-            onClick={() => {
-              if (confirm('Clear current license from this device?')) clearLicense()
-            }}
-          >
-            Clear License
-          </button>
-        )}
-      </div>
+  const cloudTrackIds = useLicenseStore((s) => s.cloudTrackIds)
+  const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
+  return <div className="screen">
+    {!hideBack && <button className="btn btn-outline" onClick={() => window.history.back()} style={{ marginBottom: '1rem' }}>← Back</button>}
+    <h2 style={{ marginTop: 0 }}>Active subscriptions</h2>
+    <p className="subtitle">Subscription access is linked to your Hyperion account and verified online.</p>
+    <div className="card" style={{ marginBottom: '1rem' }}>
+      {TRACKS.map(track => {
+        const active = cloudTrackIds.includes(track.id) || cloudTrackIds.includes('ALL')
+        return <div key={track.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '.65rem 0', borderBottom: '1px solid var(--border)' }}><span>{track.name}</span><strong style={{ color: active ? 'var(--success)' : 'var(--text-muted)' }}>{active ? 'Active' : 'Not subscribed'}</strong></div>
+      })}
+      <button className="btn btn-outline" style={{ width: '100%', marginTop: '1rem' }} onClick={() => void refreshCloudEntitlements()}>Refresh subscriptions</button>
     </div>
-  )
+    <p style={{ color: 'var(--text-muted)', fontSize: '.9rem' }}>To purchase or renew a track, open Account and use the Payments & profile tab.</p>
+  </div>
 }
