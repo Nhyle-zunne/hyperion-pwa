@@ -23,8 +23,10 @@ supabase link --project-ref evnjoezffghtrzqacwcj
 
 # Use your PayMongo TEST secret key while testing.
 supabase secrets set PAYMONGO_SECRET_KEY=sk_test_REPLACE_WITH_YOUR_TEST_KEY
-supabase secrets set PAYMONGO_WEBHOOK_SECRET=REPLACE_WITH_THE_WEBHOOK_SIGNING_SECRET
+supabase secrets set PAYMONGO_WEBHOOK_SECRET=REPLACE_WITH_THE_TEST_WEBHOOK_SIGNING_SECRET
 supabase secrets set PAYMONGO_EXPECT_LIVEMODE=false
+# Keep checkout disabled until you have tested the full payment-to-license flow.
+supabase secrets set PAYMONGO_CHECKOUT_ENABLED=false
 supabase secrets set APP_BASE_URL=https://hyperionmaritime.org
 
 # These must match the prices shown in Hyperion's Account page.
@@ -42,9 +44,9 @@ supabase functions deploy admin-payment-review
 
 Replace both key placeholders with your actual values locally. Do not paste the keys into ChatGPT or GitHub.
 
-The five price secrets are whole Philippine pesos, matching the current Account page prices. If you change your pricing later, update the Account page product catalogue and these server-side secrets together. The server-side secret remains authoritative for the amount actually charged.
+The five price secrets are whole Philippine pesos, matching the current Account page prices. If you change your pricing later, update the Account page product catalogue and these server-side secrets together. The server-side secret remains authoritative for the amount actually charged. The app refuses to start checkout unless `PAYMONGO_CHECKOUT_ENABLED=true`, a key for the configured mode is present, and the expected test/live mode is explicitly configured.
 
-For **production/live mode**, change `PAYMONGO_SECRET_KEY` to your PayMongo live secret key (`sk_live_...`), set `PAYMONGO_WEBHOOK_SECRET` to the signing secret for the live webhook endpoint, and set `PAYMONGO_EXPECT_LIVEMODE=true`. Keep the test and live keys separate. Do not use test-mode events to activate production subscriptions.
+For **production/live mode**, change `PAYMONGO_SECRET_KEY` to your PayMongo live secret key (`sk_live_...`), set `PAYMONGO_WEBHOOK_SECRET` to the signing secret for the live webhook endpoint, and set `PAYMONGO_EXPECT_LIVEMODE=true`. Keep `PAYMONGO_CHECKOUT_ENABLED=false` until the live webhook is registered and the live credentials have been verified. Only then set `PAYMONGO_CHECKOUT_ENABLED=true`. Keep the test and live keys separate. Do not use test-mode events to activate production subscriptions.
 
 The `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are supplied to Supabase Edge Functions. Do not add the service-role key to Cloudflare or frontend environment variables.
 
@@ -80,7 +82,7 @@ The existing QR/manual process remains available as a fallback. Manual payments 
 - Confirm the buyer receives access only to the purchased track.
 - Test cancellation, failed checkout creation, wrong amount/currency, invalid webhook signatures, delayed webhook delivery, and duplicate webhook delivery. Duplicate webhooks must not extend the same order's entitlement twice.
 - Verify that an arbitrary `?payment=success` URL does not grant access.
-- After testing, switch the checkout API key, webhook signing secret, and expected live-mode setting together before accepting real payments.
+- After testing, switch the checkout API key, webhook signing secret, and expected live-mode setting together before accepting real payments. Only then set `PAYMONGO_CHECKOUT_ENABLED=true`.
 
 ## 6. Manual admin workflow
 
