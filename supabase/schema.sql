@@ -5,6 +5,7 @@ create table if not exists public.orders (
   user_id uuid not null references auth.users(id) on delete cascade,
   product_code text not null,
   track_id text not null,
+  license_term text not null default 'year' check (license_term in ('week','month','year')),
   amount_php integer not null check (amount_php > 0),
   currency text not null default 'PHP' check (currency = 'PHP'),
   status text not null default 'pending',
@@ -42,6 +43,9 @@ create unique index if not exists orders_paymongo_payment_uidx
   on public.orders (paymongo_payment_id) where paymongo_payment_id is not null;
 alter table public.orders add column if not exists reviewed_by text;
 alter table public.orders add column if not exists reviewed_at timestamptz;
+alter table public.orders add column if not exists license_term text not null default 'year';
+alter table public.orders drop constraint if exists orders_license_term_check;
+alter table public.orders add constraint orders_license_term_check check (license_term in ('week','month','year'));
 
 -- Product catalogue intentionally excludes the discontinued all-access bundle.
 alter table public.orders drop constraint if exists orders_product_code_check;
@@ -59,6 +63,7 @@ create table if not exists public.entitlements (
   user_id uuid not null references auth.users(id) on delete cascade,
   product_code text not null,
   track_id text not null,
+  license_term text not null default 'year' check (license_term in ('week','month','year')),
   order_id uuid not null references public.orders(id) on delete restrict,
   status text not null default 'active' check (status in ('active','revoked')),
   granted_at timestamptz not null default now(),
@@ -68,6 +73,9 @@ create table if not exists public.entitlements (
 );
 alter table public.entitlements add column if not exists expires_at timestamptz;
 alter table public.entitlements add column if not exists renewed_at timestamptz;
+alter table public.entitlements add column if not exists license_term text not null default 'year';
+alter table public.entitlements drop constraint if exists entitlements_license_term_check;
+alter table public.entitlements add constraint entitlements_license_term_check check (license_term in ('week','month','year'));
 update public.entitlements set expires_at = granted_at + interval '1 year' where expires_at is null;
 create index if not exists entitlements_active_expiry_idx on public.entitlements (user_id, expires_at) where status = 'active';
 alter table public.entitlements drop constraint if exists entitlements_product_code_check;
@@ -112,6 +120,7 @@ create table if not exists public.checkout_batches (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   product_codes text[] not null,
+  license_terms text[] not null default '{}',
   amount_php integer not null check (amount_php > 0),
   currency text not null default 'PHP' check (currency = 'PHP'),
   status text not null default 'pending' check (status in ('pending','paid','failed','cancelled')),
@@ -127,7 +136,12 @@ create table if not exists public.checkout_batches (
 );
 
 alter table public.orders add column if not exists checkout_batch_id uuid;
-do $$
+alter table public.checkout_batches add column if not exists license_terms text[];
+update public.checkout_batches set license_terms = array_fill('year'::text, array[cardinality(product_codes)]) where license_terms is null;
+alter table public.checkout_batches alter column license_terms set default '{}', alter column license_terms set not null;
+alter table public.checkout_batches drop constraint if exists checkout_batches_license_terms_check;
+alter table public.checkout_batches add constraint checkout_batches_license_terms_check check (cardinality(license_terms) = cardinality(product_codes) and license_terms <@ array['week','month','year']::text[]);
+do $
 begin
   if not exists (
     select 1 from pg_constraint
