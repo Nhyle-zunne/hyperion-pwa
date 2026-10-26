@@ -61,6 +61,34 @@ function readMockExamPlan(trackId?: TrackId): MockExamPlan | null {
 function writeMockExamPlan(plan: MockExamPlan): void {
   try { localStorage.setItem(MOCK_EXAM_PLAN_KEY, JSON.stringify(plan)) } catch { /* storage may be unavailable */ }
 }
+
+function mockQuestionWeight(question: Question): number {
+  if (question.difficulty === 'EASY') return 3
+  if (question.difficulty === 'MODERATE') return 6
+  return 9
+}
+function weightedMockCompetenceScore(
+  questions: Question[],
+  answers: Record<string, { selectedIndex: number | null; isCorrect: boolean }>
+): { correct: number; total: number; percent: number } {
+  let rawScore = 0
+  let totalScore = 0
+  let correct = 0
+  for (const question of questions) {
+    const weight = mockQuestionWeight(question)
+    totalScore += weight
+    const answer = answers[question.id]
+    if (answer?.selectedIndex != null && answer.isCorrect) {
+      rawScore += weight
+      correct += 1
+    }
+  }
+  return {
+    correct,
+    total: questions.length,
+    percent: totalScore > 0 ? Math.round((rawScore / totalScore) * 10000) / 100 : 0
+  }
+}
 const competencesForFunction = (track: TrackId, functionId: string) => {
   const ids: Record<TrackId, Record<string, string[]>> = {
     DECK_OIC_NW: { F1: ['C1','C2','C3','C4','C5','C7','C9'], F2: ['C10','C11'], F3: ['C12','C13','C17'] },
@@ -191,7 +219,7 @@ export default function MockExamScreen() {
   return (
     <div className="screen" style={{ paddingBottom: '2rem', minHeight: 'calc(100dvh - 64px)', background: 'var(--bg)', color: 'var(--text)' }}>
       <button type="button" onClick={() => navigate('/track?track=' + trackParam)} style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>← Back to Track</button>
-      <div className="card" style={{ borderRadius: 14, borderTop: '3px solid var(--accent)', marginBottom: '1rem' }}>
+      <div className="card" style={{ width: 'min(100%, 860px)', boxSizing: 'border-box', margin: '0 auto 1rem', borderRadius: 14, borderTop: '3px solid var(--accent)' }}>
         <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', letterSpacing: '0.12em', fontWeight: 800 }}>STCW '78 AS AMENDED · OFFICIAL TIMED MOCK</div>
         <h1 className="page-title" style={{ marginTop: 8, marginBottom: 4 }}>{TRACK_LABELS[trackId]}</h1>
         <p className="subtitle" style={{ marginBottom: 0 }}>MARINA-format timed mock examination · 70% passing cutoff · 1 minute per item</p>
@@ -240,51 +268,83 @@ export default function MockExamScreen() {
         </section>
       </div>}
 
-      {stage === 'competences' && <section style={{ margin: '1rem auto 0', width: 'min(100%, 860px)' }}>
+      {(stage === 'competences' || stage === 'results') && <section style={{ margin: '1rem auto 0', width: 'min(100%, 860px)', boxSizing: 'border-box' }}>
+        {stage === 'results' && <p style={{ margin: '0 0 .6rem', fontSize: '.85rem', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '.06em' }}>MOCK EXAM RESULTS · SUBMITTED</p>}
         <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-card)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', color: 'var(--text)', fontSize: '.92rem' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', color: 'var(--text)', fontSize: '.9rem', tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '25%' }} />
+              <col style={{ width: '34%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '14%' }} />
+            </colgroup>
             <thead>
               <tr style={{ background: 'var(--bg-elevated)', textAlign: 'left' }}>
-                <th scope="col" style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>FUNCTION</th>
-                <th scope="col" style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)' }}>COMPETENCE</th>
-                <th scope="col" style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>ITEMS</th>
-                <th scope="col" style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>ACTION</th>
+                <th scope="col" style={{ padding: '.75rem .6rem', borderBottom: '1px solid var(--border)' }}>FUNCTION</th>
+                <th scope="col" style={{ padding: '.75rem .6rem', borderBottom: '1px solid var(--border)' }}>STATUS</th>
+                <th scope="col" style={{ padding: '.75rem .6rem', borderBottom: '1px solid var(--border)' }}>COMPETENCE</th>
+                <th scope="col" style={{ padding: '.75rem .4rem', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>{examPlan?.status === 'submitted' ? 'SCORE' : 'ITEMS'}</th>
+                <th scope="col" style={{ padding: '.75rem .4rem', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>ACTION</th>
               </tr>
             </thead>
             <tbody>
-              {tableRows.map((row) => {
-                const locked = Boolean(examPlan?.results[row.id])
-                return <tr key={row.id}>
-                  <td style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', verticalAlign: 'top' }}>
-                    <strong>{row.functionId}</strong>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '.74rem', lineHeight: 1.35, marginTop: 3, minWidth: 90 }}>{row.functionLabel}</div>
-                  </td>
-                  <td style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', verticalAlign: 'top', minWidth: 160 }}>
-                    <strong>{row.id}</strong>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '.84rem', lineHeight: 1.4, marginTop: 3 }}>{row.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</div>
-                  </td>
-                  <td style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', verticalAlign: 'top', whiteSpace: 'nowrap' }}>{mockExamItemCount(trackId, row.id)}</td>
-                  <td style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', textAlign: 'right', verticalAlign: 'top' }}>
-                    {locked
-                      ? <span style={{ display: 'inline-block', padding: '.5rem .6rem', borderRadius: 6, background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: '.75rem', fontWeight: 900, letterSpacing: '.03em' }}>LOCKED</span>
-                      : <button type="button" className="btn btn-primary" disabled={starting || !row.count} onClick={() => void start(row.id)} style={{ minWidth: 92, padding: '.6rem .7rem', whiteSpace: 'nowrap', fontSize: '.82rem' }}>{startingCompetence === row.id ? 'Starting…' : 'Take Exam'}</button>}
-                  </td>
-                </tr>
+              {groupedCompetences.map((group) => {
+                const groupSubmitted = examPlan?.status === 'submitted'
+                // Per permit PDF: a function fails if any competence in it is below 70%.
+                const functionPassed = group.competences.every((competence) => {
+                  const result = examPlan?.results[competence.id]
+                  return result != null && result.percent >= 70
+                })
+                const statusText = !groupSubmitted ? 'NOT YET SUBMITTED' : functionPassed ? 'PASSED' : 'FAILED'
+                const statusStyle: React.CSSProperties = groupSubmitted
+                  ? {
+                      background: functionPassed ? '#22c55e' : '#ef4444',
+                      color: '#ffffff',
+                      borderRight: '1px solid ' + (functionPassed ? '#16a34a' : '#dc2626'),
+                      fontWeight: 900
+                    }
+                  : { background: 'transparent', color: 'var(--text-muted)', fontWeight: 700 }
+                return group.competences.map((row, rowIndex) => {
+                  const result = examPlan?.results[row.id]
+                  const locked = Boolean(result) || groupSubmitted
+                  return <tr key={row.id}>
+                    {rowIndex === 0 && <td rowSpan={group.competences.length} style={{ padding: '.7rem .55rem', borderBottom: '1px solid var(--border)', verticalAlign: 'middle', textAlign: 'center', fontWeight: 900, overflowWrap: 'anywhere' }}>
+                      {group.id}
+                    </td>}
+                    {rowIndex === 0 && <td rowSpan={group.competences.length} style={{ padding: '.55rem', borderBottom: '1px solid var(--border)', verticalAlign: 'middle', textAlign: 'center', overflowWrap: 'anywhere', ...statusStyle }}>
+                      {statusText}
+                    </td>}
+                    <td style={{ padding: '.7rem .6rem', borderBottom: '1px solid var(--border)', verticalAlign: 'middle', overflowWrap: 'anywhere' }}>
+                      <strong style={{ display: 'block' }}>{row.id}</strong>
+                      <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.35, marginTop: 3 }}>{row.label.replace(/^C\\d+\\s*[·:-]?\\s*/, '')}</span>
+                    </td>
+                    <td style={{ padding: '.7rem .35rem', borderBottom: '1px solid var(--border)', verticalAlign: 'middle', textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: groupSubmitted ? 800 : 500, overflowWrap: 'anywhere' }}>
+                      {groupSubmitted ? (result ? result.percent.toFixed(2) + '%' : '—') : mockExamItemCount(trackId, row.id)}
+                    </td>
+                    <td style={{ padding: '.55rem .3rem', borderBottom: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>
+                      {locked
+                        ? <span style={{ display: 'inline-block', padding: '.42rem .35rem', borderRadius: 5, background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: '.7rem', fontWeight: 900, letterSpacing: '.02em' }}>LOCKED</span>
+                        : <button type="button" className="btn btn-primary" disabled={starting || !row.count} onClick={() => void start(row.id)} style={{ minWidth: 0, width: '100%', padding: '.55rem .3rem', whiteSpace: 'normal', lineHeight: 1.2, fontSize: '.75rem' }}>{startingCompetence === row.id ? 'Starting…' : 'Take Exam'}</button>}
+                    </td>
+                  </tr>
+                })
               })}
-              {!tableRows.length && <tr><td colSpan={4} style={{ padding: '1rem', color: 'var(--text-muted)' }}>No competences are available for the selected functions.</td></tr>}
+              {!tableRows.length && <tr><td colSpan={5} style={{ padding: '1rem', color: 'var(--text-muted)' }}>No competences are available for the selected functions.</td></tr>}
             </tbody>
           </table>
         </div>
-        <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-card)' }}>
+
+        {stage === 'competences' && <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-card)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
             <strong>{completedCount} / {tableRows.length} competences completed</strong>
             <span style={{ color: 'var(--text-muted)', fontSize: '.84rem' }}>{tableRows.length - completedCount} remaining</span>
           </div>
           {!allCompetencesCompleted && <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', lineHeight: 1.45, margin: '0 0 .75rem' }}>Finish every selected competence to unlock final submission.</p>}
           <button type="button" className="btn btn-primary" disabled={!allCompetencesCompleted} onClick={() => setShowFinalSubmitConfirm(true)} style={{ width: '100%' }}>SUBMIT EXAM</button>
-        </div>
-        {completedCount === 0 && <button type="button" style={{ ...secondaryButton, width: '100%', marginTop: 10 }} onClick={() => setStage('functions')}>← CHANGE FUNCTIONS</button>}
-        {showFinalSubmitConfirm && <div role="presentation" style={overlay}>
+        </div>}
+        {stage === 'competences' && completedCount === 0 && <button type="button" style={{ ...secondaryButton, width: '100%', marginTop: 10 }} onClick={() => setStage('functions')}>← CHANGE FUNCTIONS</button>}
+        {stage === 'competences' && showFinalSubmitConfirm && <div role="presentation" style={overlay}>
           <section role="dialog" aria-modal="true" aria-labelledby="submit-overall-mock-title" style={dialog}>
             <div style={greenLine} />
             <h2 id="submit-overall-mock-title" style={{ fontSize: '1.3rem', marginTop: 0 }}>Are you sure you want to submit the exam?</h2>
@@ -295,47 +355,12 @@ export default function MockExamScreen() {
             </div>
           </section>
         </div>}
+        {stage === 'results' && <div style={{ display: 'flex', gap: 8, marginTop: '1rem', flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => navigate('/mock?track=' + encodeURIComponent(trackParam))}>RETURN TO MOCK EXAMS</button>
+          <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => navigate('/history')}>VIEW HISTORY</button>
+        </div>}
       </section>}
 
-      {stage === 'results' && <section style={{ margin: '1rem auto 2rem', width: 'min(100%, 760px)' }}>
-        <div className="card" style={{ borderTop: '3px solid var(--accent)', borderRadius: 12, marginBottom: '1rem' }}>
-          <h1 className="page-title" style={{ marginTop: 0 }}>MOCK EXAM RESULTS</h1>
-          <p style={{ color: 'var(--text-muted)', marginBottom: 0 }}>{TRACK_LABELS[trackId]} · 70% passing cutoff</p>
-        </div>
-        <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-card)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', color: 'var(--text)' }}>
-            <thead>
-              <tr style={{ background: 'var(--bg-elevated)', textAlign: 'left' }}>
-                <th scope="col" style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)' }}>FUNCTION</th>
-                <th scope="col" style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)' }}>STATUS</th>
-                <th scope="col" style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)' }}>COMPETENCE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tableRows.map((row) => {
-                const result = examPlan?.results[row.id]
-                const passed = Boolean(result && result.percent >= 70)
-                return <tr key={row.id}>
-                  <td style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)', fontWeight: 900 }}>{row.functionId}</td>
-                  <td style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ display: 'inline-block', padding: '.4rem .7rem', borderRadius: 6, background: passed ? '#dcfce7' : '#fee2e2', color: passed ? '#166534' : '#b91c1c', border: '1px solid ' + (passed ? '#86efac' : '#fca5a5'), fontSize: '.78rem', fontWeight: 900, letterSpacing: '.04em' }}>{passed ? 'PASSED' : 'FAILED'}</span>
-                  </td>
-                  <td style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)' }}>
-                    <strong>{row.id}</strong>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '.84rem', lineHeight: 1.4, marginTop: 3 }}>{row.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</div>
-                  </td>
-                </tr>
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="card" style={{ marginTop: '1rem', textAlign: 'center' }}>
-          <strong>{tableRows.filter((row) => (examPlan?.results[row.id]?.percent ?? 0) >= 70).length} PASSED</strong>
-          <span style={{ color: 'var(--text-muted)' }}> / {tableRows.length} competences</span>
-        </div>
-        <button type="button" className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => navigate('/mock?track=' + encodeURIComponent(trackParam))}>RETURN TO MOCK EXAMS</button>
-        <button type="button" className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => navigate('/history')}>VIEW HISTORY</button>
-      </section>}
     </div>
   )
 }
@@ -373,7 +398,7 @@ export function MockExamRunner() {
     const functionId = questions[0]?.functionId
     if (!plan || plan.status !== 'in_progress' || !functionId || !plan.selectedFunctions.includes(functionId)) return
 
-    const result = score()
+    const result = weightedMockCompetenceScore(questions, answers)
     const updated: MockExamPlan = {
       ...plan,
       results: {
