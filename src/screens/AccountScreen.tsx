@@ -79,7 +79,7 @@ export default function AccountScreen() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
-  const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>({ oic_nw: 'year', gmdss: 'year', engine_ew: 'year', deck_mgt: 'year', engine_mgt: 'year' })
+  const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>(() => Object.fromEntries(PAID_PRODUCTS.map(item => [item.code, basket.find(entry => entry.code === item.code)?.term ?? 'year'])) as Record<PaidTrack, LicenseTerm>)
   const [orders, setOrders] = useState<Order[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
@@ -451,7 +451,7 @@ export default function AccountScreen() {
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
                 <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Choose the track or tracks you need. Active licenses cannot be purchased again.</p></div>
-                <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>12-MONTH ACCESS</span>
+                <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>WEEK · MONTH · YEAR ACCESS</span>
               </div>
               <div className="account-products-grid">
                 {PAID_PRODUCTS.map(item => {
