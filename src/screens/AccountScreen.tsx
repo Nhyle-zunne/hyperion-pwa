@@ -206,15 +206,14 @@ export default function AccountScreen() {
       if (data?.status === 'already_paid') {
         setMessage('PayMongo has recorded this payment. Hyperion is checking the verified webhook status; do not send a second payment.')
         for (let attempt = 0; attempt < 7; attempt++) {
-          const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .select('status')
-            .eq('id', orderId)
-            .eq('user_id', session.user.id)
-            .maybeSingle()
-          if (!orderError && order?.status === 'paid') {
+          const { data: verified, error: verifyError } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
+          if (!verifyError && verified?.status === 'paid') {
+            const paidCodes: string[] = Array.isArray(verified.productCodes)
+              ? verified.productCodes
+              : typeof verified.productCode === 'string' ? [verified.productCode] : []
+            clearBasketItems(paidCodes)
             await refreshAccount()
-            setMessage('Payment confirmed. Your reviewer license is active for the purchased track.')
+            setMessage(`Payment confirmed. Activated: ${paidCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(', ')}.`)
             return
           }
           if (attempt < 6) await new Promise(resolve => window.setTimeout(resolve, 1500))
@@ -476,7 +475,7 @@ export default function AccountScreen() {
     orders: pendingPayMongoOrders.filter(item => (item.checkout_batch_id || item.id) === (order.checkout_batch_id || order.id)),
   }])).values()].map(group => ({
     ...group,
-    codes: [...new Set(group.orders.map(order => order.product_code)) as Set<string>],
+    codes: [...new Set(group.orders.map(order => order.product_code))].filter((code): code is PaidTrack => PAID_PRODUCTS.some(item => item.code === code)),
     total: group.orders.reduce((sum, order) => sum + order.amount_php, 0),
     isBatch: Boolean(group.orders[0]?.checkout_batch_id),
   }))
