@@ -159,11 +159,21 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         return;
       }
 
-      // Apply the configured item range first, then optionally randomize only that range.
-      const start = Math.max(1, Math.floor(startItem ?? 1)) - 1;
-      const range = qs.slice(start, start + finalLimit);
-      const selected = randomizeOrder === false ? range : shuffle(range);
-      const delivered = shuffleChoices ? selected.map(shuffleQuestionChoices) : selected;
+      // Mock exams always draw a random sample from the entire selected competence
+      // pool, then shuffle every question's choices. This keeps the exam independent
+      // of CSV ordering and prevents the sample from always coming from the first rows.
+      let selected: Question[];
+      let delivered: Question[];
+      if (mode === 'MOCK') {
+        selected = shuffle(qs).slice(0, finalLimit);
+        delivered = selected.map(shuffleQuestionChoices);
+      } else {
+        // Practice modes retain their configured item range and optional shuffling.
+        const start = Math.max(1, Math.floor(startItem ?? 1)) - 1;
+        const range = qs.slice(start, start + finalLimit);
+        selected = randomizeOrder === false ? range : shuffle(range);
+        delivered = shuffleChoices ? selected.map(shuffleQuestionChoices) : selected;
+      }
 
       if (delivered.length === 0) {
         set({ loading: false, error: 'The selected item range contains no questions. Please adjust the range.' });
