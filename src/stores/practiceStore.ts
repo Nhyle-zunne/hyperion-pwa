@@ -26,7 +26,7 @@ interface PracticeState {
   streak: number;
   bestStreak: number;
 
-  startCustomSession: (opts: { questions: Question[]; track: TrackId; competenceId?: string | null; isFreeSession: boolean }) => Promise<boolean>;
+  startCustomSession: (opts: { questions: Question[]; track: TrackId; competenceId?: string | null }) => Promise<boolean>;
   startSession: (opts: {
     mode: SessionMode;
     track: TrackId;
