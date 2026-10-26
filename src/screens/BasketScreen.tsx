@@ -194,13 +194,13 @@ export default function BasketScreen() {
   const checkout = async (requestedCodes: PaidTrack[] = basket) => {
     if (!supabase || !session) {
       navigate('/account')
-      setMessage('Sign in to Hyperion first. Your basket is saved in this browser.')
+      setMessage('Sign in to Hyperion first. Your selected tracks are saved in this browser.')
       return
     }
     const codes = [...new Set(requestedCodes)].filter(code => PAID_PRODUCTS.some(item => item.code === code))
     if (!codes.length) {
       setIsError(true)
-      setMessage('Your basket is empty. Return to the shop and add a reviewer track first.')
+      setMessage('Your checkout is empty. Return to the shop and add a reviewer track first.')
       return
     }
     const unavailable = codes.filter(code => ownedCodes.includes(code))
@@ -323,8 +323,8 @@ export default function BasketScreen() {
     `}</style>
     <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
     <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
-      <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Your Basket</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
-      <span style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'}</span>
+      <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
+      <span style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'} to purchase</span>
     </div>
 
     {!session ? <section style={{ ...style.card, maxWidth: 600 }}>
@@ -355,7 +355,7 @@ export default function BasketScreen() {
         <section style={style.card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.8rem', flexWrap: 'wrap' }}>
             <div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>Selected tracks</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Only items shown here will be included in this payment.</p></div>
-            {basket.length > 0 && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setBasket([])}>CLEAR BASKET</button>}
+            {basket.length > 0 && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setBasket([])}>CLEAR SELECTION</button>}
           </div>
           {selectedProducts.length ? selectedProducts.map(item => {
             const active = ownedCodes.includes(item.code)
@@ -366,7 +366,7 @@ export default function BasketScreen() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', flexShrink: 0 }}><strong>₱{item.annualPrice}</strong><button type="button" disabled={busy} onClick={() => setBasket(current => current.filter(code => code !== item.code))} style={{ color: 'var(--danger, #dc2626)', fontWeight: 850, padding: '.35rem' }}>Remove</button></div>
             </div>
-          }) : <div style={{ textAlign: 'center', padding: '2.4rem 1rem', border: '1px dashed var(--border)', borderRadius: 10, marginTop: '1rem' }}><div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🛒</div><strong>Your basket is empty</strong><p className="basket-muted" style={{ margin: '.35rem 0 1rem' }}>Visit Bond Store and add one or more reviewer tracks.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/account')}>BROWSE TRACKS</button></div>}
+          }) : <div style={{ textAlign: 'center', padding: '2.4rem 1rem', border: '1px dashed var(--border)', borderRadius: 10, marginTop: '1rem' }}><div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🛒</div><strong>Your checkout is empty</strong><p className="basket-muted" style={{ margin: '.35rem 0 1rem' }}>Visit Bond Store and add one or more reviewer tracks.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/account')}>BROWSE TRACKS</button></div>}
         </section>
 
         <aside className="basket-summary" style={style.card}>
