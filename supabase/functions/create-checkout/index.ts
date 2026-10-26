@@ -263,8 +263,8 @@ Deno.serve(async (req) => {
           ...(user.email ? { email: user.email } : {})
         },
         payment_method_types: ['gcash', 'paymaya', 'qrph', 'card'],
-        success_url: `${configuredBase}/account?payment=success&order_id=${encodeURIComponent(batch.id)}&product_codes=${encodeURIComponent(codes.join(','))}`,
-        cancel_url: `${configuredBase}/account?payment=cancelled&order_id=${encodeURIComponent(batch.id)}&product_codes=${encodeURIComponent(codes.join(','))}`,
+        success_url: `${configuredBase}/basket?payment=success&order_id=${encodeURIComponent(batch.id)}&product_codes=${encodeURIComponent(codes.join(','))}`,
+        cancel_url: `${configuredBase}/basket?payment=cancelled&order_id=${encodeURIComponent(batch.id)}&product_codes=${encodeURIComponent(codes.join(','))}`,
         reference_number: batch.id,
         send_email_receipt: true,
         metadata
