@@ -1,0 +1,385 @@
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import type { Session } from '@supabase/supabase-js'
+import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
+import type { PaidTrack } from '../lib/supabase'
+import { useLicenseStore } from '../stores/licenseStore'
+
+type Order = {
+  id: string
+  product_code: string
+  amount_php: number
+  status: string
+  payment_reference: string | null
+  payment_method: string | null
+  customer_name: string | null
+  created_at: string
+  paid_at: string | null
+  checkout_batch_id: string | null
+}
+
+function savedBasket(): PaidTrack[] {
+  try {
+    const raw = localStorage.getItem('hyperion-account-basket-v1')
+    const saved: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(saved)
+      ? [...new Set(saved.filter((code): code is PaidTrack => typeof code === 'string' && PAID_PRODUCTS.some(item => item.code === code)))]
+      : []
+  } catch {
+    return []
+  }
+}
+
+async function edgeError(error: unknown): Promise<string> {
+  if (error && typeof error === 'object' && 'context' in error) {
+    const context = (error as { context?: unknown }).context
+    if (context instanceof Response) {
+      try {
+        const body = await context.clone().json() as { error?: unknown }
+        if (typeof body.error === 'string' && body.error.trim()) return body.error
+      } catch { /* Use the generic message below. */ }
+    }
+  }
+  return error instanceof Error && error.message && !/functions|supabase|jwt|fetch failed/i.test(error.message)
+    ? error.message
+    : 'The request could not be completed. Please retry in a moment.'
+}
+
+export default function BasketScreen() {
+  const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const [session, setSession] = useState<Session | null>(null)
+  const [basket, setBasket] = useState<PaidTrack[]>(savedBasket)
+  const [orders, setOrders] = useState<Order[]>([])
+  const [ownedCodes, setOwnedCodes] = useState<PaidTrack[]>([])
+  const [busy, setBusy] = useState(false)
+  const [busyCheckoutId, setBusyCheckoutId] = useState<string | null>(null)
+  const [message, setMessage] = useState('')
+  const [isError, setIsError] = useState(false)
+  const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
+
+  useEffect(() => {
+    try {
+      if (basket.length) localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(basket))
+      else localStorage.removeItem('hyperion-account-basket-v1')
+    } catch { /* Keep the basket in memory for this visit. */ }
+  }, [basket])
+
+  useEffect(() => {
+    if (!supabase) return
+    void supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
+    return () => listener.subscription.unsubscribe()
+  }, [])
+
+  const refreshData = async () => {
+    if (!supabase || !session?.user.id) {
+      setOrders([])
+      setOwnedCodes([])
+      return
+    }
+    const [orderResult, entitlementResult] = await Promise.all([
+      supabase.from('orders')
+        .select('id,product_code,amount_php,status,payment_reference,payment_method,customer_name,created_at,paid_at,checkout_batch_id')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(100),
+      supabase.from('entitlements')
+        .select('product_code')
+        .eq('user_id', session.user.id)
+        .eq('status', 'active')
+        .gt('expires_at', new Date().toISOString())
+    ])
+    if (orderResult.error) throw new Error('Unable to load your order history. Please refresh the page.')
+    if (entitlementResult.error) throw new Error('Unable to check your active licenses. Please refresh the page.')
+    setOrders((orderResult.data ?? []) as Order[])
+    setOwnedCodes((entitlementResult.data ?? [])
+      .map(row => row.product_code as PaidTrack)
+      .filter(code => PAID_PRODUCTS.some(item => item.code === code)))
+    await refreshCloudEntitlements()
+  }
+
+  useEffect(() => {
+    let active = true
+    if (session) {
+      void refreshData().catch(async error => {
+        if (active) {
+          setIsError(true)
+          setMessage(await edgeError(error))
+        }
+      })
+    } else {
+      setOrders([])
+      setOwnedCodes([])
+    }
+    return () => { active = false }
+  }, [session?.user.id])
+
+  const clearBasketCodes = (codes: string[]) => setBasket(current => current.filter(code => !codes.includes(code)))
+  const selectedProducts = useMemo(() => PAID_PRODUCTS.filter(item => basket.includes(item.code)), [basket])
+  const totalPhp = selectedProducts.reduce((sum, item) => sum + item.annualPrice, 0)
+  const activeInBasket = selectedProducts.filter(item => ownedCodes.includes(item.code))
+  const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
+  const pendingCheckoutGroups = useMemo(() => {
+    const groups = new Map<string, Order[]>()
+    for (const order of pendingPayMongoOrders) {
+      const id = order.checkout_batch_id || order.id
+      groups.set(id, [...(groups.get(id) ?? []), order])
+    }
+    return [...groups.entries()].map(([id, groupOrders]) => ({
+      id,
+      orders: groupOrders,
+      codes: [...new Set(groupOrders.map(order => order.product_code))]
+        .filter((code): code is PaidTrack => PAID_PRODUCTS.some(item => item.code === code)),
+      total: groupOrders.reduce((sum, order) => sum + Number(order.amount_php), 0),
+    }))
+  }, [pendingPayMongoOrders])
+
+  const confirmPaidCheckout = async (orderId: string, attemptCount = 1) => {
+    if (!supabase) return false
+    for (let attempt = 0; attempt < attemptCount; attempt++) {
+      const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
+      if (!error && data?.status === 'paid') {
+        const codes: string[] = Array.isArray(data.productCodes)
+          ? data.productCodes
+          : typeof data.productCode === 'string' ? [data.productCode] : []
+        clearBasketCodes(codes)
+        await refreshData()
+        setIsError(false)
+        setMessage(`Payment confirmed. Activated: ${codes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(', ')}. No manual approval is needed.`)
+        return true
+      }
+      if (error) setMessage(await edgeError(error))
+      else if (typeof data?.error === 'string') setMessage(data.error)
+      else if (data?.status === 'pending') setMessage(data.message || 'PayMongo has not confirmed payment yet. No license was granted.')
+      if (attempt < attemptCount - 1) await new Promise(resolve => window.setTimeout(resolve, 1600))
+    }
+    return false
+  }
+
+  useEffect(() => {
+    const paymentState = params.get('payment')
+    const orderId = params.get('order_id')
+    if (!session || !paymentState || !orderId) return
+    let active = true
+    if (paymentState === 'cancelled') {
+      setMessage('You returned from PayMongo. The checkout may still be open. Use the pending checkout controls below if you want to cancel it or switch payment methods.')
+      setIsError(false)
+      return () => { active = false }
+    }
+    if (paymentState !== 'success') return
+    setBusy(true)
+    setIsError(false)
+    setMessage('Checking the completed payment directly with PayMongo…')
+    void (async () => {
+      try {
+        const paid = await confirmPaidCheckout(orderId, 6)
+        if (!active) return
+        if (!paid) {
+          setIsError(true)
+          setMessage(current => current || 'PayMongo has not confirmed this checkout as paid yet. Do not pay again; use Refresh payment status shortly.')
+        }
+      } catch (error) {
+        if (active) {
+          setIsError(true)
+          setMessage(await edgeError(error))
+        }
+      } finally {
+        if (active) setBusy(false)
+      }
+    })()
+    return () => { active = false }
+  }, [session?.user.id, params])
+
+  const checkout = async (requestedCodes: PaidTrack[] = basket) => {
+    if (!supabase || !session) {
+      navigate('/account')
+      setMessage('Sign in to Hyperion first. Your basket is saved in this browser.')
+      return
+    }
+    const codes = [...new Set(requestedCodes)].filter(code => PAID_PRODUCTS.some(item => item.code === code))
+    if (!codes.length) {
+      setIsError(true)
+      setMessage('Your basket is empty. Return to the shop and add a reviewer track first.')
+      return
+    }
+    const unavailable = codes.filter(code => ownedCodes.includes(code))
+    if (unavailable.length) {
+      setIsError(true)
+      setMessage(`Remove already-active licenses before checking out: ${unavailable.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(', ')}.`)
+      return
+    }
+
+    setBusy(true)
+    setIsError(false)
+    setMessage('Preparing secure checkout…')
+    try {
+      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { productCodes: codes } })
+      if (error) throw new Error(await edgeError(error))
+      if (data?.error) throw new Error(data.error)
+      if (data?.alreadyProcessing === true && typeof data.orderId === 'string') {
+        const paid = await confirmPaidCheckout(data.orderId, 6)
+        if (!paid) setMessage('PayMongo reports a payment attempt for this checkout. Refresh payment status shortly; do not pay again.')
+        return
+      }
+      const url = typeof data?.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
+      if (!url || url.protocol !== 'https:' || url.hostname !== 'checkout.paymongo.com') {
+        throw new Error('PayMongo did not return a valid secure checkout URL. Please retry or contact Hyperion support.')
+      }
+      window.location.assign(url.toString())
+    } catch (error) {
+      setIsError(true)
+      setMessage(await edgeError(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cancelCheckout = async (groupId: string, groupCodes: PaidTrack[]) => {
+    if (!supabase || !session) return
+    setBusy(true)
+    setBusyCheckoutId(groupId)
+    setIsError(false)
+    setMessage('Checking with PayMongo before closing this checkout…')
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-checkout', { body: { orderId: groupId } })
+      if (error) throw new Error(await edgeError(error))
+      if (data?.error) throw new Error(data.error)
+      if (data?.status === 'already_paid') {
+        const paid = await confirmPaidCheckout(groupId, 6)
+        if (!paid) setMessage('PayMongo reports this payment as paid or processing. Do not pay again; refresh payment status shortly.')
+        return
+      }
+      if (data?.status === 'processing') {
+        setMessage(data.message || 'A payment is still processing. Wait for PayMongo to confirm it before switching methods.')
+        return
+      }
+      if (data?.status !== 'cancelled') throw new Error('PayMongo did not confirm that this checkout was cancelled. No new payment should be started yet.')
+      setBasket(current => [...new Set([...current, ...groupCodes])])
+      await refreshData()
+      setMessage('Checkout cancelled successfully. Its tracks were added back to your basket; you can now edit your selection or check out again.')
+    } catch (error) {
+      setIsError(true)
+      setMessage(await edgeError(error))
+      await refreshData().catch(() => undefined)
+    } finally {
+      setBusy(false)
+      setBusyCheckoutId(null)
+    }
+  }
+
+  const refreshStatus = async () => {
+    if (!supabase || !session) return
+    setBusy(true)
+    setIsError(false)
+    setMessage('Refreshing payment status from PayMongo…')
+    try {
+      const checkoutIds = [...new Set(pendingPayMongoOrders.map(order => order.checkout_batch_id || order.id))]
+      let activated: string[] = []
+      for (const id of checkoutIds) {
+        const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId: id } })
+        if (error) throw new Error(await edgeError(error))
+        if (data?.status === 'paid') {
+          const codes: string[] = Array.isArray(data.productCodes) ? data.productCodes : typeof data.productCode === 'string' ? [data.productCode] : []
+          activated.push(...codes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code))
+          clearBasketCodes(codes)
+        } else if (data?.status === 'pending') {
+          setMessage(data.message || 'PayMongo has not confirmed this checkout as paid yet.')
+        } else if (data?.error) {
+          setMessage(data.error)
+        }
+      }
+      await refreshData()
+      if (activated.length) {
+        setIsError(false)
+        setMessage(`Payment confirmed. Activated: ${[...new Set(activated)].join(', ')}.`)
+      } else if (!checkoutIds.length) {
+        setMessage('You have no pending PayMongo checkouts.')
+      }
+    } catch (error) {
+      setIsError(true)
+      setMessage(await edgeError(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const style = {
+    card: { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', borderRadius: 12 } as const,
+    primary: { width: '100%', minHeight: 48, background: '#0b1f39', borderColor: '#0b1f39', color: '#ffbf32', fontWeight: 900 } as const,
+  }
+
+  return <div className="screen basket-page" style={{ width: 'min(calc(100% - 2rem), 1040px)', maxWidth: 1040, margin: '0 auto', paddingBottom: '2rem' }}>
+    <style>{`
+      .basket-page .basket-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;border-bottom:1px solid var(--border);padding:.9rem 0}
+      .basket-page .basket-row:last-child{border-bottom:0}
+      .basket-page .basket-layout{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:1rem;align-items:start}
+      .basket-page .basket-summary{position:sticky;top:84px}
+      .basket-page .basket-item-art{width:48px;height:48px;display:grid;place-items:center;background:#042353;color:#f5c75e;border-radius:10px;font-size:1.4rem;flex-shrink:0}
+      .basket-page .basket-muted{color:var(--text-muted);font-size:.84rem;line-height:1.45}
+      .basket-page .basket-action-row{display:flex;gap:.5rem;flex-wrap:wrap}
+      @media(max-width:820px){.basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.basket-page .basket-summary{position:static}}
+      @media(max-width:520px){.basket-page .basket-row{align-items:flex-start}.basket-page .basket-action-row button{flex:1}}
+    `}</style>
+    <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Shop</button>
+    <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Your Basket</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
+      <span style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'}</span>
+    </div>
+
+    {!session ? <section style={{ ...style.card, maxWidth: 600 }}>
+      <h2 style={{ marginTop: 0 }}>Sign in to continue</h2>
+      <p className="basket-muted">Your basket is saved in this browser. Sign in to verify pending purchases and complete checkout.</p>
+      <button type="button" className="btn btn-primary" onClick={() => navigate('/account')} style={{ width: '100%' }}>SIGN IN / OPEN ACCOUNT</button>
+    </section> : <>
+      {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>{message}</div>}
+
+      {pendingCheckoutGroups.length > 0 && <section style={{ ...style.card, borderColor: '#d6a33a', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Resume the same payment or cancel it safely. Don’t start a second payment for the same items.</p></div>
+          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshStatus()}>{busy ? 'Checking…' : 'Refresh payment status'}</button>
+        </div>
+        {pendingCheckoutGroups.map(group => <div className="basket-row" key={group.id}>
+          <div style={{ minWidth: 0 }}>
+            <strong>{group.codes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(' + ')}</strong>
+            <div className="basket-muted" style={{ marginTop: '.25rem' }}>{group.codes.length} track{group.codes.length === 1 ? '' : 's'} · ₱{group.total}</div>
+          </div>
+          <div className="basket-action-row">
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void checkout(group.codes)}>RESUME CHECKOUT</button>
+            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelCheckout(group.id, group.codes)} style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busyCheckoutId === group.id ? 'CHECKING…' : 'CANCEL'}</button>
+          </div>
+        </div>)}
+      </section>}
+
+      <div className="basket-layout">
+        <section style={style.card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.8rem', flexWrap: 'wrap' }}>
+            <div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>Selected tracks</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Only items shown here will be included in this payment.</p></div>
+            {basket.length > 0 && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setBasket([])}>CLEAR BASKET</button>}
+          </div>
+          {selectedProducts.length ? selectedProducts.map(item => {
+            const active = ownedCodes.includes(item.code)
+            return <div className="basket-row" key={item.code}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', minWidth: 0 }}>
+                <div className="basket-item-art">{item.code === 'gmdss' ? '📡' : item.code === 'engine_ew' || item.code === 'engine_mgt' ? '⚙️' : '⚓'}</div>
+                <div style={{ minWidth: 0 }}><strong style={{ display: 'block' }}>{item.label}</strong><div className="basket-muted">12-month reviewer license</div>{active && <div style={{ color: 'var(--success, #15803d)', fontWeight: 800, fontSize: '.75rem', marginTop: '.25rem' }}>Already active</div>}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', flexShrink: 0 }}><strong>₱{item.annualPrice}</strong><button type="button" disabled={busy} onClick={() => setBasket(current => current.filter(code => code !== item.code))} style={{ color: 'var(--danger, #dc2626)', fontWeight: 850, padding: '.35rem' }}>Remove</button></div>
+            </div>
+          }) : <div style={{ textAlign: 'center', padding: '2.4rem 1rem', border: '1px dashed var(--border)', borderRadius: 10, marginTop: '1rem' }}><div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🛒</div><strong>Your basket is empty</strong><p className="basket-muted" style={{ margin: '.35rem 0 1rem' }}>Visit the shop and add one or more reviewer tracks.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/account')}>BROWSE TRACKS</button></div>}
+        </section>
+
+        <aside className="basket-summary" style={style.card}>
+          <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Order summary</h2>
+          <p className="basket-muted" style={{ margin: '.3rem 0 1rem' }}>{selectedProducts.length} selected track{selectedProducts.length === 1 ? '' : 's'}</p>
+          {selectedProducts.map(item => <div key={item.code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{item.label}</span><strong>₱{item.annualPrice}</strong></div>)}
+          <div style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
+          <button type="button" className="btn btn-primary" disabled={busy || !supabaseConfigured || !selectedProducts.length || activeInBasket.length > 0} onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : '⚡ CHECK OUT WITH PAYMONGO →'}</button>
+          {activeInBasket.length > 0 && <p style={{ color: 'var(--danger, #dc2626)', fontSize: '.8rem', lineHeight: 1.45 }}>Remove already active tracks to continue checkout.</p>}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['GCash','Maya','QR Ph','Card'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>
+          <p className="basket-muted" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>Each selected track is activated only after PayMongo confirms this exact basket payment.</p>
+        </aside>
+      </div>
+    </>}
+  </div>
+}
