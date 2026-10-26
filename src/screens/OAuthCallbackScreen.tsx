@@ -66,14 +66,14 @@ export default function OAuthCallbackScreen() {
     const finish = async () => {
       try {
         if (callbackError) throw new Error(callbackError)
-        if (!supabase) throw new Error('Sign-in is unavailable because Supabase is not configured.')
+        if (!supabase) throw new Error('Sign-in is temporarily unavailable. Please try again later.')
 
         // The shared client has detectSessionInUrl enabled; getSession waits for
         // Supabase's callback processing, including PKCE code exchange.
         const { data, error } = await supabase.auth.getSession()
         if (error) throw error
         if (!data.session) {
-          throw new Error('Supabase did not establish a session. Check the OAuth provider credentials and redirect settings.')
+          throw new Error('Sign-in could not be completed. Please try again.')
         }
         if (cancelled) return
 
@@ -92,7 +92,7 @@ export default function OAuthCallbackScreen() {
         }
         navigate(returnTo, { replace: true })
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Sign-in could not be completed. Please try again.'
+        const message = 'Sign-in could not be completed. Please try again.'
         if (cancelled) return
         clearAttempt()
         notifyOpener('hyperion-oauth-error', message)
