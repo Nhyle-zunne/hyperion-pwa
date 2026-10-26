@@ -1456,14 +1456,7 @@ a:focus-visible,
 }
 
 
-/* Desktop study screens remain portrait; track hub sets its own two-column layout. */
-@media (min-width: 900px) {
-  .screen:not(.track-hub-screen) {
-    max-width: 560px;
-    padding-left: 1.25rem;
-    padding-right: 1.25rem;
-  }
-}
+/* Keep the dashboard at the shared desktop width; portrait sizing belongs to study pages only. */
 
 /* Mock-exam dialogs use a soft blur over the unchanged page beneath them. */
 .mock-exam-backdrop {
