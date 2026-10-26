@@ -35,13 +35,18 @@ export default function TrackSelectionScreen() {
   const navigate = useNavigate()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const targetDate = useStudyTimeStore((s) => s.targetDate)
-  const targetDateUpdatedAt = useStudyTimeStore((s) => s.targetDateUpdatedAt)
   const setTargetDate = useStudyTimeStore((s) => s.setTargetDate)
 
-  // Migrate an existing device-local target date into the cloud-syncable store once.
+  // Wait until account progress has finished restoring before migrating old local dates,
+  // so a stale device-local value cannot replace a newer date from another device.
   useEffect(() => {
-    if (targetDate && targetDateUpdatedAt === 0) setTargetDate(targetDate)
-  }, [targetDate, targetDateUpdatedAt, setTargetDate])
+    const migrateTargetDate = () => {
+      const state = useStudyTimeStore.getState()
+      if (state.targetDate && state.targetDateUpdatedAt === 0) state.setTargetDate(state.targetDate)
+    }
+    window.addEventListener('hyperion:learning-progress-restored', migrateTargetDate)
+    return () => window.removeEventListener('hyperion:learning-progress-restored', migrateTargetDate)
+  }, [])
 
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked || s.cloudTrackIds.includes('ALL'))
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
