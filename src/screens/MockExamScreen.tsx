@@ -63,8 +63,6 @@ export default function MockExamScreen() {
   const [selectedFunctions, setSelectedFunctions] = useState<string[]>([])
   const [startingCompetence, setStartingCompetence] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
-  const [randomizeOrder, setRandomizeOrder] = useState(false)
-  const [shuffleChoices, setShuffleChoices] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -108,7 +106,6 @@ export default function MockExamScreen() {
       await startSession({
         mode: 'MOCK', track: trackId, competenceId, limit: Math.min(examItemCount, pool.length), startItem: 1,
         timeLimitSec: examItemCount * 60,
-        randomizeOrder, shuffleChoices
       })
       navigate('/mock/exam')
     } finally { setStarting(false); setStartingCompetence(null) }
@@ -175,11 +172,6 @@ export default function MockExamScreen() {
           <h2 style={{ marginTop: 0 }}>SELECT A COMPETENCE TO BEGIN</h2>
           <p style={{ color: 'var(--text-muted)', marginBottom: 0 }}>{TRACK_LABELS[trackId]} · {selectedFunctions.join(', ')} · 70% passing cutoff · 1 minute per item</p>
         </div>
-        <section className="card" style={{ marginBottom: '1rem' }}>
-          <h3 style={{ color: 'var(--accent)', marginTop: 0 }}>DELIVERY SETTINGS</h3>
-          <label style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '0.5rem 0' }}>Randomize question order <input type="checkbox" checked={randomizeOrder} onChange={(e) => setRandomizeOrder(e.target.checked)} /></label>
-          <label style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '0.5rem 0' }}>Shuffle answer choices <input type="checkbox" checked={shuffleChoices} onChange={(e) => setShuffleChoices(e.target.checked)} /></label>
-        </section>
         {groupedCompetences.map((group) => <section key={group.id} style={{ marginBottom: '1.25rem' }}>
           <h3 style={{ color: 'var(--accent)', fontSize: '0.85rem', letterSpacing: '0.08em', marginBottom: 2 }}>{group.label}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 800, marginTop: 0 }}>{group.competences.reduce((sum, c) => sum + mockExamItemCount(trackId, c.id), 0).toLocaleString()} mock exam items · {group.id} function</p>
