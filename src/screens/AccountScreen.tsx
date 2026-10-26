@@ -269,6 +269,30 @@ export default function AccountScreen() {
       const { data, error } = await supabase.functions.invoke('create-checkout', { body: { productCode: product } })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
+      if (data?.alreadyProcessing === true) {
+        setMessage('PayMongo has recorded your payment. Hyperion is waiting for the signed payment notification to finish activating the license…')
+        if (typeof data.orderId === 'string') {
+          for (let attempt = 0; attempt < 7; attempt++) {
+            const { data: order, error: orderError } = await supabase
+              .from('orders')
+              .select('status')
+              .eq('id', data.orderId)
+              .eq('user_id', session.user.id)
+              .maybeSingle()
+            if (!orderError && order?.status === 'paid') {
+              await refreshAccount()
+              setMessage('Payment confirmed. Your reviewer license is active for the purchased track.')
+              setBusy(false)
+              return
+            }
+            if (attempt < 6) await new Promise(resolve => window.setTimeout(resolve, 1500))
+          }
+        }
+        await refreshAccount()
+        setMessage('Payment has been recorded, but automatic activation is still processing. Refresh status shortly; do not pay again.')
+        setBusy(false)
+        return
+      }
       const checkoutUrl = typeof data?.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
       if (!checkoutUrl || checkoutUrl.protocol !== 'https:' || checkoutUrl.hostname !== 'checkout.paymongo.com') {
         throw new Error('Secure checkout is not configured correctly. Please use manual payment or contact Hyperion support.')
