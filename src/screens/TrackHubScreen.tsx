@@ -127,10 +127,10 @@ export default function TrackHubScreen() {
     {
       title: 'TIMED MOCK EXAM',
       desc: '70% cutoff · timed · MARINA format.',
-      badge: unlocked ? 'STCW MOCK' : 'LOCKED',
+      badge: 'FREE ACCESS',
       icon: '◴',
-      locked: !unlocked,
-      onClick: gated('Mock Exam', `/mock?track=${key}`)
+      locked: false,
+      onClick: () => navigate(`/mock?track=${key}`)
     },
     {
       title: 'FLASHCARD REVISION',
