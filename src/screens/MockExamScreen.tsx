@@ -221,7 +221,7 @@ export default function MockExamScreen() {
   const primaryButton: React.CSSProperties = { ...secondaryButton, borderColor: 'var(--accent)', background: 'var(--accent)', color: 'var(--bg)' }
 
   return (
-    <div className="screen" style={{ paddingBottom: '2rem', minHeight: 'calc(100dvh - 64px)', background: 'var(--bg)', color: 'var(--text)' }}>
+    <div className="screen mock-exam-screen" style={{ paddingBottom: '2rem', minHeight: 'calc(100dvh - 64px)', background: 'var(--bg)', color: 'var(--text)' }}>
       <button type="button" onClick={() => navigate('/track?track=' + trackParam)} style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>← Back to Track</button>
       <div className="card" style={{ width: 'min(100%, 860px)', boxSizing: 'border-box', margin: '0 auto 1rem', borderRadius: 14, borderTop: '3px solid var(--accent)' }}>
         <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', letterSpacing: '0.12em', fontWeight: 800 }}>STCW '78 AS AMENDED · OFFICIAL TIMED MOCK</div>
@@ -463,7 +463,7 @@ export function MockExamRunner() {
   const card: React.CSSProperties = { border: '1px solid var(--border)', borderRadius: 10, padding: '1rem', background: 'var(--bg-card)', color: 'var(--text)' }
   const s = score()
 
-  if (finished) return <div className="screen" style={{ paddingBottom: '2rem' }}><h1 className="page-title">Mock Exam Results</h1><div className="card" style={{ textAlign: 'center' }}><div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--accent)' }}>{s.percent}%</div><p>{s.correct} / {s.total} correct</p><p>{s.percent >= 70 ? 'PASS' : 'NOT YET PASSED'} · 70% passing cutoff</p></div><button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => { reset(); navigate('/mock') }}>Return to Mock Exams</button><button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => { reset(); navigate('/history') }}>View History</button></div>
+  if (finished) return <div className="screen mock-exam-screen" style={{ paddingBottom: '2rem' }}><h1 className="page-title">Mock Exam Results</h1><div className="card" style={{ textAlign: 'center' }}><div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--accent)' }}>{s.percent}%</div><p>{s.correct} / {s.total} correct</p><p>{s.percent >= 70 ? 'PASS' : 'NOT YET PASSED'} · 70% passing cutoff</p></div><button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => { reset(); navigate('/mock') }}>Return to Mock Exams</button><button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => { reset(); navigate('/history') }}>View History</button></div>
 
   return <div className="screen mock-exam-runner" style={{ paddingBottom: '7rem', maxWidth: 900, margin: '0 auto', userSelect: 'none', WebkitUserSelect: 'none', '--quiz-text-scale': textScale / 100 } as React.CSSProperties}>
     <header style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '0.8rem 0.25rem', background: 'var(--bg)', borderBottom: '3px solid var(--accent)' }}>
