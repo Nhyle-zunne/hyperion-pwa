@@ -92,8 +92,7 @@ export default function PracticeConfigScreen() {
       const mode = legacy.mode as 'PRACTICE' | 'DRILL' | 'MOCK'
       const competence = legacy.competenceId ?? null
       const matchingExisting = savedSessions.find(session =>
-        !session.deletedAt && session.track === track &&
-        session.competenceId === competence && session.mode === mode
+        session.track === track && session.competenceId === competence && session.mode === mode
       )
       const id = legacy.sessionId || matchingExisting?.id || `legacy-${track}-${competence ?? 'all'}-${mode}`
       if (!legacy.sessionId) {
