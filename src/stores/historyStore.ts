@@ -13,6 +13,7 @@ export interface HistoryEntry {
   track: TrackId
   competenceId: string | null
   part?: number | null
+  isFreeSession?: boolean
   correct: number
   total: number
   answered?: number
@@ -29,6 +30,7 @@ export interface SavedSessionEntry {
   track: TrackId
   competenceId: string | null
   part?: number | null
+  isFreeSession?: boolean
   currentIndex: number
   total: number
   answered: number
