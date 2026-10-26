@@ -7,6 +7,12 @@ import { useLicenseStore } from '../stores/licenseStore'
 
 type Order = { id: string; product_code: string; amount_php: number; status: string; payment_reference: string | null; created_at: string; admin_note: string | null }
 type OwnedTrack = { product_code: string; expires_at: string | null }
+
+function safeAccountError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : ''
+  if (!message || /supabase|postgrest|postgres|sqlstate|provider credentials|redirect settings|edge function|row[- ]level security|\\bpgrst\\b|\\bjwt\\b|database schema|relation .* does not exist|violates .* constraint/i.test(message)) return fallback
+  return message
+}
 export default function AccountScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -256,7 +262,7 @@ export default function AccountScreen() {
       setMessage(`Payment details submitted. Your reference is ${data.order.id}. Please send your payment screenshot to our Facebook page. Access will be enabled after manual verification.`)
       setReference(''); setNote('')
       await refreshAccount()
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to submit payment. Please try again.') }
+    } catch (error) { setMessage(safeAccountError(error, 'Unable to submit payment. Please try again.')) }
     finally { setBusy(false) }
   }
   const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', marginBottom: '1rem', borderRadius: 10 }
@@ -281,7 +287,7 @@ export default function AccountScreen() {
       setDeleteConfirmation('')
       setMessage('Your Hyperion account has been deleted.')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to delete your account. Please try again or contact support.')
+      setMessage(safeAccountError(error, 'Unable to delete your account. Please try again or contact support.'))
     } finally {
       setBusy(false)
     }
@@ -297,7 +303,7 @@ export default function AccountScreen() {
       setMessage('Your payment review request has been cancelled. You can submit again if needed.')
       await refreshAccount()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to cancel the review request. Please refresh and try again.')
+      setMessage(safeAccountError(error, 'Unable to cancel the review request. Please refresh and try again.'))
     } finally { setBusy(false) }
   }
 
