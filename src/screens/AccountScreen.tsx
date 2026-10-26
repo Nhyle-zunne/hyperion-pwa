@@ -258,6 +258,9 @@ export default function AccountScreen() {
       if (activated.length) setMessage(`Payment confirmed. Activated: ${activated.join(', ')}. Only the purchased track for each order was granted.`)
       else if (lastError) setMessage(lastError)
       else setMessage(pendingCount ? 'PayMongo has not yet confirmed these pending checkout(s) as paid. No license was granted. Try refreshing again after payment finishes.' : 'Payment status refreshed.')
+    } catch (error) {
+      const serverMessage = await edgeFunctionErrorMessage(error)
+      setMessage(serverMessage || safeAccountError(error, 'Could not check PayMongo payment status right now. Please try again shortly.'))
     } finally {
       setBusy(false)
     }
