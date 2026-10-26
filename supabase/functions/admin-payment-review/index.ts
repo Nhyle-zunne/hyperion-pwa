@@ -34,6 +34,9 @@ Deno.serve(async req => {
   const { data: order, error: lookupError } = await admin.from('orders').select('*').eq('id', body.orderId).maybeSingle()
   if (lookupError || !order) return json({ error: 'Order not found.' }, 404)
   if (order.status === 'paid') return json({ error: 'This payment is already approved.' }, 409)
+  if (order.payment_method === 'PayMongo Checkout' || order.paymongo_checkout_session_id) {
+    return json({ error: 'PayMongo checkout orders can only be approved by the verified payment webhook.' }, 409)
+  }
   if (!['submitted','pending'].includes(order.status)) return json({ error: 'This order is not awaiting review.' }, 409)
   const adminNote = String(body.adminNote || '').trim().slice(0, 1000) || null
   if (body.decision === 'approve') {
