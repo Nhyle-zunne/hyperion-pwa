@@ -45,6 +45,7 @@ export default function AccountScreen() {
   const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
   const qrPhImage = '/qr-ph.png'
   const [busy, setBusy] = useState(false)
+  const [cancelingCheckoutId, setCancelingCheckoutId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
@@ -149,6 +150,64 @@ export default function AccountScreen() {
     setOrders(combinedOrders)
     await refreshCloudEntitlements()
   }
+
+  const cancelPayMongoCheckout = async (orderId: string) => {
+    if (!supabase || !session) {
+      setMessage('Please sign in to the same Hyperion account before managing this checkout.')
+      return
+    }
+    setBusy(true)
+    setCancelingCheckoutId(orderId)
+    setMessage('Checking the checkout with PayMongo before closing it…')
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-checkout', { body: { orderId } })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+
+      if (data?.status === 'already_paid') {
+        setMessage('PayMongo has recorded this payment. Hyperion is checking the verified webhook status; do not send a second payment.')
+        for (let attempt = 0; attempt < 7; attempt++) {
+          const { data: order, error: orderError } = await supabase
+            .from('orders')
+            .select('status')
+            .eq('id', orderId)
+            .eq('user_id', session.user.id)
+            .maybeSingle()
+          if (!orderError && order?.status === 'paid') {
+            await refreshAccount()
+            setMessage('Payment confirmed. Your reviewer license is active for the purchased track.')
+            return
+          }
+          if (attempt < 6) await new Promise(resolve => window.setTimeout(resolve, 1500))
+        }
+        await refreshAccount()
+        setMessage('PayMongo reports a paid transaction, but the signed activation notification is still processing. Do not use manual payment or pay again; refresh status shortly.')
+        return
+      }
+
+      if (data?.status === 'processing') {
+        await refreshAccount()
+        setMessage(data.message || 'A payment attempt is still processing. Wait for PayMongo to confirm its result before switching to manual payment.')
+        return
+      }
+
+      if (data?.status === 'cancelled') {
+        await refreshAccount()
+        setMessage('The PayMongo checkout has been closed. You can now switch to manual QR payment if you still want this track.')
+        return
+      }
+
+      await refreshAccount()
+      setMessage('PayMongo returned an unexpected checkout status. Please refresh your account before retrying.')
+    } catch (error) {
+      await refreshAccount()
+      setMessage(safeAccountError(error, 'Could not safely close this checkout. Resume the same checkout or contact Hyperion support; do not submit a second payment yet.'))
+    } finally {
+      setBusy(false)
+      setCancelingCheckoutId(null)
+    }
+  }
+
   useEffect(() => { void refreshAccount() }, [session?.user.id])
 
   // A checkout return is only a prompt to check the server-owned order. The return
@@ -160,7 +219,7 @@ export default function AccountScreen() {
     let cancelled = false
 
     if (paymentState === 'cancelled') {
-      setMessage('PayMongo checkout was cancelled. No license was activated. The checkout may remain pending; resume it or wait for it to expire before switching to manual payment, to avoid paying twice.')
+      setMessage('PayMongo returned you to Hyperion. Cancelling a hosted checkout does not close the payment session automatically. Use the CANCEL CHECKOUT button below before switching to manual payment.')
       void refreshAccount()
       return () => { cancelled = true }
     }
@@ -310,6 +369,7 @@ export default function AccountScreen() {
   const label: React.CSSProperties = { display: 'block', marginTop: '.8rem' }
   const statusLabel: Record<string,string> = { submitted: 'Awaiting manual review', pending: 'Awaiting payment', paid: 'Approved', failed: 'Rejected', refunded: 'Refunded', cancelled: 'Cancelled by you' }
   const activeLicense = owned.find(item => item.product_code === product)
+  const pendingPayMongoOrder = orders.find(order => order.product_code === product && order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
   const pendingOrder = orders.find(order => order.product_code === product && ['submitted', 'pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
   const deleteAccount = async () => {
     if (!supabase || !session || deleteConfirmation !== 'DELETE') return
@@ -467,9 +527,16 @@ export default function AccountScreen() {
               {['GCash', 'Maya', 'QR Ph', 'Credit / debit card'].map(channel => <span key={channel} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 5, padding: '.3rem .55rem', fontSize: '.75rem', fontWeight: 700 }}>{channel}</span>)}
             </div>
             <button type="button" className="btn btn-primary" disabled={busy || !supabaseConfigured} onClick={() => void startPayMongoCheckout()} style={{ width: '100%', minHeight: 48, background: '#0b1f39', color: '#ffb21a', borderColor: '#0b1f39', fontWeight: 900 }}>
-              {busy ? 'PREPARING SECURE CHECKOUT…' : `⚡ PAY INSTANTLY · ₱${PAID_PRODUCTS.find(item => item.code === product)?.annualPrice ?? 0} →`}
+              {busy ? 'PREPARING SECURE CHECKOUT…' : `${pendingPayMongoOrder ? '↻ RESUME CHECKOUT' : '⚡ PAY INSTANTLY'} · ₱${PAID_PRODUCTS.find(item => item.code === product)?.annualPrice ?? 0} →`}
             </button>
-            <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', lineHeight: 1.5, margin: '.65rem 0 0' }}>License access is granted only after PayMongo’s signed server notification confirms the payment. Do not close or repeat a payment while confirmation is processing.</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', lineHeight: 1.5, margin: '.65rem 0 0' }}>License access is granted only after PayMongo’s signed server notification confirms the payment. Do not pay again while confirmation is processing.</p>
+            {pendingPayMongoOrder && <div style={{ marginTop: '.85rem', padding: '.8rem', borderRadius: 8, border: '1px solid var(--warning, #d97706)', background: 'var(--bg-elevated)' }}>
+              <strong style={{ display: 'block', fontSize: '.88rem' }}>A PayMongo checkout is already open for this track.</strong>
+              <p style={{ color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.45, margin: '.35rem 0 .7rem' }}>PAY INSTANTLY resumes that same checkout. To switch to manual QR payment, close the PayMongo session first. Hyperion will not close a session if a payment is already paid or processing.</p>
+              <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongoCheckout(pendingPayMongoOrder.id)} style={{ width: '100%', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>
+                {cancelingCheckoutId === pendingPayMongoOrder.id ? 'CHECKING PAYMENT STATUS…' : 'CANCEL CHECKOUT & SWITCH TO MANUAL'}
+              </button>
+            </div>}
           </section>
           <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', color: 'var(--text-muted)', fontSize: '.75rem', fontWeight: 900, margin: '1.2rem 0' }}><span style={{ height: 1, flex: 1, background: 'var(--border)' }} /><span>OR PAY MANUALLY</span><span style={{ height: 1, flex: 1, background: 'var(--border)' }} /></div>
           <form onSubmit={submitPayment}>
@@ -490,7 +557,7 @@ export default function AccountScreen() {
             <a href={facebookPage} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '.5rem' }}>SEND PROOF TO OUR FACEBOOK PAGE</a>
           </div>
           <label style={label}>Additional notes (optional)<textarea maxLength={1000} rows={3} value={note} onChange={e => setNote(e.target.value)} style={field} /></label>
-          <button type="submit" className="btn btn-primary" disabled={busy || !supabaseConfigured} style={{ width: '100%', marginTop: '1rem' }}>{busy ? 'Submitting…' : 'SUBMIT FOR REVIEW'}</button>
+          <button type="submit" className="btn btn-primary" disabled={busy || !supabaseConfigured || Boolean(pendingPayMongoOrder)} style={{ width: '100%', marginTop: '1rem' }}>{busy ? 'Submitting…' : pendingPayMongoOrder ? 'CANCEL PAYMONGO CHECKOUT TO USE MANUAL PAYMENT' : 'SUBMIT FOR REVIEW'}</button>
         </form></>}
       </section>
       <section style={card}>
