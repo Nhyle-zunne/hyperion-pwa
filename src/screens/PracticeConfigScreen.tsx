@@ -112,7 +112,7 @@ export default function PracticeConfigScreen() {
 
   const scopedSessionRows = useMemo<ConfigSessionRow[]>(() => {
     const completed: ConfigSessionRow[] = historyEntries
-      .filter(entry => entry.track === trackId && entry.competenceId === (competenceId ?? null))
+      .filter(entry => entry.track === trackId && (!competenceId || entry.competenceId === competenceId))
       .map(entry => ({
         id: entry.id, kind: 'entry', mode: entry.mode, track: entry.track,
         competenceId: entry.competenceId, part: entry.part, timestamp: entry.finishedAt,
@@ -120,7 +120,7 @@ export default function PracticeConfigScreen() {
         answered: entry.answered ?? entry.total, percent: entry.percent
       }))
     const saved: ConfigSessionRow[] = savedSessions
-      .filter(entry => entry.track === trackId && entry.competenceId === (competenceId ?? null))
+      .filter(entry => entry.track === trackId && (!competenceId || entry.competenceId === competenceId))
       .map(entry => ({
         id: entry.id, kind: 'saved', mode: entry.mode, track: entry.track,
         competenceId: entry.competenceId, part: entry.part, timestamp: entry.savedAt,
@@ -211,7 +211,7 @@ export default function PracticeConfigScreen() {
           <button type="button" onClick={() => setRecentlyDeletedOpen(true)} style={{ color: 'var(--accent)', background: 'transparent', border: 0, padding: 0, fontWeight: 900, cursor: 'pointer' }}>RECENTLY DELETED{recentlyDeletedSessions.length ? ' (' + recentlyDeletedSessions.length + ')' : ''}</button>
           <button type="button" onClick={() => navigate('/history')} style={{ color: 'var(--accent)', background: 'transparent', border: 0, padding: 0, fontWeight: 900, cursor: 'pointer' }}>ARCHIVE »</button>
         </div>
-        <span style={{ ...muted, fontSize: '.72rem' }}>LATEST 3 · THIS COMPETENCE</span>
+        <span style={{ ...muted, fontSize: '.72rem' }}>LATEST 3 · {competenceId ? 'THIS COMPETENCE' : 'THIS TRACK'}</span>
       </div>
 
       {recentSessions.length ? (
