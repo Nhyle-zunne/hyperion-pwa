@@ -6,12 +6,58 @@ const cors = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 }
 
-const products: Record<string, { track: string }> = {
-  oic_nw: { track: 'DECK_OIC_NW' },
-  gmdss: { track: 'GMDSS_GOC' },
-  engine_ew: { track: 'ENGINE_OIC_EW' },
-  deck_mgt: { track: 'DECK_MGT' },
-  engine_mgt: { track: 'ENGINE_MGT' }
+const products = {
+  oic_nw: { track: 'DECK_OIC_NW', name: 'Deck OIC-NW' },
+  gmdss: { track: 'GMDSS_GOC', name: 'GMDSS GOC' },
+  engine_ew: { track: 'ENGINE_OIC_EW', name: 'Engine OIC-EW' },
+  deck_mgt: { track: 'DECK_MGT', name: 'Deck Management' },
+  engine_mgt: { track: 'ENGINE_MGT', name: 'Engine Management' }
+} as const
+type ProductCode = keyof typeof products
+
+function profileName(user: any) {
+  const metadata = user.user_metadata ?? {}
+  const given = [metadata.given_name, metadata.family_name]
+    .filter((value: unknown) => typeof value === 'string' && value.trim().length > 0).join(' ')
+  return [metadata.full_name, metadata.name, given]
+    .find((value: unknown) => typeof value === 'string' && value.trim().length > 0) || null
+}
+
+async function readCheckout(paymongoKey: string, sessionId: string) {
+  const response = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(sessionId)}`, {
+    headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}` }
+  })
+  const result = await response.json().catch(() => ({}))
+  return { response, session: result?.data, message: result?.errors?.[0]?.detail }
+}
+
+async function grantOrder(admin: any, order: any) {
+  const { data: existing, error: lookupError } = await admin.from('entitlements')
+    .select('order_id,status,expires_at')
+    .eq('user_id', order.user_id).eq('product_code', order.product_code).maybeSingle()
+  if (lookupError) throw new Error('Could not check current entitlement')
+
+  if (existing?.order_id === order.id && existing.status === 'active' && existing.expires_at) {
+    return new Date(existing.expires_at).toISOString()
+  }
+
+  const now = new Date()
+  const oldExpiry = existing?.status === 'active' && existing.expires_at ? new Date(existing.expires_at) : null
+  const base = oldExpiry && oldExpiry.getTime() > now.getTime() ? oldExpiry : now
+  const expiresAt = new Date(base)
+  expiresAt.setUTCFullYear(expiresAt.getUTCFullYear() + 1)
+  const { error: grantError } = await admin.from('entitlements').upsert({
+    user_id: order.user_id,
+    product_code: order.product_code,
+    track_id: order.track_id,
+    order_id: order.id,
+    status: 'active',
+    granted_at: now.toISOString(),
+    renewed_at: now.toISOString(),
+    expires_at: expiresAt.toISOString()
+  }, { onConflict: 'user_id,product_code' })
+  if (grantError) throw new Error('Could not grant entitlement')
+  return expiresAt.toISOString()
 }
 
 Deno.serve(async (req) => {
@@ -26,9 +72,7 @@ Deno.serve(async (req) => {
   const paymongoKey = Deno.env.get('PAYMONGO_SECRET_KEY')
   const expectedMode = Deno.env.get('PAYMONGO_EXPECT_LIVEMODE')
   if (!supabaseUrl || !anonKey || !serviceKey) return json({ error: 'Payment service is not configured.' }, 503)
-  if (!paymongoKey || (expectedMode !== 'true' && expectedMode !== 'false')) {
-    return json({ error: 'PayMongo checkout verification is not configured yet.' }, 503)
-  }
+  if (!paymongoKey || (expectedMode !== 'true' && expectedMode !== 'false')) return json({ error: 'PayMongo checkout verification is not configured yet.' }, 503)
   if ((expectedMode === 'true' && !paymongoKey.startsWith('sk_live_')) || (expectedMode === 'false' && !paymongoKey.startsWith('sk_test_'))) {
     return json({ error: 'The PayMongo API key does not match the configured test/live mode.' }, 503)
   }
@@ -49,126 +93,165 @@ Deno.serve(async (req) => {
   }
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  // Basket checkout: one PayMongo session, one child order and entitlement per selected track.
+  const { data: batch, error: batchError } = await admin.from('checkout_batches').select('*')
+    .eq('id', body.orderId).eq('user_id', user.id).maybeSingle()
+  if (batchError) return json({ error: 'Could not look up your basket checkout.' }, 500)
+  if (batch) {
+    const codes = (batch.product_codes ?? []) as string[]
+    if (batch.payment_method !== 'PayMongo Checkout' || !Array.isArray(batch.product_codes) || !codes.length ||
+        codes.length > Object.keys(products).length || codes.some(code => !(code in products)) ||
+        new Set(codes).size !== codes.length) {
+      return json({ error: 'This basket contains invalid product information. Contact Hyperion support.' }, 409)
+    }
+    if (batch.status === 'paid') {
+      return json({ status: 'paid', orderId: batch.id, productCodes: codes, totalPhp: batch.amount_php })
+    }
+    if (batch.status !== 'pending' || !batch.paymongo_checkout_session_id) {
+      return json({ error: 'This basket checkout is no longer pending.' }, 409)
+    }
+
+    const { data: childOrders, error: childError } = await admin.from('orders').select('*')
+      .eq('checkout_batch_id', batch.id).eq('user_id', user.id)
+    if (childError || !childOrders) return json({ error: 'Could not load the products in this basket.' }, 500)
+    const childCodes = childOrders.map((order: any) => order.product_code).sort()
+    const expectedCodes = [...codes].sort()
+    const childTotal = childOrders.reduce((sum: number, order: any) => sum + Number(order.amount_php), 0)
+    if (childOrders.length !== codes.length || childCodes.some((code: string, i: number) => code !== expectedCodes[i]) ||
+        childOrders.some((order: any) => order.track_id !== (products as any)[order.product_code]?.track || order.currency !== 'PHP') ||
+        childTotal !== batch.amount_php) {
+      return json({ error: 'The basket order does not match its stored products and total. No license was granted.' }, 409)
+    }
+
+    let response: Response, checkoutSession: any
+    try {
+      const result = await readCheckout(paymongoKey, batch.paymongo_checkout_session_id)
+      response = result.response
+      checkoutSession = result.session
+    } catch {
+      return json({ error: 'Could not verify the payment with PayMongo. Refresh status shortly.' }, 502)
+    }
+    if (!response.ok) return json({ error: 'PayMongo could not verify this basket checkout. Please try again.' }, 502)
+    const attributes = checkoutSession?.attributes
+    const sortedMetadataCodes = typeof attributes?.metadata?.product_codes === 'string'
+      ? attributes.metadata.product_codes.split(',').filter(Boolean).sort()
+      : []
+    if (checkoutSession?.id !== batch.paymongo_checkout_session_id ||
+        attributes?.livemode !== (expectedMode === 'true') ||
+        attributes?.reference_number !== batch.id ||
+        (attributes?.metadata?.batch_id !== batch.id && attributes?.metadata?.order_id !== batch.id) ||
+        attributes?.metadata?.user_id !== user.id ||
+        sortedMetadataCodes.join(',') !== expectedCodes.join(',')) {
+      return json({ error: 'PayMongo details did not match this basket. No license was granted.' }, 409)
+    }
+
+    const payments = Array.isArray(attributes?.payments) ? attributes.payments : []
+    const paidPayment = payments.find((payment: any) => payment?.attributes?.status === 'paid')
+    if (!paidPayment) {
+      return json({ status: 'pending', orderId: batch.id, productCodes: codes, message: 'PayMongo has not confirmed this basket as paid yet.' })
+    }
+    const paymentAttrs = paidPayment.attributes
+    if (paymentAttrs?.currency !== 'PHP' || Number(paymentAttrs?.amount) !== Number(batch.amount_php) * 100) {
+      return json({ error: 'The confirmed payment total or currency does not match this basket. No license was granted.' }, 409)
+    }
+
+    const profile = user.user_metadata ?? {}
+    const fallbackName = profileName(user) || attributes?.billing?.name || paymentAttrs?.billing?.name || batch.customer_name || null
+    const fallbackCompany = typeof profile.company === 'string' ? profile.company : batch.customer_company || null
+    const fallbackSchool = typeof profile.school === 'string' ? profile.school : batch.customer_school || null
+    const expires: Record<string, string> = {}
+    try {
+      for (const order of childOrders) expires[order.product_code] = await grantOrder(admin, order)
+    } catch {
+      return json({ error: 'PayMongo confirmed payment, but a license could not be saved. Contact Hyperion support with your order ID.' }, 500)
+    }
+
+    const paidAt = new Date().toISOString()
+    const source = paymentAttrs?.source?.type || paymentAttrs?.source?.attributes?.type || 'PayMongo Checkout'
+    const { error: ordersUpdateError } = await admin.from('orders').update({
+      status: 'paid',
+      payment_reference: paidPayment.id,
+      payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
+      paid_at: paidAt,
+      customer_name: fallbackName,
+      customer_company: fallbackCompany,
+      customer_school: fallbackSchool
+    }).eq('checkout_batch_id', batch.id).eq('user_id', user.id).in('status', ['pending','paid'])
+    if (ordersUpdateError) return json({ error: 'Licenses were saved, but the basket order status could not be finalized. Refresh status shortly.' }, 500)
+
+    const { error: batchUpdateError } = await admin.from('checkout_batches').update({
+      status: 'paid',
+      paymongo_payment_id: paidPayment.id,
+      payment_reference: paidPayment.id,
+      payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
+      paid_at: paidAt,
+      customer_name: fallbackName,
+      customer_company: fallbackCompany,
+      customer_school: fallbackSchool
+    }).eq('id', batch.id).eq('status', 'pending')
+    if (batchUpdateError) return json({ error: 'Licenses were saved, but the basket payment status could not be finalized. Refresh status shortly.' }, 500)
+
+    return json({ status: 'paid', orderId: batch.id, productCodes: codes, totalPhp: batch.amount_php, expiresAtByProduct: expires })
+  }
+
+  // Backward-compatible path for checkouts created before basket checkout was introduced.
   const { data: order, error: orderError } = await admin.from('orders')
-    .select('id,user_id,product_code,track_id,amount_php,currency,status,payment_method,customer_name,customer_company,customer_school,paymongo_checkout_session_id')
-    .eq('id', body.orderId)
-    .eq('user_id', user.id)
-    .maybeSingle()
+    .select('*').eq('id', body.orderId).eq('user_id', user.id).maybeSingle()
   if (orderError || !order) return json({ error: 'Checkout order not found for your account.' }, 404)
   if (order.payment_method !== 'PayMongo Checkout' || !order.paymongo_checkout_session_id) {
     return json({ error: 'This order is not a tracked PayMongo checkout.' }, 409)
   }
   if (order.status === 'paid') {
-    return json({ status: 'paid', orderId: order.id, productCode: order.product_code, trackId: order.track_id })
+    return json({ status: 'paid', orderId: order.id, productCode: order.product_code, trackId: order.track_id, productCodes: [order.product_code] })
   }
   if (order.status !== 'pending') return json({ error: 'This checkout order is no longer pending.' }, 409)
-
-  const product = products[order.product_code]
-  if (!product || product.track !== order.track_id || order.currency !== 'PHP') {
+  if (!products[order.product_code as ProductCode] || products[order.product_code as ProductCode].track !== order.track_id || order.currency !== 'PHP') {
     return json({ error: 'The order product or currency does not match Hyperion’s product catalogue.' }, 409)
   }
 
-  let response: Response
-  let result: any
+  let response: Response, checkoutSession: any
   try {
-    response = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(order.paymongo_checkout_session_id)}`, {
-      headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}` }
-    })
-    result = await response.json().catch(() => ({}))
+    const result = await readCheckout(paymongoKey, order.paymongo_checkout_session_id)
+    response = result.response
+    checkoutSession = result.session
   } catch {
     return json({ error: 'Could not verify the payment with PayMongo. Refresh status shortly.' }, 502)
   }
   if (!response.ok) return json({ error: 'PayMongo could not verify this checkout. Check the API key and try refreshing status.' }, 502)
 
-  const checkoutSession = result?.data
-  const sessionAttrs = checkoutSession?.attributes
-  const modeIsLive = expectedMode === 'true'
+  const attributes = checkoutSession?.attributes
   if (checkoutSession?.id !== order.paymongo_checkout_session_id ||
-      sessionAttrs?.livemode !== modeIsLive ||
-      sessionAttrs?.reference_number !== order.id ||
-      sessionAttrs?.metadata?.order_id !== order.id ||
-      sessionAttrs?.metadata?.user_id !== order.user_id ||
-      sessionAttrs?.metadata?.product_code !== order.product_code) {
+      attributes?.livemode !== (expectedMode === 'true') ||
+      attributes?.reference_number !== order.id ||
+      attributes?.metadata?.order_id !== order.id ||
+      attributes?.metadata?.user_id !== order.user_id ||
+      attributes?.metadata?.product_code !== order.product_code) {
     return json({ error: 'PayMongo checkout details did not match this order. No license was granted.' }, 409)
   }
-
-  const payments = Array.isArray(sessionAttrs?.payments) ? sessionAttrs.payments : []
+  const payments = Array.isArray(attributes?.payments) ? attributes.payments : []
   const paidPayment = payments.find((payment: any) => payment?.attributes?.status === 'paid')
-  if (!paidPayment) {
-    return json({ status: 'pending', orderId: order.id, productCode: order.product_code, message: 'PayMongo has not confirmed a paid transaction for this checkout yet.' })
-  }
-
-  const paymentAttrs = paidPayment.attributes
-  if (paymentAttrs?.currency !== 'PHP' || Number(paymentAttrs?.amount) !== order.amount_php * 100) {
+  if (!paidPayment) return json({ status: 'pending', orderId: order.id, productCode: order.product_code, message: 'PayMongo has not confirmed a paid transaction for this checkout yet.' })
+  if (paidPayment.attributes?.currency !== 'PHP' || Number(paidPayment.attributes?.amount) !== Number(order.amount_php) * 100) {
     return json({ error: 'The confirmed payment amount or currency does not match this order. No license was granted.' }, 409)
   }
 
-  const { data: existingEntitlement, error: entitlementLookupError } = await admin.from('entitlements')
-    .select('order_id,status,expires_at')
-    .eq('user_id', order.user_id)
-    .eq('product_code', order.product_code)
-    .maybeSingle()
-  if (entitlementLookupError) return json({ error: 'Could not check the current entitlement. Please retry.' }, 500)
-
-  let expiresAt: Date
-  const alreadyGrantedForOrder = existingEntitlement?.order_id === order.id
-    && existingEntitlement.status === 'active'
-    && existingEntitlement.expires_at
-  if (alreadyGrantedForOrder) {
-    expiresAt = new Date(existingEntitlement.expires_at)
-  } else {
-    const now = new Date()
-    const existingExpiry = existingEntitlement?.status === 'active' && existingEntitlement.expires_at
-      ? new Date(existingEntitlement.expires_at)
-      : null
-    const renewalBase = existingExpiry && existingExpiry.getTime() > now.getTime() ? existingExpiry : now
-    expiresAt = new Date(renewalBase)
-    expiresAt.setUTCFullYear(expiresAt.getUTCFullYear() + 1)
-
-    const { error: grantError } = await admin.from('entitlements').upsert({
-      user_id: order.user_id,
-      product_code: order.product_code,
-      track_id: order.track_id,
-      order_id: order.id,
-      status: 'active',
-      granted_at: now.toISOString(),
-      renewed_at: now.toISOString(),
-      expires_at: expiresAt.toISOString()
-    }, { onConflict: 'user_id,product_code' })
-    if (grantError) return json({ error: 'Payment was confirmed, but Hyperion could not save the license. Please contact support with your order ID.' }, 500)
+  let expiresAt: string
+  try {
+    expiresAt = await grantOrder(admin, order)
+  } catch {
+    return json({ error: 'Payment was confirmed, but Hyperion could not save the license. Please contact support with your order ID.' }, 500)
   }
-
-  const paymentSource = paymentAttrs?.source?.type || paymentAttrs?.source?.attributes?.type || 'PayMongo Checkout'
-  const billingName = paymentAttrs?.billing?.name || sessionAttrs?.billing?.name || null
-  const billingEmail = paymentAttrs?.billing?.email || sessionAttrs?.billing?.email || null
-  const profile = user.user_metadata ?? {}
-  const profileName = [
-    profile.full_name,
-    profile.name,
-    [profile.given_name, profile.family_name].filter((value: unknown) => typeof value === 'string' && value.trim()).join(' ')
-  ].find((value: unknown) => typeof value === 'string' && value.trim()) || billingName || null
-  const updatePayload: Record<string, unknown> = {
+  const source = paidPayment.attributes?.source?.type || paidPayment.attributes?.source?.attributes?.type || 'PayMongo Checkout'
+  const billingName = attributes?.billing?.name || paidPayment.attributes?.billing?.name || null
+  const { error: updateError } = await admin.from('orders').update({
     status: 'paid',
     paymongo_payment_id: paidPayment.id,
     payment_reference: paidPayment.id,
-    payment_method: `PayMongo · ${String(paymentSource).slice(0, 80)}`,
+    payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
     paid_at: new Date().toISOString(),
-    customer_name: order.customer_name || profileName,
-    customer_company: order.customer_company || (typeof profile.company === 'string' ? profile.company : null),
-    customer_school: order.customer_school || (typeof profile.school === 'string' ? profile.school : null)
-  }
-  const { data: updatedOrder, error: updateError } = await admin.from('orders')
-    .update(updatePayload)
-    .eq('id', order.id)
-    .eq('user_id', order.user_id)
-    .eq('status', 'pending')
-    .select('id,status')
-    .maybeSingle()
+    customer_name: order.customer_name || profileName(user) || billingName
+  }).eq('id', order.id).eq('status', 'pending')
   if (updateError) return json({ error: 'License was saved but Hyperion could not finalize the order status.' }, 500)
-  if (!updatedOrder) {
-    const { data: latestOrder } = await admin.from('orders').select('status').eq('id', order.id).maybeSingle()
-    if (latestOrder?.status !== 'paid') return json({ error: 'The order changed while the payment was being finalized. Refresh status shortly.' }, 409)
-  }
-
-  return json({ status: 'paid', orderId: order.id, productCode: order.product_code, trackId: order.track_id, expiresAt: expiresAt.toISOString() })
+  return json({ status: 'paid', orderId: order.id, productCode: order.product_code, trackId: order.track_id, productCodes: [order.product_code], expiresAt })
 })
