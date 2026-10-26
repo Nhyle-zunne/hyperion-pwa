@@ -43,13 +43,31 @@ Deno.serve(async (req) => {
 
   let payload: any
   try { payload = JSON.parse(raw) } catch { return new Response('Invalid JSON', { status: 400 }) }
-  const event = payload?.data
-  const attributes = event?.attributes
-  if (!event?.id || !attributes || typeof attributes.livemode !== 'boolean') {
+
+  // PayMongo has documented both the legacy event envelope
+  // { data: { id, type: "event", attributes: { type, livemode, data } } }
+  // and the newer dispatch envelope
+  // { event_type: "send.webhook", data: { type, livemode, data } }.
+  // Normalize both before verifying the signature and processing the session.
+  const eventRoot = payload?.data
+  const legacyAttributes = eventRoot?.attributes
+  const eventType = typeof legacyAttributes?.type === 'string'
+    ? legacyAttributes.type
+    : typeof eventRoot?.type === 'string' && eventRoot.type !== 'event'
+      ? eventRoot.type
+      : null
+  const isLiveValue = typeof legacyAttributes?.livemode === 'boolean'
+    ? legacyAttributes.livemode
+    : typeof eventRoot?.livemode === 'boolean'
+      ? eventRoot.livemode
+      : null
+  const checkoutSessionFromEvent = legacyAttributes?.data ?? eventRoot?.data
+
+  if (!eventType || typeof isLiveValue !== 'boolean') {
     return new Response('Invalid webhook event envelope', { status: 400 })
   }
 
-  const isLive = attributes.livemode === true
+  const isLive = isLiveValue
   const suppliedSignature = isLive ? parts.li : parts.te
   const expectedSignature = await hmacHex(webhookSecret, `${timestamp}.${raw}`)
   if (!suppliedSignature || !equalConstantTime(expectedSignature, suppliedSignature)) {
@@ -64,9 +82,9 @@ Deno.serve(async (req) => {
     return new Response('Webhook event mode does not match configured checkout mode', { status: 400 })
   }
 
-  if (attributes.type !== 'checkout_session.payment.paid') return Response.json({ received: true })
+  if (eventType !== 'checkout_session.payment.paid') return Response.json({ received: true })
 
-  const checkoutSession = attributes.data
+  const checkoutSession = checkoutSessionFromEvent
   const sessionAttrs = checkoutSession?.attributes
   const orderId = sessionAttrs?.reference_number || sessionAttrs?.metadata?.order_id
   const payment = Array.isArray(sessionAttrs?.payments)
