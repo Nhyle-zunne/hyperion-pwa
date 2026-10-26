@@ -37,6 +37,7 @@ supabase secrets set PRICE_DECK_MGT_PHP=700
 supabase secrets set PRICE_ENGINE_MGT_PHP=700
 
 supabase functions deploy create-checkout
+supabase functions deploy cancel-checkout
 supabase functions deploy paymongo-webhook
 supabase functions deploy submit-manual-payment
 supabase functions deploy admin-payment-review
