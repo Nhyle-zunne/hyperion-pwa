@@ -41,6 +41,83 @@ Deno.serve(async (req) => {
   }
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  const { data: batch, error: batchError } = await admin.from('checkout_batches')
+    .select('*').eq('id', body.orderId).eq('user_id', user.id).maybeSingle()
+  if (batchError) return json({ error: 'Could not check your basket checkout.' }, 500)
+  if (batch) {
+    if (batch.status === 'paid') return json({ status: 'already_paid', orderId: batch.id })
+    if (batch.status === 'cancelled' || batch.status === 'failed') return json({ status: 'cancelled', orderId: batch.id })
+    if (batch.status !== 'pending' || !batch.paymongo_checkout_session_id) {
+      return json({ error: 'This basket checkout cannot be cancelled in its current status.' }, 409)
+    }
+
+    const sessionUrl = `https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(batch.paymongo_checkout_session_id)}`
+    const auth = `Basic ${btoa(paymongoKey + ':')}`
+    const getSession = async () => {
+      const response = await fetch(sessionUrl, { headers: { Authorization: auth } })
+      const result = await response.json().catch(() => ({}))
+      return { response, session: result?.data }
+    }
+    let current
+    try { current = await getSession() } catch {
+      return json({ error: 'Could not check the checkout with PayMongo. Your order was not changed.' }, 502)
+    }
+    if (!current.response.ok) return json({ error: 'Could not verify the current checkout with PayMongo.' }, 502)
+    const attrs = current.session?.attributes
+    if (current.session?.id !== batch.paymongo_checkout_session_id ||
+        attrs?.reference_number !== batch.id ||
+        (attrs?.metadata?.batch_id !== batch.id && attrs?.metadata?.order_id !== batch.id) ||
+        attrs?.metadata?.user_id !== user.id ||
+        attrs?.livemode !== (expectedMode === 'true') ||
+        typeof attrs?.metadata?.product_codes !== 'string' ||
+        attrs.metadata.product_codes.split(',').sort().join(',') !== [...batch.product_codes].sort().join(',')) {
+      return json({ error: 'PayMongo checkout details did not match this basket. No change was made.' }, 409)
+    }
+    const payments = Array.isArray(attrs?.payments) ? attrs.payments : []
+    if (payments.some((payment: any) => payment?.attributes?.status === 'paid')) {
+      return json({ status: 'already_paid', orderId: batch.id })
+    }
+    if (payments.some((payment: any) => ['pending','processing'].includes(payment?.attributes?.status))) {
+      return json({ status: 'processing', orderId: batch.id, message: 'A payment attempt is still processing. Wait for PayMongo to confirm the result before switching payment methods.' })
+    }
+
+    if (attrs?.status === 'active') {
+      let expireResponse: Response
+      try {
+        expireResponse = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(batch.paymongo_checkout_session_id)}/expire`, {
+          method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/json' }
+        })
+      } catch {
+        return json({ error: 'Could not reach PayMongo to close the checkout. Your order remains pending.' }, 502)
+      }
+      if (!expireResponse.ok) {
+        let latest
+        try { latest = await getSession() } catch {
+          return json({ error: 'Could not verify whether PayMongo closed this checkout. Your order remains pending.' }, 502)
+        }
+        if (!latest.response.ok) return json({ error: 'Could not verify whether PayMongo closed this checkout. Your order remains pending.' }, 502)
+        const latestAttrs = latest.session?.attributes
+        const latestPayments = Array.isArray(latestAttrs?.payments) ? latestAttrs.payments : []
+        if (latestPayments.some((payment: any) => payment?.attributes?.status === 'paid')) return json({ status: 'already_paid', orderId: batch.id })
+        if (latestPayments.some((payment: any) => ['pending','processing'].includes(payment?.attributes?.status))) {
+          return json({ status: 'processing', orderId: batch.id, message: 'A payment attempt is still processing. Wait for confirmation before switching payment methods.' })
+        }
+        if (latestAttrs?.status !== 'expired') return json({ error: 'PayMongo could not close this checkout yet. Your order remains pending.' }, 409)
+      }
+    } else if (attrs?.status !== 'expired') {
+      return json({ error: 'PayMongo returned an unexpected checkout status. Your order remains pending.' }, 409)
+    }
+
+    const { error: batchUpdateError } = await admin.from('checkout_batches')
+      .update({ status: 'cancelled' }).eq('id', batch.id).eq('status', 'pending')
+    if (batchUpdateError) return json({ error: 'PayMongo closed the checkout, but Hyperion could not update the basket status.' }, 500)
+    const { error: childUpdateError } = await admin.from('orders').update({ status: 'cancelled' })
+      .eq('checkout_batch_id', batch.id).eq('user_id', user.id).eq('status', 'pending')
+    if (childUpdateError) return json({ error: 'The basket was closed, but its order items could not be updated. Refresh status or contact support.' }, 500)
+    return json({ status: 'cancelled', orderId: batch.id })
+  }
+
   const { data: order, error: orderError } = await admin.from('orders')
     .select('id,user_id,product_code,status,payment_method,paymongo_checkout_session_id')
     .eq('id', body.orderId)
