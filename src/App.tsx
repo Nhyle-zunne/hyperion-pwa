@@ -21,7 +21,6 @@ import HistoryScreen from './screens/HistoryScreen'
 import FlashcardsScreen from './screens/FlashcardsScreen'
 import BookmarksScreen from './screens/BookmarksScreen'
 import SearchScreen from './screens/SearchScreen'
-import VaultScreen from './screens/VaultScreen'
 import StudyTimeScreen from './screens/StudyTimeScreen'
 import PaywallDialog from './components/PaywallDialog'
 import BottomNav from './components/BottomNav'
@@ -176,7 +175,6 @@ export default function App() {
           <Route path="/flashcards" element={<FlashcardsScreen />} />
           <Route path="/bookmarks" element={<BookmarksScreen />} />
           <Route path="/search" element={<SearchScreen />} />
-          <Route path="/vault" element={<VaultScreen />} />
           <Route path="/studytime" element={<StudyTimeScreen />} />
           <Route path="/streak" element={<StudyTimeScreen />} />
           <Route path="*" element={<TrackSelectionScreen />} />
