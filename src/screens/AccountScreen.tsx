@@ -131,6 +131,7 @@ export default function AccountScreen() {
     }
     const popup = window.open('about:blank', 'hyperion-oauth', 'popup=yes,width=520,height=700')
     if (!popup) {
+      try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
       setMessage('Your browser blocked the sign-in popup. Allow pop-ups for hyperionmaritime.org and try again.')
       return
     }
@@ -186,6 +187,7 @@ export default function AccountScreen() {
       window.clearInterval(popupClosePoll)
       popup.close()
       if (oauthPopupRef.current === popup) oauthPopupRef.current = null
+      try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
       setMessage(error instanceof Error ? error.message : `Unable to start ${provider} sign-in. Please try again.`)
       setBusy(false)
     }
