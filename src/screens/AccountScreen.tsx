@@ -160,11 +160,44 @@ export default function AccountScreen() {
 
     // If the browser drops window.opener during the external-provider roundtrip,
     // recover from the shared same-origin Supabase session once the popup closes.
+    let sessionCheckInFlight = false
     const popupClosePoll = window.setInterval(() => {
+      // Some browsers complete the OAuth redirect in the popup but fail to
+      // deliver the postMessage/opener relationship afterward. Detect the
+      // shared Supabase session from the main window and close the popup here.
+      if (!popup.closed && oauthOutcomeRef.current === null && !sessionCheckInFlight) {
+        sessionCheckInFlight = true
+        void authClient.auth.getSession().then(async ({ data, error }) => {
+          if (error || !data.session || popup.closed || oauthOutcomeRef.current !== null) return
+
+          oauthOutcomeRef.current = 'success'
+          window.clearInterval(popupClosePoll)
+          if (oauthPopupRef.current === popup) oauthPopupRef.current = null
+          try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
+          setSession(data.session)
+          setMessage('Signed in successfully.')
+          navigate(returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/', { replace: true })
+          popup.close()
+          setBusy(false)
+          await refreshCloudEntitlements()
+        }).catch(() => {
+          // Keep polling; the callback may still be completing.
+        }).finally(() => {
+          sessionCheckInFlight = false
+        })
+        return
+      }
+
       if (!popup.closed) return
       window.clearInterval(popupClosePoll)
       if (oauthPopupRef.current === popup) oauthPopupRef.current = null
       try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
+      // The message handler may already have confirmed the session and closed
+      // the popup. Do not run the recovery flow a second time.
+      if (oauthOutcomeRef.current === 'success') {
+        setBusy(false)
+        return
+      }
       void (async () => {
         try {
           const { data, error } = await authClient.auth.getSession()
