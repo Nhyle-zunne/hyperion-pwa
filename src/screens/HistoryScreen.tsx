@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   HISTORY_RETENTION_MS,
@@ -280,12 +281,12 @@ export default function HistoryScreen() {
     }))
   }, [review?.snapshot])
 
-  const secondaryText: React.CSSProperties = { color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.5 }
-  const modalBackdrop: React.CSSProperties = {
+  const secondaryText: CSSProperties = { color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.5 }
+  const modalBackdrop: CSSProperties = {
     position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(0,0,0,.72)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
   }
-  const modalStyle: React.CSSProperties = {
+  const modalStyle: CSSProperties = {
     width: 'min(100%, 680px)', maxHeight: '88dvh', overflowY: 'auto',
     background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)',
     borderTop: '3px solid var(--accent)', padding: '1rem', borderRadius: 10
