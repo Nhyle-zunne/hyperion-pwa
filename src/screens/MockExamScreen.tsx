@@ -317,7 +317,7 @@ export default function MockExamScreen() {
                     </td>}
                     <td style={{ padding: '.7rem .6rem', borderBottom: '1px solid var(--border)', verticalAlign: 'middle', overflowWrap: 'anywhere' }}>
                       <strong style={{ display: 'block' }}>{row.id}</strong>
-                      <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.35, marginTop: 3 }}>{row.label.replace(/^C\\d+\\s*[·:-]?\\s*/, '')}</span>
+                      <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.35, marginTop: 3 }}>{row.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</span>
                     </td>
                     <td style={{ padding: '.7rem .35rem', borderBottom: '1px solid var(--border)', verticalAlign: 'middle', textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: groupSubmitted ? 800 : 500, overflowWrap: 'anywhere' }}>
                       {groupSubmitted ? (result ? result.percent.toFixed(2) + '%' : '—') : mockExamItemCount(trackId, row.id)}
