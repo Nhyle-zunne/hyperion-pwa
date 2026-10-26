@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Question, UserAnswer, TrackId } from '../types/question';
-import { authorizeQuestionSet, getQuestionsByCompetence, getQuestionsByTrack } from '../lib/questionBank';
+import { authorizeQuestionSetAccess, getQuestionsByCompetence, getQuestionsByTrack } from '../lib/questionBank';
 import { useLicenseStore } from './licenseStore';
 import { useHistoryStore, type SessionMode } from './historyStore';
 import { useVaultStore } from './vaultStore';
@@ -167,13 +167,11 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   startCustomSession: async ({ questions, track, competenceId }) => {
     if (questions.length === 0) return false;
     await useLicenseStore.getState().refreshCloudEntitlements();
-    const permitted = await authorizeQuestionSet(track, questions);
-    if (!permitted) {
+    const access = await authorizeQuestionSetAccess(track, questions);
+    if (!access) {
       set({ loading: false, error: 'These saved questions are no longer available for this account. Renew the track license or use the free reviewer sample.' });
       return false;
     }
-    const license = useLicenseStore.getState();
-    const licensed = license.isAllAccessUnlocked || license.isTrackUnlocked(track);
     const selected = shuffle(questions);
     const startedAt = Date.now();
     const sessionId = makeSessionId();
@@ -186,7 +184,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       track,
       competenceId: competenceId ?? null,
       part: null,
-      isFreeSession: !licensed,
+      isFreeSession: access === 'free-sample',
       sessionId,
       finished: false,
       mode: 'PRACTICE',
@@ -439,12 +437,10 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       if (snapshot && snapshot.questions.length > 0 && snapshot.track) {
         await useLicenseStore.getState().refreshCloudEntitlements();
         const permitted = await authorizeQuestionSet(snapshot.track, snapshot.questions);
-        if (!permitted) {
+        if (!access) {
           set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample.' });
           return false;
         }
-        const license = useLicenseStore.getState();
-        const licensed = license.isAllAccessUnlocked || license.isTrackUnlocked(snapshot.track);
         set({
           ...snapshot,
           sessionId: selectedSaved.id,
@@ -475,13 +471,10 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       if (!matchesRequested) { set({ loading: false }); return false; }
       await useLicenseStore.getState().refreshCloudEntitlements();
       const permitted = await authorizeQuestionSet(saved.track, saved.questions);
-      if (!permitted) {
+      if (!access) {
         set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample.' });
         return false;
       }
-      const license = useLicenseStore.getState();
-      const licensed = license.isAllAccessUnlocked || license.isTrackUnlocked(saved.track);
-
       const sessionId = requestedSessionId || saved.sessionId || selectedSaved?.id || makeSessionId();
       set({
         questions: saved.questions,
