@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
-import { getQuestionsByCompetence, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import { getFlashcardQuestions, listAvailableCompetences } from '../lib/questionBank'
 import type { Question, TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = {
@@ -64,16 +64,13 @@ export default function FlashcardsScreen() {
     setKnown(0)
     setUnknown(0)
     try {
-      let qs = competenceId
-        ? await getQuestionsByCompetence(trackId, competenceId)
-        : await getQuestionsByTrack(trackId)
+      const qs = await getFlashcardQuestions(trackId, competenceId, 20)
       if (qs.length === 0) {
         setError('No questions available for this selection.')
         setLoading(false)
         return
       }
-      qs = shuffle(qs).slice(0, Math.min(20, qs.length))
-      setSession(qs)
+      setSession(shuffle(qs).slice(0, Math.min(20, qs.length)))
     } catch {
       setError('Failed to load questions.')
     }
