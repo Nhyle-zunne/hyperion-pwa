@@ -607,6 +607,15 @@ export function listRegisteredSourceCount(): number {
   return SOURCES.length;
 }
 
+export async function getFlashcardQuestions(track: TrackId, competenceId?: string, limit = 20): Promise<Question[]> {
+  if (!supabase) throw new Error('Protected question service is not configured.');
+  const { data, error } = await supabase.functions.invoke('question-bank', {
+    body: { action: 'flashcards', track, competenceId, limit: Math.max(1, Math.min(30, limit)) }
+  });
+  if (error || !Array.isArray(data?.questions)) throw error || new Error(data?.error || 'Flashcards are unavailable.');
+  return data.questions as Question[];
+}
+
 /** Search within a track on the server and return only the limited matching results. */
 export async function searchQuestions(
   track: TrackId,
