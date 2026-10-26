@@ -58,10 +58,33 @@ export default function App() {
     return updated
   })
 
+  const [entitlementsChecked, setEntitlementsChecked] = useState(false)
   useEffect(() => {
-    void refreshCloudEntitlements()
-    const authListener = supabase?.auth.onAuthStateChange(() => { window.setTimeout(() => { void refreshCloudEntitlements() }, 0) })
-    return () => { authListener?.data.subscription.unsubscribe() }
+    let alive = true
+    const refresh = async () => {
+      await refreshCloudEntitlements()
+      if (alive) setEntitlementsChecked(true)
+    }
+    void refresh()
+    const authListener = supabase?.auth.onAuthStateChange(() => {
+      setEntitlementsChecked(false)
+      window.setTimeout(() => { void refresh() }, 0)
+    })
+    const refreshOnWake = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh()
+    }, 30_000)
+    window.addEventListener('focus', refreshOnWake)
+    document.addEventListener('visibilitychange', refreshOnWake)
+    return () => {
+      alive = false
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refreshOnWake)
+      document.removeEventListener('visibilitychange', refreshOnWake)
+      authListener?.data.subscription.unsubscribe()
+    }
   }, [refreshCloudEntitlements])
 
   useEffect(() => startLearningProgressSync(), [])
