@@ -114,6 +114,13 @@ export default function AccountScreen() {
     }
     setBusy(true)
     setMessage('')
+    // If the user closes the provider popup without signing in, release the form's busy state.
+    const popupClosePoll = window.setInterval(() => {
+      if (popup.closed) {
+        window.clearInterval(popupClosePoll)
+        setBusy(false)
+      }
+    }, 400)
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -127,6 +134,7 @@ export default function AccountScreen() {
       popup.location.href = data.url
       popup.focus()
     } catch (error) {
+      window.clearInterval(popupClosePoll)
       popup.close()
       setMessage(error instanceof Error ? error.message : `Unable to start ${provider} sign-in. Please try again.`)
       setBusy(false)
