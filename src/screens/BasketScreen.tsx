@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import type { PaidTrack } from '../lib/supabase'
@@ -56,6 +56,7 @@ export default function BasketScreen() {
   const [busyCheckoutId, setBusyCheckoutId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
+  const [manualFallbackCodes, setManualFallbackCodes] = useState<PaidTrack[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
   useEffect(() => {
@@ -212,6 +213,7 @@ export default function BasketScreen() {
 
     setBusy(true)
     setIsError(false)
+    setManualFallbackCodes([])
     setMessage('Preparing secure checkout…')
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout', { body: { productCodes: codes } })
@@ -229,6 +231,7 @@ export default function BasketScreen() {
       window.location.assign(url.toString())
     } catch (error) {
       setIsError(true)
+      setManualFallbackCodes(codes)
       setMessage(await edgeError(error))
     } finally {
       setBusy(false)
@@ -322,6 +325,8 @@ export default function BasketScreen() {
       .basket-page .checkout-pay-button:hover:not(:disabled){background:var(--accent-dim);border-color:var(--accent-dim)}
       [data-theme='dark'] .basket-page .checkout-pay-button{color:#fff}
       .basket-page .checkout-pay-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+      .basket-page .manual-fallback-link{display:inline-flex;align-items:center;justify-content:center;gap:.25rem;color:var(--accent);font-weight:850;text-decoration:underline;text-underline-offset:3px;padding:.55rem .65rem;border:1px solid var(--border);border-radius:8px;overflow-wrap:anywhere}
+      .basket-page .manual-fallback-link:hover{background:var(--bg-elevated)}
       @media(max-width:820px){.basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.basket-page .basket-summary{position:static}}
       @media(max-width:520px){.basket-page .basket-row{align-items:flex-start}.basket-page .basket-action-row button{flex:1}}
     `}</style>
@@ -336,7 +341,20 @@ export default function BasketScreen() {
       <p className="basket-muted">Your basket is saved in this browser. Sign in to verify pending purchases and complete checkout.</p>
       <button type="button" className="btn btn-primary" onClick={() => navigate('/account')} style={{ width: '100%' }}>SIGN IN / OPEN ACCOUNT</button>
     </section> : <>
-      {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>{message}</div>}
+      {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>
+        {message}
+        {isError && manualFallbackCodes.length > 0 && <div style={{ marginTop: '.85rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
+          <strong style={{ display: 'block', marginBottom: '.3rem' }}>PayMongo checkout is unavailable</strong>
+          <p className="basket-muted" style={{ margin: '0 0 .7rem' }}>You can pay by QR instead. Choose the track below to open its dedicated manual payment page. Manual payments require admin review before your license is activated.</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem' }}>
+            {manualFallbackCodes.map(code => {
+              const item = PAID_PRODUCTS.find(product => product.code === code)
+              if (!item) return null
+              return <Link key={code} className="manual-fallback-link" to={`/manual-payment?product=${encodeURIComponent(code)}`}>Pay manually for {item.label} · ₱{item.annualPrice}</Link>
+            })}
+          </div>
+        </div>}
+      </div>
 
       {pendingCheckoutGroups.length > 0 && <section style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
