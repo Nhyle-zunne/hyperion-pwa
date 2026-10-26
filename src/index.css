@@ -1500,3 +1500,22 @@ a:focus-visible,
 [data-theme='light'] .card button.btn-primary {
   color: #ffffff !important;
 }
+
+
+/* Light mode: selected drill format is indicated by a green card, not a radio glyph.
+   Keep selected card copy white despite broad light-theme text normalization rules. */
+[data-theme='light'] .practice-config-screen button[aria-pressed="true"],
+[data-theme='light'] .practice-config-screen button[aria-pressed="true"] > div,
+[data-theme='light'] .practice-config-screen button[aria-pressed="true"] span {
+  color: #ffffff !important;
+}
+[data-theme='light'] .practice-config-screen button[aria-pressed="true"] > div[style*="rgba(255,255,255"] {
+  color: rgba(255,255,255,.94) !important;
+}
+
+/* Question-range presets: white type on the selected green preset only. */
+[data-theme='light'] .practice-config-screen .question-range-preset[aria-pressed="true"] {
+  color: #ffffff !important;
+  background-color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
