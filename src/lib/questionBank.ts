@@ -571,12 +571,12 @@ export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false)
     const questions = await getQuestionsByTrack(track, true);
     const counts = new Map<string, QuestionBankCount>();
     for (const question of questions) {
-      const key = question.competenceId + ':' + (question.id.match(/-P(\\d+)-/)?.[1] || '');
+      const key = question.competenceId + ':' + (question.id.match(/-P(\d+)-/)?.[1] || '');
       const current = counts.get(key);
       if (current) current.count++;
       else counts.set(key, {
         competenceId: question.competenceId,
-        part: question.id.match(/-P(\\d+)-/)?.[1] ? Number(question.id.match(/-P(\\d+)-/)![1]) : null,
+        part: question.id.match(/-P(\d+)-/)?.[1] ? Number(question.id.match(/-P(\d+)-/)![1]) : null,
         count: 1
       });
     }
