@@ -14,6 +14,37 @@ const products = {
   engine_mgt: { track: 'ENGINE_MGT', name: 'Engine Management' }
 } as const
 type ProductCode = keyof typeof products
+type LicenseTerm = 'week' | 'month' | 'year'
+const termPrices: Record<ProductCode, Record<LicenseTerm, number>> = {
+  oic_nw: { week: 20, month: 50, year: 350 },
+  gmdss: { week: 15, month: 40, year: 250 },
+  engine_ew: { week: 20, month: 50, year: 350 },
+  deck_mgt: { week: 40, month: 100, year: 700 },
+  engine_mgt: { week: 40, month: 100, year: 700 }
+}
+function expiryForTerm(base: Date, term: LicenseTerm) {
+  const result = new Date(base)
+  if (term === 'week') {
+    result.setUTCDate(result.getUTCDate() + 7)
+    return result
+  }
+  if (term === 'month') {
+    const originalDay = result.getUTCDate()
+    result.setUTCDate(1)
+    result.setUTCMonth(result.getUTCMonth() + 1)
+    const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate()
+    result.setUTCDate(Math.min(originalDay, lastDay))
+    return result
+  }
+  const originalMonth = result.getUTCMonth()
+  const originalDay = result.getUTCDate()
+  result.setUTCDate(1)
+  result.setUTCFullYear(result.getUTCFullYear() + 1)
+  result.setUTCMonth(originalMonth)
+  const lastDay = new Date(Date.UTC(result.getUTCFullYear(), originalMonth + 1, 0)).getUTCDate()
+  result.setUTCDate(Math.min(originalDay, lastDay))
+  return result
+}
 
 function profileName(user: any) {
   const metadata = user.user_metadata ?? {}
@@ -44,13 +75,14 @@ async function grantOrder(admin: any, order: any) {
   const now = new Date()
   const oldExpiry = existing?.status === 'active' && existing.expires_at ? new Date(existing.expires_at) : null
   const base = oldExpiry && oldExpiry.getTime() > now.getTime() ? oldExpiry : now
-  const expiresAt = new Date(base)
-  expiresAt.setUTCFullYear(expiresAt.getUTCFullYear() + 1)
+  const term: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' ? order.license_term : 'year'
+  const expiresAt = expiryForTerm(base, term)
   const { error: grantError } = await admin.from('entitlements').upsert({
     user_id: order.user_id,
     product_code: order.product_code,
     track_id: order.track_id,
     order_id: order.id,
+    license_term: term,
     status: 'active',
     granted_at: now.toISOString(),
     renewed_at: now.toISOString(),
@@ -100,9 +132,11 @@ Deno.serve(async (req) => {
   if (batchError) return json({ error: 'Could not look up your basket checkout.' }, 500)
   if (batch) {
     const codes = (batch.product_codes ?? []) as string[]
+    const batchTerms = (batch.license_terms ?? codes.map(() => 'year')) as string[]
     if (batch.payment_method !== 'PayMongo Checkout' || !Array.isArray(batch.product_codes) || !codes.length ||
         codes.length > Object.keys(products).length || codes.some(code => !(code in products)) ||
-        new Set(codes).size !== codes.length) {
+        new Set(codes).size !== codes.length || batchTerms.length !== codes.length ||
+        batchTerms.some(term => term !== 'week' && term !== 'month' && term !== 'year')) {
       return json({ error: 'This basket contains invalid product information. Contact Hyperion support.' }, 409)
     }
     if (batch.status === 'paid') {
@@ -118,8 +152,10 @@ Deno.serve(async (req) => {
     const childCodes = childOrders.map((order: any) => order.product_code).sort()
     const expectedCodes = [...codes].sort()
     const childTotal = childOrders.reduce((sum: number, order: any) => sum + Number(order.amount_php), 0)
+    const termByCode = Object.fromEntries(codes.map((code, index) => [code, batchTerms[index]])) as Record<string, LicenseTerm>
     if (childOrders.length !== codes.length || childCodes.some((code: string, i: number) => code !== expectedCodes[i]) ||
-        childOrders.some((order: any) => order.track_id !== (products as any)[order.product_code]?.track || order.currency !== 'PHP') ||
+        childOrders.some((order: any) => order.track_id !== (products as any)[order.product_code]?.track || order.currency !== 'PHP' ||
+          order.license_term !== termByCode[order.product_code] || Number(order.amount_php) !== termPrices[order.product_code as ProductCode]?.[termByCode[order.product_code]]) ||
         childTotal !== batch.amount_php) {
       return json({ error: 'The basket order does not match its stored products and total. No license was granted.' }, 409)
     }
@@ -137,12 +173,15 @@ Deno.serve(async (req) => {
     const sortedMetadataCodes = typeof attributes?.metadata?.product_codes === 'string'
       ? attributes.metadata.product_codes.split(',').filter(Boolean).sort()
       : []
+    const expectedMetadataTerms = codes.map((code, index) => `${code}:${batchTerms[index]}`).sort().join(',')
+    const metadataTerms = typeof attributes?.metadata?.product_terms === 'string' ? attributes.metadata.product_terms.split(',').sort().join(',') : ''
     if (checkoutSession?.id !== batch.paymongo_checkout_session_id ||
         attributes?.livemode !== (expectedMode === 'true') ||
         attributes?.reference_number !== batch.id ||
         (attributes?.metadata?.batch_id !== batch.id && attributes?.metadata?.order_id !== batch.id) ||
         attributes?.metadata?.user_id !== user.id ||
-        sortedMetadataCodes.join(',') !== expectedCodes.join(',')) {
+        sortedMetadataCodes.join(',') !== expectedCodes.join(',') ||
+        (metadataTerms ? metadataTerms !== expectedMetadataTerms : batchTerms.some(term => term !== 'year'))) {
       return json({ error: 'PayMongo details did not match this basket. No license was granted.' }, 409)
     }
 
@@ -226,13 +265,16 @@ Deno.serve(async (req) => {
       attributes?.reference_number !== order.id ||
       attributes?.metadata?.order_id !== order.id ||
       attributes?.metadata?.user_id !== order.user_id ||
-      attributes?.metadata?.product_code !== order.product_code) {
+      attributes?.metadata?.product_code !== order.product_code ||
+      (attributes?.metadata?.license_term && attributes.metadata.license_term !== (order.license_term || 'year'))) {
     return json({ error: 'PayMongo checkout details did not match this order. No license was granted.' }, 409)
   }
   const payments = Array.isArray(attributes?.payments) ? attributes.payments : []
   const paidPayment = payments.find((payment: any) => payment?.attributes?.status === 'paid')
   if (!paidPayment) return json({ status: 'pending', orderId: order.id, productCode: order.product_code, message: 'PayMongo has not confirmed a paid transaction for this checkout yet.' })
-  if (paidPayment.attributes?.currency !== 'PHP' || Number(paidPayment.attributes?.amount) !== Number(order.amount_php) * 100) {
+  const orderTerm: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' ? order.license_term : 'year'
+  if (Number(order.amount_php) !== termPrices[order.product_code as ProductCode]?.[orderTerm] ||
+      paidPayment.attributes?.currency !== 'PHP' || Number(paidPayment.attributes?.amount) !== Number(order.amount_php) * 100) {
     return json({ error: 'The confirmed payment amount or currency does not match this order. No license was granted.' }, 409)
   }
 
