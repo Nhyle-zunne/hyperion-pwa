@@ -190,7 +190,7 @@ export default function AccountScreen() {
 
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider,
+        provider: 'google',
         options: {
           redirectTo: 'https://hyperionmaritime.org/auth/callback',
           skipBrowserRedirect: true,
@@ -205,7 +205,7 @@ export default function AccountScreen() {
       popup.close()
       if (oauthPopupRef.current === popup) oauthPopupRef.current = null
       try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
-      setMessage(error instanceof Error ? error.message : `Unable to start ${provider} sign-in. Please try again.`)
+      setMessage(error instanceof Error ? error.message : 'Unable to start Google sign-in. Please try again.')
       setBusy(false)
     }
   }
