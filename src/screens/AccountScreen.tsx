@@ -121,7 +121,7 @@ export default function AccountScreen() {
         if (popup && !popup.closed) popup.close()
         if (popup && popup.closed && oauthPopupRef.current === popup) oauthPopupRef.current = null
         await refreshCloudEntitlements()
-      } catch (error) {
+      } catch {
         oauthOutcomeRef.current = 'error'
         setMessage('Sign-in could not be completed. Please try again.')
       } finally {
@@ -211,9 +211,9 @@ export default function AccountScreen() {
           } else if (oauthOutcomeRef.current !== 'error') {
             setMessage('Sign-in could not be completed. Please try again.')
           }
-        } catch (error) {
+        } catch {
           if (oauthOutcomeRef.current !== 'error') {
-            setMessage(error instanceof Error ? error.message : 'Unable to finish sign-in. Please try again.')
+            setMessage('Sign-in could not be completed. Please try again.')
           }
         } finally {
           setBusy(false)
@@ -233,7 +233,7 @@ export default function AccountScreen() {
       if (!data.url) throw new Error('The sign-in provider did not return a login URL.')
       popup.location.href = data.url
       popup.focus()
-    } catch (error) {
+    } catch {
       window.clearInterval(popupClosePoll)
       popup.close()
       if (oauthPopupRef.current === popup) oauthPopupRef.current = null
