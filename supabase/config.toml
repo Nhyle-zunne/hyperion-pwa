@@ -7,11 +7,11 @@ verify_jwt = true
 [functions.create-checkout]
 verify_jwt = true
 
-[functions.cancel-checkout]
-verify_jwt = true
-
 [functions.paymongo-webhook]
 verify_jwt = false
+
+[functions.cancel-checkout]
+verify_jwt = true
 
 [functions.cancel-checkout]
 verify_jwt = true
