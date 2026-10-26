@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Question, UserAnswer, TrackId } from '../types/question';
-import { getQuestionsByCompetence, getQuestionsByTrack, freeSample } from '../lib/questionBank';
+import { getQuestionsByCompetence, getQuestionsByTrack } from '../lib/questionBank';
 import { useLicenseStore } from './licenseStore';
 import { useHistoryStore, type SessionMode } from './historyStore';
 import { useVaultStore } from './vaultStore';
@@ -16,6 +16,7 @@ interface PracticeState {
   track: TrackId | null;
   competenceId: string | null;
   part: number | null;
+  isFreeSession: boolean;
   sessionId: string | null;
   finished: boolean;
   mode: SessionMode;
@@ -80,7 +81,7 @@ function snapshotFromState(s: PracticeState, finished = s.finished): SessionSnap
   return {
     sessionId: s.sessionId, questions: s.questions, answers: s.answers,
     currentIndex: s.currentIndex, track: s.track, competenceId: s.competenceId,
-    part: s.part, mode: s.mode, startedAt: s.startedAt,
+    part: s.part, mode: s.mode, isFreeSession: s.isFreeSession, startedAt: s.startedAt,
     timeLimitSec: s.timeLimitSec, timeLeftSec: s.timeLeftSec,
     streak: s.streak, bestStreak: s.bestStreak, finished
   };
@@ -152,7 +153,8 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   track: null,
   competenceId: null,
   part: null,
-  sessionId: null,
+  isFreeSession: false,
+  sessionId: null;
   finished: false,
   mode: 'PRACTICE',
   startedAt: 0,
@@ -175,11 +177,13 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     });
 
     try {
+      await useLicenseStore.getState().refreshCloudEntitlements();
       const lic = useLicenseStore.getState();
       const licensed = lic.isAllAccessUnlocked || lic.isTrackUnlocked(track);
+      const isFreeSession = Boolean(free || !licensed);
       let qs: Question[];
-      if (free || !licensed) {
-        const sample = freeSample(await getQuestionsByTrack(track), track);
+      if (isFreeSession) {
+        const sample = await getQuestionsByTrack(track, true);
         qs = competenceId ? sample.filter((q) => q.competenceId === competenceId) : sample;
       } else {
         qs = competenceId
@@ -217,7 +221,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         return;
       }
 
-      set({ questions: delivered, track, competenceId: competenceId ?? null, part: part ?? null, sessionId, loading: false, startedAt });
+      set({ questions: delivered, track, competenceId: competenceId ?? null, part: part ?? null, isFreeSession, sessionId, loading: false, startedAt });
       persistActiveSession(get());
     } catch {
       set({ loading: false, error: 'Failed to load questions.' });
@@ -366,7 +370,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     } catch { /* storage can be unavailable */ }
     set({
       questions: [], answers: {}, currentIndex: 0, loading: false, error: null,
-      track: null, competenceId: null, part: null, sessionId: null, finished: false,
+      track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, finished: false,
       mode: 'PRACTICE', startedAt: 0, timeLimitSec: 0, timeLeftSec: 0, streak: 0, bestStreak: 0
     });
   },
@@ -392,9 +396,16 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     if (selectedSaved) {
       const snapshot = await getSessionSnapshot(selectedSaved.id);
       if (snapshot && snapshot.questions.length > 0 && snapshot.track) {
+        await useLicenseStore.getState().refreshCloudEntitlements();
+        const license = useLicenseStore.getState();
+        if (snapshot.isFreeSession !== true && !(license.isAllAccessUnlocked || license.isTrackUnlocked(snapshot.track))) {
+          set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'This saved paid session requires an active license. Renew access or start a Free Reviewer session.' });
+          return false;
+        }
         set({
           ...snapshot,
           sessionId: selectedSaved.id,
+          isFreeSession: snapshot.isFreeSession === true,
           loading: false,
           error: null,
           finished: false,
@@ -419,6 +430,12 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         saved.competenceId === selectedSaved.competenceId && saved.mode === selectedSaved.mode
       );
       if (!matchesRequested) { set({ loading: false }); return false; }
+      await useLicenseStore.getState().refreshCloudEntitlements();
+      const license = useLicenseStore.getState();
+      if (saved.isFreeSession !== true && !(license.isAllAccessUnlocked || license.isTrackUnlocked(saved.track))) {
+        set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'This saved paid session requires an active license. Renew access or start a Free Reviewer session.' });
+        return false;
+      }
 
       const sessionId = requestedSessionId || saved.sessionId || selectedSaved?.id || makeSessionId();
       set({
@@ -428,6 +445,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         track: saved.track,
         competenceId: saved.competenceId ?? null,
         part: saved.part ?? selectedSaved?.part ?? null,
+        isFreeSession: saved.isFreeSession === true,
         sessionId,
         finished: false,
         mode: saved.mode ?? selectedSaved?.mode ?? 'PRACTICE',
