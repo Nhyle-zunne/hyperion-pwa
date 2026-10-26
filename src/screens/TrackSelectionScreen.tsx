@@ -85,17 +85,9 @@ export default function TrackSelectionScreen() {
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <div className="dash-header">
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: '0.7rem', letterSpacing: '0.16em', fontWeight: 800, color: 'var(--accent)', marginBottom: 6 }}>
-            LEARNING SHOULDN’T BE A LUXURY
-          </div>
-          <h1>Welcome to Hyperion Maritime</h1>
-          <div className="sub" style={{ marginTop: 6, lineHeight: 1.6 }}>
-            Your maritime licensure exam reviewer for Deck, Engine, GMDSS, and management tracks. Practice by competency, build confidence, and prepare for the MARINA CRP examination.
-          </div>
-          <div className="sub" style={{ marginTop: 8, fontSize: '0.72rem' }}>
-            STCW ’78 AS AMENDED · MARINA CRP
-          </div>
+        <div>
+          <h1>Hyperion Maritime</h1>
+          <div className="sub">STCW ’78 AS AMENDED · MARINA CRP</div>
         </div>
       </div>
 
