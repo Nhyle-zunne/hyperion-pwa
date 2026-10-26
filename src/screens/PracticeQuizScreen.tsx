@@ -34,6 +34,11 @@ export default function PracticeQuizScreen() {
     if (questions.length === 0) restoreSavedProgress()
   }, [])
 
+  // Never carry an unconfirmed option highlight into another question.
+  useEffect(() => {
+    setPendingAnswer(null)
+  }, [currentIndex])
+
   // These controls discourage casual copying only; they cannot prevent screenshots or extraction from browser tools.
   useEffect(() => {
     const blockCopy = (event: ClipboardEvent) => {
