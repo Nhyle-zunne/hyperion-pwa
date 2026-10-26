@@ -560,31 +560,40 @@ async function fingerprintQuestion(question: Question): Promise<string> {
   return Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+export type QuestionSetAccess = 'admin' | 'licensed' | 'free-sample';
+
 /**
  * Re-authorize locally saved question sets against the current server license.
- * Without a license, only question content that exactly matches the free sample
- * is accepted. The persisted isFreeSession flag is never trusted on its own.
+ * The persisted isFreeSession flag is never trusted on its own; the access tier
+ * is returned by the server or verified against the free sample.
  */
-export async function authorizeQuestionSet(track: TrackId, questions: Question[]): Promise<boolean> {
-  if (!questions.length || questions.length > 3000 || questions.some(q => q.track !== track)) return false;
+export async function authorizeQuestionSetAccess(track: TrackId, questions: Question[]): Promise<QuestionSetAccess | null> {
+  if (!questions.length || questions.length > 3000 || questions.some(q => q.track !== track)) return null;
   const fingerprints = await Promise.all(questions.map(fingerprintQuestion));
   if (supabase) {
     const { data, error } = await supabase.functions.invoke('question-bank', {
       body: { action: 'authorize-session', track, questionIds: questions.map(q => q.id), fingerprints }
     });
-    if (!error && typeof data?.allowed === 'boolean') return data.allowed;
+    if (!error && data?.allowed === true) {
+      if (data.access === 'admin' || data.access === 'licensed' || data.access === 'free-sample') return data.access;
+      return null;
+    }
     const status = Number((error as { context?: { status?: number } } | null)?.context?.status || 0);
-    if (status !== 503) return false;
+    if (status !== 503) return null;
   }
-  // Temporary availability fallback during the first private-storage migration:
-  // it can authorize only questions that already belong to the public free sample.
+  // During the one-time migration, temporarily allow only sets that exactly
+  // match the free sample. Never treat a cached paid session as free.
   try {
     const freeQuestions = await getQuestionsByTrack(track, true);
     const freeFingerprints = new Set(await Promise.all(freeQuestions.map(fingerprintQuestion)));
-    return fingerprints.every(fingerprint => freeFingerprints.has(fingerprint));
+    return fingerprints.every(fingerprint => freeFingerprints.has(fingerprint)) ? 'free-sample' : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export async function authorizeQuestionSet(track: TrackId, questions: Question[]): Promise<boolean> {
+  return (await authorizeQuestionSetAccess(track, questions)) !== null;
 }
 
 /** Returns question counts only; paid question text stays on the protected question endpoint. */
