@@ -38,6 +38,12 @@ export default function AccountScreen() {
     return () => listener.subscription.unsubscribe()
   }, [])
   useEffect(() => {
+    if (params.get('oauth_popup') !== '1' || !session || !window.opener) return
+    window.opener.postMessage({ type: 'hyperion-oauth-success' }, window.location.origin)
+    window.close()
+  }, [params, session?.user.id])
+
+  useEffect(() => {
     const metadata = session?.user.user_metadata ?? {}
     setFullName(typeof metadata.full_name === 'string' ? metadata.full_name : '')
     setCompany(typeof metadata.company === 'string' ? metadata.company : '')
@@ -76,37 +82,37 @@ export default function AccountScreen() {
     await refreshCloudEntitlements()
   }
   useEffect(() => { void refreshAccount() }, [session?.user.id])
-  const signInWithGoogle = async () => {
+  const openOAuthPopup = async (provider: 'google' | 'facebook') => {
     if (!supabase) return
+    // Open synchronously from the click so browsers don't block the popup.
+    const popup = window.open('about:blank', 'hyperion-oauth', 'popup=yes,width=520,height=700')
+    if (!popup) {
+      setMessage('Your browser blocked the sign-in popup. Allow pop-ups for hyperionmaritime.org and try again.')
+      return
+    }
     setBusy(true)
     setMessage('')
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: `${window.location.origin}/account` },
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}/account?oauth_popup=1`,
+          skipBrowserRedirect: true,
+        },
       })
       if (error) throw error
+      if (!data.url) throw new Error('The sign-in provider did not return a login URL.')
+      popup.location.href = data.url
+      popup.focus()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to start Google sign-in. Please try again.')
+      popup.close()
+      setMessage(error instanceof Error ? error.message : `Unable to start ${provider} sign-in. Please try again.`)
       setBusy(false)
     }
   }
 
-  const signInWithFacebook = async () => {
-    if (!supabase) return
-    setBusy(true)
-    setMessage('')
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'facebook',
-        options: { redirectTo: `${window.location.origin}/account` },
-      })
-      if (error) throw error
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to start Facebook sign-in. Please try again.')
-      setBusy(false)
-    }
-  }
+  const signInWithGoogle = async () => openOAuthPopup('google')
+  const signInWithFacebook = async () => openOAuthPopup('facebook')
 
   const submitAuth = async (event: FormEvent) => {
     event.preventDefault()
