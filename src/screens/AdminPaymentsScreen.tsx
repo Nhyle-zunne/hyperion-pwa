@@ -16,6 +16,10 @@ export default function AdminPaymentsScreen() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [authorized, setAuthorized] = useState(false)
+  const [bankStatus, setBankStatus] = useState<'loading'|'pending'|'running'|'complete'|'failed'|'unknown'>('loading')
+  const [bankAssetCount, setBankAssetCount] = useState(0)
+  const [bankBusy, setBankBusy] = useState(false)
+  const [bankMessage, setBankMessage] = useState('')
   const call = useCallback(async (body: Record<string,unknown>) => {
     if (!supabase) throw new Error('Payment administration is temporarily unavailable. Please try again later.')
     const { data, error } = await supabase.functions.invoke('admin-payment-review', { body })
@@ -31,6 +35,38 @@ export default function AdminPaymentsScreen() {
     } catch (e) { setAuthorized(false); setMessage(safeAdminError(e, 'Unable to load payment submissions. Please retry.')) }
   }, [call])
   useEffect(() => { void load() }, [load])
+  const loadBankStatus = useCallback(async () => {
+    if (!supabase) { setBankStatus('unknown'); return }
+    try {
+      const { data, error } = await supabase.functions.invoke('question-bank', { body: { action: 'status' } })
+      if (error || data?.error) throw new Error('Could not check private question storage status.')
+      setBankStatus(data.status || 'unknown')
+      setBankAssetCount(Number(data.assetCount) || 0)
+      setBankMessage(data.status === 'complete' ? 'All question files are copied to private storage. Public static copies remain until the protected loader is deployed.' : '')
+    } catch {
+      setBankStatus('unknown')
+    }
+  }, [])
+  useEffect(() => { if (authorized) void loadBankStatus() }, [authorized, loadBankStatus])
+  const migrateQuestionBank = async () => {
+    if (!window.confirm('Copy all 69 encrypted question files from the current site into private Supabase Storage? This does not remove the currently working public copies.')) return
+    setBankBusy(true)
+    setBankMessage('')
+    try {
+      if (!supabase) throw new Error('Question storage migration is temporarily unavailable.')
+      const { data, error } = await supabase.functions.invoke('question-bank', { body: { action: 'migrate' } })
+      if (error || data?.error) throw new Error(data?.error || 'Could not complete private question storage migration.')
+      setBankStatus(data.status || 'unknown')
+      setBankAssetCount(Number(data.assetCount) || 0)
+      setBankMessage(data.message || 'Question files copied to private storage.')
+    } catch (e) {
+      setBankStatus('failed')
+      setBankMessage(e instanceof Error ? e.message : 'Question storage migration failed. Retry or inspect the migration status.')
+      await loadBankStatus()
+    } finally {
+      setBankBusy(false)
+    }
+  }
   const review = async (orderId: string, decision: 'approve'|'reject') => {
     setBusy(true); setMessage('')
     try { await call({ action:'review', orderId, decision, adminNote: note[orderId] || '' }); setMessage(decision === 'approve' ? 'Payment approved and access granted.' : 'Payment rejected.'); await load() }
@@ -54,6 +90,16 @@ export default function AdminPaymentsScreen() {
     <p className="subtitle">Only email addresses configured in the server-side ADMIN_EMAILS secret can review payments.</p>
     {message && <div role="status" style={card}>{/supabase/i.test(message) ? 'Payment administration is temporarily unavailable. Please try again later.' : message}</div>}
     {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void load()}>Retry</button></section> : <>
+      <section style={{ ...card, borderColor: bankStatus === 'complete' ? 'var(--success, #15803d)' : 'var(--border)' }}>
+        <h2 style={{ marginTop: 0 }}>Question-bank protection</h2>
+        <p style={{ marginTop: 0, lineHeight: 1.5 }}>Copy the encrypted question files into private Supabase Storage before switching the app to protected question delivery. This one-time step does not delete the currently working public files.</p>
+        <p style={{ fontWeight: 800 }}>Status: {bankStatus === 'complete' ? 'PRIVATE COPY COMPLETE' : bankStatus === 'running' || bankBusy ? 'COPYING FILES…' : bankStatus === 'failed' ? 'COPY FAILED' : bankStatus === 'pending' ? 'NOT COPIED YET' : bankStatus === 'unknown' ? 'STATUS UNAVAILABLE' : 'CHECKING…'} · {bankAssetCount}/69 files</p>
+        {bankMessage && <p role="status" style={{ overflowWrap: 'anywhere', lineHeight: 1.5 }}>{bankMessage}</p>}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <button type="button" className="btn btn-primary" disabled={bankBusy || bankStatus === 'running' || bankStatus === 'complete'} onClick={() => void migrateQuestionBank()}>{bankBusy ? 'Copying encrypted files…' : bankStatus === 'failed' ? 'Retry private copy' : bankStatus === 'complete' ? 'Private copy complete' : 'Copy question banks to private storage'}</button>
+          <button type="button" className="btn btn-outline" disabled={bankBusy} onClick={() => void loadBankStatus()}>Refresh status</button>
+        </div>
+      </section>
       <h2>Payment submissions ({orders.length})</h2>
       {orders.length ? orders.map(order => <section key={order.id} style={card}>
         <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'space-between', gap:8 }}><strong>{names[order.product_code] || order.product_code} · {duration(order.license_term || 'year')} · ₱{order.amount_php}</strong><strong>{order.status.toUpperCase()}</strong></div>
