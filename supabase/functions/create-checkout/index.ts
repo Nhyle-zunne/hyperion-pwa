@@ -202,6 +202,116 @@ Deno.serve(async (req) => {
     return json({ error: `You already have a manual payment waiting for review for ${products[conflict!.product_code as keyof typeof products]?.name ?? conflict!.product_code}. Complete or cancel that request before paying for it through PayMongo.` }, 409)
   }
 
+  // Keep a single-track purchase on the original, previously working order flow.
+  // Only multi-track baskets use checkout_batches and multiple line items.
+  if (codes.length === 1) {
+    const code = codes[0]
+    const product = products[code]
+    const price = productPrices[code]
+    const { data: order, error: insertError } = await admin.from('orders').insert({
+      user_id: user.id,
+      product_code: code,
+      track_id: product.track,
+      amount_php: price,
+      currency: 'PHP',
+      status: 'pending',
+      payment_method: 'PayMongo Checkout',
+      customer_name: profile.customerName,
+      customer_company: profile.customerCompany,
+      customer_school: profile.customerSchool
+    }).select('id').single()
+    if (insertError || !order) return json({ error: 'Could not create your order. Please try again.' }, 500)
+
+    const configuredBase = (Deno.env.get('APP_BASE_URL') || 'https://hyperionmaritime.org').replace(/\\/+$/, '')
+    let appUrl: URL
+    try { appUrl = new URL(configuredBase) } catch {
+      await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+      return json({ error: 'The app return URL is not configured correctly.' }, 503)
+    }
+    if (appUrl.protocol !== 'https:' && !(appUrl.hostname === 'localhost' && appUrl.protocol === 'http:')) {
+      await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+      return json({ error: 'The app return URL must use HTTPS.' }, 503)
+    }
+
+    const payload = {
+      data: {
+        attributes: {
+          line_items: [{ name: product.name, amount: price * 100, currency: 'PHP', quantity: 1 }],
+          billing: {
+            ...(profile.customerName ? { name: profile.customerName } : {}),
+            ...(user.email ? { email: user.email } : {})
+          },
+          payment_method_types: ['gcash', 'paymaya', 'qrph', 'card'],
+          success_url: `${configuredBase}/checkout?payment=success&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
+          cancel_url: `${configuredBase}/checkout?payment=cancelled&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
+          reference_number: order.id,
+          send_email_receipt: true,
+          metadata: { order_id: order.id, user_id: user.id, product_code: code }
+        }
+      }
+    }
+
+    let response: Response
+    let result: any
+    try {
+      response = await fetch('https://api.paymongo.com/v2/checkout_sessions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${btoa(paymongoKey + ':')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+      result = await response.json().catch(() => ({}))
+    } catch {
+      await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+      return json({ error: 'Could not connect to PayMongo. Please retry or use manual payment.' }, 502)
+    }
+
+    const checkoutUrl = result?.data?.attributes?.checkout_url
+    const sessionId = result?.data?.id
+    if (!response.ok || !checkoutUrl || !sessionId) {
+      const providerErrors = Array.isArray(result?.errors)
+        ? result.errors.map((item: any) => [item?.code, item?.detail].filter((value: unknown) => typeof value === 'string' && value.trim()).join(': ')).filter(Boolean).slice(0, 3).join(' ')
+        : ''
+      console.error('[create-checkout] PayMongo rejected single-track checkout', JSON.stringify({
+        httpStatus: response.status,
+        productCode: code,
+        providerErrors: providerErrors || 'No error details returned'
+      }))
+      await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+      return json({
+        error: providerErrors
+          ? `PayMongo rejected checkout (HTTP ${response.status}): ${providerErrors}`
+          : `PayMongo rejected checkout creation (HTTP ${response.status}). Check PayMongo API key and merchant payment-method settings.`
+      }, 502)
+    }
+
+    let parsedCheckoutUrl: URL
+    try { parsedCheckoutUrl = new URL(checkoutUrl) } catch {
+      await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+      return json({ error: 'PayMongo returned an invalid checkout link.' }, 502)
+    }
+    if (parsedCheckoutUrl.protocol !== 'https:' || parsedCheckoutUrl.hostname !== 'checkout.paymongo.com') {
+      await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+      return json({ error: 'PayMongo returned an unexpected checkout domain.' }, 502)
+    }
+
+    const { error: updateError } = await admin.from('orders')
+      .update({ paymongo_checkout_session_id: sessionId, payment_reference: order.id })
+      .eq('id', order.id).eq('status', 'pending')
+    if (updateError) {
+      await fetch(`https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(sessionId)}/expire`, {
+        method: 'POST',
+        headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}`, 'Content-Type': 'application/json' }
+      }).catch(() => undefined)
+      await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+      return json({ error: 'Checkout tracking could not be saved. Please retry or contact support.' }, 500)
+    }
+
+    return json({ checkoutUrl: parsedCheckoutUrl.toString(), orderId: order.id, productCodes: codes, isBatch: false })
+  }
+
   const { data: batch, error: batchError } = await admin.from('checkout_batches').insert({
     user_id: user.id,
     product_codes: codes,
@@ -293,9 +403,22 @@ Deno.serve(async (req) => {
   const checkoutUrl = result?.data?.attributes?.checkout_url
   const sessionId = result?.data?.id
   if (!response.ok || !checkoutUrl || !sessionId) {
+    const providerErrors = Array.isArray(result?.errors)
+      ? result.errors.map((item: any) => [item?.code, item?.detail].filter((value: unknown) => typeof value === 'string' && value.trim()).join(': ')).filter(Boolean).slice(0, 3).join(' ')
+      : ''
+    console.error('[create-checkout] PayMongo rejected basket checkout', JSON.stringify({
+      httpStatus: response.status,
+      productCount: codes.length,
+      productCodes: codes,
+      providerErrors: providerErrors || 'No error details returned'
+    }))
     await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', batch.id)
     await admin.from('orders').update({ status: 'failed' }).eq('checkout_batch_id', batch.id)
-    return json({ error: 'PayMongo could not start checkout. Check the API key and enabled payment methods.' }, 502)
+    return json({
+      error: providerErrors
+        ? `PayMongo rejected the basket checkout (HTTP ${response.status}): ${providerErrors}`
+        : `PayMongo rejected basket checkout creation (HTTP ${response.status}). Check PayMongo API key and merchant payment-method settings.`
+    }, 502)
   }
 
   let parsedCheckoutUrl: URL
