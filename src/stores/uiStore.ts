@@ -43,7 +43,8 @@ export const useUIStore = create<UIState>()(
       }
     }),
     {
-      name: 'hyperion-ui-v2',
+      // Versioned key resets previously saved dark mode once; subsequent user choices persist normally.
+      name: 'hyperion-ui-v3',
       partialize: (s) => ({ theme: s.theme }),
       onRehydrateStorage: () => (state) => {
         if (state?.theme) applyTheme(state.theme)
@@ -56,7 +57,7 @@ export const useUIStore = create<UIState>()(
 // Apply before paint if possible (called from main.tsx too)
 export function initTheme() {
   try {
-    const raw = localStorage.getItem('hyperion-ui-v2')
+    const raw = localStorage.getItem('hyperion-ui-v3')
     if (raw) {
       const parsed = JSON.parse(raw)
       const theme = parsed?.state?.theme as ThemeMode | undefined
@@ -68,5 +69,5 @@ export function initTheme() {
   } catch {
     /* ignore */
   }
-  applyTheme('dark')
+  applyTheme('light')
 }
