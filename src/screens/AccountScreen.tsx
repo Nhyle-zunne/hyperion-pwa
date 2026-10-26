@@ -321,7 +321,7 @@ export default function AccountScreen() {
         </svg>
         Continue with Google
       </button>
-      {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '1rem', marginBottom: 0 }}>{message}</div>}
+      {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '1rem', marginBottom: 0 }}>{/supabase/i.test(message) ? 'Sign-in could not be completed. Please try again.' : message}</div>
       
       {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>Payments are verified manually. A return to this page does not grant access.</div>}
     </section> : <>
