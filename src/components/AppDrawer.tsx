@@ -115,6 +115,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
 
         <div className="drawer-section">Legal & compliance</div>
         <Item label="Terms of use" path="/terms" icon="📄" />
+        <Item label="Privacy policy" path="/privacy-policy" icon="🔒" />
       </aside>
     </>
   )
