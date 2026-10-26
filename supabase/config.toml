@@ -3,3 +3,9 @@ verify_jwt = true
 
 [functions.admin-payment-review]
 verify_jwt = true
+
+[functions.create-checkout]
+verify_jwt = true
+
+[functions.paymongo-webhook]
+verify_jwt = false
