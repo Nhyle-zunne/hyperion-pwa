@@ -255,6 +255,86 @@ function validQuestionCount(path: string, text: string, freeOnly: boolean): numb
   }
   return Math.min(count, Math.max(1, Math.round(count * 0.4)));
 }
+const COMPETENCE_TITLES: Record<string, string> = {
+  "DECK_OIC_NW:C1": "Plan and conduct a passage and determine position",
+  "DECK_OIC_NW:C2": "Maintain a safe navigational watch",
+  "DECK_OIC_NW:C3": "Use of Radar and ARPA for the safety of navigation",
+  "DECK_OIC_NW:C4": "Use of ECDIS for the safety of navigation",
+  "DECK_OIC_NW:C5": "Respond to emergencies",
+  "DECK_OIC_NW:C7": "Use the IMO SMCP and English",
+  "DECK_OIC_NW:C9": "Manoeuvre the ship",
+  "DECK_OIC_NW:C10": "Cargo operations – loading, stowage, securing",
+  "DECK_OIC_NW:C11": "Inspect and report defects – cargo spaces & ballast",
+  "DECK_OIC_NW:C12": "Ensure compliance with pollution-prevention requirements",
+  "DECK_OIC_NW:C13": "Maintain seaworthiness of the ship",
+  "DECK_OIC_NW:C17": "Monitor compliance with legislative requirements",
+  "GMDSS_GOC:C1": "Transmit and receive information using GMDSS subsystems",
+  "GMDSS_GOC:C2": "Provide radio services in emergencies",
+  "ENGINE_OIC_EW:C1": "Maintain a safe engineering watch",
+  "ENGINE_OIC_EW:C2": "Use English in oral and written form",
+  "ENGINE_OIC_EW:C3": "Use internal communications systems",
+  "ENGINE_OIC_EW:C4": "Operate main and auxiliary machinery and control systems",
+  "ENGINE_OIC_EW:C5": "Operate fuel, lubrication, ballast and pumping systems",
+  "ENGINE_OIC_EW:C6": "Operate electrical, electronic and control systems",
+  "ENGINE_OIC_EW:C7": "Maintenance and repair of electrical and electronic equipment",
+  "ENGINE_OIC_EW:C8": "Hand tools, machine tools and measuring instruments",
+  "ENGINE_OIC_EW:C9": "Maintenance and repair of shipboard machinery and equipment",
+  "ENGINE_OIC_EW:C10": "Ensure compliance with pollution-prevention requirements",
+  "ENGINE_OIC_EW:C11": "Maintain seaworthiness of the ship",
+  "ENGINE_OIC_EW:C15": "Monitor compliance with legislative requirements",
+  "ENGINE_OIC_EW:C16": "Application of leadership and team working skills",
+  "DECK_MGT:C1": "Plan a voyage and conduct navigation",
+  "DECK_MGT:C2": "Determine position and accuracy of position fix",
+  "DECK_MGT:C3": "Determine and allow for compass errors",
+  "DECK_MGT:C4": "Coordinate search and rescue operations",
+  "DECK_MGT:C5": "Establish watchkeeping arrangements and procedures",
+  "DECK_MGT:C6": "Maintain safe navigation through NAV systems information",
+  "DECK_MGT:C8": "Forecast weather and oceanographic conditions",
+  "DECK_MGT:C9": "Respond to navigational emergencies",
+  "DECK_MGT:C10": "Manoeuvre and handle a ship in all conditions",
+  "DECK_MGT:C11": "Operate remote controls of propulsion plant",
+  "DECK_MGT:C12": "Plan and ensure safe loading, stowage and care of cargoes",
+  "DECK_MGT:C13": "Assess reported defects and damage to cargo spaces",
+  "DECK_MGT:C14": "Carriage of dangerous goods",
+  "DECK_MGT:C15": "Control trim, stability and stress",
+  "DECK_MGT:C16": "Monitor and control compliance with legislative requirements",
+  "DECK_MGT:C17": "Maintain safety and security of the ship’s crew and passengers",
+  "DECK_MGT:C18": "Develop emergency and damage control plans",
+  "DECK_MGT:C20": "Organize and manage medical care on board",
+  "ENGINE_MGT:C1": "Manage the operation of propulsion plant machinery",
+  "ENGINE_MGT:C2": "Plan and schedule operations",
+  "ENGINE_MGT:C3": "Operation and performance assessment of propulsion plant",
+  "ENGINE_MGT:C4": "Manage fuel, lubrication and ballast operations",
+  "ENGINE_MGT:C5": "Manage operation of electrical and electronic control equipment",
+  "ENGINE_MGT:C6": "Troubleshoot electrical and electronic control equipment",
+  "ENGINE_MGT:C7": "Manage safe and effective maintenance and repair procedures",
+  "ENGINE_MGT:C8": "Detect and identify machinery malfunctions and correct faults",
+  "ENGINE_MGT:C9": "Ensure safe working practices",
+  "ENGINE_MGT:C10": "Control trim, stability and stress",
+  "ENGINE_MGT:C11": "Monitor compliance with legislative requirements and marine environment protection",
+  "ENGINE_MGT:C12": "Maintain safety and security of the vessel, crew and passengers",
+  "ENGINE_MGT:C13": "Develop emergency and damage control plans",
+  "ENGINE_MGT:C14": "Use leadership and managerial skills"
+};
+const DECK_TOPICS: Record<string, string[]> = {
+  C1: ["Terrestrial Navigation & Plotting","Compass Errors & Corrections","Passage Planning & Appraisal","Tides & Tidal Streams","Celestial Navigation","Chart Projections","GNSS & Electronic Fixing","Great Circle Sailing","Meteorology"],
+  C2: ["COLREGs Steering & Sailing","Lights & Shapes","Sound Signals","Restricted Visibility","Watchkeeping"],
+  C3: ["Radar & ARPA","Collision Avoidance","Radar Plotting"],
+  C4: ["ECDIS","Route Monitoring","Electronic Charts"],
+  C5: ["Emergencies","Distress","Contingency Procedures"],
+  C7: ["SMCP","Maritime English","Communications"],
+  C9: ["Ship Handling","Manoeuvring","Berthing"],
+  C10: ["Cargo Operations","Stowage & Securing","Care of Cargo"],
+  C11: ["Cargo Spaces","Hatch Covers","Ballast Tanks"],
+  C12: ["MARPOL","Pollution Prevention"],
+  C13: ["Seaworthiness","Stability","Hull Integrity"],
+  C17: ["Legislation","STCW","Flag State"]
+};
+function topicFor(info: SourceInfo, oneBasedIndex: number): string {
+  const deckTopics = info.track === "DECK_OIC_NW" ? DECK_TOPICS[info.competenceId] : undefined;
+  if (deckTopics?.length) return deckTopics[(oneBasedIndex - 1) % deckTopics.length];
+  return COMPETENCE_TITLES[`${info.track}:${info.competenceId}`] || info.competenceId;
+}
 function answerIndex(value: string, optionsLength: number): number {
   const raw = value.trim().toUpperCase();
   const mapped: Record<string, number> = { A:0, B:1, C:2, D:3, E:4, F:5, "1":0, "2":1, "3":2, "4":3, "5":4, "6":5 };
@@ -284,7 +364,7 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
     track: info.track,
     functionId: info.functionId,
     competenceId: info.competenceId,
-    topic: info.competenceId,
+    topic: topicFor(info, i + 1),
     questionText: record.q,
     options: record.options,
     correctAnswerIndex: answerIndex(record.answer, record.options.length),
