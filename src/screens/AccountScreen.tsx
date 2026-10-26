@@ -63,7 +63,7 @@ export default function AccountScreen() {
         const term: LicenseTerm = item.term === 'week' || item.term === 'month' || item.term === 'year' ? item.term : 'year'
         return [{ code: item.code as PaidTrack, term }]
       })
-      return [...new Map(normalized.map(item => [item.code, item])).values()]
+      return [...new Map(normalized.map(item => [item.code, item] as const)).values()]
     } catch {
       return []
     }
