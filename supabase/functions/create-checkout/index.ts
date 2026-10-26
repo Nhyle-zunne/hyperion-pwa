@@ -48,6 +48,28 @@ Deno.serve(async (req) => {
   const product = products[code]
   if (!product) return json({ error: 'Unknown product.' }, 400)
 
+  const metadata = user.user_metadata ?? {}
+  const identityNames = (user.identities ?? [])
+    .filter(identity => identity.provider === 'google')
+    .map(identity => {
+      const identityData = identity.identity_data as Record<string, unknown> | null
+      return identityData?.full_name ?? identityData?.name
+    })
+  const metadataGivenName = [metadata.given_name, metadata.family_name]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' ')
+  const emailName = (user.email?.split('@')[0] ?? '').replace(/[._+-]+/g, ' ').replace(/\\s+/g, ' ').trim()
+    .replace(/\\b\\w/g, letter => letter.toUpperCase())
+  const customerName = [
+    metadata.full_name,
+    metadata.name,
+    metadataGivenName,
+    ...identityNames,
+    emailName
+  ].find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim().slice(0, 160) ?? null
+  const customerCompany = typeof metadata.company === 'string' ? metadata.company.trim().slice(0, 160) : null
+  const customerSchool = typeof metadata.school === 'string' ? metadata.school.trim().slice(0, 160) : null
+
   const price = Number(Deno.env.get(product.env))
   if (!Number.isSafeInteger(price) || price <= 0) {
     return json({ error: `Price for ${code} is not configured. Please contact Hyperion support or use manual payment.` }, 503)
@@ -134,7 +156,10 @@ Deno.serve(async (req) => {
     amount_php: price,
     currency: 'PHP',
     status: 'pending',
-    payment_method: 'PayMongo Checkout'
+    payment_method: 'PayMongo Checkout',
+    customer_name: customerName,
+    customer_company: customerCompany,
+    customer_school: customerSchool
   }).select('id').single()
   if (insertError || !order) return json({ error: 'Could not create your order. Please try again.' }, 500)
 
@@ -153,6 +178,10 @@ Deno.serve(async (req) => {
     data: {
       attributes: {
         line_items: [{ name: product.name, amount: price * 100, currency: 'PHP', quantity: 1 }],
+        billing: {
+          ...(customerName ? { name: customerName } : {}),
+          ...(user.email ? { email: user.email } : {})
+        },
         payment_method_types: ['gcash', 'paymaya', 'qrph', 'card'],
         success_url: `${configuredBase}/account?payment=success&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
         cancel_url: `${configuredBase}/account?payment=cancelled&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
