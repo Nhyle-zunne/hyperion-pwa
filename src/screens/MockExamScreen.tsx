@@ -295,7 +295,7 @@ export default function MockExamScreen() {
           {!allCompetencesCompleted && <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', lineHeight: 1.45, margin: '0 0 .75rem' }}>Finish every selected competence to unlock final submission.</p>}
           <button type="button" className="btn btn-primary" disabled={!allCompetencesCompleted} onClick={() => setShowFinalSubmitConfirm(true)} style={{ width: '100%' }}>SUBMIT EXAM</button>
         </div>
-        {selectedFunctions.every((id) => tableRows.every((row) => row.functionId !== id || examPlan?.results[row.id])) && completedCount === 0 && <button type="button" style={{ ...secondaryButton, width: '100%', marginTop: 10 }} onClick={() => setStage('functions')}>← CHANGE FUNCTIONS</button>}
+        {completedCount === 0 && <button type="button" style={{ ...secondaryButton, width: '100%', marginTop: 10 }} onClick={() => setStage('functions')}>← CHANGE FUNCTIONS</button>}
         {showFinalSubmitConfirm && <div role="presentation" style={overlay}>
           <section role="dialog" aria-modal="true" aria-labelledby="submit-overall-mock-title" style={dialog}>
             <div style={greenLine} />
