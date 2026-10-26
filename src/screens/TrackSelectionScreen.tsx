@@ -81,7 +81,7 @@ export default function TrackSelectionScreen() {
   }
 
   return (
-    <div className="screen" style={{ paddingTop: 0 }}>
+    <div className="screen dashboard-screen" style={{ paddingTop: 0 }}>
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <div className="dash-header">
