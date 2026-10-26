@@ -16,6 +16,8 @@ create table if not exists public.orders (
   customer_company text,
   customer_school text,
   admin_note text,
+  paymongo_checkout_session_id text,
+  paymongo_payment_id text,
   reviewed_by text,
   reviewed_at timestamptz,
   created_at timestamptz not null default now(),
@@ -31,6 +33,12 @@ alter table public.orders add column if not exists customer_name text;
 alter table public.orders add column if not exists customer_company text;
 alter table public.orders add column if not exists customer_school text;
 alter table public.orders add column if not exists admin_note text;
+alter table public.orders add column if not exists paymongo_checkout_session_id text;
+alter table public.orders add column if not exists paymongo_payment_id text;
+create unique index if not exists orders_paymongo_checkout_session_uidx
+  on public.orders (paymongo_checkout_session_id) where paymongo_checkout_session_id is not null;
+create unique index if not exists orders_paymongo_payment_uidx
+  on public.orders (paymongo_payment_id) where paymongo_payment_id is not null;
 alter table public.orders add column if not exists reviewed_by text;
 alter table public.orders add column if not exists reviewed_at timestamptz;
 
