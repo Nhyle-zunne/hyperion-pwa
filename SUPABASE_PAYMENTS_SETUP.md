@@ -2,14 +2,14 @@
 
 Hyperion supports two payment routes:
 
-- **Pay instantly via PayMongo** — Hosted Checkout accepts enabled PayMongo payment methods. A signed PayMongo webhook verifies the payment and automatically grants the selected track license for 12 months.
+- **Pay instantly via PayMongo** — Hosted Checkout supports one or more selected tracks in a single basket payment. A signed webhook, or Hyperion's authenticated server-side checkout verification after return/status refresh, validates the payment and automatically grants 12-month access for exactly the tracks in that order.
 - **Manual QR payment** — Students submit their transaction reference and profile details. An admin verifies the actual payment and approves/rejects it in the private PWA admin dashboard.
 
-A redirect to Hyperion is not proof of payment. Only the signed server-side webhook is allowed to mark a PayMongo order paid and activate access.
+A redirect to Hyperion is not proof of payment. Only the signed webhook or authenticated server-to-PayMongo verification can mark a PayMongo checkout paid and activate access. The browser never supplies the authoritative products, amount, or license grant.
 
 ## 1. Database
 
-The PayMongo tracking migration adds `paymongo_checkout_session_id` and `paymongo_payment_id` to `public.orders`. It has already been applied to the connected Hyperion Supabase project. Fresh installs can use `supabase/schema.sql`, which includes these columns and unique indexes.
+The PayMongo tracking migration adds `paymongo_checkout_session_id` and `paymongo_payment_id` to `public.orders`. The basket migration also creates `public.checkout_batches` and adds `orders.checkout_batch_id`; each chosen track has its own order row while the whole basket has one shared PayMongo session and payment. Both migrations have been applied to the connected Hyperion Supabase project. Fresh installs can use `supabase/schema.sql`, which includes these tables and indexes.
 
 ## 2. Configure private Supabase Function secrets
 
@@ -75,12 +75,12 @@ Supabase's configuration intentionally disables JWT verification only for `paymo
 
 ## 4. What the student sees
 
-1. Sign in to Hyperion and open Account → Payments & profile.
-2. Choose an individual reviewer track, then select **Pay Instantly via PayMongo**.
-3. The server creates an order and asks PayMongo for a hosted checkout session using the configured server-side price.
-4. The student pays on PayMongo's hosted page. Enabled payment methods can include GCash, Maya, QR Ph, and cards, depending on the merchant's PayMongo configuration.
-5. PayMongo sends `checkout_session.payment.paid` to the configured webhook. The server verifies the signature, session ID, product/user metadata, amount and currency before marking the order paid and granting 12 months of access.
-6. Hyperion asks the authenticated `verify-checkout` function to retrieve the Checkout Session directly from PayMongo on the success return and when the user refreshes payment status. The server validates the paid payment, the exact order/session ID, amount, currency, mode, account and product before granting the matching track. The signed webhook remains the automatic fulfillment path even if the customer closes the browser; a successful redirect alone never unlocks anything.
+1. Sign in to Hyperion and open Account → Shop & basket.
+2. Add one or more reviewer track cards to the basket and review the summed price.
+3. The server creates one basket order, one child order for each selected track, and one PayMongo hosted checkout using server-owned prices.
+4. The student pays once on PayMongo's hosted page. Enabled payment methods can include GCash, Maya, QR Ph, and cards, depending on the merchant's PayMongo configuration.
+5. PayMongo sends `checkout_session.payment.paid` to the configured webhook. The server verifies the signature, session ID, exact basket metadata, amount, currency, and child order list before marking the batch and item orders paid and granting 12-month access for each selected track only.
+6. Hyperion also asks the authenticated `verify-checkout` function to retrieve the checkout directly from PayMongo on success return and when the student refreshes payment status. This is a fallback if webhook delivery is delayed. A successful browser redirect alone never unlocks anything.
 
 If a student cancels the hosted checkout, PayMongo does not automatically close the checkout session. The Account page therefore offers **CANCEL CHECKOUT & SWITCH TO MANUAL** for a pending session. The authenticated `cancel-checkout` function retrieves the session, refuses cancellation if a payment is already paid or pending/processing, and otherwise calls PayMongo's session-expiration endpoint before marking the order cancelled. Only after that succeeds can the student submit a manual QR payment. PayMongo documents that active sessions do not expire automatically and that ongoing payments must not be expired: https://docs.paymongo.com/docs/payment-channels-key-concepts and https://docs.paymongo.com/reference/expire-a-checkout-session.
 
@@ -89,10 +89,11 @@ The existing QR/manual process remains available as a fallback. Manual payments 
 ## 5. Test before switching to live payments
 
 - Use test keys and the PayMongo webhook test-event tool first.
-- Complete a test checkout and confirm the matching `orders` row is `paid`.
-- Confirm an `entitlements` row exists with the correct `track_id` and an `expires_at` about one year ahead.
-- Confirm the buyer receives access only to the purchased track.
-- Test cancellation, failed checkout creation, wrong amount/currency, invalid webhook signatures, delayed webhook delivery, and duplicate webhook delivery. Duplicate webhooks must not extend the same order's entitlement twice.
+- Complete a one-item checkout and confirm its `checkout_batches` row (or legacy `orders` row) is `paid`.
+- Add at least two tracks to the basket and make one test checkout. Confirm that the batch total equals the sum of the displayed prices, each selected track has one paid order row, and each has an active entitlement.
+- Confirm no unselected track is activated and each entitlement expires about one year after confirmation.
+- Test cancellation/resume, failed checkout creation, wrong amount/currency, invalid webhook signatures, delayed webhook delivery, and duplicate webhook delivery. Duplicate deliveries must not extend the same purchase twice.
+- Verify that an arbitrary `?payment=success` URL does not grant access.
 - Verify that an arbitrary `?payment=success` URL does not grant access.
 - After testing, switch the checkout API key, webhook signing secret, and expected live-mode setting together before accepting real payments. Only then set `PAYMONGO_CHECKOUT_ENABLED=true`.
 
@@ -112,5 +113,5 @@ Admins must verify the actual transaction received before approving a manual ord
 
 - Never trust a browser redirect, client-provided price, or a payment screenshot as confirmation of a PayMongo payment.
 - Never expose `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET`, or `SUPABASE_SERVICE_ROLE_KEY`.
-- Only the server-side webhook may auto-activate a PayMongo order.
+- Only the signed webhook or authenticated server-side verification against PayMongo may auto-activate a PayMongo order.
 - Keep the webhook URL public and HTTPS, but require a valid PayMongo signature before performing any database writes.
