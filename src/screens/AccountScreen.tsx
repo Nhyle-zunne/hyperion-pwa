@@ -452,10 +452,14 @@ export default function AccountScreen() {
   return <div className="screen account-page" style={{ width: 'min(calc(100% - 2rem), 1320px)', maxWidth: 1320, margin: '0 auto', paddingBottom: '2rem' }}>
     <style>{`
       .account-page .account-layout{display:grid;grid-template-columns:minmax(250px,300px) minmax(0,1fr);gap:1.25rem;align-items:start;margin-top:1.1rem}
-      .account-page .account-sidebar{display:grid;gap:1rem;align-content:start;position:sticky;top:80px;max-height:calc(100vh - 92px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;min-width:0;padding-bottom:.35rem}
+      .account-page .account-sidebar{display:grid;gap:1rem;align-content:start;position:sticky;top:80px;min-width:0;align-self:start}
       .account-page .account-main{min-width:0}
-      .account-page .account-nav{display:grid;gap:.45rem}
-      .account-page .account-nav button{width:100%;min-height:42px;text-align:left;display:flex;align-items:center;gap:.6rem;justify-content:flex-start}
+      .account-page .account-toolbar{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin:1rem 0}
+      .account-page .account-section-tabs{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;min-width:0}
+      .account-page .account-section-tabs button{min-height:44px;padding:.65rem 1rem;font-weight:850;border-radius:9px;white-space:nowrap}
+      .account-page .account-section-tabs button[aria-selected="true"]{background:#147d43;border-color:#147d43;color:#fff}
+      .account-page .account-toolbar-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+      .account-page .account-toolbar-actions button{min-height:42px}
       .account-page .account-products-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
       .account-page .account-product-card{min-width:0;display:flex;flex-direction:column;padding:1rem;border:1px solid var(--border);border-radius:12px;background:var(--bg-card);transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}
       .account-page .account-product-card:hover{border-color:#c9a44c;box-shadow:0 7px 20px rgba(4,35,83,.08);transform:translateY(-2px)}
@@ -475,14 +479,14 @@ export default function AccountScreen() {
       .account-page .payment-method-pills{display:flex;flex-wrap:wrap;gap:.4rem}
       .account-page .payment-method-pills span{padding:.3rem .5rem;border:1px solid var(--border);background:var(--bg-elevated);border-radius:6px;font-size:.7rem;font-weight:750}
       @media(max-width:1100px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;max-height:none;overflow:visible;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-sidebar-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}.account-page .account-nav{grid-template-columns:repeat(3,minmax(0,1fr))}.account-page .account-nav button{justify-content:center;text-align:center;padding:.55rem .4rem;font-size:.78rem}}
-      @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-nav{grid-template-columns:repeat(2,minmax(0,1fr))}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
+      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar{align-items:stretch}.account-page .account-section-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}.account-page .account-section-tabs button{padding:.55rem .35rem;font-size:.78rem;white-space:normal}.account-page .account-toolbar-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}}
+      @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-section-tabs{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
     `}</style>
     <button type="button" onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back</button>
     <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
       <div>
         <div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div>
-        <h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Account & Reviewer Shop</h1>
+        <h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Account & Bond Store</h1>
         <p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0', maxWidth: 650 }}>Manage your profile, choose reviewer tracks, and review your basket on a separate page before checkout.</p>
       </div>
       <button type="button" onClick={() => navigate('/basket')} className="btn btn-primary" style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.65rem .9rem', background: '#0b1f39', color: '#ffbf32', fontWeight: 900 }}>🛒 VIEW BASKET · {basket.length}</button>
@@ -510,6 +514,18 @@ export default function AccountScreen() {
       {isAdmin && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '.8rem' }}><span style={{ display: 'inline-block', border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '.35rem .8rem', fontWeight: 800, fontSize: '.78rem', letterSpacing: '.04em' }}>✓ VERIFIED ADMIN · ALL ACCESS</span></div>}
       {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
 
+      <div className="account-toolbar">
+        <nav className="account-section-tabs" role="tablist" aria-label="Account menu">
+          <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>🛍️ Bond Store</button>
+          <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>🎫 My licenses</button>
+          <button type="button" role="tab" aria-selected={accountTab === 'delete'} className={accountTab === 'delete' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('delete')} style={accountTab === 'delete' ? { background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' } : { color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>Delete account</button>
+        </nav>
+        <div className="account-toolbar-actions">
+          {isAdmin && <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/payments')}>Admin dashboard</button>}
+          <button type="button" className="btn btn-outline" onClick={async () => { await supabase?.auth.signOut(); setMessage('Signed out.') }}>Sign out</button>
+        </div>
+      </div>
+
       <div className="account-layout">
         <aside className="account-sidebar">
           <section style={{ ...card, marginBottom: 0 }}>
@@ -533,25 +549,6 @@ export default function AccountScreen() {
                 <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
               </div>}
             </div>
-            <div style={{ borderTop: '1px solid var(--border)', marginTop: '1rem', paddingTop: '.85rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <strong style={{ fontSize: '.88rem' }}>Active licenses</strong>
-                <span style={{ color: 'var(--success, #15803d)', fontWeight: 900, fontSize: '.8rem' }}>{owned.length} active</span>
-              </div>
-              {owned.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: '.55rem' }}>{owned.map(license => <span key={license.product_code} style={{ border: '1px solid #86cba0', borderRadius: 999, padding: '.28rem .5rem', color: 'var(--success, #15803d)', fontSize: '.68rem', fontWeight: 800 }}>{PAID_PRODUCTS.find(item => item.code === license.product_code)?.label ?? license.product_code}</span>)}</div> : <p className="profile-side-links" style={{ margin: '.45rem 0 0' }}>No active licenses yet.</p>}
-            </div>
-          </section>
-
-          <section style={{ ...card, marginBottom: 0 }}>
-            <div style={{ color: 'var(--text-muted)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em', marginBottom: '.65rem' }}>ACCOUNT MENU</div>
-            <nav className="account-nav" aria-label="Account menu">
-              <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>🛍️ Reviewer shop</button>
-              <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>🎫 My licenses</button>
-              <button type="button" role="tab" aria-selected={accountTab === 'delete'} className={accountTab === 'delete' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('delete')} style={accountTab === 'delete' ? { background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' } : { color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>Delete account</button>
-            </nav>
-            <div className="account-sidebar-actions" style={{ display: 'grid', gap: '.55rem', marginTop: '.9rem' }}>
-              {isAdmin && <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/payments')}>Admin dashboard</button>}
-              <button type="button" className="btn btn-outline" onClick={async () => { await supabase?.auth.signOut(); setMessage('Signed out.') }}>Sign out</button>
             </div>
           </section>
         </aside>
@@ -597,7 +594,7 @@ export default function AccountScreen() {
             </div>}
           </section> : <>
             <div className="account-panel-title" style={{ marginBottom: '.8rem' }}>
-              <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.13em' }}>CHOOSE YOUR REVIEWERS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.35rem' }}>Reviewer track shop</h2><p style={{ color: 'var(--text-muted)', margin: '.3rem 0 0', fontSize: '.88rem' }}>Add one or more 12-month track licenses. Open your basket when you are ready to review and pay.</p></div>
+              <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.13em' }}>BOND STORE</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.35rem' }}>Bond Store</h2><p style={{ color: 'var(--text-muted)', margin: '.3rem 0 0', fontSize: '.88rem' }}>Add one or more 12-month track licenses. Open your basket when you are ready to review and pay.</p></div>
               <div style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .7rem', background: 'var(--bg-card)', fontWeight: 800, fontSize: '.8rem' }}>🔒 Secure checkout</div>
             </div>
 
