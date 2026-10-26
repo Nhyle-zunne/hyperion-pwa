@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useHistoryStore } from '../stores/historyStore'
@@ -35,7 +35,13 @@ export default function TrackSelectionScreen() {
   const navigate = useNavigate()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const targetDate = useStudyTimeStore((s) => s.targetDate)
+  const targetDateUpdatedAt = useStudyTimeStore((s) => s.targetDateUpdatedAt)
   const setTargetDate = useStudyTimeStore((s) => s.setTargetDate)
+
+  // Migrate an existing device-local target date into the cloud-syncable store once.
+  useEffect(() => {
+    if (targetDate && targetDateUpdatedAt === 0) setTargetDate(targetDate)
+  }, [targetDate, targetDateUpdatedAt, setTargetDate])
 
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked || s.cloudTrackIds.includes('ALL'))
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
