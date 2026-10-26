@@ -40,20 +40,42 @@ export default function AccountScreen() {
     return () => listener.subscription.unsubscribe()
   }, [])
   useEffect(() => {
-    if (params.get('oauth_popup') !== '1' || !session || !window.opener) return
-    // The popup has its own storage context, so pass the authenticated session
-    // back to the canonical-origin opener before closing.
-    window.opener.postMessage({
-      type: 'hyperion-oauth-success',
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      return_to: (() => {
-        const requested = params.get('return_to') || '/'
-        return requested.startsWith('/') && !requested.startsWith('//') ? requested : '/'
-      })(),
-    }, window.location.origin)
-    window.close()
-  }, [params, session?.access_token, session?.refresh_token])
+    if (params.get('oauth_popup') !== '1' || !window.opener || !supabase) return
+    let cancelled = false
+    const finishPopupOAuth = async () => {
+      try {
+        // Supabase may return a PKCE authorization code. Explicitly exchange it
+        // before trying to relay a session to the opener.
+        const code = new URLSearchParams(window.location.search).get('code')
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (error) throw error
+        }
+        const { data, error } = await supabase.auth.getSession()
+        if (error) throw error
+        const activeSession = data.session
+        if (!activeSession) {
+          setMessage('Google sign-in did not complete. Please close this window and try again.')
+          return
+        }
+        if (cancelled) return
+        window.opener.postMessage({
+          type: 'hyperion-oauth-success',
+          access_token: activeSession.access_token,
+          refresh_token: activeSession.refresh_token,
+          return_to: (() => {
+            const requested = params.get('return_to') || '/'
+            return requested.startsWith('/') && !requested.startsWith('//') ? requested : '/'
+          })(),
+        }, window.location.origin)
+        window.close()
+      } catch (error) {
+        if (!cancelled) setMessage(error instanceof Error ? error.message : 'Could not complete Google sign-in. Please try again.')
+      }
+    }
+    void finishPopupOAuth()
+    return () => { cancelled = true }
+  }, [params])
 
   useEffect(() => {
     const metadata = session?.user.user_metadata ?? {}
