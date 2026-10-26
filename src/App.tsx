@@ -124,9 +124,11 @@ export default function App() {
   const isMockRunner = location.pathname === '/mock/exam'
   const isQuestionRunner = isPracticeQuiz || isMockRunner
   const isQuickScanViewer = location.pathname === '/quick-scan/view'
+  const isFlashcards = location.pathname === '/flashcards'
   const quickScanKeys: Record<string, string> = { oic_nw: 'DECK_OIC_NW', gmdss: 'GMDSS_GOC', engine_ew: 'ENGINE_OIC_EW', deck_mgt: 'DECK_MGT', engine_mgt: 'ENGINE_MGT' }
   const quickScanTrack = isQuickScanViewer ? quickScanKeys[new URLSearchParams(location.search).get('track') || 'oic_nw'] || 'DECK_OIC_NW' : null
-  const guardedTrack = isQuestionRunner ? currentTrack : quickScanTrack
+  const flashcardTrack = isFlashcards ? quickScanKeys[new URLSearchParams(location.search).get('track') || 'oic_nw'] || 'DECK_OIC_NW' : null
+  const guardedTrack = isQuestionRunner ? currentTrack : quickScanTrack ?? flashcardTrack
 
   useEffect(() => {
     const hadTrackAccessRemoved = lastCloudTrackIds.current.some(trackId => !cloudTrackIds.includes(trackId))
@@ -152,7 +154,7 @@ export default function App() {
   }, [cloudTrackIds, entitlementsVerified, isAllAccessUnlocked])
 
   useEffect(() => {
-    if (!entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer) || !guardedTrack) return
+    if (!entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer && !isFlashcards) || !guardedTrack) return
     if (isQuestionRunner && (isFreeSession || sessionLoading || sessionQuestionCount === 0)) return
     const allowed = entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
     if (allowed) return
@@ -164,7 +166,7 @@ export default function App() {
     if (isQuestionRunner) usePracticeStore.getState().reset()
     navigate('/track?track=' + (trackParam[guardedTrack] || 'oic_nw'), { replace: true })
     useUIStore.getState().openPaywall('This paid question view needs a current, verified license. Renew access or reconnect to check your subscription.')
-  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, guardedTrack, isFreeSession, sessionLoading, sessionQuestionCount, navigate])
+  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, isFlashcards, guardedTrack, isFreeSession, sessionLoading, sessionQuestionCount, navigate])
 
   const hideNav = [
     '/practice/quiz',
