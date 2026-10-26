@@ -73,7 +73,7 @@ export default function AccountScreen() {
       setSavedProfile({ fullName: fullName.trim(), company: company.trim(), school: school.trim() })
       setProfileEditing(false)
       setMessage('Your profile has been saved.')
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not save profile details.') }
+    } catch { setMessage('Unable to save profile details. Please try again.') }
     finally { setBusy(false) }
   }
   const refreshAccount = async () => {
@@ -82,9 +82,9 @@ export default function AccountScreen() {
       supabase.from('entitlements').select('product_code,expires_at').eq('user_id', session.user.id).eq('status', 'active').gt('expires_at', new Date().toISOString()),
       supabase.from('orders').select('id,product_code,amount_php,status,payment_reference,created_at,admin_note').eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(50)
     ])
-    if (entitlements.error) setMessage(entitlements.error.message)
+    if (entitlements.error) setMessage('Unable to refresh account details. Please try again.')
     else setOwned((entitlements.data ?? []) as OwnedTrack[])
-    if (orderResult.error) setMessage(orderResult.error.message)
+    if (orderResult.error) setMessage('Unable to refresh payment history. Please try again.')
     else setOrders((orderResult.data ?? []) as Order[])
     await refreshCloudEntitlements()
   }
@@ -96,7 +96,7 @@ export default function AccountScreen() {
       if (oauthPopupRef.current && event.source !== oauthPopupRef.current) return
       if (event.data?.type === 'hyperion-oauth-error') {
         oauthOutcomeRef.current = 'error'
-        setMessage(typeof event.data.message === 'string' ? event.data.message : 'Sign-in could not be completed. Please try again.')
+        setMessage('Sign-in could not be completed. Please try again.')
         setBusy(false)
         return
       }
@@ -106,7 +106,7 @@ export default function AccountScreen() {
         const { data, error } = await authClient.auth.getSession()
         if (error) throw error
         if (!data.session) {
-          setMessage('The provider returned to Hyperion but no signed-in session was found. Check the provider credentials in Supabase Auth.')
+          setMessage('Sign-in could not be completed. Please try again.')
           oauthOutcomeRef.current = 'error'
           return
         }
@@ -123,7 +123,7 @@ export default function AccountScreen() {
         await refreshCloudEntitlements()
       } catch (error) {
         oauthOutcomeRef.current = 'error'
-        setMessage(error instanceof Error ? error.message : 'Unable to finish sign-in. Please try again.')
+        setMessage('Sign-in could not be completed. Please try again.')
       } finally {
         setBusy(false)
       }
@@ -134,7 +134,7 @@ export default function AccountScreen() {
 
   const openOAuthPopup = async () => {
     if (!supabase) {
-      setMessage('Sign-in is unavailable because Supabase is not configured.')
+      setMessage('Sign-in is temporarily unavailable. Please try again later.')
       return
     }
     const authClient = supabase
@@ -209,7 +209,7 @@ export default function AccountScreen() {
             navigate(returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/', { replace: true })
             await refreshCloudEntitlements()
           } else if (oauthOutcomeRef.current !== 'error') {
-            setMessage('Sign-in did not complete. Supabase did not establish a session. Check the provider credentials and redirect settings, then try again.')
+            setMessage('Sign-in could not be completed. Please try again.')
           }
         } catch (error) {
           if (oauthOutcomeRef.current !== 'error') {
@@ -238,7 +238,7 @@ export default function AccountScreen() {
       popup.close()
       if (oauthPopupRef.current === popup) oauthPopupRef.current = null
       try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
-      setMessage(error instanceof Error ? error.message : 'Unable to start Google sign-in. Please try again.')
+      setMessage('Sign-in could not be completed. Please try again.')
       setBusy(false)
     }
   }
@@ -322,7 +322,7 @@ export default function AccountScreen() {
         Continue with Google
       </button>
       {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '1rem', marginBottom: 0 }}>{message}</div>}
-      {!supabaseConfigured && <div role="alert" style={{ ...card, borderColor: 'var(--danger)', marginTop: '1rem', marginBottom: 0 }}><strong>Supabase is not configured yet.</strong><p style={{ marginBottom: 0, color: 'var(--text-muted)' }}>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.</p></div>}
+      
       {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>Payments are verified manually. A return to this page does not grant access.</div>}
     </section> : <>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>{isAdmin && <span style={{ display: 'inline-block', border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '0.35rem 0.8rem', fontWeight: 800, fontSize: '0.82rem', letterSpacing: '0.04em' }}>✓ VERIFIED ADMIN · ALL ACCESS</span>}</div>
