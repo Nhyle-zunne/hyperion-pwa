@@ -371,6 +371,7 @@ export function MockExamRunner() {
   const { questions, answers, finished, timeLeftSec, selectMockAnswer, finish, tick, score, reset, track, competenceId, mode } = usePracticeStore()
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   const [showLockNotice, setShowLockNotice] = useState(false)
+  const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
   const completionSavedRef = useRef(false)
 
   useEffect(() => {
@@ -378,6 +379,17 @@ export function MockExamRunner() {
     const timer = window.setInterval(() => tick(), 1000)
     return () => window.clearInterval(timer)
   }, [finished, tick])
+
+  useEffect(() => {
+    const handleTextScale = (event: Event) => {
+      const detail = (event as CustomEvent<number>).detail
+      if (typeof detail === 'number' && Number.isFinite(detail)) {
+        setTextScale(Math.min(150, Math.max(50, detail)))
+      }
+    }
+    window.addEventListener('hyperion:text-scale', handleTextScale)
+    return () => window.removeEventListener('hyperion:text-scale', handleTextScale)
+  }, [])
 
   useEffect(() => {
     const preventClipboard = (event: Event) => event.preventDefault()
@@ -450,12 +462,12 @@ export function MockExamRunner() {
 
   if (finished) return <div className="screen" style={{ paddingBottom: '2rem' }}><h1 className="page-title">Mock Exam Results</h1><div className="card" style={{ textAlign: 'center' }}><div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--accent)' }}>{s.percent}%</div><p>{s.correct} / {s.total} correct</p><p>{s.percent >= 70 ? 'PASS' : 'NOT YET PASSED'} · 70% passing cutoff</p></div><button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => { reset(); navigate('/mock') }}>Return to Mock Exams</button><button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => { reset(); navigate('/history') }}>View History</button></div>
 
-  return <div className="screen" style={{ paddingBottom: '7rem', maxWidth: 900, margin: '0 auto', userSelect: 'none', WebkitUserSelect: 'none' }}>
+  return <div className="screen mock-exam-runner" style={{ paddingBottom: '7rem', maxWidth: 900, margin: '0 auto', userSelect: 'none', WebkitUserSelect: 'none', '--quiz-text-scale': textScale / 100 } as React.CSSProperties}>
     <header style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '0.8rem 0.25rem', background: 'var(--bg)', borderBottom: '3px solid var(--accent)' }}>
-      <div><strong style={{ display: 'block' }}>SIMULATED MOCK EXAM</strong><span style={{ color: 'var(--text-muted)', fontSize: '.85rem' }}>{answered}/{questions.length} answered</span></div>
-      <div aria-live="polite" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, color: timeLeftSec < 60 ? 'var(--danger)' : 'var(--accent)', border: '1px solid var(--border)', padding: '.45rem .7rem', borderRadius: 6 }}>⏱ {formatTime(timeLeftSec)}</div>
+      <div><strong style={{ display: 'block', fontSize: 'calc(.95rem * var(--quiz-text-scale))' }}>SIMULATED MOCK EXAM</strong><span style={{ color: 'var(--text-muted)', fontSize: 'calc(.85rem * var(--quiz-text-scale))' }}>{answered}/{questions.length} answered</span></div>
+      <div aria-live="polite" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'calc(1rem * var(--quiz-text-scale))', color: timeLeftSec < 60 ? 'var(--danger)' : 'var(--accent)', border: '1px solid var(--border)', padding: '.45rem .7rem', borderRadius: 6 }}>⏱ {formatTime(timeLeftSec)}</div>
     </header>
-    <div style={{ ...card, margin: '1rem 0', fontSize: '.9rem', color: 'var(--text-muted)' }}>Answer questions on this continuous scroll page. You cannot return to a previous question or leave the exam. Use <strong>Submit Exam</strong> at the bottom to finish; unanswered items will be counted as incorrect.</div>
+    <div style={{ ...card, margin: '1rem 0', fontSize: 'calc(.9rem * var(--quiz-text-scale))', color: 'var(--text-muted)' }}>Answer questions on this continuous scroll page. You cannot return to a previous question or leave the exam. Use <strong>Submit Exam</strong> at the bottom to finish; unanswered items will be counted as incorrect.</div>
     <div style={{ display: 'grid', gap: 12 }}>
       {questions.map((q, index) => {
         const selected = answers[q.id]?.selectedIndex
@@ -464,11 +476,11 @@ export function MockExamRunner() {
           style={{ padding: '1.25rem 0 1.5rem', borderBottom: index < questions.length - 1 ? '1px solid var(--border)' : '0' }}
           aria-labelledby={'mock-question-' + index}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--text-muted)', fontSize: '.8rem', fontWeight: 800, marginBottom: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--text-muted)', fontSize: 'calc(.8rem * var(--quiz-text-scale))', fontWeight: 800, marginBottom: 8 }}>
             <span>QUESTION {index + 1} OF {questions.length}</span><span>{q.competenceId}</span>
           </div>
-          {q.topic && <div style={{ color: 'var(--text-muted)', fontSize: '.82rem', marginBottom: 6 }}>{q.topic}</div>}
-          <h2 id={'mock-question-' + index} style={{ fontSize: '1.08rem', lineHeight: 1.55, margin: '0 0 1rem', fontWeight: 800 }}>{q.questionText}</h2>
+          {q.topic && <div style={{ color: 'var(--text-muted)', fontSize: 'calc(.82rem * var(--quiz-text-scale))', marginBottom: 6 }}>{q.topic}</div>}
+          <h2 id={'mock-question-' + index} style={{ fontSize: 'calc(1.08rem * var(--quiz-text-scale))', lineHeight: 1.55, margin: '0 0 1rem', fontWeight: 800 }}>{q.questionText}</h2>
           <div role="radiogroup" aria-label={'Answers for question ' + (index + 1)} style={{ display: 'grid', gap: 10 }}>
             {q.options.map((option, optionIndex) => {
               const isSelected = selected === optionIndex
@@ -491,6 +503,7 @@ export function MockExamRunner() {
                   background: 'transparent',
                   color: 'var(--text)',
                   font: 'inherit',
+                  fontSize: 'calc(1rem * var(--quiz-text-scale))',
                   lineHeight: 1.5,
                   cursor: finished ? 'default' : 'pointer',
                   boxShadow: 'none',
@@ -519,8 +532,8 @@ export function MockExamRunner() {
       })}
     </div>
     <div style={{ ...card, marginTop: 16, position: 'sticky', bottom: 0, zIndex: 15, boxShadow: '0 -5px 20px rgba(0,0,0,.08)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}><strong>{answered} / {questions.length} answered</strong><span style={{ color: 'var(--text-muted)', fontSize: '.85rem' }}>{questions.length - answered} unanswered</span></div>
-      <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowSubmitConfirm(true)}>SUBMIT EXAM</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}><strong style={{ fontSize: 'calc(1rem * var(--quiz-text-scale))' }}>{answered} / {questions.length} answered</strong><span style={{ color: 'var(--text-muted)', fontSize: 'calc(.85rem * var(--quiz-text-scale))' }}>{questions.length - answered} unanswered</span></div>
+      <button className="btn btn-primary" style={{ width: '100%', fontSize: 'calc(.95rem * var(--quiz-text-scale))' }} onClick={() => setShowSubmitConfirm(true)}>SUBMIT EXAM</button>
     </div>
     {showSubmitConfirm && createPortal(
       <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(7, 12, 22, .72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, boxSizing: 'border-box', minHeight: '100dvh' }}>
