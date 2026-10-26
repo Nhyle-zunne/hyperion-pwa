@@ -80,7 +80,7 @@ Deno.serve(async req => {
     const { error: revokeError } = await admin.from('entitlements').update({ status: 'revoked' }).eq('id', entitlement.id).eq('status', 'active')
     if (revokeError) return json({ error: 'Could not revoke license access.' }, 500)
     const auditLine = `Access revoked by ${user.email} on ${new Date().toISOString()}.`
-    const combinedNote = [order.admin_note, auditLine, String(body.adminNote || '').trim()].filter(Boolean).join('\\n').slice(0, 1000)
+    const combinedNote = [order.admin_note, auditLine, String(body.adminNote || '').trim()].filter(Boolean).join('\n').slice(0, 1000)
     await admin.from('orders').update({ admin_note: combinedNote, reviewed_by: user.email, reviewed_at: new Date().toISOString() }).eq('id', order.id)
     return json({ ok: true, status: 'revoked' })
   }
