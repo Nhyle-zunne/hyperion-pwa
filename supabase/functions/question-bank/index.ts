@@ -182,13 +182,13 @@ function sourceInfo(path: string): SourceInfo | null {
   if (!track) return null;
   let competenceId = "";
   let part: number | null = null;
-  if (track === "DECK_OIC_NW") competenceId = path.match(/oic_nw_c(\\d+)\\.csv\\.enc$/)?.[1] ? "C" + path.match(/oic_nw_c(\\d+)\\.csv\\.enc$/)![1] : "";
+  if (track === "DECK_OIC_NW") competenceId = path.match(/oic_nw_c(\d+)\.csv\.enc$/)?.[1] ? "C" + path.match(/oic_nw_c(\d+)\.csv\.enc$/)![1] : "";
   else if (track === "GMDSS_GOC") {
-    const match = path.match(/gmdss\\/c(1|2)_part(\\d+)\\.csv\\.enc$/);
+    const match = path.match(/gmdss\/c(1|2)_part(\d+)\.csv\.enc$/);
     if (!match) return null;
     competenceId = "C" + match[1]; part = Number(match[2]);
   } else {
-    const match = path.match(/(?:ew|dm|em)_c(\\d+)\\.csv\\.enc$/);
+    const match = path.match(/(?:ew|dm|em)_c(\d+)\.csv\.enc$/);
     if (!match) return null;
     competenceId = "C" + match[1];
   }
@@ -220,7 +220,7 @@ async function privateText(admin: any, path: string): Promise<string> {
   privateTextCache.set(path, text);
   return text;
 }
-function validGmdssRows(path: string, text: string): string[][] {
+function validGmdssRows(text: string): string[][] {
   const rows = parseCsv(text);
   const hi = headerIndex(rows, "gmdss");
   const normal = rows.length > 3 ? rows.slice(hi + 1).filter(validGmdss) : [];
@@ -241,7 +241,7 @@ function validQuestionCount(path: string, text: string, freeOnly: boolean): numb
   const info = sourceInfo(path);
   if (!info) return 0;
   if (info.format === "gmdss") {
-    count = validGmdssRows(path, text).length;
+    count = validGmdssRows(text).length;
     if (freeOnly) count = Math.min(count, info.competenceId === "C1" ? 90 : 65);
     return count;
   }
@@ -269,7 +269,7 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
   if (!info) return [];
   const records: { q: string; options: string[]; explanation: string; answer: string }[] = [];
   if (info.format === "gmdss") {
-    for (const row of validGmdssRows(path, text)) {
+    for (const row of validGmdssRows(text)) {
       records.push({ q: (row[0] || "").trim(), options: row.slice(2,8).map(x => (x || "").trim()).filter(Boolean), explanation: (row[8] || "").trim(), answer: (row[9] || "").trim() });
     }
   } else {
