@@ -10,7 +10,7 @@ type OwnedTrack = { product_code: string; expires_at: string | null }
 
 function safeAccountError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : ''
-  if (!message || /supabase|postgrest|postgres|sqlstate|provider credentials|redirect settings|edge function|row[- ]level security|\\bpgrst\\b|\\bjwt\\b|database schema|relation .* does not exist|violates .* constraint/i.test(message)) return fallback
+  if (!message || /supabase|postgrest|postgres|sqlstate|provider credentials|redirect settings|edge function|row[- ]level security|\bpgrst\b|\bjwt\b|database schema|relation .* does not exist|violates .* constraint/i.test(message)) return fallback
   return message
 }
 export default function AccountScreen() {
