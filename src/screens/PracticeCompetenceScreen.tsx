@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import { getQuestionCountsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
 import type { TrackId } from '../types/question'
@@ -37,17 +37,26 @@ export default function PracticeCompetenceScreen() {
   const openPaywall = useUIStore(s => s.openPaywall)
   const competences = listAvailableCompetences(track)
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [countError, setCountError] = useState('')
 
   useEffect(() => {
     let cancelled = false
     async function loadCounts() {
       const restrictedToFreePool = freeMode || !unlocked
-      const pool = await getQuestionsByTrack(track, restrictedToFreePool)
-      const next: Record<string, number> = {}
-      for (const competence of competences) {
-        next[competence.id] = pool.filter(q => q.competenceId === competence.id).length
+      setCountError('')
+      try {
+        const items = await getQuestionCountsByTrack(track, restrictedToFreePool)
+        const next: Record<string, number> = {}
+        for (const competence of competences) {
+          next[competence.id] = items.filter(item => item.competenceId === competence.id).reduce((sum, item) => sum + item.count, 0)
+        }
+        if (!cancelled) setCounts(next)
+      } catch {
+        if (!cancelled) {
+          setCounts({})
+          setCountError('Protected question storage is not ready yet. Please refresh later or contact the administrator.')
+        }
       }
-      if (!cancelled) setCounts(next)
     }
     void loadCounts()
     return () => { cancelled = true }
@@ -68,6 +77,7 @@ export default function PracticeCompetenceScreen() {
       <p style={{ color: '#9af1d1', fontWeight: 700, lineHeight: 1.45, margin: 0 }}>{freeMode ? SUBTITLES[track] : `Choose a competence for the full ${LABELS[track]} question bank.`}</p>
     </div>
     <h2 style={{ fontSize: '.95rem', letterSpacing: '.13em', fontWeight: 900, borderTop: '3px solid #334155', paddingTop: '1rem', margin: '0 0 1.5rem' }}>COMPETENCE DIRECTORY ({competences.length})</h2>
+    {countError && <p role="status" style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{countError}</p>}
     {!freeMode && !unlocked && <div className="card" style={{ marginBottom: '1rem', borderColor: 'var(--warning)' }}>
       Practice All Questions requires an activated license.
       <button className="btn btn-primary" style={{ width: '100%', marginTop: 10 }} onClick={() => openPaywall('Practice')}>Activate Key</button>
