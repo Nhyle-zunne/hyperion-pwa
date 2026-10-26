@@ -380,7 +380,7 @@ export default function AccountScreen() {
         </form>}
       </section>
       <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Other payment submissions</h2>
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Other orders & payment submissions</h2>
         <button type="button" className="btn btn-outline" onClick={() => void refreshAccount()}>Refresh status</button>
         {orders.filter(order => !owned.some(license => license.order_id === order.id)).length ? orders.filter(order => !owned.some(license => license.order_id === order.id)).map(order => <div key={order.id} style={{ padding: '.8rem 0', borderBottom: '1px solid var(--border)' }}>
           <strong>{PAID_PRODUCTS.find(p => p.code === order.product_code)?.label ?? order.product_code} · ₱{order.amount_php}</strong>
