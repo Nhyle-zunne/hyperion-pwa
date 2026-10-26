@@ -435,7 +435,7 @@ export default function HistoryScreen() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10, marginTop: '.75rem' }}>
                   <div>
                     <div style={{ fontSize: '1.15rem', fontWeight: 900 }}>
-                      {row.completed ? row.correct + ' / ' + row.total + ' items (' + row.percent + '%)' : row.correct + ' / ' + row.answered + ' answered correctly'}
+                      {row.correct + ' / ' + row.total + ' items' + (row.completed ? ' (' + row.percent + '%)' : '')}
                     </div>
                     <div style={{ ...secondaryText, marginTop: '.2rem' }}>
                       {row.completed ? 'TIME: ' + formatDuration(row.durationMs) : 'PROGRESS: ' + row.answered + ' / ' + row.total}
