@@ -160,7 +160,7 @@ export default function AccountScreen() {
     let cancelled = false
 
     if (paymentState === 'cancelled') {
-      setMessage('PayMongo checkout was cancelled. No license was activated. You can try again or use manual payment below.')
+      setMessage('PayMongo checkout was cancelled. No license was activated. The checkout may remain pending; resume it or wait for it to expire before switching to manual payment, to avoid paying twice.')
       void refreshAccount()
       return () => { cancelled = true }
     }
