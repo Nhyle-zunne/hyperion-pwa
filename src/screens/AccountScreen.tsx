@@ -80,6 +80,7 @@ export default function AccountScreen() {
   }
   useEffect(() => { void refreshAccount() }, [session?.user.id])
   useEffect(() => {
+    const authClient = supabase
     const handleOAuthMessage = async (event: MessageEvent) => {
       if (event.origin !== 'https://hyperionmaritime.org') return
       if (oauthPopupRef.current && event.source !== oauthPopupRef.current) return
@@ -89,10 +90,10 @@ export default function AccountScreen() {
         setBusy(false)
         return
       }
-      if (event.data?.type !== 'hyperion-oauth-success' || !supabase) return
+      if (event.data?.type !== 'hyperion-oauth-success' || !authClient) return
 
       try {
-        const { data, error } = await supabase.auth.getSession()
+        const { data, error } = await authClient.auth.getSession()
         if (error) throw error
         if (!data.session) {
           setMessage('The provider returned to Hyperion but no signed-in session was found. Check the provider credentials in Supabase Auth.')
