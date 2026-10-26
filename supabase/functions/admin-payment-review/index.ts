@@ -38,9 +38,16 @@ Deno.serve(async req => {
   const adminNote = String(body.adminNote || '').trim().slice(0, 1000) || null
   if (body.decision === 'approve') {
     const now = new Date()
-    const { data: currentEntitlement, error: currentError } = await admin.from('entitlements').select('expires_at').eq('user_id', order.user_id).eq('product_code', order.product_code).maybeSingle()
+    const { data: currentEntitlement, error: currentError } = await admin.from('entitlements').select('order_id,status,expires_at').eq('user_id', order.user_id).eq('product_code', order.product_code).maybeSingle()
     if (currentError) return json({ error: 'Could not check the existing subscription.' }, 500)
-    const currentExpiry = currentEntitlement?.expires_at ? new Date(currentEntitlement.expires_at) : null
+    const currentExpiry = currentEntitlement?.status === 'active' && currentEntitlement.expires_at
+      ? new Date(currentEntitlement.expires_at)
+      : null
+    const hasActiveLicense = currentEntitlement?.status === 'active' &&
+      (!currentExpiry || currentExpiry.getTime() > now.getTime())
+    if (hasActiveLicense && currentEntitlement?.order_id !== order.id) {
+      return json({ error: 'This user already has an active license for this track. Reject this duplicate order instead.' }, 409)
+    }
     const renewalBase = currentExpiry && currentExpiry.getTime() > now.getTime() ? currentExpiry : now
     const expiresAt = new Date(renewalBase)
     expiresAt.setUTCFullYear(expiresAt.getUTCFullYear() + 1)
