@@ -81,6 +81,8 @@ Supabase's configuration intentionally disables JWT verification only for `paymo
 5. PayMongo sends `checkout_session.payment.paid` to the configured webhook. The server verifies the signature, session ID, product/user metadata, amount and currency before marking the order paid and granting 12 months of access.
 6. Hyperion checks the saved order status on return. If the webhook is still processing, the Account page tells the student to refresh status shortly; a successful redirect alone does not unlock anything.
 
+If a student cancels the hosted checkout, PayMongo does not automatically close the checkout session. The Account page therefore offers **CANCEL CHECKOUT & SWITCH TO MANUAL** for a pending session. The authenticated `cancel-checkout` function retrieves the session, refuses cancellation if a payment is already paid or pending/processing, and otherwise calls PayMongo's session-expiration endpoint before marking the order cancelled. Only after that succeeds can the student submit a manual QR payment. PayMongo documents that active sessions do not expire automatically and that ongoing payments must not be expired: https://docs.paymongo.com/docs/payment-channels-key-concepts and https://docs.paymongo.com/reference/expire-a-checkout-session.
+
 The existing QR/manual process remains available as a fallback. Manual payments still require an admin to verify the actual incoming transaction and approve the order.
 
 ## 5. Test before switching to live payments
