@@ -32,10 +32,10 @@ export default function HomeScreen() {
       >
         <div>
           <h1 className="page-title" style={{ fontSize: '1.6rem', marginBottom: 4 }}>
-            Hyperion
+            Welcome to Hyperion Maritime
           </h1>
           <p className="subtitle" style={{ marginBottom: 0 }}>
-            Maritime Licensure Reviewer
+            Your maritime licensure exam reviewer for Deck, Engine, GMDSS, and management tracks.
           </p>
         </div>
         <ThemeToggle />
