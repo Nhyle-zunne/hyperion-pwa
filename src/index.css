@@ -1532,3 +1532,12 @@ a:focus-visible,
   background-color: var(--accent) !important;
   border-color: var(--accent) !important;
 }
+
+
+/* Study Time analytics needs a full desktop canvas for its charts and 24-hour grid. */
+@media (min-width: 900px) {
+  .screen:not(.track-hub-screen):not(.dashboard-screen):not(.question-runner-screen):not(.mock-exam-screen).st-screen {
+    max-width: 1200px;
+    width: 100%;
+  }
+}
