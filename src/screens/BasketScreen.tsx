@@ -263,7 +263,8 @@ export default function BasketScreen() {
     }
   }
 
-  const cancelCheckout = async (groupId: string, groupCodes: PaidTrack[]) => {
+  const cancelCheckout = async (groupId: string, groupItems: BasketItem[]) => {
+    const groupCodes = groupItems.map(item => item.code)
     if (!supabase || !session) return
     setBusy(true)
     setBusyCheckoutId(groupId)
@@ -283,7 +284,7 @@ export default function BasketScreen() {
         return
       }
       if (data?.status !== 'cancelled') throw new Error('PayMongo did not confirm that this checkout was cancelled. No new payment should be started yet.')
-      setBasket(current => [...new Set([...current, ...groupCodes])])
+      setBasket(current => [...new Map([...current, ...groupItems].map(item => [item.code, item])).values()])
       await refreshData()
       setMessage('Checkout cancelled successfully. Its tracks were added back to your basket; you can now edit your selection or check out again.')
     } catch (error) {
@@ -393,7 +394,7 @@ export default function BasketScreen() {
           </div>
           <div className="basket-action-row">
             <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void checkout(group.items)}>RESUME CHECKOUT</button>
-            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelCheckout(group.id, group.codes)} style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busyCheckoutId === group.id ? 'CHECKING…' : 'CANCEL'}</button>
+            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelCheckout(group.id, group.items)} style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busyCheckoutId === group.id ? 'CHECKING…' : 'CANCEL'}</button>
           </div>
         </div>)}
       </section>}
