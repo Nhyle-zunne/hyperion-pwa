@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
@@ -37,6 +37,39 @@ const MOCK_EXAM_ITEMS: Record<TrackId, Record<string, number>> = {
   ENGINE_MGT: { C1: 10, C2: 26, C3: 28, C4: 10, C5: 20, C6: 20, C7: 10, C8: 10, C9: 10, C10: 10, C11: 10, C12: 10, C13: 10, C14: 16 }
 }
 const mockExamItemCount = (track: TrackId, competenceId: string) => MOCK_EXAM_ITEMS[track][competenceId] ?? (track === 'GMDSS_GOC' ? 50 : 15)
+
+const MOCK_EXAM_PLAN_KEY = 'hyperion-mock-exam-plan-v1'
+interface MockCompetenceResult {
+  competenceId: string
+  functionId: string
+  correct: number
+  total: number
+  percent: number
+  completedAt: number
+}
+interface MockExamPlan {
+  trackId: TrackId
+  trackParam: string
+  selectedFunctions: string[]
+  startedAt: number
+  status: 'in_progress' | 'submitted'
+  results: Record<string, MockCompetenceResult>
+}
+function readMockExamPlan(trackId?: TrackId): MockExamPlan | null {
+  try {
+    const raw = localStorage.getItem(MOCK_EXAM_PLAN_KEY)
+    if (!raw) return null
+    const plan = JSON.parse(raw) as MockExamPlan
+    if (!plan || !Array.isArray(plan.selectedFunctions) || !plan.results || !plan.trackId) return null
+    if (trackId && plan.trackId !== trackId) return null
+    return plan
+  } catch {
+    return null
+  }
+}
+function writeMockExamPlan(plan: MockExamPlan): void {
+  try { localStorage.setItem(MOCK_EXAM_PLAN_KEY, JSON.stringify(plan)) } catch { /* storage may be unavailable */ }
+}
 const competencesForFunction = (track: TrackId, functionId: string) => {
   const ids: Record<TrackId, Record<string, string[]>> = {
     DECK_OIC_NW: { F1: ['C1','C2','C3','C4','C5','C7','C9'], F2: ['C10','C11'], F3: ['C12','C13','C17'] },
@@ -47,7 +80,7 @@ const competencesForFunction = (track: TrackId, functionId: string) => {
   }
   return (ids[track][functionId] || []).reduce((sum, id) => sum + mockExamItemCount(track, id), 0)
 }
-type Stage = 'confirm' | 'functions' | 'competences'
+type Stage = 'confirm' | 'functions' | 'competences' | 'results'
 
 export default function MockExamScreen() {
   const navigate = useNavigate()
@@ -57,12 +90,24 @@ export default function MockExamScreen() {
   const isUnlocked = useLicenseStore((s) => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
   const openPaywall = useUIStore((s) => s.openPaywall)
   const startSession = usePracticeStore((s) => s.startSession)
-  const [stage, setStage] = useState<Stage>('confirm')
+  const [stage, setStage] = useState<Stage>(() => {
+    const requestedStage = params.get('stage')
+    const saved = readMockExamPlan(trackId)
+    if (requestedStage === 'competences' && saved?.status === 'in_progress') return 'competences'
+    if (requestedStage === 'results' && saved?.status === 'submitted') return 'results'
+    return 'confirm'
+  })
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedFunctions, setSelectedFunctions] = useState<string[]>([])
+  const [examPlan, setExamPlan] = useState<MockExamPlan | null>(() => readMockExamPlan(trackId))
+  const [selectedFunctions, setSelectedFunctions] = useState<string[]>(() => {
+    const requestedStage = params.get('stage')
+    const saved = readMockExamPlan(trackId)
+    return (requestedStage === 'competences' || requestedStage === 'results') && saved ? saved.selectedFunctions : []
+  })
   const [startingCompetence, setStartingCompetence] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  const [showFinalSubmitConfirm, setShowFinalSubmitConfirm] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -71,7 +116,6 @@ export default function MockExamScreen() {
     getQuestionsByTrack(trackId).then((items) => {
       if (cancelled) return
       setQuestions(items)
-      setSelectedFunctions([])
       setLoading(false)
     }).catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -93,8 +137,43 @@ export default function MockExamScreen() {
     .map((fn) => ({ ...fn, competences: visibleCompetences.filter((c) => c.functionId === fn.id) }))
     .filter((fn) => fn.competences.length > 0), [functions, selectedFunctions, visibleCompetences])
 
+  const tableRows = useMemo(() => groupedCompetences.flatMap((group) =>
+    group.competences.map((competence) => ({
+      ...competence,
+      functionId: group.id,
+      functionLabel: group.label
+    }))
+  ), [groupedCompetences])
+  const completedCount = tableRows.filter((row) => Boolean(examPlan?.results[row.id])).length
+  const allCompetencesCompleted = tableRows.length > 0 && completedCount === tableRows.length
+
   const toggleFunction = (id: string) => setSelectedFunctions((current) =>
     current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+
+  const proceedToCompetences = () => {
+    if (!selectedFunctions.length) return
+    const plan: MockExamPlan = {
+      trackId,
+      trackParam,
+      selectedFunctions: [...selectedFunctions],
+      startedAt: Date.now(),
+      status: 'in_progress',
+      results: {}
+    }
+    writeMockExamPlan(plan)
+    setExamPlan(plan)
+    setStage('competences')
+  }
+
+  const submitOverallExam = () => {
+    if (!examPlan || !allCompetencesCompleted) return
+    const submitted: MockExamPlan = { ...examPlan, status: 'submitted' }
+    writeMockExamPlan(submitted)
+    setExamPlan(submitted)
+    setShowFinalSubmitConfirm(false)
+    setStage('results')
+    navigate('/mock?track=' + encodeURIComponent(trackParam) + '&stage=results', { replace: true })
+  }
   const start = async (competenceId: string) => {
     if (!isUnlocked) { openPaywall('Mock Exam'); return }
     const pool = questions.filter((q) => q.competenceId === competenceId && selectedFunctions.includes(q.functionId))
@@ -105,8 +184,9 @@ export default function MockExamScreen() {
     try {
       await startSession({
         mode: 'MOCK', track: trackId, competenceId, limit: Math.min(examItemCount, pool.length), startItem: 1,
-        timeLimitSec: examItemCount * 60,
+        timeLimitSec: Math.min(examItemCount, pool.length) * 60,
       })
+      if (usePracticeStore.getState().error || !usePracticeStore.getState().questions.length) return
       navigate('/mock/exam')
     } finally { setStarting(false); setStartingCompetence(null) }
   }
@@ -162,29 +242,111 @@ export default function MockExamScreen() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: '1.25rem' }}>
             <button type="button" style={secondaryButton} onClick={() => setStage('confirm')}>CANCEL</button>
-            <button type="button" style={{ ...primaryButton, opacity: selectedFunctions.length ? 1 : 0.45 }} disabled={!selectedFunctions.length || loading} onClick={() => setStage('competences')}>PROCEED</button>
+            <button type="button" style={{ ...primaryButton, opacity: selectedFunctions.length ? 1 : 0.45 }} disabled={!selectedFunctions.length || loading} onClick={proceedToCompetences}>PROCEED</button>
           </div>
         </section>
       </div>}
 
-      {stage === 'competences' && <section style={{ marginTop: '1rem' }}>
-        <div className="card" style={{ borderTop: '3px solid var(--accent)', borderRadius: 14, marginBottom: '1rem' }}>
-          <h2 style={{ marginTop: 0 }}>SELECT A COMPETENCE TO BEGIN</h2>
-          <p style={{ color: 'var(--text-muted)', marginBottom: 0 }}>{TRACK_LABELS[trackId]} · {selectedFunctions.join(', ')} · 70% passing cutoff · 1 minute per item</p>
+      {stage === 'competences' && <section style={{ margin: '1rem auto 0', width: 'min(100%, 860px)' }}>
+        <div className="card" style={{ borderTop: '3px solid var(--accent)', borderRadius: 12, marginBottom: '1rem' }}>
+          <h2 style={{ marginTop: 0, marginBottom: 6 }}>SELECT A COMPETENCE TO BEGIN</h2>
+          <p style={{ color: 'var(--text-muted)', margin: 0, lineHeight: 1.45 }}>{TRACK_LABELS[trackId]} · {selectedFunctions.join(', ')} · 70% passing cutoff · 1 minute per item</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '.88rem', marginBottom: 0, marginTop: 8 }}>Complete each selected competence. Completed competences become locked, and their results are included when you submit the full mock exam.</p>
         </div>
-        {groupedCompetences.map((group) => <section key={group.id} style={{ marginBottom: '1.25rem' }}>
-          <h3 style={{ color: 'var(--accent)', fontSize: '0.85rem', letterSpacing: '0.08em', marginBottom: 2 }}>{group.label}</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 800, marginTop: 0 }}>{group.competences.reduce((sum, c) => sum + mockExamItemCount(trackId, c.id), 0).toLocaleString()} mock exam items · {group.id} function</p>
-          <div style={{ display: 'grid', gap: 8 }}>
-            {group.competences.map((c) => <button key={c.id} type="button" disabled={starting || !c.count} onClick={() => void start(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '1rem', border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-card)', color: 'var(--text)', cursor: 'pointer' }}>
-              <span style={{ minWidth: 44, minHeight: 44, display: 'grid', placeItems: 'center', background: 'var(--bg-elevated)', fontWeight: 900 }}>{c.id}</span>
-              <span style={{ flex: 1 }}><strong style={{ display: 'block', lineHeight: 1.35 }}>{c.id}: {c.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</strong><span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 5 }}>{mockExamItemCount(trackId, c.id)} mock exam items · {FUNCTION_DESCRIPTIONS[group.id] || 'Timed competence-based mock examination.'}</span></span>
-              <span style={{ color: 'var(--text-muted)', fontWeight: 800 }}>{startingCompetence === c.id ? '…' : '→'}</span>
-            </button>)}
+        <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-card)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', color: 'var(--text)', fontSize: '.92rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-elevated)', textAlign: 'left' }}>
+                <th scope="col" style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>FUNCTION</th>
+                <th scope="col" style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)' }}>COMPETENCE</th>
+                <th scope="col" style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>ITEMS</th>
+                <th scope="col" style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>ACTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((row) => {
+                const locked = Boolean(examPlan?.results[row.id])
+                return <tr key={row.id}>
+                  <td style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', verticalAlign: 'top' }}>
+                    <strong>{row.functionId}</strong>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '.74rem', lineHeight: 1.35, marginTop: 3, minWidth: 90 }}>{row.functionLabel}</div>
+                  </td>
+                  <td style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', verticalAlign: 'top', minWidth: 160 }}>
+                    <strong>{row.id}</strong>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '.84rem', lineHeight: 1.4, marginTop: 3 }}>{row.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</div>
+                  </td>
+                  <td style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', verticalAlign: 'top', whiteSpace: 'nowrap' }}>{mockExamItemCount(trackId, row.id)}</td>
+                  <td style={{ padding: '.8rem .75rem', borderBottom: '1px solid var(--border)', textAlign: 'right', verticalAlign: 'top' }}>
+                    {locked
+                      ? <span style={{ display: 'inline-block', padding: '.5rem .6rem', borderRadius: 6, background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: '.75rem', fontWeight: 900, letterSpacing: '.03em' }}>LOCKED</span>
+                      : <button type="button" className="btn btn-primary" disabled={starting || !row.count} onClick={() => void start(row.id)} style={{ minWidth: 92, padding: '.6rem .7rem', whiteSpace: 'nowrap', fontSize: '.82rem' }}>{startingCompetence === row.id ? 'Starting…' : 'Take Exam'}</button>}
+                  </td>
+                </tr>
+              })}
+              {!tableRows.length && <tr><td colSpan={4} style={{ padding: '1rem', color: 'var(--text-muted)' }}>No competences are available for the selected functions.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-card)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+            <strong>{completedCount} / {tableRows.length} competences completed</strong>
+            <span style={{ color: 'var(--text-muted)', fontSize: '.84rem' }}>{tableRows.length - completedCount} remaining</span>
           </div>
-        </section>)}
-        {!groupedCompetences.length && <p>No competences are available for the selected functions.</p>}
-        <button type="button" style={secondaryButton} onClick={() => setStage('functions')}>← CHANGE FUNCTIONS</button>
+          {!allCompetencesCompleted && <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', lineHeight: 1.45, margin: '0 0 .75rem' }}>Finish every selected competence to unlock final submission.</p>}
+          <button type="button" className="btn btn-primary" disabled={!allCompetencesCompleted} onClick={() => setShowFinalSubmitConfirm(true)} style={{ width: '100%' }}>SUBMIT EXAM</button>
+        </div>
+        {selectedFunctions.every((id) => tableRows.every((row) => row.functionId !== id || examPlan?.results[row.id])) && completedCount === 0 && <button type="button" style={{ ...secondaryButton, width: '100%', marginTop: 10 }} onClick={() => setStage('functions')}>← CHANGE FUNCTIONS</button>}
+        {showFinalSubmitConfirm && <div role="presentation" style={overlay}>
+          <section role="dialog" aria-modal="true" aria-labelledby="submit-overall-mock-title" style={dialog}>
+            <div style={greenLine} />
+            <h2 id="submit-overall-mock-title" style={{ fontSize: '1.3rem', marginTop: 0 }}>Are you sure you want to submit the exam?</h2>
+            <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>You have completed all {tableRows.length} selected competence exams. After submitting, this mock exam's results will be finalized.</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: '1.25rem' }}>
+              <button type="button" style={secondaryButton} onClick={() => setShowFinalSubmitConfirm(false)}>NO</button>
+              <button type="button" style={primaryButton} onClick={submitOverallExam}>YES, SUBMIT EXAM</button>
+            </div>
+          </section>
+        </div>}
+      </section>}
+
+      {stage === 'results' && <section style={{ margin: '1rem auto 2rem', width: 'min(100%, 760px)' }}>
+        <div className="card" style={{ borderTop: '3px solid var(--accent)', borderRadius: 12, marginBottom: '1rem' }}>
+          <h1 className="page-title" style={{ marginTop: 0 }}>MOCK EXAM RESULTS</h1>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 0 }}>{TRACK_LABELS[trackId]} · 70% passing cutoff</p>
+        </div>
+        <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-card)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', color: 'var(--text)' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-elevated)', textAlign: 'left' }}>
+                <th scope="col" style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)' }}>FUNCTION</th>
+                <th scope="col" style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)' }}>STATUS</th>
+                <th scope="col" style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)' }}>COMPETENCE</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((row) => {
+                const result = examPlan?.results[row.id]
+                const passed = Boolean(result && result.percent >= 70)
+                return <tr key={row.id}>
+                  <td style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)', fontWeight: 900 }}>{row.functionId}</td>
+                  <td style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ display: 'inline-block', padding: '.4rem .7rem', borderRadius: 6, background: passed ? '#dcfce7' : '#fee2e2', color: passed ? '#166534' : '#b91c1c', border: '1px solid ' + (passed ? '#86efac' : '#fca5a5'), fontSize: '.78rem', fontWeight: 900, letterSpacing: '.04em' }}>{passed ? 'PASSED' : 'FAILED'}</span>
+                  </td>
+                  <td style={{ padding: '.85rem .9rem', borderBottom: '1px solid var(--border)' }}>
+                    <strong>{row.id}</strong>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '.84rem', lineHeight: 1.4, marginTop: 3 }}>{row.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</div>
+                  </td>
+                </tr>
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="card" style={{ marginTop: '1rem', textAlign: 'center' }}>
+          <strong>{tableRows.filter((row) => (examPlan?.results[row.id]?.percent ?? 0) >= 70).length} PASSED</strong>
+          <span style={{ color: 'var(--text-muted)' }}> / {tableRows.length} competences</span>
+        </div>
+        <button type="button" className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => navigate('/mock?track=' + encodeURIComponent(trackParam))}>RETURN TO MOCK EXAMS</button>
+        <button type="button" className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => navigate('/history')}>VIEW HISTORY</button>
       </section>}
     </div>
   )
@@ -192,9 +354,10 @@ export default function MockExamScreen() {
 
 export function MockExamRunner() {
   const navigate = useNavigate()
-  const { questions, answers, finished, timeLeftSec, selectAnswer, finish, tick, score, reset } = usePracticeStore()
+  const { questions, answers, finished, timeLeftSec, selectAnswer, finish, tick, score, reset, track, competenceId, mode } = usePracticeStore()
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   const [showLockNotice, setShowLockNotice] = useState(false)
+  const completionSavedRef = useRef(false)
 
   useEffect(() => {
     if (finished) return
@@ -215,6 +378,32 @@ export function MockExamRunner() {
     window.addEventListener('popstate', blockPop)
     return () => { window.removeEventListener('beforeunload', blockExit); window.removeEventListener('hyperion:request-exit-mock', blockAppBack); window.removeEventListener('popstate', blockPop) }
   }, [])
+
+  useEffect(() => {
+    if (!finished || mode !== 'MOCK' || completionSavedRef.current || !track || !competenceId) return
+    const plan = readMockExamPlan(track)
+    const functionId = questions[0]?.functionId
+    if (!plan || plan.status !== 'in_progress' || !functionId || !plan.selectedFunctions.includes(functionId)) return
+
+    const result = score()
+    const updated: MockExamPlan = {
+      ...plan,
+      results: {
+        ...plan.results,
+        [competenceId]: {
+          competenceId,
+          functionId,
+          correct: result.correct,
+          total: result.total,
+          percent: result.percent,
+          completedAt: Date.now()
+        }
+      }
+    }
+    writeMockExamPlan(updated)
+    completionSavedRef.current = true
+    navigate('/mock?track=' + encodeURIComponent(plan.trackParam) + '&stage=competences', { replace: true })
+  }, [finished, mode, track, competenceId, questions, answers, score, navigate])
 
   const answered = questions.reduce((count, q) => count + (answers[q.id]?.selectedIndex != null ? 1 : 0), 0)
   const formatTime = (seconds: number) => String(Math.floor(Math.max(0, seconds) / 60)).padStart(2, '0') + ':' + String(Math.max(0, seconds) % 60).padStart(2, '0')
