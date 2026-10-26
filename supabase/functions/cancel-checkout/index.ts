@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       return json({ error: 'This basket checkout cannot be cancelled in its current status.' }, 409)
     }
 
-    const sessionUrl = `https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(batch.paymongo_checkout_session_id)}`
+    const sessionUrl = `https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(batch.paymongo_checkout_session_id)}`
     const auth = `Basic ${btoa(paymongoKey + ':')}`
     const getSession = async () => {
       const response = await fetch(sessionUrl, { headers: { Authorization: auth } })
@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
   if (order.status === 'cancelled' || order.status === 'failed') return json({ status: 'cancelled', orderId: order.id })
   if (order.status !== 'pending') return json({ error: 'This checkout cannot be cancelled in its current status.' }, 409)
 
-  const sessionUrl = `https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(order.paymongo_checkout_session_id)}`
+  const sessionUrl = `https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(order.paymongo_checkout_session_id)}`
   const auth = `Basic ${btoa(paymongoKey + ':')}`
   const getSession = async () => {
     const response = await fetch(sessionUrl, { headers: { Authorization: auth } })
