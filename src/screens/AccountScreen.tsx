@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
-import type { PaidTrack } from '../lib/supabase'
+import type { LicenseTerm, PaidTrack } from '../lib/supabase'
+import { LICENSE_TERMS, priceForTerm } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Order = {
@@ -22,6 +23,7 @@ type Order = {
   checkout_batch_id: string | null
 }
 type OwnedTrack = { product_code: string; order_id: string; granted_at: string; expires_at: string | null; renewed_at: string | null }
+type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
 function safeAccountError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : ''
@@ -46,13 +48,22 @@ export default function AccountScreen() {
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
   useEffect(() => { setAccountTab(params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments') }, [params])
   const [session, setSession] = useState<Session | null>(null)
-  const [basket, setBasket] = useState<PaidTrack[]>(() => {
+  const [basket, setBasket] = useState<BasketItem[]>(() => {
     try {
       const raw = localStorage.getItem('hyperion-account-basket-v1')
-      const saved = raw ? JSON.parse(raw) : []
-      return Array.isArray(saved)
-        ? [...new Set(saved.filter((code): code is PaidTrack => typeof code === 'string' && PAID_PRODUCTS.some(item => item.code === code)))]
-        : []
+      const saved: unknown = raw ? JSON.parse(raw) : []
+      if (!Array.isArray(saved)) return []
+      const normalized: BasketItem[] = saved.flatMap((entry: unknown) => {
+        if (typeof entry === 'string' && PAID_PRODUCTS.some(item => item.code === entry)) {
+          return [{ code: entry as PaidTrack, term: 'year' as const }]
+        }
+        if (!entry || typeof entry !== 'object') return []
+        const item = entry as { code?: unknown; term?: unknown }
+        if (typeof item.code !== 'string' || !PAID_PRODUCTS.some(product => product.code === item.code)) return []
+        const term: LicenseTerm = item.term === 'week' || item.term === 'month' || item.term === 'year' ? item.term : 'year'
+        return [{ code: item.code as PaidTrack, term }]
+      })
+      return [...new Map(normalized.map(item => [item.code, item])).values()]
     } catch {
       return []
     }
@@ -68,6 +79,7 @@ export default function AccountScreen() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
+  const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>({ oic_nw: 'year', gmdss: 'year', engine_ew: 'year', deck_mgt: 'year', engine_mgt: 'year' })
   const [orders, setOrders] = useState<Order[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
@@ -78,15 +90,18 @@ export default function AccountScreen() {
     } catch { /* basket remains available for this page session */ }
   }, [basket])
 
-  const buyNow = (code: PaidTrack) => {
-    const nextBasket = basket.includes(code) ? basket : [...basket, code]
+  const buyNow = (code: PaidTrack, term: LicenseTerm) => {
+    const nextItem: BasketItem = { code, term }
+    const nextBasket = basket.some(item => item.code === code)
+      ? basket.map(item => item.code === code ? nextItem : item)
+      : [...basket, nextItem]
     try {
       if (nextBasket.length) localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(nextBasket))
     } catch { /* Keep this purchase selection in memory for the current page. */ }
     setBasket(nextBasket)
     navigate('/checkout')
   }
-  const clearBasketItems = (codes: string[]) => setBasket(current => current.filter(code => !codes.includes(code)))
+  const clearBasketItems = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
 
   useEffect(() => {
     if (!supabase) return
@@ -441,7 +456,10 @@ export default function AccountScreen() {
               <div className="account-products-grid">
                 {PAID_PRODUCTS.map(item => {
                   const isOwned = owned.some(license => license.product_code === item.code)
-                  const inBasket = basket.includes(item.code)
+                  const basketItem = basket.find(entry => entry.code === item.code)
+                  const inBasket = Boolean(basketItem)
+                  const selectedTerm = selectedTerms[item.code]
+                  const selectedPrice = priceForTerm(item, selectedTerm)
                   const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
                   const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
                   const description = item.code === 'oic_nw' ? 'Deck officer examination preparation and reviewer access.'
@@ -451,16 +469,23 @@ export default function AccountScreen() {
                     : 'Engine management examination preparation and reviewer access.'
                   return <article className="account-product-card" key={item.code}>
                     <div className="product-art"><div aria-hidden="true">{item.code === 'gmdss' ? '📡' : item.code === 'engine_ew' || item.code === 'engine_mgt' ? '⚙️' : '⚓'}</div><span>HYPERION REVIEWER</span></div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>ANNUAL TRACK LICENSE</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>CHOOSE ACCESS DURATION</div>
                     <h3 style={{ margin: '.35rem 0 0', fontSize: '1.03rem', minHeight: '2.4em', lineHeight: 1.2 }}>{item.label}</h3>
-                    <div className="product-price">₱{item.annualPrice}<span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 650 }}> / year</span></div>
+                    <div className="product-price">₱{selectedPrice}<span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 650 }}> / {selectedTerm}</span></div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '.35rem', marginTop: '.6rem' }}>
+                      {LICENSE_TERMS.map(option => {
+                        const optionPrice = priceForTerm(item, option.code)
+                        const isSelected = selectedTerm === option.code
+                        return <button key={option.code} type="button" aria-pressed={isSelected} disabled={busy || isOwned || manualPending} onClick={() => setSelectedTerms(old => ({ ...old, [item.code]: option.code }))} style={{ border: '1px solid ' + (isSelected ? 'var(--accent)' : 'var(--border)'), borderRadius: 7, padding: '.45rem .2rem', background: isSelected ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)', fontSize: '.72rem', fontWeight: 800, cursor: 'pointer' }}><span style={{ display: 'block' }}>{option.label}</span><span style={{ display: 'block', marginTop: '.15rem' }}>₱{optionPrice}</span></button>
+                      })}
+                    </div>
                     <div className="product-meta">{description}</div>
                     <div className="product-card-spacer" />
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: '#946c12', borderColor: '#dfc277', background: 'rgba(245,199,94,.12)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
-                    <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code)} style={{ width: '100%', marginTop: '.8rem', minHeight: 43, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff' }}>
+                    <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)} style={{ width: '100%', marginTop: '.8rem', minHeight: 43, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff' }}>
                       {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'BUY NOW'}
                     </button>
-                    {!isOwned && !manualPending && <button type="button" disabled={busy} onClick={() => navigate(`/manual-payment?product=${encodeURIComponent(item.code)}`)} style={{ background: 'transparent', color: 'var(--text-muted)', width: '100%', padding: '.55rem .25rem .1rem', fontSize: '.78rem', textDecoration: 'underline', textUnderlineOffset: 3 }}>Pay manually with QR</button>}
+                    {!isOwned && !manualPending && <button type="button" disabled={busy} onClick={() => navigate(`/manual-payment?product=${encodeURIComponent(item.code)}&term=${selectedTerm}`)} style={{ background: 'transparent', color: 'var(--text-muted)', width: '100%', padding: '.55rem .25rem .1rem', fontSize: '.78rem', textDecoration: 'underline', textUnderlineOffset: 3 }}>Pay manually with QR</button>}
                   </article>
                 })}
               </div>
