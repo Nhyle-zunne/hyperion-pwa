@@ -627,7 +627,8 @@ function observeStoreChanges(): void {
 }
 
 export function startLearningProgressSync(): () => void {
-  if (!supabase || started) return () => undefined
+  const client = supabase
+  if (!client || started) return () => undefined
   started = true
   observeStoreChanges()
 
@@ -636,7 +637,7 @@ export function startLearningProgressSync(): () => void {
       cloudReady = false
       void initializeUser(activeUserId)
     } else {
-      void supabase.auth.getSession().then(({ data }) => {
+      void client.auth.getSession().then(({ data }) => {
         if (data.session?.user) void initializeUser(data.session.user.id)
       })
     }
@@ -647,7 +648,7 @@ export function startLearningProgressSync(): () => void {
   window.addEventListener('hyperion:progress-local-change', handleMockPlanChange)
   window.addEventListener('hyperion:practice-progress-saved', handleSavedPracticeChange)
 
-  authSubscription = supabase.auth.onAuthStateChange((_event, session) => {
+  authSubscription = client.auth.onAuthStateChange((_event, session) => {
     // Avoid doing Supabase queries synchronously inside the auth callback.
     window.setTimeout(() => {
       const userId = session?.user?.id ?? null
@@ -662,7 +663,7 @@ export function startLearningProgressSync(): () => void {
     }, 0)
   }).data.subscription
 
-  void supabase.auth.getSession().then(({ data }) => {
+  void client.auth.getSession().then(({ data }) => {
     if (data.session?.user) void initializeUser(data.session.user.id)
   }).catch((error) => console.warn('[Hyperion progress sync] Unable to read current auth session.', error))
 
