@@ -227,7 +227,7 @@ Deno.serve(async (req: Request) => {
       return json(req, { error: "Some question files could not be copied. Public files were not deleted.", status: "failed", assetCount: copied, expectedAssets: SOURCE_ASSETS.length, failedAssets: failures.slice(0, 12) }, 502);
     }
     await admin.from("question_bank_migration_state").update({ status: "complete", asset_count: copied, error_summary: null, updated_at: new Date().toISOString() }).eq("id", 1);
-    return json(req, { status: "complete", assetCount: copied, expectedAssets: SOURCE_ASSETS.length, message: "Encrypted question files are safely copied to private storage. Public source files remain in place until the protected loader is deployed." });
+    return json(req, { status: "complete", assetCount: copied, expectedAssets: SOURCE_ASSETS.length, message: "Encrypted question files are safely copied to private storage. Public copies still need removal in a follow-up deployment after migration is verified." });
   }
   if (body.action !== "get" || typeof body.path !== "string" || !SOURCE_ASSETS.includes(body.path)) return json(req, { error: "Invalid question asset request." }, 400);
   let state: any;
