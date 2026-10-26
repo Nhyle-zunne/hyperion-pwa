@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
-import { freeSample, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import { getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { Question, TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = { oic_nw: 'DECK_OIC_NW', gmdss: 'GMDSS_GOC', engine_ew: 'ENGINE_OIC_EW', deck_mgt: 'DECK_MGT', engine_mgt: 'ENGINE_MGT' }
@@ -132,10 +132,10 @@ export default function MockExamScreen() {
     let cancelled = false
     setLoading(true)
     setQuestions([])
-    getQuestionsByTrack(trackId).then((items) => {
+    getQuestionsByTrack(trackId, true).then((items) => {
       if (cancelled) return
-      // Mock exams are open to every user and use the same public question pool as Free Reviewer.
-      setQuestions(freeSample(items, trackId))
+      // Mock exams are open to every user and use the protected server-side free sample.
+      setQuestions(items)
       setLoading(false)
     }).catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
