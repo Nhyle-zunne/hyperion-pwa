@@ -386,6 +386,9 @@ export default function TrackSelectionScreen() {
           </div>
         </a>
       </div>
+      <footer style={{ marginTop: '1.5rem', padding: '1rem 0', borderTop: '1px solid var(--border)', textAlign: 'center', fontSize: '0.85rem' }}>
+        <button type="button" onClick={() => navigate('/privacy-policy')} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Privacy Policy</button>
+      </footer>
     </div>
   )
 }
