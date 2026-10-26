@@ -60,7 +60,10 @@ function readMockExamPlan(trackId?: TrackId): MockExamPlan | null {
   }
 }
 function writeMockExamPlan(plan: MockExamPlan): void {
-  try { localStorage.setItem(MOCK_EXAM_PLAN_KEY, JSON.stringify(plan)) } catch { /* storage may be unavailable */ }
+  try {
+    localStorage.setItem(MOCK_EXAM_PLAN_KEY, JSON.stringify(plan))
+    window.dispatchEvent(new Event('hyperion:progress-local-change'))
+  } catch { /* storage may be unavailable */ }
 }
 
 function mockQuestionWeight(question: Question): number {
