@@ -336,7 +336,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceKey) return json(req, { error: "Question service is not configured." }, 503);
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let body: { action?: string; path?: string; track?: string; query?: string; limit?: number; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown };
+  let body: { action?: string; path?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown };
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
   let user: any = null, isAdmin = false;
   const authHeader = req.headers.get("Authorization");
@@ -405,6 +405,51 @@ Deno.serve(async (req: Request) => {
       return json(req, { allowed, access: allowed ? "free-sample" : "denied" }, allowed ? 200 : 403);
     } catch {
       return json(req, { allowed: false, error: "Could not verify question access." }, 503);
+    }
+  }
+
+  if (body.action === "questions") {
+    const track = body.track || "";
+    const competenceId = body.competenceId || "";
+    const part = body.part == null ? null : Number(body.part);
+    const offset = Number.isSafeInteger(body.offset) ? Math.max(0, Number(body.offset)) : 0;
+    const limit = Number.isSafeInteger(body.limit) ? Number(body.limit) : 100;
+    const randomSample = body.randomSample === true;
+    const freeOnly = body.freeOnly === true;
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track) ||
+        !/^C\\d{1,2}$/.test(competenceId)) return json(req, { error: "Choose a valid track and competence." }, 400);
+    if (limit < 1 || limit > 200 || offset > 100000 || (randomSample && offset !== 0)) {
+      return json(req, { error: "Question requests must use a valid range of at most 200 items." }, 400);
+    }
+    if (part !== null && (track !== "GMDSS_GOC" || !Number.isInteger(part) || part < 1 || part > (competenceId === "C1" ? 10 : 2))) {
+      return json(req, { error: "Invalid GMDSS question part." }, 400);
+    }
+    if (!freeOnly) {
+      try {
+        if (!await authorizeTrack(admin, user, isAdmin, track)) return json(req, { error: "An active license is required to retrieve these questions." }, user ? 403 : 401);
+      } catch { return json(req, { error: "Could not verify your license. Please refresh and try again." }, 503); }
+    }
+    try {
+      const paths = SOURCE_ASSETS.filter(path => {
+        const info = sourceInfo(path);
+        return info?.track === track && info.competenceId === competenceId && (part === null || info.part === part);
+      }).sort((left, right) => (sourceInfo(left)?.part ?? 0) - (sourceInfo(right)?.part ?? 0));
+      const allQuestions: Record<string, unknown>[] = [];
+      for (const assetPath of paths) {
+        let text = await privateText(admin, assetPath);
+        if (freeOnly) text = sampleFreeCsv(assetPath, text);
+        allQuestions.push(...toSearchQuestions(assetPath, text));
+      }
+      if (randomSample) {
+        for (let i = allQuestions.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+        }
+      }
+      const questions = randomSample ? allQuestions.slice(0, limit) : allQuestions.slice(offset, offset + limit);
+      return json(req, { questions, totalCount: allQuestions.length, offset, limit, access: freeOnly ? "free-sample" : isAdmin ? "admin" : "licensed" });
+    } catch {
+      return json(req, { error: "The requested questions could not be loaded from private storage." }, 503);
     }
   }
 
@@ -485,20 +530,17 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  if (body.action !== "get" || typeof body.path !== "string" || !SOURCE_ASSETS.includes(body.path)) return json(req, { error: "Invalid question asset request." }, 400);
+  if (body.action !== "get" || typeof body.path !== "string" || !SOURCE_ASSETS.includes(body.path) || body.freeOnly !== true) {
+    return json(req, { error: "Raw paid-bank delivery is disabled. Use paginated question delivery." }, 400);
+  }
+  // Temporary free-only compatibility path for the mock-exam directory and the
+  // one-time migration bridge. Paid question files are never returned as CSV.
   const track = trackForPath(body.path);
   if (!track) return json(req, { error: "Invalid track." }, 400);
-  const freeOnly = body.freeOnly === true;
-  if (!freeOnly) {
-    try {
-      if (!await authorizeTrack(admin, user, isAdmin, track)) return json(req, { error: "This track needs an active license. Start Free Reviewer or renew your subscription." }, user ? 403 : 401);
-    } catch { return json(req, { error: "Could not verify your license. Please refresh and try again." }, 503); }
-  }
   try {
     const text = await privateText(admin, body.path);
-    const output = freeOnly ? sampleFreeCsv(body.path, text) : text;
-    return json(req, { text: output, access: freeOnly ? "free-sample" : isAdmin ? "admin" : "licensed" });
+    return json(req, { text: sampleFreeCsv(body.path, text), access: "free-sample" });
   } catch {
-    return json(req, { error: "Question asset could not be processed." }, 503);
+    return json(req, { error: "Free sample could not be processed." }, 503);
   }
 });
