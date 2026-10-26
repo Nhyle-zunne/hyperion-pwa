@@ -522,7 +522,7 @@ export default function AccountScreen() {
   return <div className="screen account-page" style={{ width: 'min(calc(100% - 2rem), 1320px)', maxWidth: 1320, margin: '0 auto', paddingBottom: '2rem' }}>
     <style>{`
       .account-page .account-layout{display:grid;grid-template-columns:minmax(250px,300px) minmax(0,1fr);gap:1.25rem;align-items:start;margin-top:1.1rem}
-      .account-page .account-sidebar{display:grid;gap:1rem;align-content:start;position:sticky;top:210px;min-width:0}
+      .account-page .account-sidebar{display:grid;gap:1rem;align-content:start;position:sticky;top:80px;max-height:calc(100vh - 92px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;min-width:0;padding-bottom:.35rem}
       .account-page .account-main{min-width:0}
       .account-page .account-nav{display:grid;gap:.45rem}
       .account-page .account-nav button{width:100%;min-height:42px;text-align:left;display:flex;align-items:center;gap:.6rem;justify-content:flex-start}
@@ -545,7 +545,7 @@ export default function AccountScreen() {
       .account-page .payment-method-pills{display:flex;flex-wrap:wrap;gap:.4rem}
       .account-page .payment-method-pills span{padding:.3rem .5rem;border:1px solid var(--border);background:var(--bg-elevated);border-radius:6px;font-size:.7rem;font-weight:750}
       @media(max-width:1100px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-sidebar-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}.account-page .account-nav{grid-template-columns:repeat(3,minmax(0,1fr))}.account-page .account-nav button{justify-content:center;text-align:center;padding:.55rem .4rem;font-size:.78rem}}
+      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;max-height:none;overflow:visible;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-sidebar-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}.account-page .account-nav{grid-template-columns:repeat(3,minmax(0,1fr))}.account-page .account-nav button{justify-content:center;text-align:center;padding:.55rem .4rem;font-size:.78rem}}
       @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-nav{grid-template-columns:repeat(2,minmax(0,1fr))}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
     `}</style>
     <button type="button" onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back</button>
