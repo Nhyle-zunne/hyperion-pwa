@@ -1458,7 +1458,7 @@ a:focus-visible,
 
 /* Desktop sizing: keep the dashboard wide, but preserve the portrait study/config/question layouts. */
 @media (min-width: 900px) {
-  .screen:not(.track-hub-screen):not(.dashboard-screen):not(.question-runner-screen) {
+  .screen:not(.track-hub-screen):not(.dashboard-screen):not(.question-runner-screen):not(.mock-exam-screen) {
     max-width: 560px;
     padding-left: 1.25rem;
     padding-right: 1.25rem;
@@ -1466,6 +1466,19 @@ a:focus-visible,
 }
 
 
+
+/* Mock exam overview/results: restore a comfortable medium desktop width.
+   The configuration and question runner retain their separate sizing rules. */
+@media (min-width: 900px) {
+  .screen.mock-exam-screen {
+    width: min(calc(100% - 4rem), 920px);
+    max-width: 920px;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
 
 /* Mock-exam dialogs use a soft blur over the unchanged page beneath them. */
 .mock-exam-backdrop {
