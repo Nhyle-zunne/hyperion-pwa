@@ -28,7 +28,7 @@ export const useUIStore = create<UIState>()(
     (set, get) => ({
       showPaywall: false,
       paywallFeature: 'this feature',
-      theme: 'dark',
+      theme: 'light',
       openPaywall: (feature = 'this feature') =>
         set({ showPaywall: true, paywallFeature: feature }),
       closePaywall: () => set({ showPaywall: false }),
@@ -43,11 +43,11 @@ export const useUIStore = create<UIState>()(
       }
     }),
     {
-      name: 'hyperion-ui',
+      name: 'hyperion-ui-v2',
       partialize: (s) => ({ theme: s.theme }),
       onRehydrateStorage: () => (state) => {
         if (state?.theme) applyTheme(state.theme)
-        else applyTheme('dark')
+        else applyTheme('light')
       }
     }
   )
@@ -56,7 +56,7 @@ export const useUIStore = create<UIState>()(
 // Apply before paint if possible (called from main.tsx too)
 export function initTheme() {
   try {
-    const raw = localStorage.getItem('hyperion-ui')
+    const raw = localStorage.getItem('hyperion-ui-v2')
     if (raw) {
       const parsed = JSON.parse(raw)
       const theme = parsed?.state?.theme as ThemeMode | undefined
