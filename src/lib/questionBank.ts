@@ -546,6 +546,45 @@ export async function getQuestionsByTrack(track: TrackId, freeOnly = false): Pro
   return allQuestions;
 }
 
+export interface QuestionBankCount {
+  competenceId: string;
+  part: number | null;
+  count: number;
+}
+
+/** Returns question counts only; paid question text stays on the protected question endpoint. */
+export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
+  if (!supabase) throw new Error('Protected question service is not configured.');
+  const { data, error } = await supabase.functions.invoke('question-bank', {
+    body: { action: 'counts', track, freeOnly }
+  });
+  if (!error && Array.isArray(data?.counts)) {
+    return data.counts.map((item: { competenceId: string; part: number | null; count: number }) => ({
+      competenceId: String(item.competenceId),
+      part: item.part == null ? null : Number(item.part),
+      count: Math.max(0, Number(item.count) || 0)
+    }));
+  }
+  if (freeOnly) {
+    // Preserve free practice during the one-time private-storage migration; once
+    // private storage is ready this counts only the server-filtered sample.
+    const questions = await getQuestionsByTrack(track, true);
+    const counts = new Map<string, QuestionBankCount>();
+    for (const question of questions) {
+      const key = question.competenceId + ':' + (question.id.match(/-P(\\d+)-/)?.[1] || '');
+      const current = counts.get(key);
+      if (current) current.count++;
+      else counts.set(key, {
+        competenceId: question.competenceId,
+        part: question.id.match(/-P(\\d+)-/)?.[1] ? Number(question.id.match(/-P(\\d+)-/)![1]) : null,
+        count: 1
+      });
+    }
+    return [...counts.values()];
+  }
+  throw error || new Error(data?.error || 'Could not verify access to paid question metadata.');
+}
+
 export function listAvailableCompetences(
   track: TrackId
 ): { id: string; label: string }[] {
@@ -568,22 +607,18 @@ export function listRegisteredSourceCount(): number {
   return SOURCES.length;
 }
 
-/** Search questions within a track (loads that track’s banks, then filters). */
+/** Search within a track on the server and return only the limited matching results. */
 export async function searchQuestions(
   track: TrackId,
   query: string,
   limit = 40
 ): Promise<Question[]> {
-  const q = query.trim().toLowerCase();
+  const q = query.trim();
   if (q.length < 2) return [];
-  const all = await getQuestionsByTrack(track);
-  const hits: Question[] = [];
-  for (const item of all) {
-    const hay = `${item.questionText} ${item.topic} ${item.competenceId} ${item.options.join(' ')}`.toLowerCase();
-    if (hay.includes(q)) {
-      hits.push(item);
-      if (hits.length >= limit) break;
-    }
-  }
-  return hits;
+  if (!supabase) throw new Error('Protected question service is not configured.');
+  const { data, error } = await supabase.functions.invoke('question-bank', {
+    body: { action: 'search', track, query: q, limit: Math.max(1, Math.min(40, limit)) }
+  });
+  if (error || !Array.isArray(data?.questions)) throw error || new Error(data?.error || 'Question search is unavailable.');
+  return data.questions as Question[];
 }
