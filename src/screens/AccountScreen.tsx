@@ -39,9 +39,15 @@ export default function AccountScreen() {
   }, [])
   useEffect(() => {
     if (params.get('oauth_popup') !== '1' || !session || !window.opener) return
-    window.opener.postMessage({ type: 'hyperion-oauth-success' }, window.location.origin)
+    // The popup has its own storage context, so pass the authenticated session
+    // back to the canonical-origin opener before closing.
+    window.opener.postMessage({
+      type: 'hyperion-oauth-success',
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    }, 'https://hyperionmaritime.org')
     window.close()
-  }, [params, session?.user.id])
+  }, [params, session?.access_token, session?.refresh_token])
 
   useEffect(() => {
     const metadata = session?.user.user_metadata ?? {}
@@ -82,6 +88,22 @@ export default function AccountScreen() {
     await refreshCloudEntitlements()
   }
   useEffect(() => { void refreshAccount() }, [session?.user.id])
+  useEffect(() => {
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.origin !== 'https://hyperionmaritime.org') return
+      if (event.data?.type !== 'hyperion-oauth-success' || !event.data.access_token || !event.data.refresh_token || !supabase) return
+      void supabase.auth.setSession({
+        access_token: event.data.access_token,
+        refresh_token: event.data.refresh_token,
+      }).then(({ error }) => {
+        if (error) setMessage(error.message)
+        setBusy(false)
+      })
+    }
+    window.addEventListener('message', handleOAuthMessage)
+    return () => window.removeEventListener('message', handleOAuthMessage)
+  }, [])
+
   const openOAuthPopup = async (provider: 'google' | 'facebook') => {
     if (!supabase) return
     // Open synchronously from the click so browsers don't block the popup.
@@ -96,7 +118,7 @@ export default function AccountScreen() {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/account?oauth_popup=1`,
+          redirectTo: 'https://hyperionmaritime.org/account?oauth_popup=1',
           skipBrowserRedirect: true,
         },
       })
