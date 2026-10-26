@@ -30,7 +30,7 @@ export default function TermsScreen() {
 
       <section style={sectionStyle}>
         <h2 style={headingStyle}>2. Eligibility and Accounts</h2>
-        <p style={paragraphStyle}>You must provide accurate information when creating or using a website account and keep your sign-in methods secure. Website sign-in may be provided through Google or Facebook. You are responsible for activity performed through your account and must notify us if you believe your account has been accessed without authorization.</p>
+        <p style={paragraphStyle}>You must provide accurate information when creating or using a website account and keep your sign-in methods secure. Website sign-in is provided through Google. You are responsible for activity performed through your account and must notify us if you believe your account has been accessed without authorization.</p>
         <p style={paragraphStyle}>Do not impersonate another person, create accounts for deceptive purposes, or attempt to access another user's account or data. Account access is personal and may not be sold, transferred, or shared except where we expressly authorize it in writing.</p>
       </section>
 
@@ -88,7 +88,7 @@ export default function TermsScreen() {
 
       <section style={sectionStyle}>
         <h2 style={headingStyle}>11. Third-Party Services</h2>
-        <p style={paragraphStyle}>Hyperion may rely on third-party services such as Google, Meta, Supabase, hosting providers, and app stores. Those services are governed by their own terms and privacy policies. We are not responsible for third-party services that we do not control, except where applicable law provides otherwise.</p>
+        <p style={paragraphStyle}>Hyperion may rely on third-party services such as Google, Supabase, hosting providers, and app stores. Those services are governed by their own terms and privacy policies. We are not responsible for third-party services that we do not control, except where applicable law provides otherwise.</p>
       </section>
 
       <section style={sectionStyle}>
