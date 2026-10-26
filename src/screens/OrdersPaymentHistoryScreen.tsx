@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
-import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
+import { PAID_PRODUCTS, supabase } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Order = {
