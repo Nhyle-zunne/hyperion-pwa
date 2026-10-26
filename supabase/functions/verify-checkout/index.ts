@@ -24,7 +24,7 @@ function profileName(user: any) {
 }
 
 async function readCheckout(paymongoKey: string, sessionId: string) {
-  const response = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(sessionId)}`, {
+  const response = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(sessionId)}`, {
     headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}` }
   })
   const result = await response.json().catch(() => ({}))
