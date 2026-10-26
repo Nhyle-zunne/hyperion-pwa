@@ -1,4 +1,5 @@
 import { decryptToText } from './assetCrypto';
+import { supabase } from './supabase';
 import { parseCsvText } from './csvParser';
 import type { Question, TrackId, Difficulty } from '../types/question';
 
@@ -219,7 +220,8 @@ const SOURCES: BankSource[] = [
   em('em_c14.csv.enc', 'C14', 'Use leadership and managerial skills')
 ];
 
-const cache = new Map<string, Question[]>();
+type LoadedSource = { questions: Question[]; sampledByServer: boolean };
+const cache = new Map<string, LoadedSource>();
 
 function mapAnswer(ans: string): number {
   const a = ans.trim().toUpperCase();
@@ -385,44 +387,74 @@ function parseGmdssRows(
   return list;
 }
 
-async function loadSource(src: BankSource): Promise<Question[]> {
-  const cacheKey = src.path;
-  if (cache.has(cacheKey)) return cache.get(cacheKey)!;
+async function loadSource(src: BankSource, freeOnly = false): Promise<LoadedSource> {
+  const cacheKey = src.path + (freeOnly ? ':free' : ':full');
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
 
   try {
-    const res = await fetch(`/questions/${src.path}`);
-    if (!res.ok) throw new Error(`Failed to fetch ${src.path}`);
-    const buffer = await res.arrayBuffer();
-    const text = await decryptToText(buffer);
+    if (!supabase) throw new Error('Protected question service is not configured.');
+    let text = '';
+    let sampledByServer = false;
+    const response = await supabase.functions.invoke('question-bank', {
+      body: { action: 'get', path: src.path, freeOnly }
+    });
+    if (response.error || !response.data?.text) {
+      const status = Number((response.error as { context?: { status?: number } } | null)?.context?.status || 0);
+      // Temporary rollout bridge: while the admin copies the 69 assets into private
+      // storage, free reviewer can fall back to the old source and sample it locally.
+      // Paid/full requests never fall back to a public file.
+      if (freeOnly && status === 503) {
+        const legacy = await fetch('/questions/' + src.path, { cache: 'no-store' });
+        if (!legacy.ok) throw new Error('Question bank migration is not ready yet.');
+        text = await decryptToText(await legacy.arrayBuffer());
+      } else {
+        throw response.error || new Error(response.data?.error || 'Protected question delivery failed.');
+      }
+    } else {
+      text = String(response.data.text);
+      sampledByServer = freeOnly && response.data.access === 'free-sample';
+    }
     const rows = parseCsvText(text);
-    // GMDSS exports may be flattened into a single CSV row; parse those with the GMDSS fallback.
-    if (rows.length <= 1 && src.format !== 'gmdss') return [];
+    if (rows.length <= 1 && src.format !== 'gmdss') {
+      const empty = { questions: [], sampledByServer };
+      cache.set(cacheKey, empty);
+      return empty;
+    }
 
     const headerIdx = findHeaderRow(rows, src.format);
-    const list =
-      src.format === 'gmdss'
-        ? parseGmdssRows(rows, headerIdx, src)
-        : parseStandardRows(rows, headerIdx, src);
-
-    cache.set(cacheKey, list);
-    return list;
+    const questions = src.format === 'gmdss'
+      ? parseGmdssRows(rows, headerIdx, src)
+      : parseStandardRows(rows, headerIdx, src);
+    const loaded = { questions, sampledByServer };
+    cache.set(cacheKey, loaded);
+    return loaded;
   } catch (e) {
-    console.error('Failed to load question bank', src.path, e);
-    return [];
+    console.error('Failed to load protected question bank', src.path, e);
+    return { questions: [], sampledByServer: freeOnly };
   }
 }
 
 export async function getQuestionsByCompetence(
   track: TrackId,
   competenceId: string,
-  part?: number
+  part?: number,
+  freeOnly = false
 ): Promise<Question[]> {
+  if (freeOnly) {
+    const allSources = SOURCES.filter(s => s.track === track);
+    const loaded = await Promise.all(allSources.map(src => loadSource(src, true)));
+    const allQuestions = loaded.flatMap(item => item.questions);
+    const sampled = loaded.every(item => item.sampledByServer) ? allQuestions : freeSample(allQuestions, track);
+    return sampled.filter(q => q.competenceId === competenceId &&
+      (part == null || (track === 'GMDSS_GOC' && q.id.includes('-P' + part + '-'))));
+  }
   const sources = SOURCES.filter(
     (s) => s.track === track && s.competenceId === competenceId &&
       (part == null || (track === 'GMDSS_GOC' && s.path.includes(`part${part}.csv.enc`)))
   );
-  const results = await Promise.all(sources.map(loadSource));
-  return results.flat();
+  const results = await Promise.all(sources.map(src => loadSource(src, false)));
+  return results.flatMap(item => item.questions);
 }
 
 /** Minimal java.util.Random so the free OIC-NW sample matches the Android app exactly. */
@@ -502,10 +534,12 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
   return out;
 }
 
-export async function getQuestionsByTrack(track: TrackId): Promise<Question[]> {
+export async function getQuestionsByTrack(track: TrackId, freeOnly = false): Promise<Question[]> {
   const sources = SOURCES.filter((s) => s.track === track);
-  const results = await Promise.all(sources.map(loadSource));
-  return results.flat();
+  const results = await Promise.all(sources.map(src => loadSource(src, freeOnly)));
+  const allQuestions = results.flatMap(item => item.questions);
+  if (freeOnly && !results.every(item => item.sampledByServer)) return freeSample(allQuestions, track);
+  return allQuestions;
 }
 
 export function listAvailableCompetences(
