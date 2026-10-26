@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
@@ -521,7 +522,28 @@ export function MockExamRunner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}><strong>{answered} / {questions.length} answered</strong><span style={{ color: 'var(--text-muted)', fontSize: '.85rem' }}>{questions.length - answered} unanswered</span></div>
       <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowSubmitConfirm(true)}>SUBMIT EXAM</button>
     </div>
-    {showSubmitConfirm && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', padding: 16 }}><section role="dialog" aria-modal="true" aria-labelledby="submit-mock-title" className="card" style={{ width: 'min(100%, 460px)', padding: 20 }}><h2 id="submit-mock-title" style={{ marginTop: 0 }}>Submit this mock exam?</h2><p>You answered {answered} of {questions.length} questions. {questions.length - answered ? 'Unanswered questions will be marked incorrect.' : 'All questions have been answered.'} You cannot change your answers after submission.</p><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button className="btn btn-outline" onClick={() => setShowSubmitConfirm(false)}>CONTINUE EXAM</button><button className="btn btn-primary" onClick={() => { setShowSubmitConfirm(false); finish() }}>CONFIRM SUBMISSION</button></div></section></div>}
-    {showLockNotice && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', padding: 16 }}><section role="dialog" aria-modal="true" aria-labelledby="mock-lock-title" className="card" style={{ width: 'min(100%, 420px)', padding: 20 }}><h2 id="mock-lock-title" style={{ marginTop: 0 }}>Exam in progress</h2><p>You cannot go back or leave while the mock exam is active. Submit the exam to finish.</p><button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowLockNotice(false)}>RETURN TO EXAM</button></section></div>}
+    {showSubmitConfirm && createPortal(
+      <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(7, 12, 22, .72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, boxSizing: 'border-box', minHeight: '100dvh' }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="submit-mock-title" className="card" style={{ width: 'min(100%, 460px)', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', boxSizing: 'border-box', padding: 24, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.4)', opacity: 1, transform: 'none', position: 'relative', zIndex: 1 }}>
+          <h2 id="submit-mock-title" style={{ marginTop: 0 }}>Are you sure you want to submit this mock exam?</h2>
+          <p>You answered {answered} of {questions.length} questions. {questions.length - answered ? 'Unanswered questions will be marked incorrect.' : 'All questions have been answered.'} You cannot change your answers after submission.</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, marginTop: 20 }}>
+            <button type="button" className="btn btn-outline" onClick={() => setShowSubmitConfirm(false)}>NO, CONTINUE EXAM</button>
+            <button type="button" className="btn btn-primary" onClick={() => { setShowSubmitConfirm(false); finish() }}>YES, SUBMIT EXAM</button>
+          </div>
+        </section>
+      </div>,
+      document.body
+    )}
+    {showLockNotice && createPortal(
+      <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(7, 12, 22, .72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, boxSizing: 'border-box', minHeight: '100dvh' }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="mock-lock-title" className="card" style={{ width: 'min(100%, 420px)', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', boxSizing: 'border-box', padding: 24, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.4)', opacity: 1, transform: 'none', position: 'relative', zIndex: 1 }}>
+          <h2 id="mock-lock-title" style={{ marginTop: 0 }}>Exam in progress</h2>
+          <p>You cannot go back or leave while the mock exam is active. Submit the exam to finish.</p>
+          <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowLockNotice(false)}>RETURN TO EXAM</button>
+        </section>
+      </div>,
+      document.body
+    )}
   </div>
 }
