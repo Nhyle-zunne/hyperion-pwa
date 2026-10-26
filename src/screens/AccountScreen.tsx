@@ -549,7 +549,6 @@ export default function AccountScreen() {
                 <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
               </div>}
             </div>
-            </div>
           </section>
         </aside>
 
