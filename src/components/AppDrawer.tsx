@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useUIStore } from '../stores/uiStore'
 
+const FB = 'https://www.facebook.com/hyperionbynhyle/'
 
 export default function AppDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate()
@@ -100,7 +101,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
 
         <Item label="Study streak" path="/studytime" icon="🏅" />
         <Item label="Study time" path="/studytime" icon="⏱" />
-        <Item label="Contact us" external="mailto:hyperionmaritimex@gmail.com" icon="✉️" />
+        <Item label="Contact us (Facebook)" external={FB} icon="💬" />
 
         <div className="drawer-section">Question bank & tools</div>
         <Item label="Search question bank" path="/search" icon="🔍" />
