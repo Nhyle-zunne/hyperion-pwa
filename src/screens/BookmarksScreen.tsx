@@ -53,8 +53,8 @@ export default function BookmarksScreen() {
     const competenceId = questions.every(q => q.competenceId === questions[0].competenceId)
       ? questions[0].competenceId
       : null
-    startCustomSession({ questions, track, competenceId, isFreeSession: onlyFreeQuestions })
-    navigate('/practice/quiz')
+    const started = await startCustomSession({ questions, track, competenceId, isFreeSession: onlyFreeQuestions })
+    if (started) navigate('/practice/quiz')
   }
 
   return (
