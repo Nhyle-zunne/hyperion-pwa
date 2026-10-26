@@ -297,6 +297,26 @@ async function authorizeTrack(admin: any, user: any, isAdmin: boolean, track: st
   if (isAdmin) return true;
   return await checkEntitlement(admin, user.id, track);
 }
+const freeQuestionIdCache = new Map<string, Set<string>>();
+function questionIdBelongsToTrack(id: string, track: string) {
+  if (track === "DECK_OIC_NW") return id.startsWith("D-");
+  if (track === "GMDSS_GOC") return id.startsWith("G-");
+  if (track === "ENGINE_OIC_EW") return id.startsWith("EW-");
+  if (track === "DECK_MGT") return id.startsWith("DM-");
+  if (track === "ENGINE_MGT") return id.startsWith("EM-");
+  return false;
+}
+async function freeQuestionIds(admin: any, track: string): Promise<Set<string>> {
+  const cached = freeQuestionIdCache.get(track);
+  if (cached) return cached;
+  const ids = new Set<string>();
+  for (const path of SOURCE_ASSETS.filter(item => trackForPath(item) === track)) {
+    const sample = sampleFreeCsv(path, await privateText(admin, path));
+    for (const question of toSearchQuestions(path, sample)) ids.add(String(question.id));
+  }
+  freeQuestionIdCache.set(track, ids);
+  return ids;
+}
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: headers(req) });
   if (req.method !== "POST") return json(req, { error: "Method not allowed." }, 405);
@@ -355,6 +375,23 @@ Deno.serve(async (req: Request) => {
   let state: any;
   try { state = await migrationState(admin); } catch { return json(req, { error: "Question service is not ready." }, 503); }
   if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Protected question bank is not ready yet." }, 503);
+
+  if (body.action === "authorize-session") {
+    const track = body.track || "";
+    const questionIds = body.questionIds;
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) return json(req, { allowed: false, error: "Invalid track." }, 400);
+    if (!Array.isArray(questionIds) || questionIds.length < 1 || questionIds.length > 3000 || questionIds.some(id => typeof id !== "string" || id.length > 120 || !questionIdBelongsToTrack(id, track))) {
+      return json(req, { allowed: false, error: "Invalid question set." }, 400);
+    }
+    try {
+      if (await authorizeTrack(admin, user, isAdmin, track)) return json(req, { allowed: true, access: isAdmin ? "admin" : "licensed" });
+      const allowedIds = await freeQuestionIds(admin, track);
+      const allowed = questionIds.every(id => allowedIds.has(id));
+      return json(req, { allowed, access: allowed ? "free-sample" : "denied" }, allowed ? 200 : 403);
+    } catch {
+      return json(req, { allowed: false, error: "Could not verify question access." }, 503);
+    }
+  }
 
   if (body.action === "counts") {
     const track = body.track || "";
