@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 
   const { data: order, error: orderError } = await admin.from('orders')
-    .select('id,user_id,product_code,track_id,amount_php,status,paymongo_checkout_session_id')
+    .select('id,user_id,product_code,track_id,amount_php,status,customer_name,customer_company,customer_school,paymongo_checkout_session_id')
     .eq('id', orderId)
     .maybeSingle()
   if (orderError || !order) return new Response('Order not found', { status: 404 })
@@ -142,7 +142,8 @@ Deno.serve(async (req) => {
     paymongo_payment_id: payment.id,
     payment_reference: payment.id,
     payment_method: `PayMongo · ${String(paymentSource).slice(0, 80)}`,
-    paid_at: new Date().toISOString()
+    paid_at: new Date().toISOString(),
+    customer_name: order.customer_name || sessionAttrs?.billing?.name || paymentAttrs?.billing?.name || null
   }).eq('id', order.id).eq('paymongo_checkout_session_id', checkoutSession.id).neq('status', 'paid')
   if (updateError) return new Response('Could not update paid order', { status: 500 })
 
