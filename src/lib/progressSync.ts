@@ -211,7 +211,20 @@ function mergePersistedStore(
     const remoteItems = Array.isArray(rs[stateKey]) ? rs[stateKey] as { id: string; at?: number; savedAt?: number; lastWrongAt?: number }[] : []
     const timestampKey = key === 'hyperion-study-time' ? 'at' : key === 'hyperion-vault' ? 'lastWrongAt' : 'savedAt'
     const merged = mergeById(remoteItems, localItems, timestampKey).slice(0, key === 'hyperion-study-time' ? 400 : 500)
-    return JSON.stringify({ version: local.version ?? remote.version ?? 0, state: { ...rs, ...ls, [stateKey]: merged } })
+    const state = { ...rs, ...ls, [stateKey]: merged }
+    if (key === 'hyperion-study-time') {
+      // Select the most recently changed calendar date, not simply the local copy.
+      const localDateAt = Number(ls.selectedDateUpdatedAt ?? 0)
+      const remoteDateAt = Number(rs.selectedDateUpdatedAt ?? 0)
+      if (typeof ls.selectedDate === 'string' && localDateAt >= remoteDateAt) {
+        state.selectedDate = ls.selectedDate
+        state.selectedDateUpdatedAt = localDateAt
+      } else if (typeof rs.selectedDate === 'string') {
+        state.selectedDate = rs.selectedDate
+        state.selectedDateUpdatedAt = remoteDateAt
+      }
+    }
+    return JSON.stringify({ version: local.version ?? remote.version ?? 0, state })
   }
 
   if (key === 'hyperion-mock-exam-plan-v1') {
