@@ -1,5 +1,44 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+type LicenseTerm = 'week' | 'month' | 'year'
+const productTracks: Record<string, string> = {
+  oic_nw: 'DECK_OIC_NW',
+  gmdss: 'GMDSS_GOC',
+  engine_ew: 'ENGINE_OIC_EW',
+  deck_mgt: 'DECK_MGT',
+  engine_mgt: 'ENGINE_MGT'
+}
+const termPrices: Record<string, Record<LicenseTerm, number>> = {
+  oic_nw: { week: 20, month: 50, year: 350 },
+  gmdss: { week: 15, month: 40, year: 250 },
+  engine_ew: { week: 20, month: 50, year: 350 },
+  deck_mgt: { week: 40, month: 100, year: 700 },
+  engine_mgt: { week: 40, month: 100, year: 700 }
+}
+function expiryForTerm(base: Date, term: LicenseTerm) {
+  const result = new Date(base)
+  if (term === 'week') {
+    result.setUTCDate(result.getUTCDate() + 7)
+    return result
+  }
+  if (term === 'month') {
+    const day = result.getUTCDate()
+    result.setUTCDate(1)
+    result.setUTCMonth(result.getUTCMonth() + 1)
+    const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate()
+    result.setUTCDate(Math.min(day, lastDay))
+    return result
+  }
+  const month = result.getUTCMonth()
+  const day = result.getUTCDate()
+  result.setUTCDate(1)
+  result.setUTCFullYear(result.getUTCFullYear() + 1)
+  result.setUTCMonth(month)
+  const lastDay = new Date(Date.UTC(result.getUTCFullYear(), month + 1, 0)).getUTCDate()
+  result.setUTCDate(Math.min(day, lastDay))
+  return result
+}
+
 function equalConstantTime(a: string, b: string) {
   const aa = new TextEncoder().encode(a)
   const bb = new TextEncoder().encode(b)
@@ -112,14 +151,21 @@ Deno.serve(async (req) => {
       return new Response('Basket order status or checkout session mismatch', { status: 409 })
     }
     const codes = Array.isArray(batch.product_codes) ? batch.product_codes as string[] : []
+    const batchTerms = (batch.license_terms ?? codes.map(() => 'year')) as string[]
     const metadataCodes = typeof sessionAttrs?.metadata?.product_codes === 'string'
       ? sessionAttrs.metadata.product_codes.split(',').filter(Boolean).sort()
       : []
+    const expectedProductTerms = codes.map((code, index) => `${code}:${batchTerms[index]}`).sort().join(',')
+    const metadataProductTerms = typeof sessionAttrs?.metadata?.product_terms === 'string'
+      ? sessionAttrs.metadata.product_terms.split(',').sort().join(',')
+      : ''
     if (!codes.length || new Set(codes).size !== codes.length ||
+        batchTerms.length !== codes.length || batchTerms.some(term => !['week','month','year'].includes(term)) ||
         sessionAttrs?.reference_number !== batch.id ||
         (sessionAttrs?.metadata?.batch_id !== batch.id && sessionAttrs?.metadata?.order_id !== batch.id) ||
         sessionAttrs?.metadata?.user_id !== batch.user_id ||
         metadataCodes.join(',') !== [...codes].sort().join(',') ||
+        (metadataProductTerms ? metadataProductTerms !== expectedProductTerms : batchTerms.some(term => term !== 'year')) ||
         sessionAttrs?.livemode !== isLive) {
       return new Response('Basket order metadata mismatch', { status: 400 })
     }
@@ -130,23 +176,19 @@ Deno.serve(async (req) => {
     }
 
     const { data: childOrders, error: childError } = await admin.from('orders')
-      .select('id,user_id,product_code,track_id,amount_php,currency,status,customer_name,customer_company,customer_school')
+      .select('id,user_id,product_code,track_id,license_term,amount_php,currency,status,customer_name,customer_company,customer_school')
       .eq('checkout_batch_id', batch.id)
       .eq('user_id', batch.user_id)
     if (childError || !childOrders) return new Response('Could not load basket order items', { status: 500 })
     const childCodes = childOrders.map((order: any) => order.product_code).sort()
     const expectedCodes = [...codes].sort()
     const childTotal = childOrders.reduce((sum: number, order: any) => sum + Number(order.amount_php), 0)
-    const products: Record<string, string> = {
-      oic_nw: 'DECK_OIC_NW',
-      gmdss: 'GMDSS_GOC',
-      engine_ew: 'ENGINE_OIC_EW',
-      deck_mgt: 'DECK_MGT',
-      engine_mgt: 'ENGINE_MGT'
-    }
+    const termsByCode = Object.fromEntries(codes.map((code, index) => [code, batchTerms[index]])) as Record<string, LicenseTerm>
     if (childOrders.length !== codes.length ||
         childCodes.some((code: string, index: number) => code !== expectedCodes[index]) ||
-        childOrders.some((order: any) => products[order.product_code] !== order.track_id || order.currency !== 'PHP') ||
+        childOrders.some((order: any) => productTracks[order.product_code] !== order.track_id || order.currency !== 'PHP' ||
+          order.license_term !== termsByCode[order.product_code] ||
+          Number(order.amount_php) !== termPrices[order.product_code]?.[termsByCode[order.product_code]]) ||
         childTotal !== Number(batch.amount_php)) {
       return new Response('Basket item list or total mismatch', { status: 400 })
     }
@@ -174,14 +216,15 @@ Deno.serve(async (req) => {
           ? new Date(existingEntitlement.expires_at)
           : null
         const renewalBase = existingExpiry && existingExpiry.getTime() > now.getTime() ? existingExpiry : now
-        const expiresAt = new Date(renewalBase)
-        expiresAt.setUTCFullYear(expiresAt.getUTCFullYear() + 1)
+        const term: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' ? order.license_term : 'year'
+        const expiresAt = expiryForTerm(renewalBase, term)
 
         const { error: grantError } = await admin.from('entitlements').upsert({
           user_id: order.user_id,
           product_code: order.product_code,
           track_id: order.track_id,
           order_id: order.id,
+          license_term: term,
           status: 'active',
           granted_at: now.toISOString(),
           renewed_at: now.toISOString(),
@@ -218,7 +261,7 @@ Deno.serve(async (req) => {
   }
 
   const { data: order, error: orderError } = await admin.from('orders')
-    .select('id,user_id,product_code,track_id,amount_php,status,customer_name,customer_company,customer_school,paymongo_checkout_session_id')
+    .select('id,user_id,product_code,track_id,license_term,amount_php,status,customer_name,customer_company,customer_school,paymongo_checkout_session_id')
     .eq('id', orderId)
     .maybeSingle()
   if (orderError || !order) return new Response('Order not found', { status: 404 })
@@ -229,11 +272,14 @@ Deno.serve(async (req) => {
   if (
     order.product_code !== sessionAttrs?.metadata?.product_code ||
     order.user_id !== sessionAttrs?.metadata?.user_id ||
-    order.id !== sessionAttrs?.metadata?.order_id
+    order.id !== sessionAttrs?.metadata?.order_id ||
+    (sessionAttrs?.metadata?.license_term && sessionAttrs.metadata.license_term !== (order.license_term || 'year'))
   ) return new Response('Order metadata mismatch', { status: 400 })
 
   const paymentAttrs = payment.attributes
-  if (paymentAttrs?.currency !== 'PHP' || Number(paymentAttrs?.amount) !== order.amount_php * 100) {
+  const singleTerm: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' ? order.license_term : 'year'
+  if (Number(order.amount_php) !== termPrices[order.product_code]?.[singleTerm] ||
+      paymentAttrs?.currency !== 'PHP' || Number(paymentAttrs?.amount) !== order.amount_php * 100) {
     return new Response('Payment amount mismatch', { status: 400 })
   }
 
@@ -256,14 +302,14 @@ Deno.serve(async (req) => {
       : null
     const hasFutureExpiry = existingExpiry && existingExpiry.getTime() > now.getTime()
     const renewalBase = hasFutureExpiry ? existingExpiry : now
-    const expiresAt = new Date(renewalBase)
-    expiresAt.setUTCFullYear(expiresAt.getUTCFullYear() + 1)
+    const expiresAt = expiryForTerm(renewalBase, singleTerm)
 
     const { error: entitlementError } = await admin.from('entitlements').upsert({
       user_id: order.user_id,
       product_code: order.product_code,
       track_id: order.track_id,
       order_id: order.id,
+      license_term: singleTerm,
       status: 'active',
       granted_at: now.toISOString(),
       renewed_at: now.toISOString(),
