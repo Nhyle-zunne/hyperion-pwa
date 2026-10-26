@@ -9,6 +9,7 @@ interface LicenseState {
   isEngineMgtUnlocked: boolean;
   isAllAccessUnlocked: boolean;
   cloudTrackIds: string[];
+  entitlementsVerified: boolean;
   checkLicenseStatus: () => void;
   isTrackUnlocked: (track: string) => boolean;
   getRemainingLabel: () => string;
@@ -38,15 +39,23 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
   isEngineMgtUnlocked: false,
   isAllAccessUnlocked: false,
   cloudTrackIds: [],
+  entitlementsVerified: false,
 
   refreshCloudEntitlements: async () => {
     if (!supabase) {
-      set({ cloudTrackIds: [], ...accessFlags([]) });
+      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
       return;
     }
-    const { data: { session } } = await supabase.auth.getSession();
+    let session;
+    try {
+      const result = await supabase.auth.getSession();
+      session = result.data.session;
+    } catch {
+      set({ entitlementsVerified: false });
+      return;
+    }
     if (!session?.user) {
-      set({ cloudTrackIds: [], ...accessFlags([]) });
+      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
       return;
     }
 
@@ -54,21 +63,26 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
     try {
       const { data, error } = await supabase.functions.invoke('admin-payment-review', { body: { action: 'check-admin' } });
       if (!error && data?.isAdmin === true) {
-        set({ cloudTrackIds: [...TRACK_IDS], ...accessFlags(TRACK_IDS) });
+        set({ cloudTrackIds: [...TRACK_IDS], ...accessFlags(TRACK_IDS), entitlementsVerified: true });
         return;
       }
     } catch {
       // If the admin check is unavailable, continue with ordinary subscription lookup.
     }
 
-    const { data, error } = await supabase
-      .from('entitlements')
-      .select('track_id')
-      .eq('user_id', session.user.id)
-      .eq('status', 'active')
-      .gt('expires_at', new Date().toISOString());
-    const ids = error ? [] : Array.from(new Set((data ?? []).map((row) => row.track_id as string)));
-    set({ cloudTrackIds: ids, ...accessFlags(ids) });
+    try {
+      const { data, error } = await supabase
+        .from('entitlements')
+        .select('track_id')
+        .eq('user_id', session.user.id)
+        .eq('status', 'active')
+        .gt('expires_at', new Date().toISOString());
+      if (error) { set({ entitlementsVerified: false }); return; }
+      const ids = Array.from(new Set((data ?? []).map((row) => row.track_id as string)));
+      set({ cloudTrackIds: ids, ...accessFlags(ids), entitlementsVerified: true });
+    } catch {
+      set({ entitlementsVerified: false });
+    }
   },
 
   checkLicenseStatus: () => {
@@ -105,5 +119,5 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
     return get().isAllAccessUnlocked ? 'Admin · All tracks unlocked' : count ? `${count} active subscription track${count === 1 ? '' : 's'}` : 'No active subscriptions';
   },
 
-  clearLicense: () => set({ cloudTrackIds: [], ...accessFlags([]) })
+  clearLicense: () => set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false })
 }));
