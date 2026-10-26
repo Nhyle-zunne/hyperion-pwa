@@ -320,6 +320,7 @@ export default function BasketScreen() {
       .basket-page .basket-action-row{display:flex;gap:.5rem;flex-wrap:wrap}
       .basket-page .checkout-pay-button{background:var(--accent);border-color:var(--accent);color:var(--btn-primary-text);transition:background-color .16s ease,border-color .16s ease,transform .16s ease}
       .basket-page .checkout-pay-button:hover:not(:disabled){background:var(--accent-dim);border-color:var(--accent-dim)}
+      [data-theme='dark'] .basket-page .checkout-pay-button{color:#fff}
       .basket-page .checkout-pay-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
       @media(max-width:820px){.basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.basket-page .basket-summary{position:static}}
       @media(max-width:520px){.basket-page .basket-row{align-items:flex-start}.basket-page .basket-action-row button{flex:1}}
