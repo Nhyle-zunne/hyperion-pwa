@@ -230,9 +230,6 @@ Deno.serve(async (req: Request) => {
     return json(req, { status: "complete", assetCount: copied, expectedAssets: SOURCE_ASSETS.length, message: "Encrypted question files are safely copied to private storage. Public copies still need removal in a follow-up deployment after migration is verified." });
   }
   if (body.action !== "get" || typeof body.path !== "string" || !SOURCE_ASSETS.includes(body.path)) return json(req, { error: "Invalid question asset request." }, 400);
-  let state: any;
-  try { state = await migrationState(admin); } catch { return json(req, { error: "Question service is not ready." }, 503); }
-  if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Protected question bank is not ready yet." }, 503);
   const track = trackForPath(body.path);
   if (!track) return json(req, { error: "Invalid track." }, 400);
   const freeOnly = body.freeOnly === true;
@@ -244,6 +241,9 @@ Deno.serve(async (req: Request) => {
       } catch { return json(req, { error: "Could not verify your license. Please refresh and try again." }, 503); }
     }
   }
+  let state: any;
+  try { state = await migrationState(admin); } catch { return json(req, { error: "Question service is not ready." }, 503); }
+  if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Protected question bank is not ready yet." }, 503);
   const result = await admin.storage.from("question-banks").download(body.path);
   if (result.error || !result.data) return json(req, { error: "Question asset is not available in private storage." }, 503);
   try {
