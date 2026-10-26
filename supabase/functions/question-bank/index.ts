@@ -174,6 +174,129 @@ async function migrationState(admin: any) {
   if (result.error || !result.data) throw new Error("Could not read question-bank migration state.");
   return result.data;
 }
+
+type SourceInfo = { track: string; competenceId: string; part: number | null; format: "standard" | "gmdss"; functionId: string; idPrefix: string };
+const privateTextCache = new Map<string, string>();
+function sourceInfo(path: string): SourceInfo | null {
+  const track = trackForPath(path);
+  if (!track) return null;
+  let competenceId = "";
+  let part: number | null = null;
+  if (track === "DECK_OIC_NW") competenceId = path.match(/oic_nw_c(\\d+)\\.csv\\.enc$/)?.[1] ? "C" + path.match(/oic_nw_c(\\d+)\\.csv\\.enc$/)![1] : "";
+  else if (track === "GMDSS_GOC") {
+    const match = path.match(/gmdss\\/c(1|2)_part(\\d+)\\.csv\\.enc$/);
+    if (!match) return null;
+    competenceId = "C" + match[1]; part = Number(match[2]);
+  } else {
+    const match = path.match(/(?:ew|dm|em)_c(\\d+)\\.csv\\.enc$/);
+    if (!match) return null;
+    competenceId = "C" + match[1];
+  }
+  if (!competenceId) return null;
+  const n = Number(competenceId.slice(1));
+  let functionId = "GMDSS";
+  let idPrefix = `G-${competenceId}-P${part}`;
+  if (track === "DECK_OIC_NW") {
+    functionId = ["C1","C2","C3","C4","C5","C7","C9"].includes(competenceId) ? "F1" : ["C10","C11"].includes(competenceId) ? "F2" : "F3";
+    idPrefix = `D-${functionId}-${competenceId}`;
+  } else if (track === "ENGINE_OIC_EW") {
+    functionId = n <= 5 ? "F1" : n <= 7 ? "F2" : n <= 9 ? "F3" : "F4";
+    idPrefix = `EW-${competenceId}`;
+  } else if (track === "DECK_MGT") {
+    functionId = n <= 11 ? "F1" : n <= 14 ? "F2" : "F3";
+    idPrefix = `DM-${competenceId}`;
+  } else if (track === "ENGINE_MGT") {
+    functionId = n <= 4 ? "F1" : n <= 6 ? "F2" : n <= 9 ? "F3" : "F4";
+    idPrefix = `EM-${competenceId}`;
+  }
+  return { track, competenceId, part, format: track === "GMDSS_GOC" ? "gmdss" : "standard", functionId, idPrefix };
+}
+async function privateText(admin: any, path: string): Promise<string> {
+  const cached = privateTextCache.get(path);
+  if (cached) return cached;
+  const result = await admin.storage.from("question-banks").download(path);
+  if (result.error || !result.data) throw new Error("Question asset is not available in private storage.");
+  const text = await decryptToText(new Uint8Array(await result.data.arrayBuffer()));
+  privateTextCache.set(path, text);
+  return text;
+}
+function validGmdssRows(path: string, text: string): string[][] {
+  const rows = parseCsv(text);
+  const hi = headerIndex(rows, "gmdss");
+  const normal = rows.length > 3 ? rows.slice(hi + 1).filter(validGmdss) : [];
+  if (normal.length) return normal;
+  const flat = rows.length === 1 ? rows[0] : rows.flat();
+  const chunks: string[][] = [];
+  for (let i = 0; i < flat.length; i++) {
+    if ((flat[i] || "").trim().toLowerCase() !== "choice") continue;
+    const start = i - 1;
+    if (start < 0 || start + 9 >= flat.length) continue;
+    const chunk = flat.slice(start, start + 10);
+    if (validGmdss(chunk)) chunks.push(chunk);
+  }
+  return chunks;
+}
+function validQuestionCount(path: string, text: string, freeOnly: boolean): number {
+  let count = 0;
+  const info = sourceInfo(path);
+  if (!info) return 0;
+  if (info.format === "gmdss") {
+    count = validGmdssRows(path, text).length;
+    if (freeOnly) count = Math.min(count, info.competenceId === "C1" ? 90 : 65);
+    return count;
+  }
+  const rows = parseCsv(text);
+  const hi = headerIndex(rows, "standard");
+  count = rows.slice(hi + 1).filter(validStandard).length;
+  if (!freeOnly) return count;
+  if (info.track === "DECK_OIC_NW") {
+    const quotas: Record<string, number> = { C1:420,C2:221,C3:258,C4:160,C5:100,C7:196,C9:176,C10:109,C11:96,C12:110,C13:122,C17:97 };
+    return Math.min(count, quotas[info.competenceId] ?? 1);
+  }
+  return Math.min(count, Math.max(1, Math.round(count * 0.4)));
+}
+function answerIndex(value: string, optionsLength: number): number {
+  const raw = value.trim().toUpperCase();
+  const mapped: Record<string, number> = { A:0, B:1, C:2, D:3, E:4, F:5, "1":0, "2":1, "3":2, "4":3, "5":4, "6":5 };
+  return Math.min(mapped[raw] ?? 0, Math.max(0, optionsLength - 1));
+}
+function difficulty(index: number) {
+  const m = (index + 1) % 3;
+  return m === 1 ? "EASY" : m === 2 ? "MODERATE" : "DIFFICULT";
+}
+function toSearchQuestions(path: string, text: string): Record<string, unknown>[] {
+  const info = sourceInfo(path);
+  if (!info) return [];
+  const records: { q: string; options: string[]; explanation: string; answer: string }[] = [];
+  if (info.format === "gmdss") {
+    for (const row of validGmdssRows(path, text)) {
+      records.push({ q: (row[0] || "").trim(), options: row.slice(2,8).map(x => (x || "").trim()).filter(Boolean), explanation: (row[8] || "").trim(), answer: (row[9] || "").trim() });
+    }
+  } else {
+    const rows = parseCsv(text), hi = headerIndex(rows, "standard");
+    for (const row of rows.slice(hi + 1)) {
+      if (!validStandard(row)) continue;
+      records.push({ q: row[1].trim(), options: row.slice(2,6).map(x => x.trim()).filter(Boolean), explanation: (row[7] || "").trim(), answer: row[6].trim() });
+    }
+  }
+  return records.map((record, i) => ({
+    id: `${info.idPrefix}-${String(i + 1).padStart(3, "0")}`,
+    track: info.track,
+    functionId: info.functionId,
+    competenceId: info.competenceId,
+    topic: info.competenceId,
+    questionText: record.q,
+    options: record.options,
+    correctAnswerIndex: answerIndex(record.answer, record.options.length),
+    explanation: record.explanation,
+    difficulty: difficulty(i + 1)
+  }));
+}
+async function authorizeTrack(admin: any, user: any, isAdmin: boolean, track: string): Promise<boolean> {
+  if (!user) return false;
+  if (isAdmin) return true;
+  return await checkEntitlement(admin, user.id, track);
+}
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: headers(req) });
   if (req.method !== "POST") return json(req, { error: "Method not allowed." }, 405);
@@ -182,7 +305,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceKey) return json(req, { error: "Question service is not configured." }, 503);
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let body: { action?: string; path?: string; freeOnly?: boolean };
+  let body: { action?: string; path?: string; track?: string; query?: string; limit?: number; freeOnly?: boolean };
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
   let user: any = null, isAdmin = false;
   const authHeader = req.headers.get("Authorization");
@@ -229,28 +352,78 @@ Deno.serve(async (req: Request) => {
     await admin.from("question_bank_migration_state").update({ status: "complete", asset_count: copied, error_summary: null, updated_at: new Date().toISOString() }).eq("id", 1);
     return json(req, { status: "complete", assetCount: copied, expectedAssets: SOURCE_ASSETS.length, message: "Encrypted question files are safely copied to private storage. Public copies still need removal in a follow-up deployment after migration is verified." });
   }
+  let state: any;
+  try { state = await migrationState(admin); } catch { return json(req, { error: "Question service is not ready." }, 503); }
+  if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Protected question bank is not ready yet." }, 503);
+
+  if (body.action === "counts") {
+    const track = body.track || "";
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) return json(req, { error: "Invalid track." }, 400);
+    const freeOnly = body.freeOnly === true;
+    if (!freeOnly) {
+      try {
+        if (!await authorizeTrack(admin, user, isAdmin, track)) return json(req, { error: "An active license is required to access paid question counts." }, user ? 403 : 401);
+      } catch { return json(req, { error: "Could not verify your license. Please refresh and try again." }, 503); }
+    }
+    try {
+      const paths = SOURCE_ASSETS.filter(path => trackForPath(path) === track);
+      const counts = [];
+      for (const assetPath of paths) {
+        const info = sourceInfo(assetPath);
+        if (!info) continue;
+        const text = await privateText(admin, assetPath);
+        counts.push({ competenceId: info.competenceId, part: info.part, count: validQuestionCount(assetPath, text, freeOnly) });
+      }
+      return json(req, { counts, access: freeOnly ? "free-sample-counts" : isAdmin ? "admin" : "licensed" });
+    } catch {
+      return json(req, { error: "Could not read question metadata from private storage." }, 503);
+    }
+  }
+
+  if (body.action === "search") {
+    const track = body.track || "";
+    const query = (body.query || "").trim().toLowerCase();
+    const limit = Math.max(1, Math.min(40, Math.floor(body.limit || 40)));
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) return json(req, { error: "Invalid track." }, 400);
+    if (query.length < 2 || query.length > 120) return json(req, { error: "Enter a search term between 2 and 120 characters." }, 400);
+    try {
+      if (!await authorizeTrack(admin, user, isAdmin, track)) return json(req, { error: "An active license is required to search this track." }, user ? 403 : 401);
+    } catch { return json(req, { error: "Could not verify your license. Please refresh and try again." }, 503); }
+    try {
+      const hits: Record<string, unknown>[] = [];
+      for (const assetPath of SOURCE_ASSETS.filter(path => trackForPath(path) === track)) {
+        const all = toSearchQuestions(assetPath, await privateText(admin, assetPath));
+        for (const item of all) {
+          const question = String(item.questionText || "");
+          const topic = String(item.topic || "");
+          const competence = String(item.competenceId || "");
+          const options = Array.isArray(item.options) ? item.options.join(" ") : "";
+          if ((question + " " + topic + " " + competence + " " + options).toLowerCase().includes(query)) {
+            hits.push(item);
+            if (hits.length >= limit) return json(req, { questions: hits, access: isAdmin ? "admin" : "licensed" });
+          }
+        }
+      }
+      return json(req, { questions: hits, access: isAdmin ? "admin" : "licensed" });
+    } catch {
+      return json(req, { error: "Search service could not read the protected question bank." }, 503);
+    }
+  }
+
   if (body.action !== "get" || typeof body.path !== "string" || !SOURCE_ASSETS.includes(body.path)) return json(req, { error: "Invalid question asset request." }, 400);
   const track = trackForPath(body.path);
   if (!track) return json(req, { error: "Invalid track." }, 400);
   const freeOnly = body.freeOnly === true;
   if (!freeOnly) {
-    if (!user) return json(req, { error: "Sign in with an active license to access the full question bank." }, 401);
-    if (!isAdmin) {
-      try {
-        if (!await checkEntitlement(admin, user.id, track)) return json(req, { error: "This track needs an active license. Start Free Reviewer or renew your subscription." }, 403);
-      } catch { return json(req, { error: "Could not verify your license. Please refresh and try again." }, 503); }
-    }
+    try {
+      if (!await authorizeTrack(admin, user, isAdmin, track)) return json(req, { error: "This track needs an active license. Start Free Reviewer or renew your subscription." }, user ? 403 : 401);
+    } catch { return json(req, { error: "Could not verify your license. Please refresh and try again." }, 503); }
   }
-  let state: any;
-  try { state = await migrationState(admin); } catch { return json(req, { error: "Question service is not ready." }, 503); }
-  if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Protected question bank is not ready yet." }, 503);
-  const result = await admin.storage.from("question-banks").download(body.path);
-  if (result.error || !result.data) return json(req, { error: "Question asset is not available in private storage." }, 503);
   try {
-    const text = await decryptToText(new Uint8Array(await result.data.arrayBuffer()));
+    const text = await privateText(admin, body.path);
     const output = freeOnly ? sampleFreeCsv(body.path, text) : text;
     return json(req, { text: output, access: freeOnly ? "free-sample" : isAdmin ? "admin" : "licensed" });
   } catch {
-    return json(req, { error: "Question asset could not be processed." }, 500);
+    return json(req, { error: "Question asset could not be processed." }, 503);
   }
 });
