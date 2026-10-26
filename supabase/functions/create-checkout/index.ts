@@ -58,8 +58,8 @@ Deno.serve(async (req) => {
   const metadataGivenName = [metadata.given_name, metadata.family_name]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .join(' ')
-  const emailName = (user.email?.split('@')[0] ?? '').replace(/[._+-]+/g, ' ').replace(/\\s+/g, ' ').trim()
-    .replace(/\\b\\w/g, letter => letter.toUpperCase())
+  const emailName = (user.email?.split('@')[0] ?? '').replace(/[._+-]+/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/\b\w/g, letter => letter.toUpperCase())
   const customerName = [
     metadata.full_name,
     metadata.name,
