@@ -12,14 +12,12 @@ const dayLabel = (key: string) => {
   const date = new Date(`${key}T12:00:00`)
   return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
-const localDate = (key: string) => new Date(`${key}T12:00:00`)
 const weekStart = (date: Date) => {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
   return d
 }
 const fmtDate = (date: Date, options: Intl.DateTimeFormatOptions) => date.toLocaleDateString(undefined, options)
-const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 
 function Panel({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
   return <section className={`st-panel ${className}`}><h2 className="st-panel-title">{title}</h2>{children}</section>
@@ -82,7 +80,6 @@ export default function StudyTimeScreen() {
   const [tab,setTab] = useState<Tab>('DAY')
   const [selectedDate,setSelectedDate] = useState(()=>new Date())
   const [selectedMonth,setSelectedMonth] = useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1))
-  const todayKey=dateKey(new Date())
   const totalMs=useMemo(()=>segments.reduce((sum,s)=>sum+s.durationMs,0),[segments])
   const selectedKey=dateKey(selectedDate)
   const selectedDay=useMemo(()=>segments.filter(s=>s.day===selectedKey),[segments,selectedKey])
@@ -109,7 +106,6 @@ export default function StudyTimeScreen() {
   const changeDay=(delta:number)=>setSelectedDate(d=>{const n=new Date(d);n.setDate(n.getDate()+delta);return n})
   const displayTime=(ms:number)=>formatDurationMs(ms)
   const headingDate=fmtDate(selectedDate,{year:'numeric',month:'2-digit',day:'2-digit'}).replaceAll('/','.')+` (${fmtDate(selectedDate,{weekday:'short'}).toUpperCase()})`
-  const scoped=tab==='DAY'?selectedDay:tab==='WEEK'?weekSegments:tab==='MONTH'?monthSegments:segments
 
   return <div className="screen st-screen">
     <style>{`
