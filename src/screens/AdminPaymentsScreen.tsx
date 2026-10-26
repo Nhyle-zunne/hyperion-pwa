@@ -42,7 +42,7 @@ export default function AdminPaymentsScreen() {
       if (error || data?.error) throw new Error('Could not check private question storage status.')
       setBankStatus(data.status || 'unknown')
       setBankAssetCount(Number(data.assetCount) || 0)
-      setBankMessage(data.status === 'complete' ? 'All question files are copied to private storage. Public static copies remain until the protected loader is deployed.' : '')
+      setBankMessage(data.errorSummary ? 'Last migration error: ' + data.errorSummary : data.status === 'complete' ? 'All question files are copied to private storage. Public static copies remain until the protected loader is deployed.' : '')
     } catch {
       setBankStatus('unknown')
     }
