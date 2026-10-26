@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Question, UserAnswer, TrackId } from '../types/question';
-import { getQuestionsByCompetence, getQuestionsByTrack } from '../lib/questionBank';
+import { authorizeQuestionSet, getQuestionsByCompetence, getQuestionsByTrack } from '../lib/questionBank';
 import { useLicenseStore } from './licenseStore';
 import { useHistoryStore, type SessionMode } from './historyStore';
 import { useVaultStore } from './vaultStore';
@@ -26,7 +26,7 @@ interface PracticeState {
   streak: number;
   bestStreak: number;
 
-  startCustomSession: (opts: { questions: Question[]; track: TrackId; competenceId?: string | null; isFreeSession: boolean }) => void;
+  startCustomSession: (opts: { questions: Question[]; track: TrackId; competenceId?: string | null; isFreeSession: boolean }) => Promise<boolean>;
   startSession: (opts: {
     mode: SessionMode;
     track: TrackId;
@@ -164,8 +164,16 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   streak: 0,
   bestStreak: 0,
 
-  startCustomSession: ({ questions, track, competenceId, isFreeSession }) => {
-    if (questions.length === 0) return;
+  startCustomSession: async ({ questions, track, competenceId }) => {
+    if (questions.length === 0) return false;
+    await useLicenseStore.getState().refreshCloudEntitlements();
+    const permitted = await authorizeQuestionSet(track, questions);
+    if (!permitted) {
+      set({ loading: false, error: 'These saved questions are no longer available for this account. Renew the track license or use the free reviewer sample.' });
+      return false;
+    }
+    const license = useLicenseStore.getState();
+    const licensed = license.isAllAccessUnlocked || license.isTrackUnlocked(track);
     const selected = shuffle(questions);
     const startedAt = Date.now();
     const sessionId = makeSessionId();
@@ -178,7 +186,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       track,
       competenceId: competenceId ?? null,
       part: null,
-      isFreeSession,
+      isFreeSession: !licensed,
       sessionId,
       finished: false,
       mode: 'PRACTICE',
@@ -189,6 +197,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       bestStreak: 0
     });
     persistActiveSession(get());
+    return true;
   },
 
   startSession: async ({ mode, track, competenceId, limit, timeLimitSec, free, randomizeOrder, shuffleChoices, startItem, part }) => {
@@ -209,6 +218,10 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       const lic = useLicenseStore.getState();
       const licensed = lic.isAllAccessUnlocked || lic.isTrackUnlocked(track);
       const isFreeSession = Boolean(free || !licensed);
+      if (!competenceId && mode !== 'MOCK') {
+        set({ loading: false, sessionId: null, questions: [], error: 'Select a competence before starting practice.' });
+        return;
+      }
       let qs: Question[];
       if (isFreeSession) {
         const sample = await getQuestionsByTrack(track, true);
@@ -425,15 +438,17 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       const snapshot = await getSessionSnapshot(selectedSaved.id);
       if (snapshot && snapshot.questions.length > 0 && snapshot.track) {
         await useLicenseStore.getState().refreshCloudEntitlements();
-        const license = useLicenseStore.getState();
-        if (snapshot.isFreeSession !== true && !(license.isAllAccessUnlocked || license.isTrackUnlocked(snapshot.track))) {
-          set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'This saved paid session requires an active license. Renew access or start a Free Reviewer session.' });
+        const permitted = await authorizeQuestionSet(snapshot.track, snapshot.questions);
+        if (!permitted) {
+          set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample.' });
           return false;
         }
+        const license = useLicenseStore.getState();
+        const licensed = license.isAllAccessUnlocked || license.isTrackUnlocked(snapshot.track);
         set({
           ...snapshot,
           sessionId: selectedSaved.id,
-          isFreeSession: snapshot.isFreeSession === true,
+          isFreeSession: !licensed,
           loading: false,
           error: null,
           finished: false,
@@ -459,11 +474,13 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       );
       if (!matchesRequested) { set({ loading: false }); return false; }
       await useLicenseStore.getState().refreshCloudEntitlements();
-      const license = useLicenseStore.getState();
-      if (saved.isFreeSession !== true && !(license.isAllAccessUnlocked || license.isTrackUnlocked(saved.track))) {
-        set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'This saved paid session requires an active license. Renew access or start a Free Reviewer session.' });
+      const permitted = await authorizeQuestionSet(saved.track, saved.questions);
+      if (!permitted) {
+        set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample.' });
         return false;
       }
+      const license = useLicenseStore.getState();
+      const licensed = license.isAllAccessUnlocked || license.isTrackUnlocked(saved.track);
 
       const sessionId = requestedSessionId || saved.sessionId || selectedSaved?.id || makeSessionId();
       set({
@@ -473,7 +490,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         track: saved.track,
         competenceId: saved.competenceId ?? null,
         part: saved.part ?? selectedSaved?.part ?? null,
-        isFreeSession: saved.isFreeSession === true,
+        isFreeSession: !licensed,
         sessionId,
         finished: false,
         mode: saved.mode ?? selectedSaved?.mode ?? 'PRACTICE',
