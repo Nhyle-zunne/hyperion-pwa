@@ -71,11 +71,17 @@ export default function AccountScreen() {
     const metadataGivenName = [metadata.given_name, metadata.family_name]
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
       .join(' ')
+    const emailName = (session?.user.email?.split('@')[0] ?? '')
+      .replace(/[._+-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, letter => letter.toUpperCase())
     const nameCandidate = [
       metadata.full_name,
       metadata.name,
       metadataGivenName,
       ...identityNames,
+      emailName,
     ].find((value): value is string => typeof value === 'string' && value.trim().length > 0)
     const resolvedFullName = nameCandidate?.trim() ?? ''
     const resolvedCompany = typeof metadata.company === 'string' ? metadata.company : ''
@@ -289,6 +295,7 @@ export default function AccountScreen() {
             <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
               <strong style={{ display: 'block', marginBottom: '.25rem' }}>Transaction details</strong>
               {transaction ? <>
+                {transaction.customer_name && <div>Customer name: {transaction.customer_name}</div>}
                 <div>Amount paid: ₱{transaction.amount_php}</div>
                 <div>Purchase date: {new Date(transaction.paid_at || transaction.created_at).toLocaleString()}</div>
                 <div>Payment method: {transaction.payment_method || 'Not recorded'}</div>
@@ -373,14 +380,14 @@ export default function AccountScreen() {
         </form>}
       </section>
       <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Payment submissions</h2>
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Other payment submissions</h2>
         <button type="button" className="btn btn-outline" onClick={() => void refreshAccount()}>Refresh status</button>
-        {orders.length ? orders.map(order => <div key={order.id} style={{ padding: '.8rem 0', borderBottom: '1px solid var(--border)' }}>
+        {orders.filter(order => !owned.some(license => license.order_id === order.id)).length ? orders.filter(order => !owned.some(license => license.order_id === order.id)).map(order => <div key={order.id} style={{ padding: '.8rem 0', borderBottom: '1px solid var(--border)' }}>
           <strong>{PAID_PRODUCTS.find(p => p.code === order.product_code)?.label ?? order.product_code} · ₱{order.amount_php}</strong>
           <div style={{ color: 'var(--text-muted)', fontSize: '.85rem', marginTop: 4 }}>{statusLabel[order.status] || order.status} · {new Date(order.created_at).toLocaleString()}</div>
           <div style={{ fontSize: '.8rem', overflowWrap: 'anywhere' }}>Reference: {order.payment_reference || 'Not provided'} · Order: {order.id}</div>
           {order.admin_note && <p style={{ marginBottom: 0 }}>Admin note: {order.admin_note}</p>}
-        </div>) : <p style={{ color: 'var(--text-muted)' }}>No payment submissions yet.</p>}
+        </div>) : <p style={{ color: 'var(--text-muted)' }}>No other payment submissions.</p>}
       </section>
 
       </>}
