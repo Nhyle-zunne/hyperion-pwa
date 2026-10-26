@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useLicenseStore } from '../stores/licenseStore'
+import { useUIStore } from '../stores/uiStore'
 import type { BookmarkedQuestion } from '../stores/bookmarksStore'
 import type { TrackId } from '../types/question'
 
@@ -23,7 +24,7 @@ export default function BookmarksScreen() {
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
   const entitlementsVerified = useLicenseStore((s) => s.entitlementsVerified)
-  const openPaywall = useLicenseStore.getState().refreshCloudEntitlements
+  const openPaywall = useUIStore((s) => s.openPaywall)
 
   const visibleItems = items.filter(item =>
     item.paidAtSave === false ||
