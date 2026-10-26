@@ -321,8 +321,7 @@ export default function AccountScreen() {
         </svg>
         Continue with Google
       </button>
-      {/* Hide auth infrastructure diagnostics on the sign-in page; keep ordinary account/payment status messages. */}
-      {message && !/(supabase|provider credentials|redirect settings|sign-in could not be completed|sign-in is temporarily unavailable|session (?:was not|could not|did not) establish)/i.test(message) && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '1rem', marginBottom: 0 }}>{message}</div>
+      {/* Intentionally omit sign-in error notices; keep provider diagnostics off the user-facing screen. */}
       
       {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>Payments are verified manually. A return to this page does not grant access.</div>}
     </section> : <>
