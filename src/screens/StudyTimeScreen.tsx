@@ -43,10 +43,10 @@ function CumulativeChart({ segments, date }: { segments: StudySegment[]; date: D
       }, 0) / 60_000
     })
     const max = Math.max(1, ...values)
-    return values.map((v, i) => ({ x: 36 + i * 4.5, y: 88 - (v / max) * 68, value: v }))
+    return values.map((v, i) => ({ x: 36 + i * 13, y: 88 - (v / max) * 68, value: v }))
   }, [segments, date])
   const pointsString = points.map(p => `${p.x},${p.y}`).join(' ')
-  return <div className="st-chart-wrap"><svg className="st-line-chart" viewBox="0 0 145 110" role="img" aria-label="Cumulative study time across 24 hours"><line x1="36" y1="20" x2="144" y2="20" className="st-gridline"/><line x1="36" y1="54" x2="144" y2="54" className="st-gridline"/><line x1="36" y1="88" x2="144" y2="88" className="st-gridline"/><text x="2" y="23" className="st-axis-label">{formatDurationMs(Math.max(0, ...points.map(p => p.value)) * 60_000)}</text><text x="2" y="57" className="st-axis-label">½ max</text><text x="2" y="91" className="st-axis-label">0m</text><polyline points={pointsString} className="st-chart-line"/>{points.filter((_,i)=>i%4===0).map(p=><circle key={p.x} cx={p.x} cy={p.y} r="1.6" className="st-chart-dot"/>) }{[0,6,12,18,24].map((h,i)=><text key={h} x={36+h*4.5} y="104" textAnchor={i===0?'start':i===4?'end':'middle'} className="st-axis-label">{String(h).padStart(2,'0')}:00</text>)}</svg></div>
+  return <div className="st-chart-wrap"><svg className="st-line-chart" viewBox="0 0 360 110" role="img" aria-label="Cumulative study time across 24 hours"><line x1="36" y1="20" x2="348" y2="20" className="st-gridline"/><line x1="36" y1="54" x2="144" y2="54" className="st-gridline"/><line x1="36" y1="88" x2="144" y2="88" className="st-gridline"/><text x="2" y="23" className="st-axis-label">{formatDurationMs(Math.max(0, ...points.map(p => p.value)) * 60_000)}</text><text x="2" y="57" className="st-axis-label">½ max</text><text x="2" y="91" className="st-axis-label">0m</text><polyline points={pointsString} className="st-chart-line"/>{points.filter((_,i)=>i%4===0).map(p=><circle key={p.x} cx={p.x} cy={p.y} r="1.6" className="st-chart-dot"/>) }{[0,6,12,18,24].map((h,i)=><text key={h} x={36+h*13} y="104" textAnchor={i===0?'start':i===4?'end':'middle'} className="st-axis-label">{String(h).padStart(2,'0')}:00</text>)}</svg></div>
 }
 function Donut({ segments }: { segments: StudySegment[] }) {
   const grouped = useMemo(() => {
@@ -123,7 +123,7 @@ export default function StudyTimeScreen() {
       .st-stat{min-width:0;border:1px solid var(--border);background:var(--bg-card);padding:.85rem}
       .st-stat span{display:block;font-size:.65rem;letter-spacing:.06em;font-weight:800;color:var(--text-muted);margin-bottom:.35rem}
       .st-stat strong{display:block;color:var(--accent);font-size:clamp(1rem,3vw,1.4rem);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
-      .st-chart-wrap{width:100%;min-width:0}.st-line-chart{width:100%;height:auto;display:block;overflow:visible}
+      .st-chart-wrap{width:100%;min-width:0}.st-line-chart{width:100%;height:auto;max-height:300px;display:block;overflow:visible}
       .st-gridline{stroke:var(--border);stroke-width:.5;stroke-dasharray:2 2}.st-chart-line{fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linejoin:round;stroke-linecap:square}.st-chart-dot{fill:var(--accent)}.st-axis-label{font-size:3.2px;fill:var(--text-muted)}
       .st-donut-layout{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(0,1.2fr);align-items:center;gap:1rem}
       .st-donut{width:min(100%,190px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;margin:auto}
