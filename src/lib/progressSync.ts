@@ -11,6 +11,7 @@ const TABLE = 'user_learning_progress'
 const OWNER_KEY = 'hyperion-progress-owner'
 const LOCAL_DIRTY_KEY = 'hyperion-progress-unclaimed-dirty'
 const SESSION_CHANGED_AT_KEY = 'hyperion-progress-session-changed-at'
+const DIRTY_SECTIONS_KEY = 'hyperion-progress-dirty-sections'
 const DIRTY_PREFIX = 'hyperion-progress-dirty:'
 const STORAGE_KEYS = [
   'hyperion-history',
@@ -22,6 +23,8 @@ const STORAGE_KEYS = [
 ] as const
 
 type ProgressStorageKey = typeof STORAGE_KEYS[number]
+type ProgressSection = 'history' | 'studyTime' | 'vault' | 'bookmarks' | 'practice' | 'mockPlan' | 'other'
+const ALL_PROGRESS_SECTIONS: ProgressSection[] = ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan']
 
 interface ActiveSessionSnapshot {
   questions: Question[]
@@ -42,6 +45,7 @@ export interface LearningProgressSnapshot {
   version: 1
   savedAt: number
   activeSessionChangedAt: number
+  changedSections: ProgressSection[]
   storage: Record<ProgressStorageKey, string | null>
   activeSession: ActiveSessionSnapshot | null
 }
@@ -65,6 +69,27 @@ let unsubscribeStores: (() => void)[] = []
 let authSubscription: { unsubscribe: () => void } | null = null
 
 const dirtyKey = (userId: string) => DIRTY_PREFIX + userId
+
+function readDirtySections(): ProgressSection[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DIRTY_SECTIONS_KEY) || '[]') as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is ProgressSection =>
+      ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan', 'other'].includes(item)
+    )
+  } catch { return [] }
+}
+
+function sectionForStorageKey(key: ProgressStorageKey): ProgressSection {
+  switch (key) {
+    case 'hyperion-history': return 'history'
+    case 'hyperion-study-time': return 'studyTime'
+    case 'hyperion-vault': return 'vault'
+    case 'hyperion-bookmarks': return 'bookmarks'
+    case 'hyperion-saved-practice': return 'practice'
+    case 'hyperion-mock-exam-plan-v1': return 'mockPlan'
+  }
+}
 
 function readLocalStorage(): Record<ProgressStorageKey, string | null> {
   const storage = {} as Record<ProgressStorageKey, string | null>
@@ -99,6 +124,7 @@ function captureSnapshot(): LearningProgressSnapshot {
     activeSessionChangedAt: (() => {
       try { return Number(localStorage.getItem(SESSION_CHANGED_AT_KEY)) || 0 } catch { return 0 }
     })(),
+    changedSections: readDirtySections(),
     storage: readLocalStorage(),
     activeSession
   }
@@ -130,9 +156,17 @@ function mergeById<T extends { id: string }>(remoteItems: T[], localItems: T[], 
   return Array.from(merged.values())
 }
 
-function mergePersistedStore(key: ProgressStorageKey, localRaw: string | null, remoteRaw: string | null): string | null {
+function mergePersistedStore(
+  key: ProgressStorageKey,
+  localRaw: string | null,
+  remoteRaw: string | null,
+  preferLocalSection: boolean,
+  allowMigrationMerge: boolean
+): string | null {
   if (!localRaw) return remoteRaw
   if (!remoteRaw) return localRaw
+  if (preferLocalSection && key !== 'hyperion-mock-exam-plan-v1') return localRaw
+  if (!allowMigrationMerge && !preferLocalSection) return remoteRaw
   const local = parseJson<{ state?: Record<string, unknown>; version?: number }>(localRaw)
   const remote = parseJson<{ state?: Record<string, unknown>; version?: number }>(remoteRaw)
   if (!local || !remote) return localRaw
@@ -181,21 +215,43 @@ function mergePersistedStore(key: ProgressStorageKey, localRaw: string | null, r
         results: { ...remoteResults, ...localResults }
       })
     }
+    if (preferLocalSection) return localRaw
+    if (!allowMigrationMerge) return remoteRaw
     return localPlan?.startedAt && (!remotePlan?.startedAt || Number(localPlan.startedAt) >= Number(remotePlan.startedAt)) ? localRaw : remoteRaw
   }
 
   // A saved single-session payload represents one session, so do not combine its
   // questions or answers with a different session.
-  return localRaw
+  if (preferLocalSection) return localRaw
+  return allowMigrationMerge ? localRaw : remoteRaw
 }
 
-function mergeSnapshots(local: LearningProgressSnapshot, remote: LearningProgressSnapshot): LearningProgressSnapshot {
+function mergeSnapshots(
+  local: LearningProgressSnapshot,
+  remote: LearningProgressSnapshot,
+  preferLocalSections: ProgressSection[] = [],
+  allowMigrationMerge = false
+): LearningProgressSnapshot {
+  const prefer = new Set(preferLocalSections)
   const storage = {} as Record<ProgressStorageKey, string | null>
-  for (const key of STORAGE_KEYS) storage[key] = mergePersistedStore(key, local.storage[key], remote.storage[key])
+  for (const key of STORAGE_KEYS) {
+    storage[key] = mergePersistedStore(
+      key,
+      local.storage[key],
+      remote.storage[key],
+      prefer.has(sectionForStorageKey(key)),
+      allowMigrationMerge
+    )
+  }
 
-  const localSessionNewer = (local.activeSessionChangedAt ?? 0) > (remote.activeSessionChangedAt ?? 0)
-  let activeSession = localSessionNewer ? local.activeSession : remote.activeSession
-  if (
+  const localSessionChanged = (local.activeSessionChangedAt ?? 0) > (remote.activeSessionChangedAt ?? 0)
+  const preferLocalSession = !allowMigrationMerge && prefer.has('practice')
+  let activeSession = remote.activeSession
+  if (preferLocalSession || (local.activeSession && !remote.activeSession) || (localSessionChanged && !remote.activeSession)) {
+    activeSession = local.activeSession
+  } else if (!local.activeSession && remote.activeSession) {
+    activeSession = localSessionChanged ? null : remote.activeSession
+  } else if (
     local.activeSession
     && remote.activeSession
     && local.activeSession.track === remote.activeSession.track
@@ -204,17 +260,24 @@ function mergeSnapshots(local: LearningProgressSnapshot, remote: LearningProgres
   ) {
     activeSession = {
       ...remote.activeSession,
-      ...(localSessionNewer ? local.activeSession : remote.activeSession),
-      answers: { ...remote.activeSession.answers, ...(localSessionNewer ? local.activeSession.answers : remote.activeSession.answers) },
+      ...(localSessionChanged ? local.activeSession : remote.activeSession),
+      answers: {
+        ...local.activeSession.answers,
+        ...remote.activeSession.answers,
+        ...(localSessionChanged ? local.activeSession.answers : {})
+      },
       currentIndex: Math.max(remote.activeSession.currentIndex, local.activeSession.currentIndex),
       timeLeftSec: Math.min(remote.activeSession.timeLeftSec, local.activeSession.timeLeftSec)
     }
+  } else if (local.activeSession && localSessionChanged) {
+    activeSession = local.activeSession
   }
 
   return {
     version: 1,
     savedAt: Date.now(),
     activeSessionChangedAt: Math.max(local.activeSessionChangedAt ?? 0, remote.activeSessionChangedAt ?? 0),
+    changedSections: [...new Set([...local.changedSections, ...remote.changedSections])],
     storage,
     activeSession
   }
@@ -257,7 +320,10 @@ async function rehydratePersistedStores(): Promise<void> {
 async function applySnapshot(snapshot: LearningProgressSnapshot): Promise<void> {
   hydrating = true
   try {
-    try { localStorage.setItem(SESSION_CHANGED_AT_KEY, String(snapshot.activeSessionChangedAt ?? 0)) } catch { /* ignore storage errors */ }
+    try {
+      localStorage.setItem(SESSION_CHANGED_AT_KEY, String(snapshot.activeSessionChangedAt ?? 0))
+      localStorage.setItem(DIRTY_SECTIONS_KEY, JSON.stringify(snapshot.changedSections ?? []))
+    } catch { /* ignore storage errors */ }
     for (const key of STORAGE_KEYS) {
       const value = snapshot.storage[key]
       try {
@@ -308,7 +374,10 @@ async function clearLocalProgress(): Promise<void> {
     for (const key of STORAGE_KEYS) {
       try { localStorage.removeItem(key) } catch { /* ignore storage errors */ }
     }
-    try { localStorage.removeItem(SESSION_CHANGED_AT_KEY) } catch { /* ignore storage errors */ }
+    try {
+      localStorage.removeItem(SESSION_CHANGED_AT_KEY)
+      localStorage.removeItem(DIRTY_SECTIONS_KEY)
+    } catch { /* ignore storage errors */ }
     useHistoryStore.setState({ entries: [], savedSessions: [] })
     useStudyTimeStore.setState({ segments: [] })
     useVaultStore.setState({ items: [] })
@@ -319,11 +388,16 @@ async function clearLocalProgress(): Promise<void> {
   }
 }
 
-function noteLocalChange(): void {
+function noteLocalChange(section: ProgressSection = 'other'): void {
   if (hydrating) return
   const owner = (() => { try { return localStorage.getItem(OWNER_KEY) } catch { return null } })()
   const marker = owner ? dirtyKey(owner) : LOCAL_DIRTY_KEY
-  try { localStorage.setItem(marker, String(Date.now())) } catch { /* local-only mode remains available */ }
+  try {
+    localStorage.setItem(marker, String(Date.now()))
+    const sections = new Set(readDirtySections())
+    sections.add(section)
+    localStorage.setItem(DIRTY_SECTIONS_KEY, JSON.stringify([...sections]))
+  } catch { /* local-only mode remains available */ }
   if (activeUserId && cloudReady && activeUserId === owner) scheduleUpload()
 }
 
@@ -359,7 +433,10 @@ async function uploadSnapshot(): Promise<void> {
     const latestSnapshot = latestRow?.data && isSnapshot(latestRow.data)
       ? latestRow.data as LearningProgressSnapshot
       : null
-    const snapshotToUpload = latestSnapshot ? mergeSnapshots(snapshot, latestSnapshot) : snapshot
+    const snapshotToUpload = latestSnapshot
+      ? mergeSnapshots(snapshot, latestSnapshot, snapshot.changedSections, false)
+      : snapshot
+    snapshotToUpload.changedSections = []
     const { error } = await supabase
       .from(TABLE)
       .upsert({ user_id: userId, data: snapshotToUpload }, { onConflict: 'user_id' })
@@ -378,6 +455,7 @@ async function uploadSnapshot(): Promise<void> {
       if (currentDirtyAt === dirtyAtStart) {
         localStorage.removeItem(key)
         localStorage.removeItem(LOCAL_DIRTY_KEY)
+        localStorage.setItem(DIRTY_SECTIONS_KEY, '[]')
       } else {
         uploadQueued = true
       }
@@ -448,7 +526,7 @@ async function initializeUser(userId: string): Promise<void> {
   } else if (remoteSnapshot && owner === userId && !localDirty) {
     snapshotToApply = remoteSnapshot
   } else if (remoteSnapshot && (owner == null || localDirty)) {
-    snapshotToApply = mergeSnapshots(localSnapshot, remoteSnapshot)
+    snapshotToApply = mergeSnapshots(localSnapshot, remoteSnapshot, owner === userId ? localSnapshot.changedSections : [], owner == null)
     shouldUpload = true
   } else {
     // First login migrates this device's local progress. Existing owner data is kept
@@ -471,7 +549,10 @@ async function initializeUser(userId: string): Promise<void> {
   activeUserId = userId
   cloudReady = true
   if (shouldUpload) {
-    try { localStorage.setItem(dirtyKey(userId), String(Date.now())) } catch { /* retry marker optional */ }
+    try {
+      localStorage.setItem(dirtyKey(userId), String(Date.now()))
+      localStorage.setItem(DIRTY_SECTIONS_KEY, JSON.stringify(ALL_PROGRESS_SECTIONS))
+    } catch { /* retry marker optional */ }
     scheduleUpload(200)
   }
 }
@@ -479,15 +560,15 @@ async function initializeUser(userId: string): Promise<void> {
 function markActiveSessionChanged(): void {
   if (hydrating) return
   try { localStorage.setItem(SESSION_CHANGED_AT_KEY, String(Date.now())) } catch { /* local-only mode remains available */ }
-  noteLocalChange()
+  noteLocalChange('practice')
 }
 
 function observeStoreChanges(): void {
   unsubscribeStores = [
-    useHistoryStore.subscribe(() => noteLocalChange()),
-    useStudyTimeStore.subscribe(() => noteLocalChange()),
-    useVaultStore.subscribe(() => noteLocalChange()),
-    useBookmarksStore.subscribe(() => noteLocalChange()),
+    useHistoryStore.subscribe(() => noteLocalChange('history')),
+    useStudyTimeStore.subscribe(() => noteLocalChange('studyTime')),
+    useVaultStore.subscribe(() => noteLocalChange('vault')),
+    useBookmarksStore.subscribe(() => noteLocalChange('bookmarks')),
     usePracticeStore.subscribe((state, previous) => {
       if (
         state.questions !== previous.questions
@@ -504,7 +585,7 @@ function observeStoreChanges(): void {
 
   heartbeatTimer = setInterval(() => {
     const s = usePracticeStore.getState()
-    if (s.questions.length && !s.finished) noteLocalChange()
+    if (s.questions.length && !s.finished) noteLocalChange('practice')
   }, 10000)
 }
 
@@ -524,7 +605,8 @@ export function startLearningProgressSync(): () => void {
     }
   }
   window.addEventListener('online', onOnline)
-  window.addEventListener('hyperion:progress-local-change', noteLocalChange)
+  const handleMockPlanChange = () => noteLocalChange('mockPlan')
+  window.addEventListener('hyperion:progress-local-change', handleMockPlanChange)
 
   authSubscription = supabase.auth.onAuthStateChange((_event, session) => {
     // Avoid doing Supabase queries synchronously inside the auth callback.
@@ -554,7 +636,7 @@ export function startLearningProgressSync(): () => void {
     if (retryTimer) clearTimeout(retryTimer)
     if (heartbeatTimer) clearInterval(heartbeatTimer)
     window.removeEventListener('online', onOnline)
-    window.removeEventListener('hyperion:progress-local-change', noteLocalChange)
+    window.removeEventListener('hyperion:progress-local-change', handleMockPlanChange)
     authSubscription?.unsubscribe()
     authSubscription = null
     unsubscribeStores.forEach((unsubscribe) => unsubscribe())
