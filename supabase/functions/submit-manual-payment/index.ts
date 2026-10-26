@@ -32,8 +32,8 @@ Deno.serve(async req => {
   const code = body.productCode as keyof typeof products, product = products[code]
   if (!product) return json({ error: 'Unknown product.' }, 400)
   const requestedTerm = body.licenseTerm ?? 'year'
-  if (!['week','month','year'].includes(requestedTerm)) return json({ error: 'Choose a valid access duration.' }, 400)
-  const term = requestedTerm as LicenseTerm
+  if (requestedTerm !== 'week' && requestedTerm !== 'month' && requestedTerm !== 'year') return json({ error: 'Choose a valid access duration.' }, 400)
+  const term: LicenseTerm = requestedTerm
   const paymentMethod = String(body.paymentMethod || '').trim().slice(0, 80)
   const paymentReference = String(body.paymentReference || '').trim().slice(0, 160)
   const proofUrl = String(body.proofUrl || '').trim().slice(0, 1000)
