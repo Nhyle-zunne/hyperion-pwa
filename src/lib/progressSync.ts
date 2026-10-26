@@ -166,7 +166,16 @@ function mergePersistedStore(
 ): string | null {
   if (!localRaw) return remoteRaw
   if (!remoteRaw) return localRaw
-  if (preferLocalSection && key !== 'hyperion-mock-exam-plan-v1') return localRaw
+  // History entries and study-time segments are append-only records, so merge
+  // them across devices even when this device changed that section. For collections
+  // users can delete (bookmarks, vault items, saved-practice payloads), honor the
+  // explicitly changed local collection instead of resurrecting deleted entries.
+  if (
+    preferLocalSection
+    && key !== 'hyperion-mock-exam-plan-v1'
+    && key !== 'hyperion-history'
+    && key !== 'hyperion-study-time'
+  ) return localRaw
   if (!allowMigrationMerge && !preferLocalSection) return remoteRaw
   const local = parseJson<{ state?: Record<string, unknown>; version?: number }>(localRaw)
   const remote = parseJson<{ state?: Record<string, unknown>; version?: number }>(remoteRaw)
@@ -187,7 +196,9 @@ function mergePersistedStore(
         entries: mergeById(remoteEntries, localEntries, 'finishedAt').sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0)).slice(0, 100),
         // Prefer the local saved-session collection when it has entries. This preserves
         // local removals/resume state rather than resurrecting sessions removed locally.
-        savedSessions: localSaved.length ? mergeById(remoteSaved, localSaved, 'savedAt').slice(0, 100) : remoteSaved
+        savedSessions: preferLocalSection
+          ? localSaved.slice(0, 100)
+          : localSaved.length ? mergeById(remoteSaved, localSaved, 'savedAt').slice(0, 100) : remoteSaved
       }
     })
   }
