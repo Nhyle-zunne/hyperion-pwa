@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
