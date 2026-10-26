@@ -35,7 +35,7 @@ function savedBasket(): BasketItem[] {
       const term: LicenseTerm = item.term === 'week' || item.term === 'month' || item.term === 'year' ? item.term : 'year'
       return [{ code: item.code as PaidTrack, term }]
     })
-    return [...new Map(normalized.map(item => [item.code, item])).values()]
+    return [...new Map(normalized.map(item => [item.code, item] as const)).values()]
   } catch {
     return []
   }
@@ -284,7 +284,7 @@ export default function BasketScreen() {
         return
       }
       if (data?.status !== 'cancelled') throw new Error('PayMongo did not confirm that this checkout was cancelled. No new payment should be started yet.')
-      setBasket(current => [...new Map([...current, ...groupItems].map(item => [item.code, item])).values()])
+      setBasket(current => [...new Map<PaidTrack, BasketItem>([...current, ...groupItems].map(item => [item.code, item] as const)).values()])
       await refreshData()
       setMessage('Checkout cancelled successfully. Its tracks were added back to your basket; you can now edit your selection or check out again.')
     } catch (error) {
