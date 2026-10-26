@@ -321,7 +321,7 @@ export default function BasketScreen() {
       @media(max-width:820px){.basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.basket-page .basket-summary{position:static}}
       @media(max-width:520px){.basket-page .basket-row{align-items:flex-start}.basket-page .basket-action-row button{flex:1}}
     `}</style>
-    <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Shop</button>
+    <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
     <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
       <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Your Basket</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
       <span style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'}</span>
@@ -366,7 +366,7 @@ export default function BasketScreen() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', flexShrink: 0 }}><strong>₱{item.annualPrice}</strong><button type="button" disabled={busy} onClick={() => setBasket(current => current.filter(code => code !== item.code))} style={{ color: 'var(--danger, #dc2626)', fontWeight: 850, padding: '.35rem' }}>Remove</button></div>
             </div>
-          }) : <div style={{ textAlign: 'center', padding: '2.4rem 1rem', border: '1px dashed var(--border)', borderRadius: 10, marginTop: '1rem' }}><div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🛒</div><strong>Your basket is empty</strong><p className="basket-muted" style={{ margin: '.35rem 0 1rem' }}>Visit the shop and add one or more reviewer tracks.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/account')}>BROWSE TRACKS</button></div>}
+          }) : <div style={{ textAlign: 'center', padding: '2.4rem 1rem', border: '1px dashed var(--border)', borderRadius: 10, marginTop: '1rem' }}><div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🛒</div><strong>Your basket is empty</strong><p className="basket-muted" style={{ margin: '.35rem 0 1rem' }}>Visit Bond Store and add one or more reviewer tracks.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/account')}>BROWSE TRACKS</button></div>}
         </section>
 
         <aside className="basket-summary" style={style.card}>
