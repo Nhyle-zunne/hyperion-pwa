@@ -277,7 +277,7 @@ function mergeSnapshots(
     version: 1,
     savedAt: Date.now(),
     activeSessionChangedAt: Math.max(local.activeSessionChangedAt ?? 0, remote.activeSessionChangedAt ?? 0),
-    changedSections: [...new Set([...local.changedSections, ...remote.changedSections])],
+    changedSections: [...new Set([...(local.changedSections ?? []), ...(remote.changedSections ?? [])])],
     storage,
     activeSession
   }
@@ -511,7 +511,7 @@ async function initializeUser(userId: string): Promise<void> {
   const localSnapshot = captureSnapshot()
   const remoteSnapshot = row && isSnapshot(row.data) ? row.data : null
   let shouldUpload = false
-  let snapshotToApply: LearningProgressSnapshot | null = null
+  let snapshotToApply: LearningProgressSnapshot
 
   if (owner && owner !== userId) {
     // The browser previously belonged to a different account. Never merge its data
