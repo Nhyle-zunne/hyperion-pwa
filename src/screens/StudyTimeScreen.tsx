@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStudyTimeStore, formatDurationMs, type StudySegment } from '../stores/studyTimeStore'
 
@@ -7,6 +7,11 @@ const TABS: Tab[] = ['PERIOD', 'DAY', 'WEEK', 'MONTH', 'TREND']
 const DAY_MS = 86_400_000
 const TRACK_COLORS = ['#22c55e', '#06b6d4', '#f59e0b', '#a78bfa', '#f97316', '#e879f9']
 const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const dateFromKey = (key: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key)
+  if (!match) return new Date()
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+}
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
 const weekStart = (date: Date) => {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
@@ -24,8 +29,8 @@ function EmptyState() {
 function Stat({ label, value }: { label: string; value: string }) {
   return <div className="st-stat"><span>{label}</span><strong>{value}</strong></div>
 }
-function DateNav({ title, onPrev, onNext }: { title: string; onPrev: () => void; onNext: () => void }) {
-  return <div className="st-date-nav"><button type="button" aria-label="Previous period" onClick={onPrev}>‹</button><strong>{title}</strong><button type="button" aria-label="Next period" onClick={onNext}>›</button></div>
+function DateNav({ title, onPrev, onNext, dateValue, onDateChange }: { title: string; onPrev: () => void; onNext: () => void; dateValue?: string; onDateChange?: (value: string) => void }) {
+  return <div className="st-date-nav"><button type="button" aria-label="Previous period" onClick={onPrev}>‹</button><div className="st-date-nav-center"><strong>{title}</strong>{dateValue && onDateChange && <input className="st-date-input" type="date" aria-label="Select study date" value={dateValue} onChange={event => onDateChange(event.currentTarget.value)} />}</div><button type="button" aria-label="Next period" onClick={onNext}>›</button></div>
 }
 function DailyBars({ rows }: { rows: { label: string; ms: number }[] }) {
   const max = Math.max(1, ...rows.map(r => r.ms))
@@ -66,16 +71,26 @@ function HourGrid({ segments, date }: { segments: StudySegment[]; date: Date }) 
     return segments.reduce((sum,s)=>sum+Math.max(0,Math.min(b,s.at)-Math.max(a,s.at-s.durationMs)),0)
   })
   const max=Math.max(1,...values)
-  return <div className="st-hour-grid">{values.map((ms,h)=><div key={h} className="st-hour-cell" title={`${String(h).padStart(2,'0')}:00 · ${formatDurationMs(ms)}`} style={{background:ms? `color-mix(in srgb, var(--accent) ${Math.max(12,ms/max*100)}%, var(--bg-elevated))`: 'var(--bg-elevated)'}}><strong>{String(h).padStart(2,'0')}</strong><span>{ms?formatDurationMs(ms):'—'}</span></div>)}</div>
+  const minuteLabel=(ms:number)=>ms===0?'0m':ms<60_000?'<1m':`${Math.floor(ms/60_000)}m`
+  return <div className="st-hour-grid">{values.map((ms,h)=><div key={h} className="st-hour-cell" title={`${String(h).padStart(2,'0')}:00–${String(h).padStart(2,'0')}:59 · ${formatDurationMs(ms)} (${(ms/60_000).toFixed(2)} minutes)`} style={{background:ms? `color-mix(in srgb, var(--accent) ${Math.max(12,ms/max*100)}%, var(--bg-elevated))`: 'var(--bg-elevated)'}}><strong>{String(h).padStart(2,'0')}</strong><span>{minuteLabel(ms)}</span></div>)}</div>
 }
 
 export default function StudyTimeScreen() {
   const navigate = useNavigate()
   const segments = useStudyTimeStore(s => s.segments)
   const clear = useStudyTimeStore(s => s.clear)
+  const storedDateKey = useStudyTimeStore(s => s.selectedDate)
+  const storeSelectedDate = useStudyTimeStore(s => s.setSelectedDate)
   const [tab,setTab] = useState<Tab>('DAY')
-  const [selectedDate,setSelectedDate] = useState(()=>new Date())
-  const [selectedMonth,setSelectedMonth] = useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1))
+  const selectedDate = useMemo(() => dateFromKey(storedDateKey), [storedDateKey])
+  const setSelectedDate = (date: Date) => storeSelectedDate(dateKey(date))
+  const [selectedMonth,setSelectedMonth] = useState(()=>{
+    const initialDate = dateFromKey(useStudyTimeStore.getState().selectedDate)
+    return new Date(initialDate.getFullYear(), initialDate.getMonth(), 1)
+  })
+  useEffect(() => {
+    setSelectedMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1))
+  }, [storedDateKey])
   const totalMs=useMemo(()=>segments.reduce((sum,s)=>sum+s.durationMs,0),[segments])
   const selectedKey=dateKey(selectedDate)
   const selectedDay=useMemo(()=>segments.filter(s=>s.day===selectedKey),[segments,selectedKey])
@@ -118,7 +133,9 @@ export default function StudyTimeScreen() {
       .st-panel-title{font-size:.76rem;font-weight:850;letter-spacing:.07em;color:var(--text-muted);margin:0 0 1rem;text-transform:uppercase}
       .st-date-nav{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:.5rem;border:1px solid var(--border);background:var(--bg-card);margin-bottom:1rem;min-height:48px}
       .st-date-nav button{height:46px;font-size:1.8rem;color:var(--accent);touch-action:manipulation}
-      .st-date-nav strong{text-align:center;font-size:clamp(.7rem,2.2vw,.9rem);font-variant-numeric:tabular-nums}
+      .st-date-nav-center{min-width:0;display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap;padding:.35rem 0}
+      .st-date-nav-center strong{text-align:center;font-size:clamp(.7rem,2.2vw,.9rem);font-variant-numeric:tabular-nums}
+      .st-date-input{width:138px;max-width:100%;min-width:0;height:30px;padding:.2rem .35rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);color:var(--text);font:inherit;font-size:.75rem}
       .st-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem;margin-bottom:1rem}
       .st-stat{min-width:0;border:1px solid var(--border);background:var(--bg-card);padding:.85rem}
       .st-stat span{display:block;font-size:.65rem;letter-spacing:.06em;font-weight:800;color:var(--text-muted);margin-bottom:.35rem}
@@ -130,7 +147,7 @@ export default function StudyTimeScreen() {
       .st-donut-hole{width:62%;height:62%;border-radius:50%;background:var(--bg-card);display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0}
       .st-donut-hole strong{font-size:clamp(.7rem,2vw,1rem);text-align:center;overflow-wrap:anywhere}.st-donut-hole span{font-size:.55rem;color:var(--text-muted);font-weight:800}
       .st-legend{display:grid;gap:.65rem;min-width:0}.st-legend-row{display:grid;grid-template-columns:9px minmax(0,1fr) auto;gap:.4rem;align-items:center;font-size:.75rem}.st-legend-swatch{width:8px;height:8px}.st-legend-name{overflow-wrap:anywhere}.st-legend-row strong{font-variant-numeric:tabular-nums}.st-legend-row small{grid-column:2/4;color:var(--text-muted);font-size:.68rem}
-      .st-hour-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.st-hour-cell{min-width:0;min-height:52px;border:1px solid var(--border);padding:.4rem;display:flex;flex-direction:column;justify-content:space-between}.st-hour-cell strong{font-size:.72rem}.st-hour-cell span{font-size:.64rem;color:var(--text-muted);overflow-wrap:anywhere}
+      .st-hour-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.st-hour-cell{min-width:0;min-height:58px;border:1px solid var(--border);padding:.45rem;display:flex;flex-direction:column;justify-content:space-between;gap:.3rem}.st-hour-cell strong{font-size:.72rem}.st-hour-cell span{font-size:.72rem;color:var(--text-muted);font-weight:750;font-variant-numeric:tabular-nums;white-space:nowrap}
       .st-daily-bars{display:grid;gap:.7rem}.st-daily-row{display:grid;grid-template-columns:44px minmax(0,1fr) minmax(48px,auto);align-items:center;gap:.6rem}.st-daily-label,.st-daily-value{font-size:.7rem;color:var(--text-muted);font-variant-numeric:tabular-nums}.st-daily-value{text-align:right}.st-bar-track{height:10px;background:var(--bg-elevated);overflow:hidden}.st-bar-fill{height:100%;background:var(--accent);min-width:0}
       .st-empty{border:1px dashed var(--border);background:var(--bg-card);padding:2.5rem 1rem;display:flex;flex-direction:column;align-items:center;text-align:center;gap:.6rem;color:var(--text-muted)}.st-empty-mark{font-size:2rem;color:var(--accent)}.st-empty strong{font-size:.8rem;letter-spacing:.06em;color:var(--text)}.st-empty span:last-child{font-size:.85rem;max-width:30rem}.st-muted{font-size:.82rem;color:var(--text-muted)}
       .st-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.st-calendar button,.st-calendar span{min-width:0;aspect-ratio:1;display:grid;place-items:center;font-size:.78rem}.st-calendar button{border:1px solid var(--border);background:var(--bg-elevated);color:var(--text);position:relative}.st-calendar button[data-active=true]{outline:2px solid var(--accent);outline-offset:-2px}.st-calendar button[data-time=true]{background:var(--accent-soft)}.st-weekday{font-size:.65rem;color:var(--text-muted);font-weight:800}
@@ -145,9 +162,9 @@ export default function StudyTimeScreen() {
     <header className="st-header"><div><div className="st-eyebrow">Hyperion · Learning Analytics</div><h1 className="page-title">Study Time</h1><p className="st-subtitle">Telemetry &amp; Analytics · Actual recorded study sessions</p></div><div className="st-eyebrow">{segments.length} RECORDS</div></header>
     <div className="st-tabs" role="group" aria-label="Study time period">{TABS.map(t=><button key={t} type="button" className="st-tab" aria-pressed={tab===t} onClick={()=>setTab(t)}>{t}</button>)}</div>
     {segments.length===0 ? <><EmptyState/><div className="st-footer-actions"><button className="btn btn-outline" onClick={()=>navigate('/history')}>View session history</button></div></> : <>
-      {tab==='DAY'&&<DateNav title={headingDate} onPrev={()=>changeDay(-1)} onNext={()=>changeDay(1)}/>}
-      {tab==='WEEK'&&<DateNav title={`${fmtDate(week,{month:'short',day:'numeric'})} – ${fmtDate(new Date(week.getTime()+6*DAY_MS),{month:'short',day:'numeric',year:'numeric'})}`} onPrev={()=>changeDay(-7)} onNext={()=>changeDay(7)}/>}
-      {tab==='MONTH'&&<DateNav title={fmtDate(selectedMonth,{month:'long',year:'numeric'})} onPrev={()=>setSelectedMonth(d=>new Date(d.getFullYear(),d.getMonth()-1,1))} onNext={()=>setSelectedMonth(d=>new Date(d.getFullYear(),d.getMonth()+1,1))}/>}
+      {tab==='DAY'&&<DateNav title={headingDate} dateValue={selectedKey} onDateChange={value=>{if(value)setSelectedDate(dateFromKey(value))}} onPrev={()=>changeDay(-1)} onNext={()=>changeDay(1)}/>}
+      {tab==='WEEK'&&<DateNav title={`${fmtDate(week,{month:'short',day:'numeric'})} – ${fmtDate(new Date(week.getTime()+6*DAY_MS),{month:'short',day:'numeric',year:'numeric'})}`} dateValue={selectedKey} onDateChange={value=>{if(value)setSelectedDate(dateFromKey(value))}} onPrev={()=>changeDay(-7)} onNext={()=>changeDay(7)}/>}
+      {tab==='MONTH'&&<DateNav title={fmtDate(selectedMonth,{month:'long',year:'numeric'})} dateValue={dateKey(selectedMonth)} onDateChange={value=>{if(value){const date=dateFromKey(value);setSelectedMonth(new Date(date.getFullYear(),date.getMonth(),1))}}} onPrev={()=>setSelectedMonth(d=>new Date(d.getFullYear(),d.getMonth()-1,1))} onNext={()=>setSelectedMonth(d=>new Date(d.getFullYear(),d.getMonth()+1,1))}/>}
       {tab==='DAY'&&<div className="st-stats"><Stat label="TOTAL STUDY TIME" value={displayTime(selectedDayMs)}/><Stat label="MAX FOCUS TIME" value={displayTime(dayStats.maxFocus)}/><Stat label="START TIME" value={focusClock(dayStats.start)}/><Stat label="END TIME" value={focusClock(dayStats.end)}/></div>}
       {tab==='PERIOD'&&<div className="st-stats"><Stat label="ALL-TIME STUDY TIME" value={displayTime(totalMs)}/><Stat label="ACTIVE DAYS" value={String(allDays)}/><Stat label="RECORDED SEGMENTS" value={String(segments.length)}/><Stat label="DAILY AVERAGE" value={displayTime(allDays?totalMs/allDays:0)}/></div>}
       {tab==='WEEK'&&<div className="st-stats"><Stat label="WEEK TOTAL" value={displayTime(weekSegments.reduce((s,x)=>s+x.durationMs,0))}/><Stat label="ACTIVE DAYS" value={String(new Set(weekSegments.map(s=>s.day)).size)}/><Stat label="SESSIONS" value={String(weekSegments.length)}/><Stat label="DAILY AVERAGE" value={displayTime(weekSegments.reduce((s,x)=>s+x.durationMs,0)/Math.max(1,new Set(weekSegments.map(s=>s.day)).size))}/></div>}
