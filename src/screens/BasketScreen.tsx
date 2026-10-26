@@ -354,7 +354,7 @@ export default function BasketScreen() {
             })}
           </div>
         </div>}
-      </div>
+      </div>}
 
       {pendingCheckoutGroups.length > 0 && <section style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
