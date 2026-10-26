@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { searchQuestions } from '../lib/questionBank'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -25,6 +25,15 @@ export default function SearchScreen() {
   const openPaywall = useUIStore((s) => s.openPaywall)
   const toggleBookmark = useBookmarksStore((s) => s.toggle)
   const isBookmarked = useBookmarksStore((s) => s.isBookmarked)
+
+  useEffect(() => {
+    if (!isUnlocked) {
+      setResults([])
+      setSearched(false)
+      setExpanded(null)
+      setLoading(false)
+    }
+  }, [isUnlocked])
 
   const runSearch = async () => {
     if (!isUnlocked) {
