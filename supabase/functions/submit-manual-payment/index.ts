@@ -19,7 +19,7 @@ Deno.serve(async req => {
   const client = createClient(url, anon, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } })
   const { data: { user }, error: authError } = await client.auth.getUser()
   if (authError || !user) return json({ error: 'Please sign in again.' }, 401)
-  let body: { productCode?: string; paymentMethod?: string; paymentReference?: string; proofUrl?: string; customerNote?: string }
+  let body: { productCode?: string; paymentMethod?: string; paymentReference?: string; proofUrl?: string; customerNote?: string; customerProfile?: { fullName?: string; company?: string; school?: string } }
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
   const code = body.productCode as keyof typeof products, product = products[code]
   if (!product) return json({ error: 'Unknown product.' }, 400)
@@ -29,7 +29,24 @@ Deno.serve(async req => {
   const customerNote = String(body.customerNote || '').trim().slice(0, 1000)
   if (!paymentMethod || !paymentReference) return json({ error: 'Payment method and transaction/reference number are required.' }, 400)
   if (proofUrl && !/^https:\/\//i.test(proofUrl)) return json({ error: 'Proof link must start with https://.' }, 400)
+
+  const metadataName = [user.user_metadata?.given_name, user.user_metadata?.family_name]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' ')
+  const customerName = String(body.customerProfile?.fullName || user.user_metadata?.full_name || user.user_metadata?.name || metadataName || '').trim().slice(0, 160)
+  const customerCompany = String(body.customerProfile?.company || '').trim().slice(0, 160)
+  const customerSchool = String(body.customerProfile?.school || '').trim().slice(0, 160)
+  if (!customerName) return json({ error: 'Please add your full name to your account before submitting payment details.' }, 400)
+
   const admin = createClient(url, service, { auth: { persistSession: false } })
+  const { data: activeLicense, error: licenseError } = await admin.from('entitlements')
+    .select('id,expires_at').eq('user_id', user.id).eq('product_code', code).eq('status', 'active').maybeSingle()
+  if (licenseError) return json({ error: 'Could not check your existing license. Please try again.' }, 500)
+  const licenseExpiry = activeLicense?.expires_at ? new Date(activeLicense.expires_at).getTime() : null
+  if (activeLicense && (licenseExpiry === null || licenseExpiry > Date.now())) {
+    return json({ error: 'This license is already active for your account. You do not need to purchase this track again.' }, 409)
+  }
+
   const { data: existing, error: existingError } = await admin.from('orders')
     .select('id,status').eq('user_id', user.id).eq('product_code', code).in('status', ['submitted', 'pending']).limit(1)
   if (existingError) return json({ error: 'Could not check existing payment submissions. Please try again.' }, 500)
@@ -37,7 +54,7 @@ Deno.serve(async req => {
 
   const amount = Number(Deno.env.get(product.env))
   if (!Number.isSafeInteger(amount) || amount <= 0) return json({ error: 'This product is not available yet because its price is not configured.' }, 503)
-  const { data: order, error } = await admin.from('orders').insert({ user_id: user.id, product_code: code, track_id: product.track, amount_php: amount, status: 'submitted', payment_method: paymentMethod, payment_reference: paymentReference, proof_url: proofUrl || null, customer_note: customerNote || null }).select('id,amount_php,status').single()
+  const { data: order, error } = await admin.from('orders').insert({ user_id: user.id, product_code: code, track_id: product.track, amount_php: amount, status: 'submitted', payment_method: paymentMethod, payment_reference: paymentReference, proof_url: proofUrl || null, customer_note: customerNote || null, customer_name: customerName, customer_company: customerCompany || null, customer_school: customerSchool || null }).select('id,amount_php,status').single()
   if (error || !order) return json({ error: 'Could not submit payment for review. Please try again.' }, 500)
   return json({ order })
 })
