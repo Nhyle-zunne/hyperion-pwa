@@ -329,6 +329,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     try {
       localStorage.setItem('hyperion-saved-practice', JSON.stringify({ questions, answers, currentIndex, track, competenceId, finished, mode, startedAt, timeLimitSec, timeLeftSec, streak, bestStreak }));
     } catch { /* storage can be unavailable */ }
+    window.dispatchEvent(new Event('hyperion:practice-progress-saved'));
     if (track && questions.length) {
       useHistoryStore.getState().saveSession({
         mode, track, competenceId,
