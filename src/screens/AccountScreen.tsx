@@ -45,7 +45,7 @@ export default function AccountScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
-  const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>('payments')
+  const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
   const [product, setProduct] = useState('oic_nw')
   const [basket, setBasket] = useState<PaidTrack[]>(() => {
     try {
@@ -485,8 +485,8 @@ export default function AccountScreen() {
       .account-page .payment-method-pills{display:flex;flex-wrap:wrap;gap:.4rem}
       .account-page .payment-method-pills span{padding:.3rem .5rem;border:1px solid var(--border);background:var(--bg-elevated);border-radius:6px;font-size:.7rem;font-weight:750}
       @media(max-width:1100px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar{align-items:stretch}.account-page .account-section-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}.account-page .account-section-tabs button{padding:.55rem .35rem;font-size:.78rem;white-space:normal}.account-page .account-toolbar-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}}
-      @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-section-tabs{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
+      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar-actions{display:flex;justify-content:flex-end}}
+      @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
     `}</style>
 
 
@@ -511,12 +511,7 @@ export default function AccountScreen() {
     </section> : <>
       {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
 
-      <div className="account-toolbar">
-        <nav className="account-section-tabs" role="tablist" aria-label="Account menu">
-          <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>🛍️ Bond Store</button>
-          <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>🎫 My licenses</button>
-          <button type="button" role="tab" aria-selected={accountTab === 'delete'} className={accountTab === 'delete' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('delete')} style={accountTab === 'delete' ? { background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' } : { color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>Delete account</button>
-        </nav>
+      <div className="account-toolbar" style={{ justifyContent: 'flex-end' }}>
         <div className="account-toolbar-actions">
           <button type="button" className="btn btn-outline" onClick={async () => { await supabase?.auth.signOut(); setMessage('Signed out.') }}>Sign out</button>
         </div>
@@ -545,6 +540,18 @@ export default function AccountScreen() {
                 <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
               </div>}
               {isAdmin && <button type="button" title="Open admin dashboard" aria-label="Admin" onClick={() => navigate('/admin/payments')} style={{ display: 'block', width: '100%', marginTop: '.9rem', border: '1px solid #86cba0', borderRadius: 8, background: '#dcfce7', color: '#166534', padding: '.65rem .8rem', fontWeight: 850, cursor: 'pointer' }}>Admin</button>}
+              <button type="button" className="btn btn-outline" onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')} style={{ display: 'block', width: '100%', marginTop: '.6rem', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>Delete account</button>
+              {accountTab === 'delete' && <section style={{ ...card, marginTop: '1rem', borderColor: 'var(--danger, #dc2626)' }}>
+                <h3 style={{ marginTop: 0, color: 'var(--danger, #dc2626)' }}>Delete account</h3>
+                <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
+                {!deleteConfirmOpen ? <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmation(''); setDeleteConfirmOpen(true) }} style={{ width: '100%', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>DELETE MY ACCOUNT</button> : <div>
+                  <label style={label}>To confirm, type DELETE below<input autoComplete="off" value={deleteConfirmation} onChange={e => setDeleteConfirmation(e.target.value)} style={field} /></label>
+                  <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
+                    <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmOpen(false); setDeleteConfirmation('') }} style={{ flex: 1 }}>Cancel</button>
+                    <button type="button" className="btn btn-primary" disabled={busy || deleteConfirmation !== 'DELETE'} onClick={() => void deleteAccount()} style={{ flex: 1, background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busy ? 'Deleting…' : 'Permanently delete'}</button>
+                  </div>
+                </div>}
+              </section>}
             </div>
           </section>
         </aside>
@@ -578,16 +585,6 @@ export default function AccountScreen() {
                 </div>
               </div>
             }) : <p style={{ color: 'var(--text-muted)' }}>No active licenses are linked to this account yet.</p>}
-          </section> : accountTab === 'delete' ? <section style={{ ...card, borderColor: 'var(--danger, #dc2626)' }}>
-            <h2 style={{ marginTop: 0, fontSize: '1.1rem', color: 'var(--danger, #dc2626)' }}>Delete account</h2>
-            <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
-            {!deleteConfirmOpen ? <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmation(''); setDeleteConfirmOpen(true) }} style={{ width: '100%', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>DELETE MY ACCOUNT</button> : <div>
-              <label style={label}>To confirm, type DELETE below<input autoComplete="off" value={deleteConfirmation} onChange={e => setDeleteConfirmation(e.target.value)} style={field} /></label>
-              <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
-                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmOpen(false); setDeleteConfirmation('') }} style={{ flex: 1 }}>Cancel</button>
-                <button type="button" className="btn btn-primary" disabled={busy || deleteConfirmation !== 'DELETE'} onClick={() => void deleteAccount()} style={{ flex: 1, background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busy ? 'Deleting…' : 'Permanently delete'}</button>
-              </div>
-            </div>}
           </section> : <>
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
