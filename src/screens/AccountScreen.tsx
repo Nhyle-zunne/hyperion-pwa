@@ -132,7 +132,7 @@ export default function AccountScreen() {
     return () => window.removeEventListener('message', handleOAuthMessage)
   }, [navigate, refreshCloudEntitlements])
 
-  const openOAuthPopup = async (provider: 'google' | 'facebook') => {
+  const openOAuthPopup = async () => {
     if (!supabase) {
       setMessage('Sign-in is unavailable because Supabase is not configured.')
       return
@@ -210,8 +210,7 @@ export default function AccountScreen() {
     }
   }
 
-  const signInWithGoogle = async () => openOAuthPopup('google')
-  const signInWithFacebook = async () => openOAuthPopup('facebook')
+  const signInWithGoogle = async () => openOAuthPopup()
 
   const submitPayment = async (event: FormEvent) => {
     event.preventDefault()
@@ -272,7 +271,7 @@ export default function AccountScreen() {
   return <div className="screen" style={{ width: 'min(calc(100% - 2rem), 760px)', margin: '0 auto', paddingBottom: '2rem' }}>
     <button type="button" onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>← Back</button>
     <h1 className="page-title" style={{ textAlign: 'center' }}>Hyperion Account</h1>
-    <p className="subtitle" style={{ textAlign: 'center', maxWidth: 520, margin: '0 auto 1.25rem' }}>Sign in to Hyperion Maritime with Google or Facebook to access your account and review-track subscriptions.</p>
+    <p className="subtitle" style={{ textAlign: 'center', maxWidth: 520, margin: '0 auto 1.25rem' }}>Sign in to Hyperion Maritime with Google to access your account and review-track subscriptions.</p>
     {!session ? <section style={{ ...card, maxWidth: 460, margin: '1.5rem auto' }}>
       <button
         type="button"
@@ -288,18 +287,6 @@ export default function AccountScreen() {
           <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.89l-7.62-5.91c-2.11 1.41-4.81 2.25-8.29 2.25-6.52 0-12.11-4.22-14-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z"/>
         </svg>
         Continue with Google
-      </button>
-      <button
-        type="button"
-        className="btn btn-outline"
-        disabled={!supabaseConfigured || busy}
-        onClick={() => void signInWithFacebook()}
-        style={{ width: '100%', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.65rem', minHeight: 46 }}
-      >
-        <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
-          <path fill="#1877F2" d="M24 12a12 12 0 1 0-13.875 11.85v-8.38H7.08V12h3.045V9.35c0-3.005 1.79-4.665 4.53-4.665 1.312 0 2.686.234 2.686.234v2.953h-1.512c-1.49 0-1.954.925-1.954 1.874V12h3.324l-.531 3.47h-2.793v8.38A12.002 12.002 0 0 0 24 12Z"/>
-        </svg>
-        Continue with Facebook
       </button>
       {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '1rem', marginBottom: 0 }}>{message}</div>}
       {!supabaseConfigured && <div role="alert" style={{ ...card, borderColor: 'var(--danger)', marginTop: '1rem', marginBottom: 0 }}><strong>Supabase is not configured yet.</strong><p style={{ marginBottom: 0, color: 'var(--text-muted)' }}>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.</p></div>}
