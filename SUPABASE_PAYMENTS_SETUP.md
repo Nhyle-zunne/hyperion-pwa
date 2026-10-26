@@ -37,6 +37,7 @@ supabase secrets set PRICE_DECK_MGT_PHP=700
 supabase secrets set PRICE_ENGINE_MGT_PHP=700
 
 supabase functions deploy create-checkout
+supabase functions deploy verify-checkout
 supabase functions deploy cancel-checkout
 supabase functions deploy paymongo-webhook
 supabase functions deploy submit-manual-payment
@@ -79,7 +80,7 @@ Supabase's configuration intentionally disables JWT verification only for `paymo
 3. The server creates an order and asks PayMongo for a hosted checkout session using the configured server-side price.
 4. The student pays on PayMongo's hosted page. Enabled payment methods can include GCash, Maya, QR Ph, and cards, depending on the merchant's PayMongo configuration.
 5. PayMongo sends `checkout_session.payment.paid` to the configured webhook. The server verifies the signature, session ID, product/user metadata, amount and currency before marking the order paid and granting 12 months of access.
-6. Hyperion checks the saved order status on return. If the webhook is still processing, the Account page tells the student to refresh status shortly; a successful redirect alone does not unlock anything.
+6. Hyperion asks the authenticated `verify-checkout` function to retrieve the Checkout Session directly from PayMongo on the success return and when the user refreshes payment status. The server validates the paid payment, the exact order/session ID, amount, currency, mode, account and product before granting the matching track. The signed webhook remains the automatic fulfillment path even if the customer closes the browser; a successful redirect alone never unlocks anything.
 
 If a student cancels the hosted checkout, PayMongo does not automatically close the checkout session. The Account page therefore offers **CANCEL CHECKOUT & SWITCH TO MANUAL** for a pending session. The authenticated `cancel-checkout` function retrieves the session, refuses cancellation if a payment is already paid or pending/processing, and otherwise calls PayMongo's session-expiration endpoint before marking the order cancelled. Only after that succeeds can the student submit a manual QR payment. PayMongo documents that active sessions do not expire automatically and that ongoing payments must not be expired: https://docs.paymongo.com/docs/payment-channels-key-concepts and https://docs.paymongo.com/reference/expire-a-checkout-session.
 
