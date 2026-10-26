@@ -297,7 +297,7 @@ async function authorizeTrack(admin: any, user: any, isAdmin: boolean, track: st
   if (isAdmin) return true;
   return await checkEntitlement(admin, user.id, track);
 }
-const freeQuestionIdCache = new Map<string, Set<string>>();
+const freeQuestionFingerprintCache = new Map<string, Set<string>>();
 function questionIdBelongsToTrack(id: string, track: string) {
   if (track === "DECK_OIC_NW") return id.startsWith("D-");
   if (track === "GMDSS_GOC") return id.startsWith("G-");
@@ -306,16 +306,27 @@ function questionIdBelongsToTrack(id: string, track: string) {
   if (track === "ENGINE_MGT") return id.startsWith("EM-");
   return false;
 }
-async function freeQuestionIds(admin: any, track: string): Promise<Set<string>> {
-  const cached = freeQuestionIdCache.get(track);
+async function questionFingerprint(question: { questionText: string; options: string[]; correctAnswerIndex: number }): Promise<string> {
+  const payload = new TextEncoder().encode(JSON.stringify([question.questionText, question.options, question.correctAnswerIndex]));
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", payload));
+  return Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+async function freeQuestionFingerprints(admin: any, track: string): Promise<Set<string>> {
+  const cached = freeQuestionFingerprintCache.get(track);
   if (cached) return cached;
-  const ids = new Set<string>();
+  const fingerprints = new Set<string>();
   for (const path of SOURCE_ASSETS.filter(item => trackForPath(item) === track)) {
     const sample = sampleFreeCsv(path, await privateText(admin, path));
-    for (const question of toSearchQuestions(path, sample)) ids.add(String(question.id));
+    const questions = toSearchQuestions(path, sample);
+    const hashes = await Promise.all(questions.map(question => questionFingerprint({
+      questionText: String(question.questionText),
+      options: question.options as string[],
+      correctAnswerIndex: Number(question.correctAnswerIndex)
+    })));
+    hashes.forEach(hash => fingerprints.add(hash));
   }
-  freeQuestionIdCache.set(track, ids);
-  return ids;
+  freeQuestionFingerprintCache.set(track, fingerprints);
+  return fingerprints;
 }
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: headers(req) });
@@ -325,7 +336,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceKey) return json(req, { error: "Question service is not configured." }, 503);
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let body: { action?: string; path?: string; track?: string; query?: string; limit?: number; freeOnly?: boolean };
+  let body: { action?: string; path?: string; track?: string; query?: string; limit?: number; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown };
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
   let user: any = null, isAdmin = false;
   const authHeader = req.headers.get("Authorization");
@@ -379,14 +390,18 @@ Deno.serve(async (req: Request) => {
   if (body.action === "authorize-session") {
     const track = body.track || "";
     const questionIds = body.questionIds;
+    const fingerprints = body.fingerprints;
     if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) return json(req, { allowed: false, error: "Invalid track." }, 400);
-    if (!Array.isArray(questionIds) || questionIds.length < 1 || questionIds.length > 3000 || questionIds.some(id => typeof id !== "string" || id.length > 120 || !questionIdBelongsToTrack(id, track))) {
+    if (!Array.isArray(questionIds) || questionIds.length < 1 || questionIds.length > 3000 ||
+        questionIds.some(id => typeof id !== "string" || id.length > 120 || !questionIdBelongsToTrack(id, track)) ||
+        !Array.isArray(fingerprints) || fingerprints.length !== questionIds.length ||
+        fingerprints.some(hash => typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash))) {
       return json(req, { allowed: false, error: "Invalid question set." }, 400);
     }
     try {
       if (await authorizeTrack(admin, user, isAdmin, track)) return json(req, { allowed: true, access: isAdmin ? "admin" : "licensed" });
-      const allowedIds = await freeQuestionIds(admin, track);
-      const allowed = questionIds.every(id => allowedIds.has(id));
+      const allowedFingerprints = await freeQuestionFingerprints(admin, track);
+      const allowed = fingerprints.every(hash => allowedFingerprints.has(hash as string));
       return json(req, { allowed, access: allowed ? "free-sample" : "denied" }, allowed ? 200 : 403);
     } catch {
       return json(req, { allowed: false, error: "Could not verify question access." }, 503);
