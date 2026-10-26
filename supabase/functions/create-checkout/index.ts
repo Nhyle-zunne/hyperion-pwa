@@ -24,8 +24,14 @@ Deno.serve(async (req) => {
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   const paymongoKey = Deno.env.get('PAYMONGO_SECRET_KEY')
+  const checkoutEnabled = Deno.env.get('PAYMONGO_CHECKOUT_ENABLED') === 'true'
+  const expectedLiveMode = Deno.env.get('PAYMONGO_EXPECT_LIVEMODE')
   if (!supabaseUrl || !anonKey || !serviceKey) return json({ error: 'Payment service is not configured. Contact Hyperion support.' }, 503)
-  if (!paymongoKey) return json({ error: 'PayMongo checkout is not configured yet. Please use manual payment for now.' }, 503)
+  if (!checkoutEnabled) return json({ error: 'PayMongo checkout is not enabled yet. Please use manual payment for now.' }, 503)
+  if (!paymongoKey || (expectedLiveMode !== 'true' && expectedLiveMode !== 'false')) return json({ error: 'PayMongo checkout is not fully configured yet. Please use manual payment for now.' }, 503)
+  if ((expectedLiveMode === 'true' && !paymongoKey.startsWith('sk_live_')) || (expectedLiveMode === 'false' && !paymongoKey.startsWith('sk_test_'))) {
+    return json({ error: 'The PayMongo key does not match the configured payment mode. Please contact Hyperion support.' }, 503)
+  }
 
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) return json({ error: 'Please sign in first.' }, 401)
