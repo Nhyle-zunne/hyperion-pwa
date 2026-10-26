@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
     if (legacyError) return json({ error: 'Could not check your existing checkout. Please retry.' }, 500)
     if (legacyOrder?.paymongo_checkout_session_id) {
       try {
-        const response = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(legacyOrder.paymongo_checkout_session_id)}`, {
+        const response = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(legacyOrder.paymongo_checkout_session_id)}`, {
           headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}` }
         })
         const result = await response.json().catch(() => ({}))
@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
       return json({ error: 'You already have a checkout open for a different basket. Resume or cancel it before checking out these items.' }, 409)
     }
     try {
-      const response = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(activePendingBatch.paymongo_checkout_session_id)}`, {
+      const response = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(activePendingBatch.paymongo_checkout_session_id)}`, {
         headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}` }
       })
       const result = await response.json().catch(() => ({}))
