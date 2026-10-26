@@ -32,7 +32,8 @@ import { usePracticeStore } from './stores/practiceStore'
 import { useBookmarksStore } from './stores/bookmarksStore'
 import { supabase } from './lib/supabase'
 import { startLearningProgressSync } from './lib/progressSync'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { clearPaidQuestionCache } from './lib/questionBank'
 
 export default function App() {
   const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
@@ -66,6 +67,7 @@ export default function App() {
   })
 
   const [entitlementsChecked, setEntitlementsChecked] = useState(false)
+  const lastCloudTrackIds = useRef<string[]>([])
   useEffect(() => {
     let alive = true
     const refresh = async () => {
@@ -74,6 +76,7 @@ export default function App() {
     }
     void refresh()
     const authListener = supabase?.auth.onAuthStateChange(() => {
+      clearPaidQuestionCache()
       setEntitlementsChecked(false)
       window.setTimeout(() => { void refresh() }, 0)
     })
@@ -118,19 +121,31 @@ export default function App() {
   const isPracticeQuiz = location.pathname === '/practice/quiz'
   const isMockRunner = location.pathname === '/mock/exam'
   const isQuestionRunner = isPracticeQuiz || isMockRunner
+  const isQuickScanViewer = location.pathname === '/quick-scan/view'
+  const quickScanKeys: Record<string, string> = { oic_nw: 'DECK_OIC_NW', gmdss: 'GMDSS_GOC', engine_ew: 'ENGINE_OIC_EW', deck_mgt: 'DECK_MGT', engine_mgt: 'ENGINE_MGT' }
+  const quickScanTrack = isQuickScanViewer ? quickScanKeys[new URLSearchParams(location.search).get('track') || 'oic_nw'] || 'DECK_OIC_NW' : null
+  const guardedTrack = isQuestionRunner ? currentTrack : quickScanTrack
 
   useEffect(() => {
-    if (!entitlementsChecked || !isQuestionRunner || !currentTrack || isFreeSession || sessionLoading || sessionQuestionCount === 0) return
-    const allowed = entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(currentTrack))
+    const hadTrackAccessRemoved = lastCloudTrackIds.current.some(trackId => !cloudTrackIds.includes(trackId))
+    if (hadTrackAccessRemoved || !entitlementsVerified) clearPaidQuestionCache()
+    lastCloudTrackIds.current = cloudTrackIds
+  }, [cloudTrackIds, entitlementsVerified])
+
+  useEffect(() => {
+    if (!entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer) || !guardedTrack) return
+    if (isQuestionRunner && (isFreeSession || sessionLoading || sessionQuestionCount === 0)) return
+    const allowed = entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
     if (allowed) return
     const trackParam: Record<string, string> = {
       DECK_OIC_NW: 'oic_nw', GMDSS_GOC: 'gmdss', ENGINE_OIC_EW: 'engine_ew',
       DECK_MGT: 'deck_mgt', ENGINE_MGT: 'engine_mgt'
     }
-    usePracticeStore.getState().reset()
-    navigate('/track?track=' + (trackParam[currentTrack] || 'oic_nw'), { replace: true })
-    useUIStore.getState().openPaywall('This paid session needs a current, verified license. Renew access or reconnect to check your subscription.')
-  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, currentTrack, isFreeSession, sessionLoading, sessionQuestionCount, navigate])
+    clearPaidQuestionCache()
+    if (isQuestionRunner) usePracticeStore.getState().reset()
+    navigate('/track?track=' + (trackParam[guardedTrack] || 'oic_nw'), { replace: true })
+    useUIStore.getState().openPaywall('This paid question view needs a current, verified license. Renew access or reconnect to check your subscription.')
+  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, guardedTrack, isFreeSession, sessionLoading, sessionQuestionCount, navigate])
 
   const hideNav = [
     '/practice/quiz',
