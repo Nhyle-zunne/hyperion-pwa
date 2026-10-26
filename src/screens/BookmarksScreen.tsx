@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
+import { authorizeQuestionSet } from '../lib/questionBank'
 import type { BookmarkedQuestion } from '../stores/bookmarksStore'
 import type { TrackId } from '../types/question'
 
@@ -24,12 +26,59 @@ export default function BookmarksScreen() {
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
   const entitlementsVerified = useLicenseStore((s) => s.entitlementsVerified)
+  const cloudTrackIds = useLicenseStore((s) => s.cloudTrackIds)
+  const [verifiedFreeItems, setVerifiedFreeItems] = useState<string[]>([])
+  const [validatingBookmarks, setValidatingBookmarks] = useState(true)
   const openPaywall = useUIStore((s) => s.openPaywall)
 
-  const visibleItems = items.filter(item =>
-    item.paidAtSave === false ||
-    (entitlementsVerified && (isAllAccessUnlocked || isTrackUnlocked(item.track)))
-  )
+  useEffect(() => {
+    let cancelled = false
+    async function validateBookmarks() {
+      setValidatingBookmarks(true)
+      if (!entitlementsVerified) {
+        if (!cancelled) {
+          setVerifiedFreeItems([])
+          setValidatingBookmarks(false)
+        }
+        return
+      }
+      const valid = new Set<string>()
+      const questions = asQuestions()
+      const tracks = [...new Set(items.map(item => item.track))]
+      for (const track of tracks) {
+        const group = items.filter(item => item.track === track)
+        if (isAllAccessUnlocked || isTrackUnlocked(track)) {
+          group.forEach(item => valid.add(item.id))
+          continue
+        }
+        // The local paidAtSave flag is editable by users, so use it only to
+        // choose candidates. The server verifies that every displayed question
+        // really belongs to this track's free sample before it is shown.
+        const candidates = group.filter(item => item.paidAtSave === false)
+        if (!candidates.length) continue
+        const ids = new Set(candidates.map(item => item.id))
+        const candidateQuestions = questions.filter(question => question.track === track && ids.has(question.id))
+        try {
+          if (candidateQuestions.length === candidates.length && await authorizeQuestionSet(track, candidateQuestions)) {
+            candidates.forEach(item => valid.add(item.id))
+          }
+        } catch {
+          // Fail closed: do not display cached paid question text if validation fails.
+        }
+      }
+      if (!cancelled) {
+        setVerifiedFreeItems([...valid])
+        setValidatingBookmarks(false)
+      }
+    }
+    void validateBookmarks()
+    return () => { cancelled = true }
+  }, [items, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isTrackUnlocked, asQuestions])
+
+  const validIds = new Set(verifiedFreeItems)
+  const visibleItems = entitlementsVerified
+    ? items.filter(item => validIds.has(item.id) || isAllAccessUnlocked || isTrackUnlocked(item.track))
+    : []
   const trackGroups = new Map<TrackId, BookmarkedQuestion[]>()
   for (const item of visibleItems) {
     const group = trackGroups.get(item.track) ?? []
@@ -74,9 +123,11 @@ export default function BookmarksScreen() {
         </div>
       )}
 
-      {visibleItems.length === 0 ? (
+      {validatingBookmarks ? (
+        <div className="card" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>Verifying question access…</div>
+      ) : visibleItems.length === 0 ? (
         <div className="card" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-          No bookmarks yet. Open a question in Practice or Flashcards and tap Bookmark.
+          No available bookmarks. Paid question bookmarks require an active license; cached free questions are verified before display.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '0.6rem' }}>
