@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
 
 export default function PracticeQuizScreen() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const resumeSessionId = params.get('resume') || undefined
   const {
     questions,
     currentIndex,
@@ -31,8 +33,12 @@ export default function PracticeQuizScreen() {
   const [automations, setAutomations] = useState(() => { try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as {directAnswer:boolean;autoNextCorrect:boolean;autoNextWrong:boolean} } catch { return {directAnswer:false,autoNextCorrect:false,autoNextWrong:false} } })
   useEffect(() => { const settings = (e: Event) => setAutomations((e as CustomEvent).detail); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
   useEffect(() => {
-    if (questions.length === 0) restoreSavedProgress()
-  }, [])
+    if (resumeSessionId) {
+      void restoreSavedProgress(resumeSessionId)
+    } else if (questions.length === 0) {
+      void restoreSavedProgress()
+    }
+  }, [resumeSessionId])
 
   // Never carry an unconfirmed option highlight into another question.
   useEffect(() => {
