@@ -347,6 +347,7 @@ async function uploadSnapshot(): Promise<void> {
       return
     }
 
+    if (activeUserId !== userId) return
     try {
       localStorage.setItem(OWNER_KEY, userId)
       const currentDirtyAt = localStorage.getItem(key)
@@ -357,6 +358,10 @@ async function uploadSnapshot(): Promise<void> {
         uploadQueued = true
       }
     } catch { /* successful cloud write is not undone by local storage failures */ }
+  } catch (error) {
+    cloudReady = false
+    console.warn('[Hyperion progress sync] Cloud save failed; progress remains local.', error)
+    if (navigator.onLine !== false) retryTimer = setTimeout(() => { void initializeUser(userId) }, 5000)
   } finally {
     uploadInFlight = false
     if (uploadQueued && activeUserId === userId) {
