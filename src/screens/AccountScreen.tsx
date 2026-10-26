@@ -5,8 +5,22 @@ import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 
-type Order = { id: string; product_code: string; amount_php: number; status: string; payment_reference: string | null; created_at: string; admin_note: string | null }
-type OwnedTrack = { product_code: string; expires_at: string | null }
+type Order = {
+  id: string
+  product_code: string
+  amount_php: number
+  status: string
+  payment_reference: string | null
+  payment_method: string | null
+  customer_name: string | null
+  customer_company: string | null
+  customer_school: string | null
+  created_at: string
+  paid_at: string | null
+  reviewed_at: string | null
+  admin_note: string | null
+}
+type OwnedTrack = { product_code: string; order_id: string; granted_at: string; expires_at: string | null; renewed_at: string | null }
 
 function safeAccountError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : ''
@@ -31,7 +45,7 @@ export default function AccountScreen() {
   const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
   const qrPhImage = '/qr-ph.png'
   const [busy, setBusy] = useState(false)
-  const [, setMessage] = useState('')
+  const [message, setMessage] = useState('')
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
@@ -48,14 +62,28 @@ export default function AccountScreen() {
 
   useEffect(() => {
     const metadata = session?.user.user_metadata ?? {}
-    setFullName(typeof metadata.full_name === 'string' ? metadata.full_name : '')
-    setCompany(typeof metadata.company === 'string' ? metadata.company : '')
-    setSchool(typeof metadata.school === 'string' ? metadata.school : '')
-    setSavedProfile({
-      fullName: typeof metadata.full_name === 'string' ? metadata.full_name : '',
-      company: typeof metadata.company === 'string' ? metadata.company : '',
-      school: typeof metadata.school === 'string' ? metadata.school : '',
-    })
+    const identityNames = (session?.user.identities ?? [])
+      .filter(identity => identity.provider === 'google')
+      .map(identity => {
+        const data = identity.identity_data as Record<string, unknown> | null
+        return data?.full_name ?? data?.name
+      })
+    const metadataGivenName = [metadata.given_name, metadata.family_name]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join(' ')
+    const nameCandidate = [
+      metadata.full_name,
+      metadata.name,
+      metadataGivenName,
+      ...identityNames,
+    ].find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    const resolvedFullName = nameCandidate?.trim() ?? ''
+    const resolvedCompany = typeof metadata.company === 'string' ? metadata.company : ''
+    const resolvedSchool = typeof metadata.school === 'string' ? metadata.school : ''
+    setFullName(resolvedFullName)
+    setCompany(resolvedCompany)
+    setSchool(resolvedSchool)
+    setSavedProfile({ fullName: resolvedFullName, company: resolvedCompany, school: resolvedSchool })
     setProfileEditing(false)
   }, [session?.user.id])
   useEffect(() => {
@@ -82,14 +110,37 @@ export default function AccountScreen() {
   }
   const refreshAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); return }
+    const orderColumns = 'id,product_code,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note'
     const [entitlements, orderResult] = await Promise.all([
-      supabase.from('entitlements').select('product_code,expires_at').eq('user_id', session.user.id).eq('status', 'active').gt('expires_at', new Date().toISOString()),
-      supabase.from('orders').select('id,product_code,amount_php,status,payment_reference,created_at,admin_note').eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(50)
+      supabase.from('entitlements')
+        .select('product_code,order_id,granted_at,expires_at,renewed_at')
+        .eq('user_id', session.user.id)
+        .eq('status', 'active')
+        .gt('expires_at', new Date().toISOString()),
+      supabase.from('orders')
+        .select(orderColumns)
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(50),
     ])
+
+    const activeLicenses = !entitlements.error ? (entitlements.data ?? []) as OwnedTrack[] : []
+    setOwned(activeLicenses)
     if (entitlements.error) setMessage('Unable to refresh account details. Please try again.')
-    else setOwned((entitlements.data ?? []) as OwnedTrack[])
+
+    let linkedOrders: Order[] = []
+    const linkedOrderIds = [...new Set(activeLicenses.map(item => item.order_id).filter(Boolean))]
+    if (linkedOrderIds.length > 0) {
+      const { data, error } = await supabase.from('orders').select(orderColumns).in('id', linkedOrderIds)
+      if (error) setMessage('Unable to refresh license transaction details. Please try again.')
+      else linkedOrders = (data ?? []) as Order[]
+    }
+
     if (orderResult.error) setMessage('Unable to refresh payment history. Please try again.')
-    else setOrders((orderResult.data ?? []) as Order[])
+    const recentOrders = (orderResult.data ?? []) as Order[]
+    const combinedOrders = [...recentOrders, ...linkedOrders.filter(linked => !recentOrders.some(recent => recent.id === linked.id))]
+    combinedOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    setOrders(combinedOrders)
     await refreshCloudEntitlements()
   }
   useEffect(() => { void refreshAccount() }, [session?.user.id])
@@ -132,6 +183,14 @@ export default function AccountScreen() {
   const submitPayment = async (event: FormEvent) => {
     event.preventDefault()
     if (!supabase || !session) return
+    if (!fullName.trim()) {
+      setMessage('Please add your full name in Your profile before submitting a purchase.')
+      return
+    }
+    if (owned.some(item => item.product_code === product)) {
+      setMessage('This license is already active for your account. You do not need to purchase this track again.')
+      return
+    }
     setBusy(true); setMessage('Submitting your payment for manual review…')
     try {
       const { data, error } = await supabase.functions.invoke('submit-manual-payment', { body: { productCode: product, paymentMethod, paymentReference: reference, customerNote: note, customerProfile: { fullName: fullName.trim(), company: company.trim(), school: school.trim() } } })
@@ -148,6 +207,7 @@ export default function AccountScreen() {
   const profileField = (editable: boolean): React.CSSProperties => ({ ...field, background: editable ? 'var(--bg-elevated)' : 'var(--bg)', color: editable ? 'var(--text)' : 'var(--text-muted)', border: editable ? '1px solid var(--border)' : '1px solid #cbd5e1', boxShadow: 'none', outline: 'none', cursor: editable ? 'text' : 'default', userSelect: editable ? 'text' : 'none', WebkitUserSelect: editable ? 'text' : 'none', pointerEvents: editable ? 'auto' : 'none', caretColor: editable ? 'auto' : 'transparent' })
   const label: React.CSSProperties = { display: 'block', marginTop: '.8rem' }
   const statusLabel: Record<string,string> = { submitted: 'Awaiting manual review', pending: 'Awaiting payment review', paid: 'Approved', failed: 'Rejected', refunded: 'Refunded', cancelled: 'Cancelled by you' }
+  const activeLicense = owned.find(item => item.product_code === product)
   const pendingOrder = orders.find(order => order.product_code === product && ['submitted', 'pending'].includes(order.status))
   const deleteAccount = async () => {
     if (!supabase || !session || deleteConfirmation !== 'DELETE') return
@@ -210,6 +270,7 @@ export default function AccountScreen() {
       {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>Payments are verified manually. A return to this page does not grant access.</div>}
     </section> : <>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>{isAdmin && <span style={{ display: 'inline-block', border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '0.35rem 0.8rem', fontWeight: 800, fontSize: '0.82rem', letterSpacing: '0.04em' }}>✓ VERIFIED ADMIN · ALL ACCESS</span>}</div>
+      {message && <div role="status" style={{ ...card, lineHeight: 1.5 }}>{message}</div>}
       <div role="tablist" aria-label="Account sections" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: '1rem' }}>
         <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>Payments & profile</button>
         <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>Active licenses</button>
@@ -217,7 +278,28 @@ export default function AccountScreen() {
       </div>
       {accountTab === 'licenses' ? <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Active licenses</h2>
-        {owned.length ? owned.map(item => <div key={item.product_code} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code} · expires {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>) : <p style={{ color: 'var(--text-muted)' }}>No approved subscriptions are linked to this account yet.</p>}
+        {owned.length ? owned.map(item => {
+          const transaction = orders.find(order => order.id === item.order_id)
+          return <div key={item.product_code} style={{ padding: '.8rem 0', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <strong>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code}</strong>
+              <span style={{ color: 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 700 }}>ACTIVE</span>
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
+            <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
+              <strong style={{ display: 'block', marginBottom: '.25rem' }}>Transaction details</strong>
+              {transaction ? <>
+                <div>Amount paid: ₱{transaction.amount_php}</div>
+                <div>Purchase date: {new Date(transaction.paid_at || transaction.created_at).toLocaleString()}</div>
+                <div>Payment method: {transaction.payment_method || 'Not recorded'}</div>
+                <div>Reference number: {transaction.payment_reference || 'Not provided'}</div>
+                <div style={{ fontSize: '.8rem', overflowWrap: 'anywhere' }}>Order ID: {transaction.id}</div>
+                {transaction.customer_company && <div>Company: {transaction.customer_company}</div>}
+                {transaction.customer_school && <div>School: {transaction.customer_school}</div>}
+              </> : <div style={{ color: 'var(--text-muted)' }}>Order reference: {item.order_id}</div>}
+            </div>
+          </div>
+        }) : <p style={{ color: 'var(--text-muted)' }}>No active licenses are linked to this account yet.</p>}
       </section> : accountTab === 'delete' ? <section style={{ ...card, borderColor: 'var(--danger, #dc2626)' }}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem', color: 'var(--danger, #dc2626)' }}>Delete account</h2>
         <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
@@ -248,10 +330,6 @@ export default function AccountScreen() {
         </div>}
       </section>
       <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Your purchased access</h2>
-        {owned.length ? owned.map(item => <div key={item.product_code} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code} · expires {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>) : <p style={{ color: 'var(--text-muted)' }}>No approved purchases are linked to this account yet.</p>}
-      </section>
-      <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Payment Instructions</h2>
         <ol style={{ paddingLeft: '1.3rem', lineHeight: 1.65, marginBottom: 0 }}>
           <li>Select the exam/reviewer track you want to purchase from the dropdown below.</li>
@@ -264,8 +342,11 @@ export default function AccountScreen() {
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Submit payment details</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.5 }}>Each payment covers one individual track for 12 months. Send the exact amount shown for the reviewer track you selected. Incorrect or short payments may delay approval. Access starts only after manual verification.</p>
-        <label style={label}>Choose an individual track (12-month subscription)<select value={product} onChange={e => setProduct(e.target.value)} style={field}>{PAID_PRODUCTS.map(item => <option key={item.code} value={item.code}>{item.label} · ₱{item.annualPrice}/year</option>)}</select></label>
-        {pendingOrder ? <div style={{ ...card, marginTop: '.9rem', borderColor: 'var(--warning, #eab308)' }}>
+        <label style={label}>Choose an individual track (12-month subscription)<select value={product} onChange={e => setProduct(e.target.value)} style={field}>{PAID_PRODUCTS.map(item => <option key={item.code} value={item.code}>{item.label} · ₱{item.annualPrice}/year{owned.some(license => license.product_code === item.code) ? ' · LICENSE ACTIVE' : ''}</option>)}</select></label>
+        {activeLicense ? <div style={{ ...card, marginTop: '.9rem', borderColor: 'var(--success, #16a34a)' }}>
+          <strong>License already active</strong>
+          <p style={{ color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 0 }}>This license is already active for your account. You do not need to purchase this track again. Your current access expires {activeLicense.expires_at ? new Date(activeLicense.expires_at).toLocaleDateString() : 'at its recorded expiration'}.</p>
+        </div> : pendingOrder ? <div style={{ ...card, marginTop: '.9rem', borderColor: 'var(--warning, #eab308)' }}>
           <strong>You already submitted this track for review.</strong>
           <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>Your payment submission is awaiting manual review. You do not need to submit it again. If you submitted the wrong details or want to withdraw this request, cancel it below.</p>
           <div style={{ fontSize: '.85rem', overflowWrap: 'anywhere', marginBottom: '.8rem' }}>Order: {pendingOrder.id}</div>
