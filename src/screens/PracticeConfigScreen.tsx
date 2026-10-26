@@ -5,7 +5,7 @@ import { useLicenseStore } from '../stores/licenseStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { HISTORY_RETENTION_MS, useHistoryStore } from '../stores/historyStore'
 import { useUIStore } from '../stores/uiStore'
-import { getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import { getQuestionCountsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = {
@@ -61,6 +61,7 @@ export default function PracticeConfigScreen() {
   const selectedPart = trackId === 'GMDSS_GOC' && competenceId ? Number(params.get('part') || '0') || undefined : undefined
   const gmdssParts = competenceId === 'C1' ? Array.from({ length: 10 }, (_, i) => i + 1) : competenceId === 'C2' ? [1, 2] : []
   const [availableQuestionCount, setAvailableQuestionCount] = useState(0)
+  const [questionCountError, setQuestionCountError] = useState('')
   const [startItem, setStartItem] = useState(1)
   const [endItem, setEndItem] = useState(1)
   const [randomizeOrder, setRandomizeOrder] = useState(false)
@@ -145,15 +146,30 @@ export default function PracticeConfigScreen() {
     let cancelled = false
     async function load() {
       const restrictedToFreePool = freeMode || !isUnlocked
-      const all = await getQuestionsByTrack(trackId, restrictedToFreePool)
-      const pool = all
-      let selected = competenceId ? pool.filter(q => q.competenceId === competenceId) : pool
-      if (selectedPart != null) selected = selected.filter(q => q.id.includes('-P' + selectedPart + '-'))
-      if (cancelled) return
-      const count = selected.length
-      setAvailableQuestionCount(count)
-      setStartItem(1)
-      setEndItem(Math.max(1, count))
+      setQuestionCountError('')
+      try {
+        const counts = await getQuestionCountsByTrack(trackId, restrictedToFreePool)
+        if (cancelled) return
+        const selected = counts.filter(item =>
+          (!competenceId || item.competenceId === competenceId) &&
+          (selectedPart == null || item.part === selectedPart)
+        )
+        const count = selected.reduce((sum, item) => sum + item.count, 0)
+        setAvailableQuestionCount(count)
+        setStartItem(1)
+        setEndItem(Math.max(1, count))
+        if (!count && !restrictedToFreePool) {
+          setQuestionCountError('Protected question storage is not ready. An administrator must finish the one-time question-bank migration.')
+        }
+      } catch {
+        if (cancelled) return
+        setAvailableQuestionCount(0)
+        setStartItem(1)
+        setEndItem(1)
+        setQuestionCountError(restrictedToFreePool
+          ? 'The free question sample could not be loaded. Please try again.'
+          : 'Could not verify the paid question bank. Please refresh or contact the administrator.')
+      }
     }
     void load()
     return () => { cancelled = true }
@@ -381,6 +397,7 @@ export default function PracticeConfigScreen() {
         <label style={{ ...muted, fontWeight: 800, fontSize: '.8rem' }}>End Item (#)<input type="number" min={actualStart} max={maxRange} value={actualEnd} onChange={e => setEndItem(Math.max(actualStart, Math.min(Number(e.target.value) || actualStart, maxRange)))} style={{ ...fieldStyle, display: 'block', marginTop: '.35rem' }} /></label>
       </div>
       <div style={{ background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', padding: '.65rem .8rem', marginTop: '1rem', fontSize: '.82rem', fontWeight: 800 }}>Session Scope: <span style={{ color: '#22c55e' }}>Item #{actualStart} to #{actualEnd} ({itemCount.toLocaleString()} Questions)</span></div>
+      {questionCountError && <p role="status" style={{ color: 'var(--danger)', fontSize: '.84rem', marginBottom: 0 }}>{questionCountError}</p>}
       {freeMode && <p style={{ ...muted, fontSize: '.8rem', marginBottom: 0 }}>Free Reviewer pool: {availableQuestionCount.toLocaleString()} questions for this track and competence. The range is limited to this pool.</p>}
       {!freeMode && !isUnlocked && <p style={{ ...muted, fontSize: '.8rem', marginBottom: 0 }}>Only the free sample is available until a key is activated.</p>}
     </section>
