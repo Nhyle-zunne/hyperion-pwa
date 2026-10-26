@@ -708,8 +708,8 @@ export default function AccountScreen() {
                     <div className="product-meta">{description}</div>
                     <div className="product-card-spacer" />
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: '#946c12', borderColor: '#dfc277', background: 'rgba(245,199,94,.12)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
-                    <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => inBasket ? removeFromBasket(item.code) : addToBasket(item.code)} style={{ width: '100%', marginTop: '.8rem', minHeight: 43, background: inBasket ? 'var(--bg-elevated)' : '#3abfc0', borderColor: inBasket ? 'var(--border)' : '#3abfc0', color: inBasket ? 'var(--text)' : '#fff' }}>
-                      {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : inBasket ? 'REMOVE FROM BASKET' : 'ADD TO BASKET'}
+                    <button type="button" className="btn btn-primary" disabled={busy || ((isOwned || manualPending) && !inBasket)} onClick={() => inBasket ? removeFromBasket(item.code) : addToBasket(item.code)} style={{ width: '100%', marginTop: '.8rem', minHeight: 43, background: inBasket ? 'var(--bg-elevated)' : '#3abfc0', borderColor: inBasket ? 'var(--border)' : '#3abfc0', color: inBasket ? 'var(--text)' : '#fff' }}>
+                      {inBasket ? 'REMOVE FROM BASKET' : isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'ADD TO BASKET'}
                     </button>
                     {!isOwned && !manualPending && <button type="button" disabled={busy} onClick={() => { setProduct(item.code); setManualPaymentOpen(true) }} style={{ background: 'transparent', color: 'var(--text-muted)', width: '100%', padding: '.55rem .25rem .1rem', fontSize: '.78rem', textDecoration: 'underline', textUnderlineOffset: 3 }}>Pay manually with QR</button>}
                   </article>
