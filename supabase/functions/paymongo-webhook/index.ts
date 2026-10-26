@@ -57,8 +57,12 @@ Deno.serve(async (req) => {
   }
 
   const expectedMode = Deno.env.get('PAYMONGO_EXPECT_LIVEMODE')
-  if (expectedMode === 'true' && !isLive) return new Response('Test-mode event rejected by live webhook', { status: 400 })
-  if (expectedMode === 'false' && isLive) return new Response('Live event rejected by test webhook', { status: 400 })
+  if (expectedMode !== 'true' && expectedMode !== 'false') {
+    return new Response('Expected PayMongo live/test mode is not configured', { status: 503 })
+  }
+  if ((expectedMode === 'true') !== isLive) {
+    return new Response('Webhook event mode does not match configured checkout mode', { status: 400 })
+  }
 
   if (attributes.type !== 'checkout_session.payment.paid') return Response.json({ received: true })
 
