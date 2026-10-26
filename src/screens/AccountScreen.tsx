@@ -215,11 +215,14 @@ export default function AccountScreen() {
   useEffect(() => {
     const paymentState = params.get('payment')
     const orderId = params.get('order_id')
-    if (!session || !paymentState) return
+    const returnedProduct = params.get('product_code')
+    if (!session) return
+    if (returnedProduct && PAID_PRODUCTS.some(item => item.code === returnedProduct)) setProduct(returnedProduct)
+    if (!paymentState) return
     let cancelled = false
 
     if (paymentState === 'cancelled') {
-      setMessage('PayMongo returned you to Hyperion. Cancelling a hosted checkout does not close the payment session automatically. Use the CANCEL CHECKOUT button below before switching to manual payment.')
+      setMessage('PayMongo returned you to Hyperion. Cancelling a hosted checkout does not close the payment session automatically. Use CANCEL CHECKOUT below before switching to manual payment.')
       void refreshAccount()
       return () => { cancelled = true }
     }
