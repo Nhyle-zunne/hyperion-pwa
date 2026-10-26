@@ -21,6 +21,8 @@ export default function AccountScreen() {
   const [fullName, setFullName] = useState('')
   const [company, setCompany] = useState('')
   const [school, setSchool] = useState('')
+  const [profileEditing, setProfileEditing] = useState(false)
+  const [savedProfile, setSavedProfile] = useState({ fullName: '', company: '', school: '' })
   const [isAdmin, setIsAdmin] = useState(false)
   const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
   const qrPhImage = '/qr-ph.png'
@@ -45,6 +47,12 @@ export default function AccountScreen() {
     setFullName(typeof metadata.full_name === 'string' ? metadata.full_name : '')
     setCompany(typeof metadata.company === 'string' ? metadata.company : '')
     setSchool(typeof metadata.school === 'string' ? metadata.school : '')
+    setSavedProfile({
+      fullName: typeof metadata.full_name === 'string' ? metadata.full_name : '',
+      company: typeof metadata.company === 'string' ? metadata.company : '',
+      school: typeof metadata.school === 'string' ? metadata.school : '',
+    })
+    setProfileEditing(false)
   }, [session?.user.id])
   useEffect(() => {
     if (!supabase || !session) { setIsAdmin(false); return }
@@ -62,7 +70,9 @@ export default function AccountScreen() {
       const { data, error } = await supabase.auth.updateUser({ data: { full_name: fullName.trim(), company: company.trim(), school: school.trim() } })
       if (error) throw error
       if (data.user) setSession(current => current ? { ...current, user: data.user! } : current)
-      setMessage('Your Profile has been saved.')
+      setSavedProfile({ fullName: fullName.trim(), company: company.trim(), school: school.trim() })
+      setProfileEditing(false)
+      setMessage('Your profile has been saved.')
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not save profile details.') }
     finally { setBusy(false) }
   }
@@ -328,10 +338,13 @@ export default function AccountScreen() {
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Your profile</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.5 }}>Please provide your full name. Company and school are optional. These details may be displayed on our page when you pass the MARINA Licensure Examination.</p>
-        <label style={label}>Full name<input required maxLength={160} value={fullName} onChange={e => setFullName(e.target.value)} style={field} /></label>
-        <label style={label}>Company (optional)<input maxLength={160} value={company} onChange={e => setCompany(e.target.value)} style={field} /></label>
-        <label style={label}>School (optional)<input maxLength={160} value={school} onChange={e => setSchool(e.target.value)} style={field} /></label>
-        <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim()} onClick={() => void saveProfile()} style={{ width: '100%', marginTop: '1rem' }}>{busy ? 'Please wait…' : 'SAVE PROFILE'}</button>
+        <label style={label}>Full name<input required maxLength={160} readOnly={!profileEditing} value={fullName} onChange={e => setFullName(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
+        <label style={label}>Company (optional)<input maxLength={160} readOnly={!profileEditing} value={company} onChange={e => setCompany(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
+        <label style={label}>School (optional)<input maxLength={160} readOnly={!profileEditing} value={school} onChange={e => setSchool(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
+        {!profileEditing ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setMessage(''); setProfileEditing(true) }} style={{ width: '100%', marginTop: '1rem' }}>EDIT PROFILE</button> : <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
+          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setProfileEditing(false); setMessage('') }} style={{ flex: 1 }}>CANCEL</button>
+          <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
+        </div>}
       </section>
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Your purchased access</h2>
