@@ -7,7 +7,7 @@ const cors = {
 }
 
 const products = {
-  oic_nw: { env: 'PRICE_OIC_NW_PHP', name: 'Hyperion Deck OIC-NW', track: 'DECK_OIC_NW' },
+  oic_nw: { env: 'PRICE_DECK_OIC_NW_PHP', name: 'Hyperion Deck OIC-NW', track: 'DECK_OIC_NW' },
   gmdss: { env: 'PRICE_GMDSS_PHP', name: 'Hyperion GMDSS GOC', track: 'GMDSS_GOC' },
   engine_ew: { env: 'PRICE_ENGINE_EW_PHP', name: 'Hyperion Engine OIC-EW', track: 'ENGINE_OIC_EW' },
   deck_mgt: { env: 'PRICE_DECK_MGT_PHP', name: 'Hyperion Deck Management', track: 'DECK_MGT' },
@@ -57,6 +57,16 @@ Deno.serve(async (req) => {
   if (entitlementLookupError) return json({ error: 'Could not check the current license. Please retry.' }, 500)
   if (currentEntitlement?.status === 'active' && currentEntitlement.expires_at && new Date(currentEntitlement.expires_at).getTime() > Date.now()) {
     return json({ error: 'This license is already active for your account. You do not need to purchase this track again.' }, 409)
+  }
+
+  const { data: manualRequests, error: manualRequestError } = await admin.from('orders')
+    .select('id,payment_method')
+    .eq('user_id', user.id)
+    .eq('product_code', code)
+    .in('status', ['submitted', 'pending'])
+  if (manualRequestError) return json({ error: 'Could not check existing payment submissions. Please retry.' }, 500)
+  if (manualRequests?.some(item => item.payment_method !== 'PayMongo Checkout')) {
+    return json({ error: 'You already submitted this track for manual review. Complete or cancel that request before starting PayMongo checkout.' }, 409)
   }
 
   const { data: order, error: insertError } = await admin.from('orders').insert({
