@@ -73,7 +73,7 @@ export default function AccountScreen() {
     const finishPopupOAuth = async () => {
       try {
         if (callbackError) {
-          const errorMessage = decodeURIComponent(callbackError.replace(/\+/g, ' '))
+          const errorMessage = callbackError
           reportToOpener('hyperion-oauth-error', errorMessage)
           if (!cancelled) setMessage(errorMessage)
           window.close()
