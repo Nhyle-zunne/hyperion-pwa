@@ -82,7 +82,7 @@ export default function PracticeQuizScreen() {
 
   if (loading) {
     return (
-      <div className="screen">
+      <div className="screen question-runner-screen">
         <p>Loading questions…</p>
       </div>
     )
@@ -90,7 +90,7 @@ export default function PracticeQuizScreen() {
 
   if (error) {
     return (
-      <div className="screen">
+      <div className="screen question-runner-screen">
         <p style={{ color: 'var(--danger)' }}>{error}</p>
         <button className="btn btn-outline" onClick={() => navigate(-1)}>
           Back
@@ -101,7 +101,7 @@ export default function PracticeQuizScreen() {
 
   if (questions.length === 0) {
     return (
-      <div className="screen">
+      <div className="screen question-runner-screen">
         <p>No session active.</p>
         <button className="btn btn-primary" onClick={() => navigate('/tracks')}>
           Select Track
@@ -113,7 +113,7 @@ export default function PracticeQuizScreen() {
   if (finished) {
     const s = score()
     return (
-      <div className="screen">
+      <div className="screen question-runner-screen">
         <h1 className="page-title">Results</h1>
         <div className="card" style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <div style={{ fontSize: '2.5rem', fontWeight: 700, color: 'var(--accent)' }}>
@@ -143,7 +143,7 @@ export default function PracticeQuizScreen() {
   const jumpTo = (index: number) => { if (index >= 0 && index < questions.length) { const delta = index - currentIndex; if (delta > 0) for (let i = 0; i < delta; i++) next(); else for (let i = 0; i > delta; i--) prev(); setPendingAnswer(null); setPaletteOpen(false) } }
 
   return (
-    <div className="screen practice-quiz-screen" style={{ paddingBottom: "6rem", '--quiz-text-scale': textScale / 100 } as React.CSSProperties}>
+    <div className="screen practice-quiz-screen question-runner-screen" style={{ paddingBottom: "6rem", '--quiz-text-scale': textScale / 100 } as React.CSSProperties}>
       {showExitDialog && (
         <div className="exit-dialog-backdrop" role="presentation">
           <section className="exit-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-practice-title">
