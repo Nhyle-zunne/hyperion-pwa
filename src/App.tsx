@@ -30,10 +30,12 @@ import BottomNav from './components/BottomNav'
 import { useUIStore } from './stores/uiStore'
 import { usePracticeStore } from './stores/practiceStore'
 import { useBookmarksStore } from './stores/bookmarksStore'
+import { useHistoryStore } from './stores/historyStore'
 import { supabase } from './lib/supabase'
 import { startLearningProgressSync } from './lib/progressSync'
 import { useRef, useState } from 'react'
 import { clearPaidQuestionCache } from './lib/questionBank'
+import { deletePaidQuestionSnapshotsForTrack } from './lib/sessionArchive'
 
 export default function App() {
   const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
@@ -131,6 +133,23 @@ export default function App() {
     if (hadTrackAccessRemoved || !entitlementsVerified) clearPaidQuestionCache()
     lastCloudTrackIds.current = cloudTrackIds
   }, [cloudTrackIds, entitlementsVerified])
+  useEffect(() => {
+    if (!entitlementsVerified) return
+    const tracks = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'] as const
+    const unavailable = isAllAccessUnlocked ? [] : tracks.filter(track => !cloudTrackIds.includes(track))
+    for (const track of unavailable) {
+      useBookmarksStore.getState().purgePaidForTracks([track])
+      useHistoryStore.getState().removeSavedSession(track)
+      void deletePaidQuestionSnapshotsForTrack(track).catch(() => undefined)
+      try {
+        const raw = localStorage.getItem('hyperion-saved-practice')
+        if (raw) {
+          const saved = JSON.parse(raw) as { track?: string; isFreeSession?: boolean }
+          if (saved.track === track && saved.isFreeSession !== true) localStorage.removeItem('hyperion-saved-practice')
+        }
+      } catch { /* Local storage may be unavailable or contain old data. */ }
+    }
+  }, [cloudTrackIds, entitlementsVerified, isAllAccessUnlocked])
 
   useEffect(() => {
     if (!entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer) || !guardedTrack) return
@@ -197,7 +216,7 @@ export default function App() {
             {isMockRunner ? 'MOCK EXAM' : 'PRACTICE'}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }}>
-            <button type="button" onClick={() => { if (q) toggleBookmark(q) }} aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'} style={{ border: 0, background: 'transparent', color: bookmarked ? 'var(--accent)' : 'var(--text)', fontSize: '1.5rem', padding: 6 }}> {bookmarked ? '▮' : '♧'} </button>
+            <button type="button" onClick={() => { if (q) toggleBookmark(q, !isFreeSession) }} aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'} style={{ border: 0, background: 'transparent', color: bookmarked ? 'var(--accent)' : 'var(--text)', fontSize: '1.5rem', padding: 6 }}> {bookmarked ? '▮' : '♧'} </button>
             <button type="button" onClick={() => setSettingsOpen(v => !v)} aria-label="Question settings" style={{ border: 0, background: 'transparent', color: 'var(--text)', fontSize: '1.5rem', padding: 6 }}>⚙</button>
             {settingsOpen && <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 300, width: 'min(310px, calc(100vw - 24px))', maxHeight: '75vh', overflowY: 'auto', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 8px 28px rgba(0,0,0,.22)' }}>
               <div style={{ padding: 12, fontWeight: 800, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>DISPLAY SETTINGS</div>
