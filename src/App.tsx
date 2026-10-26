@@ -36,6 +36,11 @@ import { useState } from 'react'
 
 export default function App() {
   const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
+  const cloudTrackIds = useLicenseStore((s) => s.cloudTrackIds)
+  const entitlementsVerified = useLicenseStore((s) => s.entitlementsVerified)
+  const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
+  const currentTrack = usePracticeStore((s) => s.track)
+  const isFreeSession = usePracticeStore((s) => s.isFreeSession)
   const showPaywall = useUIStore((s) => s.showPaywall)
   const location = useLocation()
   const navigate = useNavigate()
@@ -111,6 +116,19 @@ export default function App() {
   const isPracticeQuiz = location.pathname === '/practice/quiz'
   const isMockRunner = location.pathname === '/mock/exam'
   const isQuestionRunner = isPracticeQuiz || isMockRunner
+
+  useEffect(() => {
+    if (!entitlementsChecked || !isQuestionRunner || !currentTrack || isFreeSession) return
+    const allowed = entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(currentTrack))
+    if (allowed) return
+    const trackParam: Record<string, string> = {
+      DECK_OIC_NW: 'oic_nw', GMDSS_GOC: 'gmdss', ENGINE_OIC_EW: 'engine_ew',
+      DECK_MGT: 'deck_mgt', ENGINE_MGT: 'engine_mgt'
+    }
+    usePracticeStore.getState().reset()
+    navigate('/track?track=' + (trackParam[currentTrack] || 'oic_nw'), { replace: true })
+    useUIStore.getState().openPaywall('This paid session needs a current, verified license. Renew access or reconnect to check your subscription.')
+  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, currentTrack, isFreeSession, navigate])
 
   const hideNav = [
     '/practice/quiz',
