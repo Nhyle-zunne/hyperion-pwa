@@ -35,6 +35,7 @@ interface PracticeState {
     part?: number;
   }) => Promise<void>;
   selectAnswer: (index: number) => void;
+  selectMockAnswer: (questionId: string, index: number) => void;
   setAnswerSilent: (index: number) => void;
   toggleFlag: () => void;
   goTo: (index: number) => void;
@@ -219,6 +220,27 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       },
       streak: nextStreak,
       bestStreak: nextBest
+    });
+  },
+
+  // Continuous-scroll mock exams must save each choice by the question being clicked,
+  // not by currentIndex (which belongs to the single-question practice layout).
+  selectMockAnswer: (questionId, index) => {
+    const { questions, answers, mode, finished } = get();
+    if (mode !== 'MOCK' || finished) return;
+    const question = questions.find((item) => item.id === questionId);
+    if (!question || index < 0 || index >= question.options.length) return;
+
+    set({
+      answers: {
+        ...answers,
+        [question.id]: {
+          questionId: question.id,
+          selectedIndex: index,
+          isCorrect: index === question.correctAnswerIndex,
+          isFlagged: answers[question.id]?.isFlagged ?? false
+        }
+      }
     });
   },
 
