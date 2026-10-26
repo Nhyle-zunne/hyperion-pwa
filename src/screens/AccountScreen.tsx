@@ -516,11 +516,47 @@ export default function AccountScreen() {
     } finally { setBusy(false) }
   }
 
-  return <div className="screen" style={{ width: 'min(calc(100% - 2rem), 760px)', margin: '0 auto', paddingBottom: '2rem' }}>
-    <button type="button" onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>← Back</button>
-    <h1 className="page-title" style={{ textAlign: 'center' }}>Hyperion Account</h1>
-    <p className="subtitle" style={{ textAlign: 'center', maxWidth: 520, margin: '0 auto 1.25rem' }}>Sign in to Hyperion Maritime with Google to access your account and review-track subscriptions.</p>
+  return <div className="screen account-page" style={{ width: 'min(calc(100% - 2rem), 1320px)', maxWidth: 1320, margin: '0 auto', paddingBottom: '2rem' }}>
+    <style>{\`
+      .account-page .account-layout{display:grid;grid-template-columns:minmax(250px,300px) minmax(0,1fr);gap:1.25rem;align-items:start;margin-top:1.1rem}
+      .account-page .account-sidebar{display:grid;gap:1rem;align-content:start;position:sticky;top:210px;min-width:0}
+      .account-page .account-main{min-width:0}
+      .account-page .account-nav{display:grid;gap:.45rem}
+      .account-page .account-nav button{width:100%;min-height:42px;text-align:left;display:flex;align-items:center;gap:.6rem;justify-content:flex-start}
+      .account-page .account-products-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+      .account-page .account-product-card{min-width:0;display:flex;flex-direction:column;padding:1rem;border:1px solid var(--border);border-radius:12px;background:var(--bg-card);transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}
+      .account-page .account-product-card:hover{border-color:#c9a44c;box-shadow:0 7px 20px rgba(4,35,83,.08);transform:translateY(-2px)}
+      .account-page .account-product-card .product-art{display:grid;place-items:center;min-height:105px;border-radius:9px;background:linear-gradient(135deg,#042353,#0d376b);color:#f5c75e;font-size:2rem;margin-bottom:.9rem;position:relative;overflow:hidden}
+      .account-page .account-product-card .product-art:after{content:"";position:absolute;width:130px;height:130px;border:1px solid rgba(245,199,94,.28);border-radius:50%;right:-36px;top:-62px}
+      .account-page .account-product-card .product-art span{font-size:.66rem;letter-spacing:.13em;font-weight:900;color:#fff;position:absolute;bottom:.55rem;left:.7rem}
+      .account-page .product-price{font-size:1.55rem;font-weight:900;line-height:1.1;color:var(--text);margin:.75rem 0 .25rem}
+      .account-page .product-meta{font-size:.78rem;color:var(--text-muted);line-height:1.45}
+      .account-page .product-card-spacer{flex:1;min-height:.75rem}
+      .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.28rem .55rem;font-size:.67rem;font-weight:850;letter-spacing:.04em;margin-top:.65rem}
+      .account-page .account-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem}
+      .account-page .account-cart-row{display:flex;align-items:center;justify-content:space-between;gap:.8rem;border-bottom:1px solid var(--border);padding:.75rem 0}
+      .account-page .account-cart-row:last-child{border-bottom:0}
+      .account-page .account-total-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-top:1rem;margin-top:.4rem;border-top:1px solid var(--border)}
+      .account-page .profile-avatar{width:58px;height:58px;flex-shrink:0;display:grid;place-items:center;border-radius:16px;background:#042353;color:#f5c75e;font-weight:950;font-size:1.1rem;letter-spacing:.03em}
+      .account-page .profile-side-links{font-size:.82rem;color:var(--text-muted);line-height:1.45}
+      .account-page .payment-method-pills{display:flex;flex-wrap:wrap;gap:.4rem}
+      .account-page .payment-method-pills span{padding:.3rem .5rem;border:1px solid var(--border);background:var(--bg-elevated);border-radius:6px;font-size:.7rem;font-weight:750}
+      @media(max-width:1100px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-sidebar-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}.account-page .account-nav{grid-template-columns:repeat(3,minmax(0,1fr))}.account-page .account-nav button{justify-content:center;text-align:center;padding:.55rem .4rem;font-size:.78rem}}
+      @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-nav{grid-template-columns:repeat(2,minmax(0,1fr))}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
+    \`}</style>
+    <button type="button" onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back</button>
+    <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <div>
+        <div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div>
+        <h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Account & Reviewer Shop</h1>
+        <p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0', maxWidth: 650 }}>Manage your profile, choose reviewer tracks, and check out securely in one place.</p>
+      </div>
+      <div style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'} in basket</div>
+    </div>
+
     {!session ? <section style={{ ...card, maxWidth: 460, margin: '1.5rem auto' }}>
+      <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>Sign in to manage your profile, purchase reviewer tracks, and view your licenses.</p>
       <button
         type="button"
         className="btn btn-outline"
@@ -536,142 +572,200 @@ export default function AccountScreen() {
         </svg>
         Continue with Google
       </button>
-      {/* Intentionally omit sign-in error notices; keep provider diagnostics off the user-facing screen. */}
-      
-      {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>You returned from checkout. Sign in with the same Hyperion account to check whether payment verification has completed. A redirect alone does not activate access.</div>}
+      {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>You returned from checkout. Sign in with the same Hyperion account to verify payment and activate the purchased track.</div>}
     </section> : <>
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>{isAdmin && <span style={{ display: 'inline-block', border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '0.35rem 0.8rem', fontWeight: 800, fontSize: '0.82rem', letterSpacing: '0.04em' }}>✓ VERIFIED ADMIN · ALL ACCESS</span>}</div>
-      {message && <div role="status" style={{ ...card, lineHeight: 1.5 }}>{message}</div>}
-      <div role="tablist" aria-label="Account sections" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: '1rem' }}>
-        <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>Payments & profile</button>
-        <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>Active licenses</button>
-        <button type="button" role="tab" aria-selected={accountTab === 'delete'} className={accountTab === 'delete' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('delete')} style={accountTab === 'delete' ? { background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' } : { color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>Delete account</button>
-      </div>
-      {accountTab === 'licenses' ? <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Active licenses</h2>
-        {owned.length ? owned.map(item => {
-          const transaction = orders.find(order => order.id === item.order_id)
-          return <div key={item.product_code} style={{ padding: '.8rem 0', borderBottom: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <strong>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code}</strong>
-              <span style={{ color: 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 700 }}>ACTIVE</span>
-            </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
-            <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
-              <strong style={{ display: 'block', marginBottom: '.25rem' }}>Transaction details</strong>
-              {transaction ? <>
-                {transaction.customer_name && <div>Customer name: {transaction.customer_name}</div>}
-                <div>Amount paid: ₱{transaction.amount_php}</div>
-                <div>Purchase date: {new Date(transaction.paid_at || transaction.created_at).toLocaleString()}</div>
-                <div>Payment method: {transaction.payment_method || 'Not recorded'}</div>
-                <div>Reference number: {transaction.payment_reference || 'Not provided'}</div>
-                <div style={{ fontSize: '.8rem', overflowWrap: 'anywhere' }}>Order ID: {transaction.id}</div>
-                {transaction.customer_company && <div>Company: {transaction.customer_company}</div>}
-                {transaction.customer_school && <div>School: {transaction.customer_school}</div>}
-              </> : <div style={{ color: 'var(--text-muted)' }}>Order reference: {item.order_id}</div>}
-            </div>
-          </div>
-        }) : <p style={{ color: 'var(--text-muted)' }}>No active licenses are linked to this account yet.</p>}
-      </section> : accountTab === 'delete' ? <section style={{ ...card, borderColor: 'var(--danger, #dc2626)' }}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem', color: 'var(--danger, #dc2626)' }}>Delete account</h2>
-        <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
-        {!deleteConfirmOpen ? <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmation(''); setDeleteConfirmOpen(true) }} style={{ width: '100%', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>DELETE MY ACCOUNT</button> : <div>
-          <label style={label}>To confirm, type DELETE below<input autoComplete="off" value={deleteConfirmation} onChange={e => setDeleteConfirmation(e.target.value)} style={field} /></label>
-          <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
-            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmOpen(false); setDeleteConfirmation('') }} style={{ flex: 1 }}>Cancel</button>
-            <button type="button" className="btn btn-primary" disabled={busy || deleteConfirmation !== 'DELETE'} onClick={() => void deleteAccount()} style={{ flex: 1, background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busy ? 'Deleting…' : 'Permanently delete'}</button>
-          </div>
-        </div>}
-      </section> : <>
-      <section style={card}>
-        <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>SIGNED IN AS</div><strong style={{ overflowWrap: 'anywhere' }}>{session.user.email}</strong>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: '.8rem' }}>
-          {isAdmin && <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/payments')}>Admin dashboard</button>}
-          <button type="button" className="btn btn-outline" onClick={async () => { await supabase?.auth.signOut(); setMessage('Signed out.') }}>Sign out</button>
-        </div>
-      </section>
-      <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Your profile</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.5 }}>Please provide your full name. Company and school are optional. These details may be displayed on our page when you pass the MARINA Licensure Examination.</p>
-        <label style={label}>Full name<input required maxLength={160} readOnly={!profileEditing} value={fullName} onChange={e => setFullName(e.target.value)} style={profileField(profileEditing)} /></label>
-        <label style={label}>Company (optional)<input maxLength={160} readOnly={!profileEditing} value={company} onChange={e => setCompany(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
-        <label style={label}>School (optional)<input maxLength={160} readOnly={!profileEditing} value={school} onChange={e => setSchool(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
-        {!profileEditing ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setMessage(''); setProfileEditing(true) }} style={{ width: '100%', marginTop: '1rem' }}>EDIT PROFILE</button> : <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
-          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setProfileEditing(false); setMessage('') }} style={{ flex: 1 }}>CANCEL</button>
-          <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
-        </div>}
-      </section>
-      <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Submit payment details</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.5 }}>Each payment covers one individual track for 12 months. Send the exact amount shown for the reviewer track you selected. Incorrect or short payments may delay approval. Access starts only after verified manual review or confirmed PayMongo checkout.</p>
-        <label style={label}>Choose an individual track (12-month subscription)<select value={product} onChange={e => setProduct(e.target.value)} style={field}>{PAID_PRODUCTS.map(item => <option key={item.code} value={item.code}>{item.label} · ₱{item.annualPrice}/year{owned.some(license => license.product_code === item.code) ? ' · LICENSE ACTIVE' : ''}</option>)}</select></label>
-        {activeLicense ? <div style={{ ...card, marginTop: '.9rem', borderColor: 'var(--success, #16a34a)' }}>
-          <strong>License already active</strong>
-          <p style={{ color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 0 }}>This license is already active for your account. You do not need to purchase this track again. Your current access expires {activeLicense.expires_at ? new Date(activeLicense.expires_at).toLocaleDateString() : 'at its recorded expiration'}.</p>
-        </div> : pendingOrder ? <div style={{ ...card, marginTop: '.9rem', borderColor: 'var(--warning, #eab308)' }}>
-          <strong>You already submitted this track for review.</strong>
-          <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>Your payment submission is awaiting manual review. You do not need to submit it again. If you submitted the wrong details or want to withdraw this request, cancel it below.</p>
-          <div style={{ fontSize: '.85rem', overflowWrap: 'anywhere', marginBottom: '.8rem' }}>Order: {pendingOrder.id}</div>
-          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelReview()} style={{ width: '100%' }}>{busy ? 'Please wait…' : 'CANCEL REVIEW REQUEST'}</button>
-        </div> : <>
-          <section style={{ ...card, borderColor: '#10b981', background: 'var(--bg-card)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', marginBottom: '.75rem' }}>
-              <span aria-hidden="true" style={{ width: 42, height: 42, borderRadius: '50%', display: 'grid', placeItems: 'center', background: '#d1fae5', color: '#047857', fontSize: '1.35rem', flexShrink: 0 }}>⚡</span>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Pay instantly via PayMongo</h2>
-                <p style={{ color: 'var(--text-muted)', margin: '.2rem 0 0', fontSize: '.86rem', lineHeight: 1.45 }}>Secure hosted checkout with automatic license activation after confirmed payment.</p>
+      {isAdmin && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '.8rem' }}><span style={{ display: 'inline-block', border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '.35rem .8rem', fontWeight: 800, fontSize: '.78rem', letterSpacing: '.04em' }}>✓ VERIFIED ADMIN · ALL ACCESS</span></div>}
+      {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
+
+      <div className="account-layout">
+        <aside className="account-sidebar">
+          <section style={{ ...card, marginBottom: 0 }}>
+            <div style={{ display: 'flex', gap: '.8rem', alignItems: 'center', marginBottom: '.8rem' }}>
+              <div className="profile-avatar">{(fullName || 'H').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase()}</div>
+              <div style={{ minWidth: 0 }}>
+                <h2 style={{ margin: 0, fontSize: '1rem', overflowWrap: 'anywhere' }}>{fullName || 'Hyperion Member'}</h2>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', overflowWrap: 'anywhere', marginTop: '.2rem' }}>{session.user.email}</div>
               </div>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: '.8rem' }}>
-              {['GCash', 'Maya', 'QR Ph', 'Credit / debit card'].map(channel => <span key={channel} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 5, padding: '.3rem .55rem', fontSize: '.75rem', fontWeight: 700 }}>{channel}</span>)}
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '.85rem' }}>
+              <h3 style={{ margin: '0 0 .25rem', fontSize: '.98rem' }}>Your profile</h3>
+              <p className="profile-side-links" style={{ margin: '0 0 .6rem' }}>Your saved details are reused for PayMongo checkout and your purchase records.</p>
+              <div className="account-profile-fields">
+                <label style={label}>Full name<input required maxLength={160} readOnly={!profileEditing} value={fullName} onChange={e => setFullName(e.target.value)} style={profileField(profileEditing)} /></label>
+                <label style={label}>Company (optional)<input maxLength={160} readOnly={!profileEditing} value={company} onChange={e => setCompany(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
+                <label style={label}>School (optional)<input maxLength={160} readOnly={!profileEditing} value={school} onChange={e => setSchool(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
+              </div>
+              {!profileEditing ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setMessage(''); setProfileEditing(true) }} style={{ width: '100%', marginTop: '1rem' }}>EDIT PROFILE</button> : <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
+                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setProfileEditing(false); setMessage('') }} style={{ flex: 1 }}>CANCEL</button>
+                <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
+              </div>}
             </div>
-            <button type="button" className="btn btn-primary" disabled={busy || !supabaseConfigured} onClick={() => void startPayMongoCheckout()} style={{ width: '100%', minHeight: 48, background: '#0b1f39', color: '#ffb21a', borderColor: '#0b1f39', fontWeight: 900 }}>
-              {busy ? 'PREPARING SECURE CHECKOUT…' : `${pendingPayMongoOrder ? '↻ RESUME CHECKOUT' : '⚡ PAY INSTANTLY'} · ₱${PAID_PRODUCTS.find(item => item.code === product)?.annualPrice ?? 0} →`}
-            </button>
-            <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', lineHeight: 1.5, margin: '.65rem 0 0' }}>License access is granted only after PayMongo’s signed server notification confirms the payment. Do not pay again while confirmation is processing.</p>
-            {pendingPayMongoOrder && <div style={{ marginTop: '.85rem', padding: '.8rem', borderRadius: 8, border: '1px solid var(--warning, #d97706)', background: 'var(--bg-elevated)' }}>
-              <strong style={{ display: 'block', fontSize: '.88rem' }}>A PayMongo checkout is already open for this track.</strong>
-              <p style={{ color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.45, margin: '.35rem 0 .7rem' }}>PAY INSTANTLY resumes that same checkout. To switch to manual QR payment, close the PayMongo session first. Hyperion will not close a session if a payment is already paid or processing.</p>
-              <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongoCheckout(pendingPayMongoOrder.id)} style={{ width: '100%', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>
-                {cancelingCheckoutId === pendingPayMongoOrder.id ? 'CHECKING PAYMENT STATUS…' : 'CANCEL CHECKOUT & SWITCH TO MANUAL'}
-              </button>
-            </div>}
+            <div style={{ borderTop: '1px solid var(--border)', marginTop: '1rem', paddingTop: '.85rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <strong style={{ fontSize: '.88rem' }}>Active licenses</strong>
+                <span style={{ color: 'var(--success, #15803d)', fontWeight: 900, fontSize: '.8rem' }}>{owned.length} active</span>
+              </div>
+              {owned.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: '.55rem' }}>{owned.map(license => <span key={license.product_code} style={{ border: '1px solid #86cba0', borderRadius: 999, padding: '.28rem .5rem', color: 'var(--success, #15803d)', fontSize: '.68rem', fontWeight: 800 }}>{PAID_PRODUCTS.find(item => item.code === license.product_code)?.label ?? license.product_code}</span>)}</div> : <p className="profile-side-links" style={{ margin: '.45rem 0 0' }}>No active licenses yet.</p>}
+            </div>
           </section>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', color: 'var(--text-muted)', fontSize: '.75rem', fontWeight: 900, margin: '1.2rem 0' }}><span style={{ height: 1, flex: 1, background: 'var(--border)' }} /><span>OR PAY MANUALLY</span><span style={{ height: 1, flex: 1, background: 'var(--border)' }} /></div>
-          <form onSubmit={submitPayment}>
-          <div style={{ ...card, textAlign: 'center', marginTop: '.9rem', background: '#fff', color: '#172033' }}>
-            <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: '.25rem' }}>QR Ph · MariBank / InstaPay</div>
-            <p style={{ margin: '0 0 .75rem', color: '#4b5563', fontSize: '.9rem' }}>Scan this QR code using your bank or e-wallet app.</p>
-            <img src={qrPhImage} alt="MariBank InstaPay QR Ph payment code" style={{ display: 'block', width: 'min(100%, 340px)', height: 'auto', margin: '0 auto', imageRendering: 'pixelated' }} />
-            <p style={{ margin: '.75rem 0 0', color: '#4b5563', fontSize: '.85rem' }}>Account name and bank details are shown on the QR code. Verify the recipient in your payment app before sending.</p>
-          </div>
-          <div style={{ padding: '.85rem', border: '1px solid var(--border)', borderRadius: 8, marginTop: '.75rem', lineHeight: 1.5 }}>
-            <strong>Amount to send: ₱{PAID_PRODUCTS.find(item => item.code === product)?.annualPrice ?? 0}</strong>
-            <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.25rem' }}>Send the exact amount for {PAID_PRODUCTS.find(item => item.code === product)?.label ?? product} only. This payment covers one reviewer track for 12 months. Please double-check the selected track and amount before confirming your transfer.</div>
-          </div>
-          <label style={label}>Payment method<input value="QR Ph (MariBank / InstaPay)" readOnly style={field} /></label>
-          <label style={label}>Transaction/reference number<input required maxLength={160} value={reference} onChange={e => setReference(e.target.value)} style={field} /></label>
-          <div style={label}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', lineHeight: 1.5 }}>After sending the payment, use the button below to send your payment screenshot to our Facebook page. Your subscription can only be approved after the payment is verified.</p>
-            <a href={facebookPage} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '.5rem' }}>SEND PROOF TO OUR FACEBOOK PAGE</a>
-          </div>
-          <label style={label}>Additional notes (optional)<textarea maxLength={1000} rows={3} value={note} onChange={e => setNote(e.target.value)} style={field} /></label>
-          <button type="submit" className="btn btn-primary" disabled={busy || !supabaseConfigured || Boolean(pendingPayMongoOrder)} style={{ width: '100%', marginTop: '1rem' }}>{busy ? 'Submitting…' : pendingPayMongoOrder ? 'CANCEL PAYMONGO CHECKOUT TO USE MANUAL PAYMENT' : 'SUBMIT FOR REVIEW'}</button>
-        </form></>}
-      </section>
-      <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Other orders & payment submissions</h2>
-        <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshPaymentStatus()}>{busy ? 'Checking payment…' : 'Refresh status'}</button>
-        {orders.filter(order => !owned.some(license => license.order_id === order.id)).length ? orders.filter(order => !owned.some(license => license.order_id === order.id)).map(order => <div key={order.id} style={{ padding: '.8rem 0', borderBottom: '1px solid var(--border)' }}>
-          <strong>{PAID_PRODUCTS.find(p => p.code === order.product_code)?.label ?? order.product_code} · ₱{order.amount_php}</strong>
-          <div style={{ color: 'var(--text-muted)', fontSize: '.85rem', marginTop: 4 }}>{statusLabel[order.status] || order.status} · {new Date(order.created_at).toLocaleString()}</div>
-          {order.customer_name && <div style={{ fontSize: '.82rem' }}>Customer name: {order.customer_name}</div>}
-          <div style={{ fontSize: '.8rem', overflowWrap: 'anywhere' }}>Reference: {order.payment_reference || 'Not provided'} · Order: {order.id}</div>
-          {order.admin_note && <p style={{ marginBottom: 0 }}>Admin note: {order.admin_note}</p>}
-        </div>) : <p style={{ color: 'var(--text-muted)' }}>No other orders or payment submissions.</p>}
-      </section>
 
-      </>}
+          <section style={{ ...card, marginBottom: 0 }}>
+            <div style={{ color: 'var(--text-muted)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em', marginBottom: '.65rem' }}>ACCOUNT MENU</div>
+            <nav className="account-nav" aria-label="Account menu">
+              <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>🛍️ Shop & basket</button>
+              <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>🎫 My licenses</button>
+              <button type="button" role="tab" aria-selected={accountTab === 'delete'} className={accountTab === 'delete' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('delete')} style={accountTab === 'delete' ? { background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' } : { color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>Delete account</button>
+            </nav>
+            <div className="account-sidebar-actions" style={{ display: 'grid', gap: '.55rem', marginTop: '.9rem' }}>
+              {isAdmin && <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/payments')}>Admin dashboard</button>}
+              <button type="button" className="btn btn-outline" onClick={async () => { await supabase?.auth.signOut(); setMessage('Signed out.') }}>Sign out</button>
+            </div>
+          </section>
+        </aside>
+
+        <main className="account-main">
+          {accountTab === 'licenses' ? <section style={card}>
+            <div className="account-panel-title">
+              <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
+              <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
+            </div>
+            {owned.length ? owned.map(item => {
+              const transaction = orders.find(order => order.id === item.order_id)
+              return <div key={item.product_code} style={{ padding: '.9rem 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <strong>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code}</strong>
+                  <span style={{ color: 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 800 }}>ACTIVE</span>
+                </div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
+                <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
+                  <strong style={{ display: 'block', marginBottom: '.25rem' }}>Transaction details</strong>
+                  {transaction ? <>
+                    {transaction.customer_name && <div>Customer name: {transaction.customer_name}</div>}
+                    <div>Amount paid: ₱{transaction.amount_php}</div>
+                    <div>Purchase date: {new Date(transaction.paid_at || transaction.created_at).toLocaleString()}</div>
+                    <div>Payment method: {transaction.payment_method || 'Not recorded'}</div>
+                    <div>Reference number: {transaction.payment_reference || 'Not provided'}</div>
+                    <div style={{ fontSize: '.8rem', overflowWrap: 'anywhere' }}>Order ID: {transaction.id}</div>
+                    {transaction.customer_company && <div>Company: {transaction.customer_company}</div>}
+                    {transaction.customer_school && <div>School: {transaction.customer_school}</div>}
+                  </> : <div style={{ color: 'var(--text-muted)' }}>Order reference: {item.order_id}</div>}
+                </div>
+              </div>
+            }) : <p style={{ color: 'var(--text-muted)' }}>No active licenses are linked to this account yet.</p>}
+          </section> : accountTab === 'delete' ? <section style={{ ...card, borderColor: 'var(--danger, #dc2626)' }}>
+            <h2 style={{ marginTop: 0, fontSize: '1.1rem', color: 'var(--danger, #dc2626)' }}>Delete account</h2>
+            <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
+            {!deleteConfirmOpen ? <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmation(''); setDeleteConfirmOpen(true) }} style={{ width: '100%', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>DELETE MY ACCOUNT</button> : <div>
+              <label style={label}>To confirm, type DELETE below<input autoComplete="off" value={deleteConfirmation} onChange={e => setDeleteConfirmation(e.target.value)} style={field} /></label>
+              <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
+                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmOpen(false); setDeleteConfirmation('') }} style={{ flex: 1 }}>Cancel</button>
+                <button type="button" className="btn btn-primary" disabled={busy || deleteConfirmation !== 'DELETE'} onClick={() => void deleteAccount()} style={{ flex: 1, background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busy ? 'Deleting…' : 'Permanently delete'}</button>
+              </div>
+            </div>}
+          </section> : <>
+            <div className="account-panel-title" style={{ marginBottom: '.8rem' }}>
+              <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.13em' }}>CHOOSE YOUR REVIEWERS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.35rem' }}>Reviewer track shop</h2><p style={{ color: 'var(--text-muted)', margin: '.3rem 0 0', fontSize: '.88rem' }}>Add one or more 12-month track licenses to your basket, then check out once.</p></div>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .7rem', background: 'var(--bg-card)', fontWeight: 800, fontSize: '.8rem' }}>🔒 Secure checkout</div>
+            </div>
+
+            {pendingCheckoutGroups.length > 0 && <section style={{ ...card, borderColor: 'var(--warning, #d97706)', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginBottom: '.5rem' }}><span aria-hidden="true" style={{ fontSize: '1.2rem' }}>↻</span><div><h3 style={{ margin: 0, fontSize: '1rem' }}>Pending checkout{pendingCheckoutGroups.length > 1 ? 's' : ''}</h3><p style={{ margin: '.2rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Resume the same checkout rather than paying twice.</p></div></div>
+              {pendingCheckoutGroups.map(group => <div key={group.id} style={{ borderTop: '1px solid var(--border)', paddingTop: '.75rem', marginTop: '.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: '.7rem', flexWrap: 'wrap' }}>
+                  <div><strong>{group.codes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(' + ')}</strong><div style={{ color: 'var(--text-muted)', fontSize: '.82rem', marginTop: '.25rem' }}>{group.codes.length} track{group.codes.length === 1 ? '' : 's'} · ₱{group.total}</div></div>
+                  <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
+                    <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setBasket(group.codes); void startPayMongoCheckout(group.codes) }}>RESUME CHECKOUT</button>
+                    <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongoCheckout(group.id)} style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{cancelingCheckoutId === group.id ? 'CHECKING…' : 'CANCEL CHECKOUT'}</button>
+                  </div>
+                </div>
+              </div>)}
+            </section>}
+
+            <section style={{ ...card, marginBottom: '1rem' }}>
+              <div className="account-panel-title">
+                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Choose the track or tracks you need. Active licenses cannot be purchased again.</p></div>
+                <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>12-MONTH ACCESS</span>
+              </div>
+              <div className="account-products-grid">
+                {PAID_PRODUCTS.map(item => {
+                  const isOwned = owned.some(license => license.product_code === item.code)
+                  const inBasket = basket.includes(item.code)
+                  const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
+                  const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
+                  const description = item.code === 'oic_nw' ? 'Deck officer examination preparation and reviewer access.'
+                    : item.code === 'gmdss' ? 'GMDSS GOC examination preparation and reviewer access.'
+                    : item.code === 'engine_ew' ? 'Engine OIC-EW examination preparation and reviewer access.'
+                    : item.code === 'deck_mgt' ? 'Deck management examination preparation and reviewer access.'
+                    : 'Engine management examination preparation and reviewer access.'
+                  return <article className="account-product-card" key={item.code}>
+                    <div className="product-art"><div aria-hidden="true">{item.code === 'gmdss' ? '📡' : item.code === 'engine_ew' || item.code === 'engine_mgt' ? '⚙️' : '⚓'}</div><span>HYPERION REVIEWER</span></div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>ANNUAL TRACK LICENSE</div>
+                    <h3 style={{ margin: '.35rem 0 0', fontSize: '1.03rem', minHeight: '2.4em', lineHeight: 1.2 }}>{item.label}</h3>
+                    <div className="product-price">₱{item.annualPrice}<span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 650 }}> / year</span></div>
+                    <div className="product-meta">{description}</div>
+                    <div className="product-card-spacer" />
+                    <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: '#946c12', borderColor: '#dfc277', background: 'rgba(245,199,94,.12)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
+                    <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => inBasket ? removeFromBasket(item.code) : addToBasket(item.code)} style={{ width: '100%', marginTop: '.8rem', minHeight: 43, background: inBasket ? 'var(--bg-elevated)' : '#3abfc0', borderColor: inBasket ? 'var(--border)' : '#3abfc0', color: inBasket ? 'var(--text)' : '#fff' }}>
+                      {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : inBasket ? 'REMOVE FROM BASKET' : 'ADD TO BASKET'}
+                    </button>
+                    {!isOwned && !manualPending && <button type="button" disabled={busy} onClick={() => { setProduct(item.code); setManualPaymentOpen(true) }} style={{ background: 'transparent', color: 'var(--text-muted)', width: '100%', padding: '.55rem .25rem .1rem', fontSize: '.78rem', textDecoration: 'underline', textUnderlineOffset: 3 }}>Pay manually with QR</button>}
+                  </article>
+                })}
+              </div>
+            </section>
+
+            <section style={{ ...card, marginBottom: '1rem', borderColor: basket.length ? '#c9a44c' : 'var(--border)' }}>
+              <div className="account-panel-title">
+                <div><h3 style={{ margin: 0, fontSize: '1.08rem' }}>🛒 Your basket <span style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>({basket.length})</span></h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Review the selected tracks before checkout.</p></div>
+                {basket.length > 0 && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setBasket([])}>CLEAR BASKET</button>}
+              </div>
+              {checkoutBasketProducts.length ? <>
+                {checkoutBasketProducts.map(item => <div className="account-cart-row" key={item.code}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', minWidth: 0 }}>
+                    <span aria-hidden="true" style={{ width: 36, height: 36, display: 'grid', placeItems: 'center', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 8, flexShrink: 0 }}>{item.code === 'gmdss' ? '📡' : item.code === 'engine_ew' || item.code === 'engine_mgt' ? '⚙️' : '⚓'}</span>
+                    <div style={{ minWidth: 0 }}><strong style={{ display: 'block', overflowWrap: 'anywhere' }}>{item.label}</strong><span style={{ color: 'var(--text-muted)', fontSize: '.78rem' }}>12-month license</span></div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', flexShrink: 0 }}><strong>₱{item.annualPrice}</strong><button type="button" aria-label={'Remove ' + item.label} disabled={busy} onClick={() => removeFromBasket(item.code)} style={{ color: 'var(--danger, #dc2626)', fontWeight: 850, padding: '.3rem' }}>Remove</button></div>
+                </div>)}
+                <div className="account-total-row"><div><div style={{ color: 'var(--text-muted)', fontSize: '.75rem', fontWeight: 850, letterSpacing: '.08em' }}>TOTAL DUE</div><div style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginTop: '.15rem' }}>{basket.length} selected track{basket.length === 1 ? '' : 's'} · one secure checkout</div></div><strong style={{ fontSize: '1.65rem', color: 'var(--text)' }}>₱{basketTotal}</strong></div>
+                <button type="button" className="btn btn-primary" disabled={busy || !supabaseConfigured} onClick={() => void startPayMongoCheckout()} style={{ width: '100%', minHeight: 51, marginTop: '1rem', background: '#0b1f39', borderColor: '#0b1f39', color: '#ffbf32', fontWeight: 950, fontSize: '.95rem' }}>{busy ? 'PREPARING SECURE CHECKOUT…' : '⚡ CHECK OUT WITH PAYMONGO · ₱' + basketTotal + ' →'}</button>
+                <div className="payment-method-pills" style={{ marginTop: '.7rem', justifyContent: 'center' }}><span>GCash</span><span>Maya</span><span>QR Ph</span><span>Credit / debit card</span></div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', lineHeight: 1.5, textAlign: 'center', marginBottom: 0 }}>Each selected track will be activated individually after PayMongo confirms the total payment. No extra tracks are included.</p>
+              </> : <div style={{ textAlign: 'center', padding: '1.4rem .8rem', border: '1px dashed var(--border)', borderRadius: 9 }}>
+                <div style={{ fontSize: '1.65rem', marginBottom: '.35rem' }}>🛒</div><strong>Your basket is empty</strong><p style={{ color: 'var(--text-muted)', fontSize: '.85rem', margin: '.35rem 0 0' }}>Add a reviewer track above to prepare your checkout.</p>
+              </div>}
+            </section>
+
+            {manualPaymentOpen && <section style={card}>
+              <div className="account-panel-title"><div><div style={{ color: '#a47e2e', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>MANUAL ALTERNATIVE</div><h3 style={{ margin: '.2rem 0 0', fontSize: '1.08rem' }}>Manual QR payment · {PAID_PRODUCTS.find(item => item.code === product)?.label ?? product}</h3></div><button type="button" className="btn btn-outline" onClick={() => setManualPaymentOpen(false)}>CLOSE</button></div>
+              {activeLicense ? <div style={{ ...card, borderColor: 'var(--success, #15803d)' }}><strong>License already active</strong><p style={{ color: 'var(--text-muted)', marginBottom: 0 }}>This track is already active until {activeLicense.expires_at ? new Date(activeLicense.expires_at).toLocaleDateString() : 'its recorded expiration'}.</p></div> : pendingOrder ? <div style={{ ...card, borderColor: 'var(--warning, #d97706)' }}><strong>You already submitted this track for review.</strong><p style={{ color: 'var(--text-muted)' }}>Cancel the pending request before submitting another payment.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelReview()} style={{ width: '100%' }}>CANCEL REVIEW REQUEST</button></div> : pendingPayMongoOrder ? <div style={{ ...card, borderColor: 'var(--warning, #d97706)' }}><strong>A PayMongo checkout is open for this track.</strong><p style={{ color: 'var(--text-muted)' }}>Close that checkout first to avoid paying twice.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongoCheckout(pendingPayMongoOrder.checkout_batch_id || pendingPayMongoOrder.id)} style={{ width: '100%', color: 'var(--danger, #dc2626)' }}>CANCEL PAYMONGO CHECKOUT</button></div> : <form onSubmit={submitPayment}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '.88rem', lineHeight: 1.5 }}>This fallback needs admin verification. The fastest option is the secure PayMongo basket checkout above.</p>
+                <div style={{ ...card, textAlign: 'center', marginTop: '.9rem', background: '#fff', color: '#172033' }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: '.25rem' }}>QR Ph · MariBank / InstaPay</div>
+                  <p style={{ margin: '0 0 .75rem', color: '#4b5563', fontSize: '.9rem' }}>Scan this QR code using your bank or e-wallet app.</p>
+                  <img src={qrPhImage} alt="MariBank InstaPay QR Ph payment code" style={{ display: 'block', width: 'min(100%, 340px)', height: 'auto', margin: '0 auto', imageRendering: 'pixelated' }} />
+                  <p style={{ margin: '.75rem 0 0', color: '#4b5563', fontSize: '.85rem' }}>Account name and bank details are shown on the QR code. Verify the recipient in your payment app before sending.</p>
+                </div>
+                <div style={{ padding: '.85rem', border: '1px solid var(--border)', borderRadius: 8, marginTop: '.75rem', lineHeight: 1.5 }}><strong>Amount to send: ₱{PAID_PRODUCTS.find(item => item.code === product)?.annualPrice ?? 0}</strong><div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.25rem' }}>Send the exact amount for {PAID_PRODUCTS.find(item => item.code === product)?.label ?? product} only. This covers one reviewer track for 12 months.</div></div>
+                <label style={label}>Transaction/reference number<input required maxLength={160} value={reference} onChange={e => setReference(e.target.value)} style={field} /></label>
+                <label style={label}>Additional notes (optional)<textarea maxLength={1000} rows={3} value={note} onChange={e => setNote(e.target.value)} style={field} /></label>
+                <a href={facebookPage} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '.8rem' }}>SEND PROOF TO OUR FACEBOOK PAGE</a>
+                <button type="submit" className="btn btn-primary" disabled={busy || !supabaseConfigured || Boolean(pendingPayMongoOrder)} style={{ width: '100%', marginTop: '1rem' }}>{busy ? 'Submitting…' : 'SUBMIT FOR MANUAL REVIEW'}</button>
+              </form>}
+            </section>}
+
+            <section style={card}>
+              <div className="account-panel-title"><div><h3 style={{ margin: 0, fontSize: '1rem' }}>Orders & payment history</h3><p style={{ color: 'var(--text-muted)', margin: '.25rem 0 0', fontSize: '.82rem' }}>Check the status of recent purchases and manual submissions.</p></div><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshPaymentStatus()}>{busy ? 'Checking…' : 'Refresh status'}</button></div>
+              {orders.length ? orders.map(order => <div key={order.id} style={{ padding: '.8rem 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '.7rem', flexWrap: 'wrap' }}><strong>{PAID_PRODUCTS.find(item => item.code === order.product_code)?.label ?? order.product_code} · ₱{order.amount_php}</strong><span className="product-status" style={order.status === 'paid' ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : undefined}>{statusLabel[order.status] || order.status}</span></div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.82rem', marginTop: '.3rem' }}>{new Date(order.paid_at || order.created_at).toLocaleString()} · {order.payment_method || 'Payment method not recorded'}</div>
+                {order.customer_name && <div style={{ fontSize: '.82rem', marginTop: '.2rem' }}>Customer name: {order.customer_name}</div>}
+                <div style={{ color: 'var(--text-muted)', fontSize: '.75rem', overflowWrap: 'anywhere', marginTop: '.2rem' }}>Reference: {order.payment_reference || 'Not provided'} · Order: {order.id}</div>
+                {order.admin_note && <p style={{ marginBottom: 0, color: 'var(--text-muted)', fontSize: '.82rem' }}>Admin note: {order.admin_note}</p>}
+              </div>) : <p style={{ color: 'var(--text-muted)' }}>No orders yet. Products purchased through the basket will appear here after checkout.</p>}
+            </section>
+          </>}
+        </main>
+      </div>
     </>}
   </div>
-}
