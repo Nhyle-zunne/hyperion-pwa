@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useLicenseStore } from './stores/licenseStore'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import HomeScreen from './screens/HomeScreen'
 import TrackSelectionScreen from './screens/TrackSelectionScreen'
 import AccountScreen from './screens/AccountScreen'
@@ -29,12 +29,15 @@ import { useUIStore } from './stores/uiStore'
 import { usePracticeStore } from './stores/practiceStore'
 import { useBookmarksStore } from './stores/bookmarksStore'
 import { supabase } from './lib/supabase'
+import { startLearningProgressSync } from './lib/progressSync'
 import { useState } from 'react'
 
 export default function App() {
   const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
   const showPaywall = useUIStore((s) => s.showPaywall)
   const location = useLocation()
+  const navigate = useNavigate()
+  const [resumeSession, setResumeSession] = useState<{ mode: 'PRACTICE' | 'DRILL' | 'MOCK'; track: string | null; competenceId: string | null } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
@@ -58,6 +61,27 @@ export default function App() {
     const authListener = supabase?.auth.onAuthStateChange(() => { window.setTimeout(() => { void refreshCloudEntitlements() }, 0) })
     return () => { authListener?.data.subscription.unsubscribe() }
   }, [refreshCloudEntitlements])
+
+  useEffect(() => startLearningProgressSync(), [])
+
+  useEffect(() => {
+    const handleProgressRestored = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        hasActiveSession?: boolean
+        mode?: 'PRACTICE' | 'DRILL' | 'MOCK' | null
+        track?: string | null
+        competenceId?: string | null
+      }>).detail
+      if (!detail?.hasActiveSession || !detail.mode) {
+        setResumeSession(null)
+        return
+      }
+      if (location.pathname === '/mock/exam' || location.pathname === '/practice/quiz') return
+      setResumeSession({ mode: detail.mode, track: detail.track ?? null, competenceId: detail.competenceId ?? null })
+    }
+    window.addEventListener('hyperion:learning-progress-restored', handleProgressRestored)
+    return () => window.removeEventListener('hyperion:learning-progress-restored', handleProgressRestored)
+  }, [location.pathname])
 
   const isPracticeQuiz = location.pathname === '/practice/quiz'
   const isMockRunner = location.pathname === '/mock/exam'
@@ -163,6 +187,20 @@ export default function App() {
       </main>
 
       {!hideNav && <BottomNav />}
+      {resumeSession && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(3,8,18,.72)', display: 'grid', placeItems: 'center', padding: 16, boxSizing: 'border-box' }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="resume-learning-title" className="card" style={{ width: 'min(100%, 460px)', boxSizing: 'border-box', padding: 24, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.4)' }}>
+          <h2 id="resume-learning-title" style={{ marginTop: 0 }}>{resumeSession.mode === 'MOCK' ? 'Resume your mock exam?' : resumeSession.mode === 'DRILL' ? 'Resume your drill?' : 'Resume your practice session?'}</h2>
+          <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>Hyperion found an unfinished session saved to your account. You can continue where you left off.</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-outline" onClick={() => setResumeSession(null)}>NOT NOW</button>
+            <button type="button" className="btn btn-primary" onClick={() => {
+              const destination = resumeSession.mode === 'MOCK' ? '/mock/exam' : '/practice/quiz'
+              setResumeSession(null)
+              navigate(destination)
+            }}>RESUME SESSION</button>
+          </div>
+        </section>
+      </div>}
       {showPaywall && <PaywallDialog />}
     </div>
   )
