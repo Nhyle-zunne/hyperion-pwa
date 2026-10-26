@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   HISTORY_RETENTION_MS,
@@ -452,7 +453,7 @@ export default function HistoryScreen() {
         </div>
       )}
 
-      {pendingDelete && (
+      {pendingDelete && createPortal(
         <div style={modalBackdrop} role="presentation">
           <section style={modalStyle} role="dialog" aria-modal="true" aria-labelledby="delete-session-title">
             <h2 id="delete-session-title" style={{ marginTop: 0 }}>Move session to Recently Deleted?</h2>
@@ -462,10 +463,11 @@ export default function HistoryScreen() {
               <button className="btn btn-primary" style={{ flex: 1, color: 'var(--danger)' }} onClick={confirmDelete}>Move to Recently Deleted</button>
             </div>
           </section>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {showClearConfirm && (
+      {showClearConfirm && createPortal(
         <div style={modalBackdrop} role="presentation">
           <section style={modalStyle} role="dialog" aria-modal="true" aria-labelledby="clear-history-title">
             <h2 id="clear-history-title" style={{ marginTop: 0 }}>Clear session history?</h2>
@@ -475,10 +477,11 @@ export default function HistoryScreen() {
               <button className="btn btn-primary" style={{ flex: 1, color: 'var(--danger)' }} onClick={() => { clear(); setShowClearConfirm(false); setSelectedKeys([]); setSelectionMode(false) }}>Clear all</button>
             </div>
           </section>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {showRecentlyDeleted && (
+      {showRecentlyDeleted && createPortal(
         <div style={modalBackdrop} role="presentation" onClick={() => setShowRecentlyDeleted(false)}>
           <section style={modalStyle} role="dialog" aria-modal="true" aria-labelledby="recently-deleted-title" onClick={event => event.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -506,10 +509,11 @@ export default function HistoryScreen() {
               </div>
             )}
           </section>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {progressDetails && (
+      {progressDetails && createPortal(
         <div style={modalBackdrop} role="presentation" onClick={() => setProgressDetails(null)}>
           <section style={modalStyle} role="dialog" aria-modal="true" aria-labelledby="progress-details-title" onClick={event => event.stopPropagation()}>
             <h2 id="progress-details-title" style={{ marginTop: 0 }}>Session in progress</h2>
@@ -524,10 +528,11 @@ export default function HistoryScreen() {
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => resumeSession(progressDetails)}>Continue session</button>
             </div>
           </section>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {review && (
+      {review && createPortal(
         <div style={modalBackdrop} role="presentation" onClick={closeReview}>
           <section style={modalStyle} role="dialog" aria-modal="true" aria-labelledby="session-audit-title" onClick={event => event.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
@@ -601,7 +606,8 @@ export default function HistoryScreen() {
               </>
             )}
           </section>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
