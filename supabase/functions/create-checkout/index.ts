@@ -75,6 +75,58 @@ Deno.serve(async (req) => {
     return json({ error: 'You already submitted this track for manual review. Complete or cancel that request before starting PayMongo checkout.' }, 409)
   }
 
+  // Reuse a pending checkout instead of creating multiple orders for the same track.
+  const { data: pendingCheckout, error: pendingCheckoutError } = await admin.from('orders')
+    .select('id,paymongo_checkout_session_id')
+    .eq('user_id', user.id)
+    .eq('product_code', code)
+    .eq('status', 'pending')
+    .eq('payment_method', 'PayMongo Checkout')
+    .not('paymongo_checkout_session_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (pendingCheckoutError) return json({ error: 'Could not check your existing checkout. Please retry.' }, 500)
+
+  if (pendingCheckout?.paymongo_checkout_session_id) {
+    let existingResponse: Response
+    let existingSession: any
+    try {
+      existingResponse = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(pendingCheckout.paymongo_checkout_session_id)}`, {
+        headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}` }
+      })
+      existingSession = await existingResponse.json().catch(() => ({}))
+    } catch {
+      return json({ error: 'An earlier PayMongo checkout is still pending. Could not check it safely; please refresh or contact Hyperion support before trying again.' }, 503)
+    }
+    if (!existingResponse.ok) {
+      return json({ error: 'An earlier PayMongo checkout is still pending. Could not check it safely; please contact Hyperion support before paying again.' }, 503)
+    }
+
+    const previousAttributes = existingSession?.data?.attributes
+    const previousPayments = Array.isArray(previousAttributes?.payments) ? previousAttributes.payments : []
+    if (previousPayments.some((payment: any) => payment?.attributes?.status === 'paid')) {
+      return json({ alreadyProcessing: true, orderId: pendingCheckout.id, message: 'Payment is already recorded and its license activation is being finalized.' })
+    }
+
+    const previousCheckoutUrl = previousAttributes?.checkout_url
+    if (previousAttributes?.status === 'active' && typeof previousCheckoutUrl === 'string') {
+      let safeUrl: URL
+      try { safeUrl = new URL(previousCheckoutUrl) } catch { return json({ error: 'The earlier PayMongo checkout link is invalid. Please contact support.' }, 502) }
+      if (safeUrl.protocol !== 'https:' || safeUrl.hostname !== 'checkout.paymongo.com') {
+        return json({ error: 'The earlier PayMongo checkout link is invalid. Please contact support.' }, 502)
+      }
+      return json({ checkoutUrl: safeUrl.toString(), orderId: pendingCheckout.id, reused: true })
+    }
+
+    if (previousAttributes?.status === 'expired') {
+      await admin.from('orders').update({ status: 'failed' })
+        .eq('id', pendingCheckout.id).eq('status', 'pending')
+    } else {
+      return json({ error: 'An earlier PayMongo checkout is still pending. Resume it from your payment history before trying again.' }, 409)
+    }
+  }
+
   const { data: order, error: insertError } = await admin.from('orders').insert({
     user_id: user.id,
     product_code: code,
