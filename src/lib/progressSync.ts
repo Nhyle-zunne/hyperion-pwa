@@ -336,9 +336,22 @@ async function uploadSnapshot(): Promise<void> {
   const snapshot = captureSnapshot()
 
   try {
+    // Merge against the latest cloud record before writing so progress from another
+    // device (history, study-time segments, bookmarks, and mistakes) is not discarded.
+    const { data: latestRow, error: readError } = await supabase
+      .from(TABLE)
+      .select('data')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (readError) throw readError
+
+    const latestSnapshot = latestRow?.data && isSnapshot(latestRow.data)
+      ? latestRow.data as LearningProgressSnapshot
+      : null
+    const snapshotToUpload = latestSnapshot ? mergeSnapshots(snapshot, latestSnapshot) : snapshot
     const { error } = await supabase
       .from(TABLE)
-      .upsert({ user_id: userId, data: snapshot }, { onConflict: 'user_id' })
+      .upsert({ user_id: userId, data: snapshotToUpload }, { onConflict: 'user_id' })
 
     if (error) {
       cloudReady = false
@@ -369,11 +382,6 @@ async function uploadSnapshot(): Promise<void> {
       scheduleUpload(150)
     }
   }
-}
-
-function hasLocalProgress(snapshot: LearningProgressSnapshot): boolean {
-  return !!snapshot.activeSession
-    || STORAGE_KEYS.some((key) => snapshot.storage[key] != null)
 }
 
 async function initializeUser(userId: string): Promise<void> {
