@@ -160,13 +160,43 @@ export default function PracticeConfigScreen() {
 
     <section style={panel}>
       <h2 style={sectionTitle}>♟ 1. DRILL DELIVERY FORMAT</h2>
-      <button type="button" onClick={() => setIntensiveMode(false)} style={{ width: '100%', textAlign: 'left', background: !intensiveMode ? 'var(--bg-elevated)' : 'var(--bg-card)', color: 'var(--text)', border: `2px solid ${!intensiveMode ? 'var(--accent)' : 'var(--border)'}`, padding: '.85rem', marginBottom: '.7rem' }}>
-        <div style={{ fontWeight: 900, fontSize: '1rem' }}>◉　Standard Drill <span style={{ float: 'right', color: '#94a3b8', fontSize: '.7rem' }}>FIXED ITEMS</span></div>
-        <div style={{ ...muted, lineHeight: 1.5, margin: '.4rem 0 0 2rem' }}>Progress through each question once with immediate answer verification. Concludes with a session summary.</div>
+      <button
+        type="button"
+        aria-pressed={!intensiveMode}
+        onClick={() => setIntensiveMode(false)}
+        style={{
+          width: '100%', textAlign: 'left',
+          background: !intensiveMode ? 'var(--accent)' : 'var(--bg-card)',
+          color: !intensiveMode ? '#ffffff' : 'var(--text)',
+          border: `2px solid ${!intensiveMode ? 'var(--accent)' : 'var(--border)'}`,
+          padding: '.85rem', marginBottom: '.7rem', transition: 'background 150ms ease, border-color 150ms ease, color 150ms ease'
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: '1rem', color: !intensiveMode ? '#ffffff' : 'var(--text)' }}>
+          Standard Drill <span style={{ float: 'right', color: !intensiveMode ? '#ffffff' : 'var(--text-muted)', fontSize: '.7rem' }}>FIXED ITEMS</span>
+        </div>
+        <div style={{ color: !intensiveMode ? 'rgba(255,255,255,.94)' : 'var(--text-muted)', lineHeight: 1.5, marginTop: '.4rem' }}>
+          Progress through each question once with immediate answer verification. Concludes with a session summary.
+        </div>
       </button>
-      <button type="button" onClick={() => setIntensiveMode(true)} style={{ width: '100%', textAlign: 'left', background: intensiveMode ? 'var(--bg-elevated)' : 'var(--bg-card)', color: 'var(--text)', border: `1px solid ${intensiveMode ? 'var(--accent)' : 'var(--border)'}`, padding: '.85rem' }}>
-        <div style={{ fontWeight: 900, fontSize: '1rem' }}>◯　Intensive Mode <span style={{ float: 'right', color: '#94a3b8', fontSize: '.7rem' }}>RECYCLING QUEUE</span></div>
-        <div style={{ ...muted, lineHeight: 1.5, margin: '.4rem 0 0 2rem' }}>Missed questions recycle to the end of the queue. The drill only finishes when all questions are mastered.</div>
+      <button
+        type="button"
+        aria-pressed={intensiveMode}
+        onClick={() => setIntensiveMode(true)}
+        style={{
+          width: '100%', textAlign: 'left',
+          background: intensiveMode ? 'var(--accent)' : 'var(--bg-card)',
+          color: intensiveMode ? '#ffffff' : 'var(--text)',
+          border: `2px solid ${intensiveMode ? 'var(--accent)' : 'var(--border)'}`,
+          padding: '.85rem', transition: 'background 150ms ease, border-color 150ms ease, color 150ms ease'
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: '1rem', color: intensiveMode ? '#ffffff' : 'var(--text)' }}>
+          Intensive Mode <span style={{ float: 'right', color: intensiveMode ? '#ffffff' : 'var(--text-muted)', fontSize: '.7rem' }}>RECYCLING QUEUE</span>
+        </div>
+        <div style={{ color: intensiveMode ? 'rgba(255,255,255,.94)' : 'var(--text-muted)', lineHeight: 1.5, marginTop: '.4rem' }}>
+          Missed questions recycle to the end of the queue. The drill only finishes when all questions are mastered.
+        </div>
       </button>
       {intensiveMode && <p style={{ ...muted, fontSize: '.8rem', marginBottom: 0 }}>Intensive mode selection is visual only until the review queue behavior is implemented.</p>}
     </section>
@@ -181,7 +211,17 @@ export default function PracticeConfigScreen() {
     <section style={panel}>
       <h2 style={sectionTitle}>☷ 3. QUESTION RANGE SELECTOR (#1 TO #{maxRange.toLocaleString()})</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: '.4rem', marginBottom: '1.3rem' }}>
-        {rangePresets.map(p => <button key={p.label} type="button" onClick={() => { setStartItem(1); setEndItem(Math.min(maxRange, p.count)); }} style={{ ...smallButton, background: startItem === 1 && endItem === Math.min(maxRange, p.count) ? 'var(--accent)' : 'var(--bg-elevated)', color: startItem === 1 && endItem === Math.min(maxRange, p.count) ? '#ffffff' : 'var(--text)', fontSize: '.78rem', padding: '.45rem .2rem' }}>{p.label}</button>)}
+        {rangePresets.map(p => {
+          const selected = startItem === 1 && endItem === Math.min(maxRange, p.count)
+          return <button
+            key={p.label}
+            type="button"
+            className="question-range-preset"
+            aria-pressed={selected}
+            onClick={() => { setStartItem(1); setEndItem(Math.min(maxRange, p.count)); }}
+            style={{ ...smallButton, background: selected ? 'var(--accent)' : 'var(--bg-elevated)', color: selected ? '#ffffff' : 'var(--text)', fontSize: '.78rem', padding: '.45rem .2rem' }}
+          >{p.label}</button>
+        })}
       </div>
       <div className="question-range-dual" style={{ '--range-start': `${((actualStart - 1) / Math.max(1, maxRange - 1)) * 100}%`, '--range-end': `${((actualEnd - 1) / Math.max(1, maxRange - 1)) * 100}%` } as CSSProperties}>
         <div className="question-range-track" />
