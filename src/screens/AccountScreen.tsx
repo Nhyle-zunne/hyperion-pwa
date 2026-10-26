@@ -9,6 +9,7 @@ import { useLicenseStore } from '../stores/licenseStore'
 type Order = {
   id: string
   product_code: string
+  license_term: LicenseTerm
   amount_php: number
   status: string
   payment_reference: string | null
