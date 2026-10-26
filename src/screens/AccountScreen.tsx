@@ -222,6 +222,47 @@ export default function AccountScreen() {
 
   useEffect(() => { void refreshAccount() }, [session?.user.id])
 
+  const refreshPaymentStatus = async () => {
+    if (!supabase || !session) {
+      await refreshAccount()
+      return
+    }
+    setBusy(true)
+    setMessage('Checking any pending PayMongo payments with the payment provider…')
+    try {
+      const pending = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
+      if (pending.length === 0) {
+        await refreshAccount()
+        setMessage('Account status refreshed. There are no pending PayMongo checkouts to verify.')
+        return
+      }
+      let activated: string[] = []
+      let pendingCount = 0
+      let lastError = ''
+      for (const order of pending) {
+        const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId: order.id } })
+        if (error) {
+          lastError = (await edgeFunctionErrorMessage(error)) || 'Payment verification is temporarily unavailable.'
+          continue
+        }
+        if (data?.status === 'paid') {
+          const purchased = PAID_PRODUCTS.find(item => item.code === data.productCode)
+          activated.push(purchased?.label ?? data.productCode ?? order.product_code)
+        } else if (data?.status === 'pending') {
+          pendingCount += 1
+        } else if (typeof data?.error === 'string') {
+          lastError = data.error
+        }
+      }
+      await refreshAccount()
+      if (activated.length) setMessage(`Payment confirmed. Activated: ${activated.join(', ')}. Only the purchased track for each order was granted.`)
+      else if (lastError) setMessage(lastError)
+      else setMessage(pendingCount ? 'PayMongo has not yet confirmed these pending checkout(s) as paid. No license was granted. Try refreshing again after payment finishes.' : 'Payment status refreshed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // A checkout return is only a prompt to check the server-owned order. The return
   // URL itself never grants access; only the verified PayMongo webhook marks it paid.
   useEffect(() => {
@@ -248,24 +289,24 @@ export default function AccountScreen() {
         return
       }
 
-      for (let attempt = 0; attempt < 7; attempt++) {
-        const { data, error } = await supabase
-          .from('orders')
-          .select('status,product_code')
-          .eq('id', orderId)
-          .eq('user_id', session.user.id)
-          .maybeSingle()
+      let lastVerificationMessage = ''
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
         if (cancelled) return
         if (!error && data?.status === 'paid') {
+          const purchased = PAID_PRODUCTS.find(item => item.code === data.productCode)
           await refreshAccount()
-          if (!cancelled) setMessage('Payment confirmed. Your reviewer license is active for the purchased track.')
+          if (!cancelled) setMessage(`Payment confirmed. Your ${purchased?.label ?? data.productCode} license is now active. No manual approval is needed.`)
           return
         }
-        if (attempt < 6) await new Promise(resolve => window.setTimeout(resolve, 1500))
+        if (error) lastVerificationMessage = (await edgeFunctionErrorMessage(error)) || 'PayMongo verification is temporarily unavailable.'
+        else if (typeof data?.error === 'string') lastVerificationMessage = data.error
+        else if (data?.status === 'pending') lastVerificationMessage = data.message || 'PayMongo has not confirmed a successful payment yet.'
+        if (attempt < 5) await new Promise(resolve => window.setTimeout(resolve, 1800))
       }
 
       await refreshAccount()
-      if (!cancelled) setMessage('PayMongo returned you to Hyperion, but payment confirmation has not arrived yet. Activation happens automatically after the verified payment webhook is processed. Use Refresh status shortly; do not pay again just because this message appears.')
+      if (!cancelled) setMessage(`${lastVerificationMessage || 'Payment is still awaiting PayMongo confirmation.'} Hyperion will activate only the track attached to this paid order. Do not pay again. Use Refresh status to check again.`)
     }
     void checkPayment()
     return () => { cancelled = true }
@@ -568,10 +609,11 @@ export default function AccountScreen() {
       </section>
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Other orders & payment submissions</h2>
-        <button type="button" className="btn btn-outline" onClick={() => void refreshAccount()}>Refresh status</button>
+        <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshPaymentStatus()}>{busy ? 'Checking payment…' : 'Refresh status'}</button>
         {orders.filter(order => !owned.some(license => license.order_id === order.id)).length ? orders.filter(order => !owned.some(license => license.order_id === order.id)).map(order => <div key={order.id} style={{ padding: '.8rem 0', borderBottom: '1px solid var(--border)' }}>
           <strong>{PAID_PRODUCTS.find(p => p.code === order.product_code)?.label ?? order.product_code} · ₱{order.amount_php}</strong>
           <div style={{ color: 'var(--text-muted)', fontSize: '.85rem', marginTop: 4 }}>{statusLabel[order.status] || order.status} · {new Date(order.created_at).toLocaleString()}</div>
+          {order.customer_name && <div style={{ fontSize: '.82rem' }}>Customer name: {order.customer_name}</div>}
           <div style={{ fontSize: '.8rem', overflowWrap: 'anywhere' }}>Reference: {order.payment_reference || 'Not provided'} · Order: {order.id}</div>
           {order.admin_note && <p style={{ marginBottom: 0 }}>Admin note: {order.admin_note}</p>}
         </div>) : <p style={{ color: 'var(--text-muted)' }}>No other orders or payment submissions.</p>}
