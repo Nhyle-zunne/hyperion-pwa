@@ -264,7 +264,6 @@ export default function BasketScreen() {
   }
 
   const cancelCheckout = async (groupId: string, groupItems: BasketItem[]) => {
-    const groupCodes = groupItems.map(item => item.code)
     if (!supabase || !session) return
     setBusy(true)
     setBusyCheckoutId(groupId)
