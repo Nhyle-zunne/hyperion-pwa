@@ -82,8 +82,13 @@ export default function OAuthCallbackScreen() {
         setStatus('Signed in successfully. Returning to Hyperion…')
 
         if (popupAttempt || window.opener) {
+          // OAuth was launched as a popup. The opener handles the session and
+          // closes this window; do not navigate this popup to the dashboard if
+          // the browser temporarily blocks window.close().
           window.close()
           if (window.closed) return
+          setStatus('Sign-in complete. Return to the Hyperion window to continue.')
+          return
         }
         navigate(returnTo, { replace: true })
       } catch (error) {
@@ -96,6 +101,8 @@ export default function OAuthCallbackScreen() {
         if (popupAttempt || window.opener) {
           window.close()
           if (window.closed) return
+          setStatus('Sign-in could not be completed. Return to the Hyperion window for details.')
+          return
         }
         navigate('/account', { replace: true, state: { oauthError: message } })
       }
