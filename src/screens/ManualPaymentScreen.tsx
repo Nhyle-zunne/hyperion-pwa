@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
@@ -12,6 +13,7 @@ type Order = {
   status: string
   payment_method: string | null
   payment_reference: string | null
+  checkout_batch_id: string | null
 }
 
 type Entitlement = { product_code: string; expires_at: string | null }
@@ -20,14 +22,15 @@ const paymentMethod = 'QR Ph (MariBank / InstaPay)'
 const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
 const qrPhImage = '/qr-ph.png'
 
-function edgeMessage(error: unknown, fallback: string) {
+async function edgeMessage(error: unknown, fallback: string): Promise<string> {
   if (error && typeof error === 'object' && 'context' in error) {
     const context = (error as { context?: unknown }).context
     if (context instanceof Response) {
       // The server may return a useful validation message; no secrets are shown here.
-      return context.clone().json().then((body: { error?: unknown }) =>
-        typeof body.error === 'string' && body.error.trim() ? body.error : fallback
-      ).catch(() => fallback)
+      try {
+        const body = await context.clone().json() as { error?: unknown }
+        return typeof body.error === 'string' && body.error.trim() ? body.error : fallback
+      } catch { return fallback }
     }
   }
   const message = error instanceof Error ? error.message : ''
@@ -89,7 +92,7 @@ export default function ManualPaymentScreen() {
       supabase.from('entitlements').select('product_code,expires_at')
         .eq('user_id', session.user.id).eq('status', 'active').gt('expires_at', new Date().toISOString())
         .eq('product_code', productCode),
-      supabase.from('orders').select('id,product_code,amount_php,status,payment_method,payment_reference')
+      supabase.from('orders').select('id,product_code,amount_php,status,payment_method,payment_reference,checkout_batch_id')
         .eq('user_id', session.user.id).eq('product_code', productCode)
         .order('created_at', { ascending: false }).limit(30)
     ])
@@ -114,7 +117,7 @@ export default function ManualPaymentScreen() {
   const pendingManualOrder = orders.find(order => ['submitted', 'pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
   const pendingPayMongoOrder = orders.find(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
 
-  const submitPayment = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submitPayment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!supabase || !session || !product) return
     if (!fullName.trim()) {
@@ -185,7 +188,7 @@ export default function ManualPaymentScreen() {
     setMessage('Checking the existing PayMongo checkout before switching payment methods…')
     try {
       const { data, error } = await supabase.functions.invoke('cancel-checkout', {
-        body: { orderId: pendingPayMongoOrder.id }
+        body: { orderId: pendingPayMongoOrder.checkout_batch_id || pendingPayMongoOrder.id }
       })
       if (error) throw new Error(await edgeMessage(error, 'Unable to check the existing checkout. Please try again.'))
       if (data?.error) throw new Error(data.error)
@@ -203,9 +206,9 @@ export default function ManualPaymentScreen() {
     }
   }
 
-  const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', borderRadius: 12 }
-  const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '.8rem', marginTop: '.35rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 7, font: 'inherit' }
-  const label: React.CSSProperties = { display: 'block', marginTop: '.9rem' }
+  const card: CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', borderRadius: 12 }
+  const field: CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '.8rem', marginTop: '.35rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 7, font: 'inherit' }
+  const label: CSSProperties = { display: 'block', marginTop: '.9rem' }
 
   return <div className="screen manual-payment-page" style={{ width: 'min(calc(100% - 2rem), 920px)', maxWidth: 920, margin: '0 auto', paddingBottom: '2rem' }}>
     <style>{`
