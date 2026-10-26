@@ -552,6 +552,41 @@ export interface QuestionBankCount {
   count: number;
 }
 
+async function fingerprintQuestion(question: Question): Promise<string> {
+  const payload = new TextEncoder().encode(JSON.stringify([
+    question.questionText, question.options, question.correctAnswerIndex
+  ]));
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', payload));
+  return Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Re-authorize locally saved question sets against the current server license.
+ * Without a license, only question content that exactly matches the free sample
+ * is accepted. The persisted isFreeSession flag is never trusted on its own.
+ */
+export async function authorizeQuestionSet(track: TrackId, questions: Question[]): Promise<boolean> {
+  if (!questions.length || questions.length > 3000 || questions.some(q => q.track !== track)) return false;
+  const fingerprints = await Promise.all(questions.map(fingerprintQuestion));
+  if (supabase) {
+    const { data, error } = await supabase.functions.invoke('question-bank', {
+      body: { action: 'authorize-session', track, questionIds: questions.map(q => q.id), fingerprints }
+    });
+    if (!error && typeof data?.allowed === 'boolean') return data.allowed;
+    const status = Number((error as { context?: { status?: number } } | null)?.context?.status || 0);
+    if (status !== 503) return false;
+  }
+  // Temporary availability fallback during the first private-storage migration:
+  // it can authorize only questions that already belong to the public free sample.
+  try {
+    const freeQuestions = await getQuestionsByTrack(track, true);
+    const freeFingerprints = new Set(await Promise.all(freeQuestions.map(fingerprintQuestion)));
+    return fingerprints.every(fingerprint => freeFingerprints.has(fingerprint));
+  } catch {
+    return false;
+  }
+}
+
 /** Returns question counts only; paid question text stays on the protected question endpoint. */
 export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
   if (!supabase) throw new Error('Protected question service is not configured.');
