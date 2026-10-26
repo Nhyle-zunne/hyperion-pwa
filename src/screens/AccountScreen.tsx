@@ -106,6 +106,15 @@ export default function AccountScreen() {
         const requested = typeof event.data.return_to === 'string' ? event.data.return_to : '/'
         navigate(requested.startsWith('/') && !requested.startsWith('//') ? requested : '/', { replace: true })
         await refreshCloudEntitlements()
+        // Close the OAuth window from the window that originally opened it.
+        // This also covers browsers that refuse window.close() after redirects.
+        const popup = oauthPopupRef.current
+        if (popup && !popup.closed) {
+          popup.close()
+          window.setTimeout(() => {
+            if (oauthPopupRef.current === popup && popup.closed) oauthPopupRef.current = null
+          }, 100)
+        }
       } catch (error) {
         oauthOutcomeRef.current = 'error'
         setMessage(error instanceof Error ? error.message : 'Unable to finish sign-in. Please try again.')
