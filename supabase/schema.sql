@@ -12,6 +12,9 @@ create table if not exists public.orders (
   payment_method text,
   proof_url text,
   customer_note text,
+  customer_name text,
+  customer_company text,
+  customer_school text,
   admin_note text,
   reviewed_by text,
   reviewed_at timestamptz,
@@ -24,6 +27,9 @@ alter table public.orders add column if not exists payment_reference text;
 alter table public.orders add column if not exists payment_method text;
 alter table public.orders add column if not exists proof_url text;
 alter table public.orders add column if not exists customer_note text;
+alter table public.orders add column if not exists customer_name text;
+alter table public.orders add column if not exists customer_company text;
+alter table public.orders add column if not exists customer_school text;
 alter table public.orders add column if not exists admin_note text;
 alter table public.orders add column if not exists reviewed_by text;
 alter table public.orders add column if not exists reviewed_at timestamptz;
