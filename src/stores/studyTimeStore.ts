@@ -20,6 +20,10 @@ export interface StudySegment {
 
 interface StudyTimeState {
   segments: StudySegment[];
+  /** Calendar date selected in Study Time, synced through the signed-in account. */
+  selectedDate: string;
+  selectedDateUpdatedAt: number;
+  setSelectedDate: (date: string) => void;
   addSegment: (opts: { mode: SessionMode; track: TrackId | null; durationMs: number; at?: number }) => void;
   clear: () => void;
   todayMs: () => number;
@@ -32,6 +36,12 @@ export const useStudyTimeStore = create<StudyTimeState>()(
   persist(
     (set, get) => ({
       segments: [],
+      selectedDate: dayKey(),
+      selectedDateUpdatedAt: 0,
+      setSelectedDate: (date) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || get().selectedDate === date) return;
+        set({ selectedDate: date, selectedDateUpdatedAt: Date.now() });
+      },
       addSegment: ({ mode, track, durationMs, at }) => {
         if (!Number.isFinite(durationMs) || durationMs < 1000) return;
         const end = Number.isFinite(at) ? (at as number) : Date.now();
