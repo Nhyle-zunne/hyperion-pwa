@@ -13,7 +13,7 @@ export default function AccountScreen() {
   const [session, setSession] = useState<Session | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [mode, setMode] = useState<'signin' | 'signup'>('signup')
+  const [mode] = useState<'signin'>('signin')
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments'>('payments')
   const [product, setProduct] = useState('oic_nw')
   const paymentMethod = 'QR Ph (MariBank / InstaPay)'
@@ -261,12 +261,8 @@ export default function AccountScreen() {
   return <div className="screen" style={{ width: 'min(calc(100% - 2rem), 760px)', margin: '0 auto', paddingBottom: '2rem' }}>
     <button type="button" onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>← Back</button>
     <h1 className="page-title" style={{ textAlign: 'center' }}>Hyperion Account</h1>
-    <p className="subtitle" style={{ textAlign: 'center', maxWidth: 520, margin: '0 auto 1.25rem' }}>Create an account to subscribe to individual review tracks for 12 months.</p>
+    <p className="subtitle" style={{ textAlign: 'center', maxWidth: 520, margin: '0 auto 1.25rem' }}>Sign in to Hyperion Maritime with Google or Facebook to access your account and review-track subscriptions.</p>
     {!session ? <section style={{ ...card, maxWidth: 460, margin: '1.5rem auto' }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: '1rem' }}>
-        <button type="button" className={mode === 'signup' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setMode('signup')} style={{ flex: 1 }}>Create account</button>
-        <button type="button" className={mode === 'signin' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setMode('signin')} style={{ flex: 1 }}>Sign in</button>
-      </div>
       <button
         type="button"
         className="btn btn-outline"
@@ -294,16 +290,6 @@ export default function AccountScreen() {
         </svg>
         Continue with Facebook
       </button>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', color: 'var(--text-muted)', fontSize: '.8rem', marginBottom: '1rem' }}>
-        <span style={{ height: 1, background: 'var(--border)', flex: 1 }} />
-        OR CONTINUE WITH EMAIL
-        <span style={{ height: 1, background: 'var(--border)', flex: 1 }} />
-      </div>
-      <form onSubmit={submitAuth}>
-        <label>Email address<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} style={field} /></label>
-        <label style={{ display: 'block', marginTop: '1rem' }}>Password<input type="password" required minLength={8} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} style={field} /></label>
-        <button type="submit" className="btn btn-primary" disabled={!supabaseConfigured || busy} style={{ width: '100%', marginTop: '1rem' }}>{busy ? 'Please wait…' : mode === 'signup' ? 'CREATE ACCOUNT' : 'SIGN IN'}</button>
-      </form>
       {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '1rem', marginBottom: 0 }}>{message}</div>}
       {!supabaseConfigured && <div role="alert" style={{ ...card, borderColor: 'var(--danger)', marginTop: '1rem', marginBottom: 0 }}><strong>Supabase is not configured yet.</strong><p style={{ marginBottom: 0, color: 'var(--text-muted)' }}>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.</p></div>}
       {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>Payments are verified manually. A return to this page does not grant access.</div>}
