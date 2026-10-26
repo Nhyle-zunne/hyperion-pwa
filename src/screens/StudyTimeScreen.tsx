@@ -8,10 +8,6 @@ const DAY_MS = 86_400_000
 const TRACK_COLORS = ['#22c55e', '#06b6d4', '#f59e0b', '#a78bfa', '#f97316', '#e879f9']
 const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
-const dayLabel = (key: string) => {
-  const date = new Date(`${key}T12:00:00`)
-  return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-}
 const weekStart = (date: Date) => {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
@@ -62,7 +58,7 @@ function Donut({ segments }: { segments: StudySegment[] }) {
   let cursor = 0
   const gradient = grouped.map(g=>{const from=cursor; cursor += total ? g.ms/total*100 : 0; return `${g.color} ${from}% ${cursor}%`}).join(', ')
   if (!total) return <p className="st-muted">No track breakdown for this period.</p>
-  return <div className="st-donut-layout"><div className="st-donut" style={{background:`conic-gradient(${gradient})`}} role="img" aria-label="Study time breakdown by track"><div className="st-donut-hole"><strong>{formatDurationMs(total)}</strong><span>TOTAL</span></div></div><div className="st-legend">{grouped.map(g=><div className="st-legend-row" key={g.track}><span className="st-legend-swatch" style={{background:g.color}}/><span className="st-legend-name">{g.track.replaceAll('_',' ')}</span><strong>{Math.round(g.ms/total*100)}%</strong><small>{formatDurationMs(g.ms)}</small></div>)}</div></div>
+  return <div className="st-donut-layout"><div className="st-donut" style={{background:`conic-gradient(${gradient})`}} role="img" aria-label="Study time breakdown by track"><div className="st-donut-hole"><strong>{formatDurationMs(total)}</strong><span>TOTAL</span></div></div><div className="st-legend">{grouped.map(g=><div className="st-legend-row" key={g.track}><span className="st-legend-swatch" style={{background:g.color}}/><span className="st-legend-name">{g.track.replace(/_/g, ' ')}</span><strong>{Math.round(g.ms/total*100)}%</strong><small>{formatDurationMs(g.ms)}</small></div>)}</div></div>
 }
 function HourGrid({ segments, date }: { segments: StudySegment[]; date: Date }) {
   const values = Array.from({length:24},(_,hour)=>{
@@ -105,7 +101,7 @@ export default function StudyTimeScreen() {
   const periodGroups=useMemo(()=>{const map=new Map<string,number>();segments.forEach(s=>map.set(s.day,(map.get(s.day)||0)+s.durationMs));return [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0]))},[segments])
   const changeDay=(delta:number)=>setSelectedDate(d=>{const n=new Date(d);n.setDate(n.getDate()+delta);return n})
   const displayTime=(ms:number)=>formatDurationMs(ms)
-  const headingDate=fmtDate(selectedDate,{year:'numeric',month:'2-digit',day:'2-digit'}).replaceAll('/','.')+` (${fmtDate(selectedDate,{weekday:'short'}).toUpperCase()})`
+  const headingDate=fmtDate(selectedDate,{year:'numeric',month:'2-digit',day:'2-digit'}).replace(/\//g, '.')+` (${fmtDate(selectedDate,{weekday:'short'}).toUpperCase()})`
 
   return <div className="screen st-screen">
     <style>{`
