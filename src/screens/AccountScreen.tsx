@@ -86,8 +86,14 @@ export default function AccountScreen() {
     } catch { /* basket remains available for this page session */ }
   }, [basket])
 
-  const addToBasket = (code: PaidTrack) => setBasket(current => current.includes(code) ? current : [...current, code])
-  const removeFromBasket = (code: PaidTrack) => setBasket(current => current.filter(item => item !== code))
+  const buyNow = (code: PaidTrack) => {
+    const nextBasket = basket.includes(code) ? basket : [...basket, code]
+    try {
+      if (nextBasket.length) localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(nextBasket))
+    } catch { /* Keep this purchase selection in memory for the current page. */ }
+    setBasket(nextBasket)
+    navigate('/checkout')
+  }
   const clearBasketItems = (codes: string[]) => setBasket(current => current.filter(code => !codes.includes(code)))
 
   useEffect(() => {
@@ -482,15 +488,7 @@ export default function AccountScreen() {
       @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar{align-items:stretch}.account-page .account-section-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}.account-page .account-section-tabs button{padding:.55rem .35rem;font-size:.78rem;white-space:normal}.account-page .account-toolbar-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}}
       @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-section-tabs{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
     `}</style>
-    <button type="button" onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back</button>
-    <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-      <div>
-        <div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div>
-        <h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Account & Bond Store</h1>
-        <p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0', maxWidth: 650 }}>Manage your profile, choose reviewer tracks, and review your basket on a separate page before checkout.</p>
-      </div>
-      <button type="button" onClick={() => navigate('/basket')} className="btn btn-primary" style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.65rem .9rem', background: '#0b1f39', color: '#ffbf32', fontWeight: 900 }}>🛒 VIEW BASKET · {basket.length}</button>
-    </div>
+
 
     {!session ? <section style={{ ...card, maxWidth: 460, margin: '1.5rem auto' }}>
       <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>Sign in to manage your profile, purchase reviewer tracks, and view your licenses.</p>
@@ -511,7 +509,6 @@ export default function AccountScreen() {
       </button>
       {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>You returned from checkout. Sign in with the same Hyperion account to verify payment and activate the purchased track.</div>}
     </section> : <>
-      {isAdmin && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '.8rem' }}><span style={{ display: 'inline-block', border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '.35rem .8rem', fontWeight: 800, fontSize: '.78rem', letterSpacing: '.04em' }}>✓ VERIFIED ADMIN · ALL ACCESS</span></div>}
       {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
 
       <div className="account-toolbar">
@@ -521,7 +518,6 @@ export default function AccountScreen() {
           <button type="button" role="tab" aria-selected={accountTab === 'delete'} className={accountTab === 'delete' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('delete')} style={accountTab === 'delete' ? { background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' } : { color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>Delete account</button>
         </nav>
         <div className="account-toolbar-actions">
-          {isAdmin && <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/payments')}>Admin dashboard</button>}
           <button type="button" className="btn btn-outline" onClick={async () => { await supabase?.auth.signOut(); setMessage('Signed out.') }}>Sign out</button>
         </div>
       </div>
@@ -548,6 +544,7 @@ export default function AccountScreen() {
                 <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setProfileEditing(false); setMessage('') }} style={{ flex: 1 }}>CANCEL</button>
                 <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
               </div>}
+              {isAdmin && <button type="button" title="Open admin dashboard" aria-label="Admin" onClick={() => navigate('/admin/payments')} style={{ display: 'block', width: '100%', marginTop: '.9rem', border: '1px solid #86cba0', borderRadius: 8, background: '#dcfce7', color: '#166534', padding: '.65rem .8rem', fontWeight: 850, cursor: 'pointer' }}>Admin</button>}
             </div>
           </section>
         </aside>
@@ -621,8 +618,8 @@ export default function AccountScreen() {
                     <div className="product-meta">{description}</div>
                     <div className="product-card-spacer" />
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: '#946c12', borderColor: '#dfc277', background: 'rgba(245,199,94,.12)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
-                    <button type="button" className="btn btn-primary" disabled={busy || ((isOwned || manualPending) && !inBasket)} onClick={() => inBasket ? removeFromBasket(item.code) : addToBasket(item.code)} style={{ width: '100%', marginTop: '.8rem', minHeight: 43, background: inBasket ? 'var(--bg-elevated)' : '#3abfc0', borderColor: inBasket ? 'var(--border)' : '#3abfc0', color: inBasket ? 'var(--text)' : '#fff' }}>
-                      {inBasket ? 'REMOVE FROM BASKET' : isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'ADD TO BASKET'}
+                    <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code)} style={{ width: '100%', marginTop: '.8rem', minHeight: 43, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff' }}>
+                      {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'BUY NOW'}
                     </button>
                     {!isOwned && !manualPending && <button type="button" disabled={busy} onClick={() => { setProduct(item.code); setManualPaymentOpen(true) }} style={{ background: 'transparent', color: 'var(--text-muted)', width: '100%', padding: '.55rem .25rem .1rem', fontSize: '.78rem', textDecoration: 'underline', textUnderlineOffset: 3 }}>Pay manually with QR</button>}
                   </article>
