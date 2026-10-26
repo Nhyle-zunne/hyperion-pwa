@@ -10,6 +10,7 @@ import { supabase } from './supabase'
 const TABLE = 'user_learning_progress'
 const OWNER_KEY = 'hyperion-progress-owner'
 const LOCAL_DIRTY_KEY = 'hyperion-progress-unclaimed-dirty'
+const SESSION_CHANGED_AT_KEY = 'hyperion-progress-session-changed-at'
 const DIRTY_PREFIX = 'hyperion-progress-dirty:'
 const STORAGE_KEYS = [
   'hyperion-history',
@@ -40,6 +41,7 @@ interface ActiveSessionSnapshot {
 export interface LearningProgressSnapshot {
   version: 1
   savedAt: number
+  activeSessionChangedAt: number
   storage: Record<ProgressStorageKey, string | null>
   activeSession: ActiveSessionSnapshot | null
 }
@@ -94,6 +96,9 @@ function captureSnapshot(): LearningProgressSnapshot {
   return {
     version: 1,
     savedAt: Date.now(),
+    activeSessionChangedAt: (() => {
+      try { return Number(localStorage.getItem(SESSION_CHANGED_AT_KEY)) || 0 } catch { return 0 }
+    })(),
     storage: readLocalStorage(),
     activeSession
   }
@@ -188,27 +193,31 @@ function mergeSnapshots(local: LearningProgressSnapshot, remote: LearningProgres
   const storage = {} as Record<ProgressStorageKey, string | null>
   for (const key of STORAGE_KEYS) storage[key] = mergePersistedStore(key, local.storage[key], remote.storage[key])
 
-  let activeSession = remote.activeSession
-  if (local.activeSession) {
-    if (
-      remote.activeSession
-      && remote.activeSession.track === local.activeSession.track
-      && remote.activeSession.competenceId === local.activeSession.competenceId
-      && remote.activeSession.startedAt === local.activeSession.startedAt
-    ) {
-      activeSession = {
-        ...remote.activeSession,
-        ...local.activeSession,
-        answers: { ...remote.activeSession.answers, ...local.activeSession.answers },
-        currentIndex: Math.max(remote.activeSession.currentIndex, local.activeSession.currentIndex),
-        timeLeftSec: Math.min(remote.activeSession.timeLeftSec, local.activeSession.timeLeftSec)
-      }
-    } else if (!remote.activeSession || local.savedAt >= remote.savedAt) {
-      activeSession = local.activeSession
+  const localSessionNewer = (local.activeSessionChangedAt ?? 0) > (remote.activeSessionChangedAt ?? 0)
+  let activeSession = localSessionNewer ? local.activeSession : remote.activeSession
+  if (
+    local.activeSession
+    && remote.activeSession
+    && local.activeSession.track === remote.activeSession.track
+    && local.activeSession.competenceId === remote.activeSession.competenceId
+    && local.activeSession.startedAt === remote.activeSession.startedAt
+  ) {
+    activeSession = {
+      ...remote.activeSession,
+      ...(localSessionNewer ? local.activeSession : remote.activeSession),
+      answers: { ...remote.activeSession.answers, ...(localSessionNewer ? local.activeSession.answers : remote.activeSession.answers) },
+      currentIndex: Math.max(remote.activeSession.currentIndex, local.activeSession.currentIndex),
+      timeLeftSec: Math.min(remote.activeSession.timeLeftSec, local.activeSession.timeLeftSec)
     }
   }
 
-  return { version: 1, savedAt: Date.now(), storage, activeSession }
+  return {
+    version: 1,
+    savedAt: Date.now(),
+    activeSessionChangedAt: Math.max(local.activeSessionChangedAt ?? 0, remote.activeSessionChangedAt ?? 0),
+    storage,
+    activeSession
+  }
 }
 
 function activeSessionFrom(snapshot: LearningProgressSnapshot): ActiveSessionSnapshot | null {
@@ -248,6 +257,7 @@ async function rehydratePersistedStores(): Promise<void> {
 async function applySnapshot(snapshot: LearningProgressSnapshot): Promise<void> {
   hydrating = true
   try {
+    try { localStorage.setItem(SESSION_CHANGED_AT_KEY, String(snapshot.activeSessionChangedAt ?? 0)) } catch { /* ignore storage errors */ }
     for (const key of STORAGE_KEYS) {
       const value = snapshot.storage[key]
       try {
@@ -298,6 +308,7 @@ async function clearLocalProgress(): Promise<void> {
     for (const key of STORAGE_KEYS) {
       try { localStorage.removeItem(key) } catch { /* ignore storage errors */ }
     }
+    try { localStorage.removeItem(SESSION_CHANGED_AT_KEY) } catch { /* ignore storage errors */ }
     useHistoryStore.setState({ entries: [], savedSessions: [] })
     useStudyTimeStore.setState({ segments: [] })
     useVaultStore.setState({ items: [] })
@@ -465,6 +476,12 @@ async function initializeUser(userId: string): Promise<void> {
   }
 }
 
+function markActiveSessionChanged(): void {
+  if (hydrating) return
+  try { localStorage.setItem(SESSION_CHANGED_AT_KEY, String(Date.now())) } catch { /* local-only mode remains available */ }
+  noteLocalChange()
+}
+
 function observeStoreChanges(): void {
   unsubscribeStores = [
     useHistoryStore.subscribe(() => noteLocalChange()),
@@ -481,7 +498,7 @@ function observeStoreChanges(): void {
         || state.finished !== previous.finished
         || state.mode !== previous.mode
         || state.startedAt !== previous.startedAt
-      ) noteLocalChange()
+      ) markActiveSessionChanged()
     })
   ]
 
