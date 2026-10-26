@@ -41,6 +41,8 @@ export default function App() {
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
   const currentTrack = usePracticeStore((s) => s.track)
   const isFreeSession = usePracticeStore((s) => s.isFreeSession)
+  const sessionLoading = usePracticeStore((s) => s.loading)
+  const sessionQuestionCount = usePracticeStore((s) => s.questions.length)
   const showPaywall = useUIStore((s) => s.showPaywall)
   const location = useLocation()
   const navigate = useNavigate()
@@ -118,7 +120,7 @@ export default function App() {
   const isQuestionRunner = isPracticeQuiz || isMockRunner
 
   useEffect(() => {
-    if (!entitlementsChecked || !isQuestionRunner || !currentTrack || isFreeSession) return
+    if (!entitlementsChecked || !isQuestionRunner || !currentTrack || isFreeSession || sessionLoading || sessionQuestionCount === 0) return
     const allowed = entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(currentTrack))
     if (allowed) return
     const trackParam: Record<string, string> = {
@@ -128,7 +130,7 @@ export default function App() {
     usePracticeStore.getState().reset()
     navigate('/track?track=' + (trackParam[currentTrack] || 'oic_nw'), { replace: true })
     useUIStore.getState().openPaywall('This paid session needs a current, verified license. Renew access or reconnect to check your subscription.')
-  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, currentTrack, isFreeSession, navigate])
+  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, currentTrack, isFreeSession, sessionLoading, sessionQuestionCount, navigate])
 
   const hideNav = [
     '/practice/quiz',
