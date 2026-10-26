@@ -101,7 +101,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
 
         <Item label="Study streak" path="/studytime" icon="🏅" />
         <Item label="Study time" path="/studytime" icon="⏱" />
-        <Item label="Contact us (Facebook)" external={FB} icon="💬" />
+        <Item label="Contact us" external={FB} icon="💬" />
 
         <div className="drawer-section">Question bank & tools</div>
         <Item label="Search question bank" path="/search" icon="🔍" />
