@@ -72,6 +72,21 @@ export async function getSessionSnapshot(id: string): Promise<SessionSnapshot | 
   }
 }
 
+/** Remove locally cached paid question text for a track whose entitlement is no longer active. */
+export function deletePaidQuestionSnapshotsForTrack(track: TrackId): Promise<string[]> {
+  return queueWrite(async () => {
+    const db = await database();
+    const tx = db.transaction('snapshots', 'readwrite');
+    const records = await tx.store.getAll();
+    const expired = records.filter(record =>
+      record.snapshot.track === track && record.snapshot.isFreeSession !== true
+    );
+    await Promise.all(expired.map(record => tx.store.delete(record.id)));
+    await tx.done;
+    return expired.map(record => record.id);
+  });
+}
+
 export function deleteSessionSnapshot(id: string): Promise<void> {
   return queueWrite(async () => {
     const db = await database()
