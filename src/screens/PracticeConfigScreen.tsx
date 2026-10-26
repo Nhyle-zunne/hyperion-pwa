@@ -181,7 +181,7 @@ export default function PracticeConfigScreen() {
     <section style={panel}>
       <h2 style={sectionTitle}>☷ 3. QUESTION RANGE SELECTOR (#1 TO #{maxRange.toLocaleString()})</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: '.4rem', marginBottom: '1.3rem' }}>
-        {rangePresets.map(p => <button key={p.label} type="button" onClick={() => { setStartItem(1); setEndItem(Math.min(maxRange, p.count)); }} style={{ ...smallButton, background: startItem === 1 && endItem === Math.min(maxRange, p.count) ? 'var(--accent)' : 'var(--bg-elevated)', color: 'var(--text)', fontSize: '.78rem', padding: '.45rem .2rem' }}>{p.label}</button>)}
+        {rangePresets.map(p => <button key={p.label} type="button" onClick={() => { setStartItem(1); setEndItem(Math.min(maxRange, p.count)); }} style={{ ...smallButton, background: startItem === 1 && endItem === Math.min(maxRange, p.count) ? 'var(--accent)' : 'var(--bg-elevated)', color: startItem === 1 && endItem === Math.min(maxRange, p.count) ? '#ffffff' : 'var(--text)', fontSize: '.78rem', padding: '.45rem .2rem' }}>{p.label}</button>)}
       </div>
       <div className="question-range-dual" style={{ '--range-start': `${((actualStart - 1) / Math.max(1, maxRange - 1)) * 100}%`, '--range-end': `${((actualEnd - 1) / Math.max(1, maxRange - 1)) * 100}%` } as CSSProperties}>
         <div className="question-range-track" />
