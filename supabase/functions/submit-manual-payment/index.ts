@@ -31,9 +31,9 @@ Deno.serve(async req => {
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
   const code = body.productCode as keyof typeof products, product = products[code]
   if (!product) return json({ error: 'Unknown product.' }, 400)
-  const term: LicenseTerm = body.licenseTerm === undefined || body.licenseTerm === 'year' ? 'year'
-    : body.licenseTerm === 'week' || body.licenseTerm === 'month' ? body.licenseTerm : (() => { throw new Error('invalid-term') })()
-  if (!['week','month','year'].includes(String(body.licenseTerm ?? 'year'))) return json({ error: 'Choose a valid access duration.' }, 400)
+  const requestedTerm = body.licenseTerm ?? 'year'
+  if (!['week','month','year'].includes(requestedTerm)) return json({ error: 'Choose a valid access duration.' }, 400)
+  const term = requestedTerm as LicenseTerm
   const paymentMethod = String(body.paymentMethod || '').trim().slice(0, 80)
   const paymentReference = String(body.paymentReference || '').trim().slice(0, 160)
   const proofUrl = String(body.proofUrl || '').trim().slice(0, 1000)
