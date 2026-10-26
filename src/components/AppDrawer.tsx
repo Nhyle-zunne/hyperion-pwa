@@ -11,7 +11,13 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
   const toggleTheme = useUIStore((s) => s.toggleTheme)
   const [mounted, setMounted] = useState(open)
   const [closing, setClosing] = useState(false)
-  const [accountExpanded, setAccountExpanded] = useState(location.pathname === '/account' || location.pathname === '/checkout')
+  const [accountExpanded, setAccountExpanded] = useState(location.pathname === '/account' || location.pathname.startsWith('/account/') || ['/checkout', '/basket', '/orders', '/manual-payment'].includes(location.pathname))
+
+  useEffect(() => {
+    if (location.pathname === '/account' || location.pathname.startsWith('/account/') || ['/checkout', '/basket', '/orders', '/manual-payment'].includes(location.pathname)) {
+      setAccountExpanded(true)
+    }
+  }, [location.pathname])
 
   useEffect(() => {
     if (open) {
@@ -47,7 +53,9 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
     icon: string
     external?: string
   }) => {
-    const active = path ? location.pathname === path : false
+    const targetPath = path?.split('?')[0]
+    const targetSearch = path?.includes('?') ? path.slice(path.indexOf('?')) : ''
+    const active = Boolean(targetPath && location.pathname === targetPath && (!targetSearch || location.search === targetSearch))
     return (
       <button
         type="button"
@@ -109,15 +117,18 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
         <Item label="Session log & history" path="/history" icon="📋" />
 
         <div className="drawer-section">Account & support</div>
-        <button type="button" className={`drawer-item${location.pathname === '/account' || location.pathname === '/checkout' ? ' active' : ''}`} onClick={() => setAccountExpanded(value => !value)} aria-expanded={accountExpanded}>
+        <button type="button" className={`drawer-item${location.pathname === '/account' || location.pathname.startsWith('/account/') || ['/checkout', '/basket', '/orders', '/manual-payment'].includes(location.pathname) ? ' active' : ''}`} onClick={() => setAccountExpanded(value => !value)} aria-expanded={accountExpanded} aria-controls="account-submenu">
           <span style={{ width: 22, textAlign: 'center' }}>👤</span>
           <span style={{ flex: 1, textAlign: 'left' }}>Account & subscriptions</span>
-          <span aria-hidden="true">{accountExpanded ? '▾' : '▸'}</span>
+          <span aria-hidden="true" style={{ display: 'inline-block', transform: accountExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 220ms ease' }}>›</span>
         </button>
-        {accountExpanded && <div style={{ paddingLeft: '1rem' }}>
-          <Item label="Bond Store" path="/account?tab=payments" icon="🛍️" />
-          <Item label="My licenses" path="/account?tab=licenses" icon="🎫" />
-        </div>}
+        <div id="account-submenu" aria-hidden={!accountExpanded} style={{ display: 'grid', gridTemplateRows: accountExpanded ? '1fr' : '0fr', opacity: accountExpanded ? 1 : 0, transform: accountExpanded ? 'translateY(0)' : 'translateY(-5px)', visibility: accountExpanded ? 'visible' : 'hidden', pointerEvents: accountExpanded ? 'auto' : 'none', transition: 'grid-template-rows 260ms cubic-bezier(.2,.7,.2,1), opacity 180ms ease, transform 220ms ease, visibility 260ms', paddingLeft: '1rem' }}>
+          <div style={{ overflow: 'hidden', minHeight: 0 }}>
+            <Item label="Bond Store" path="/account?tab=payments" icon="🛍️" />
+            <Item label="My licenses" path="/account?tab=licenses" icon="🎫" />
+            <Item label="Orders & payment history" path="/orders" icon="🧾" />
+          </div>
+        </div>
         <Item label="Checkout" path="/checkout" icon="🛒" />
         <Item label="About Hyperion" path="/about" icon="ℹ" />
 
