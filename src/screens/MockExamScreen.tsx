@@ -214,7 +214,7 @@ export default function MockExamScreen() {
     } finally { setStarting(false); setStartingCompetence(null) }
   }
 
-  const overlay: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(3,8,18,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'max(0.75rem, env(safe-area-inset-top)) 0.75rem max(0.75rem, env(safe-area-inset-bottom))', animation: 'backdrop-enter 180ms ease-out both', overflowY: 'auto' }
+  const overlay: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(3,8,18,0.58)', backdropFilter: 'blur(7px)', WebkitBackdropFilter: 'blur(7px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'max(0.75rem, env(safe-area-inset-top)) 0.75rem max(0.75rem, env(safe-area-inset-bottom))', animation: 'backdrop-enter 180ms ease-out both', overflowY: 'auto' }
   const dialog: React.CSSProperties = { width: '100%', maxWidth: 570, maxHeight: 'min(88dvh, 900px)', overflowY: 'auto', overscrollBehavior: 'contain', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 16, padding: 'clamp(1rem, 3vw, 1.5rem)', boxShadow: '0 24px 70px rgba(0,0,0,.4)', animation: 'page-enter 220ms ease-out both' }
   const greenLine = { height: 5, background: 'var(--accent)', marginBottom: '1rem' } as const
   const secondaryButton: React.CSSProperties = { minHeight: 48, padding: '0.7rem 1rem', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontWeight: 800, cursor: 'pointer' }
