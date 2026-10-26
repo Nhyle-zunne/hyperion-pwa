@@ -223,6 +223,16 @@ function mergePersistedStore(
         state.selectedDate = rs.selectedDate
         state.selectedDateUpdatedAt = remoteDateAt
       }
+
+      const localTargetAt = Number(ls.targetDateUpdatedAt ?? 0)
+      const remoteTargetAt = Number(rs.targetDateUpdatedAt ?? 0)
+      if (typeof ls.targetDate === 'string' && localTargetAt >= remoteTargetAt) {
+        state.targetDate = ls.targetDate
+        state.targetDateUpdatedAt = localTargetAt
+      } else if (typeof rs.targetDate === 'string') {
+        state.targetDate = rs.targetDate
+        state.targetDateUpdatedAt = remoteTargetAt
+      }
     }
     return JSON.stringify({ version: local.version ?? remote.version ?? 0, state })
   }
