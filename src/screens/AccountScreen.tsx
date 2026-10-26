@@ -27,6 +27,18 @@ function safeAccountError(error: unknown, fallback: string) {
   if (!message || /supabase|postgrest|postgres|sqlstate|provider credentials|redirect settings|edge function|row[- ]level security|\bpgrst\b|\bjwt\b|database schema|relation .* does not exist|violates .* constraint/i.test(message)) return fallback
   return message
 }
+
+async function edgeFunctionErrorMessage(error: unknown): Promise<string | null> {
+  if (!error || typeof error !== 'object' || !('context' in error)) return null
+  const context = (error as { context?: unknown }).context
+  if (!(context instanceof Response)) return null
+  try {
+    const payload = await context.clone().json() as { error?: unknown }
+    return typeof payload.error === 'string' && payload.error.trim() ? payload.error : null
+  } catch {
+    return null
+  }
+}
 export default function AccountScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -361,7 +373,8 @@ export default function AccountScreen() {
       }
       window.location.assign(checkoutUrl.toString())
     } catch (error) {
-      setMessage(safeAccountError(error, 'PayMongo checkout is not available yet. Please use manual payment or contact Hyperion support.'))
+      const serverMessage = await edgeFunctionErrorMessage(error)
+      setMessage(serverMessage || safeAccountError(error, 'PayMongo checkout is not available yet. Please use manual payment or contact Hyperion support.'))
       setBusy(false)
     }
   }
