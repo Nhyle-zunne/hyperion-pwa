@@ -33,7 +33,7 @@ export default function AccountScreen() {
   const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
   const qrPhImage = '/qr-ph.png'
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
+  const [, setMessage] = useState('')
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
