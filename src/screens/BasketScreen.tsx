@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
-import type { PaidTrack } from '../lib/supabase'
+import type { LicenseTerm, PaidTrack } from '../lib/supabase'
+import { priceForTerm, termLabel } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Order = {
   id: string
   product_code: string
+  license_term: LicenseTerm
   amount_php: number
   status: string
   payment_reference: string | null
@@ -18,13 +20,22 @@ type Order = {
   checkout_batch_id: string | null
 }
 
-function savedBasket(): PaidTrack[] {
+type BasketItem = { code: PaidTrack; term: LicenseTerm }
+
+function savedBasket(): BasketItem[] {
   try {
     const raw = localStorage.getItem('hyperion-account-basket-v1')
     const saved: unknown = raw ? JSON.parse(raw) : []
-    return Array.isArray(saved)
-      ? [...new Set(saved.filter((code): code is PaidTrack => typeof code === 'string' && PAID_PRODUCTS.some(item => item.code === code)))]
-      : []
+    if (!Array.isArray(saved)) return []
+    const normalized: BasketItem[] = saved.flatMap((entry: unknown) => {
+      if (typeof entry === 'string' && PAID_PRODUCTS.some(item => item.code === entry)) return [{ code: entry as PaidTrack, term: 'year' as const }]
+      if (!entry || typeof entry !== 'object') return []
+      const item = entry as { code?: unknown; term?: unknown }
+      if (typeof item.code !== 'string' || !PAID_PRODUCTS.some(product => product.code === item.code)) return []
+      const term: LicenseTerm = item.term === 'week' || item.term === 'month' || item.term === 'year' ? item.term : 'year'
+      return [{ code: item.code as PaidTrack, term }]
+    })
+    return [...new Map(normalized.map(item => [item.code, item])).values()]
   } catch {
     return []
   }
@@ -49,14 +60,14 @@ export default function BasketScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
-  const [basket, setBasket] = useState<PaidTrack[]>(savedBasket)
+  const [basket, setBasket] = useState<BasketItem[]>(savedBasket)
   const [orders, setOrders] = useState<Order[]>([])
   const [ownedCodes, setOwnedCodes] = useState<PaidTrack[]>([])
   const [busy, setBusy] = useState(false)
   const [busyCheckoutId, setBusyCheckoutId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
-  const [manualFallbackCodes, setManualFallbackCodes] = useState<PaidTrack[]>([])
+  const [manualFallbackItems, setManualFallbackItems] = useState<BasketItem[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
   useEffect(() => {
@@ -81,7 +92,7 @@ export default function BasketScreen() {
     }
     const [orderResult, entitlementResult] = await Promise.all([
       supabase.from('orders')
-        .select('id,product_code,amount_php,status,payment_reference,payment_method,customer_name,created_at,paid_at,checkout_batch_id')
+        .select('id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,created_at,paid_at,checkout_batch_id')
         .eq('user_id', session.user.id)
         .order('created_at', { ascending: false })
         .limit(100),
@@ -116,10 +127,13 @@ export default function BasketScreen() {
     return () => { active = false }
   }, [session?.user.id])
 
-  const clearBasketCodes = (codes: string[]) => setBasket(current => current.filter(code => !codes.includes(code)))
-  const selectedProducts = useMemo(() => PAID_PRODUCTS.filter(item => basket.includes(item.code)), [basket])
-  const totalPhp = selectedProducts.reduce((sum, item) => sum + item.annualPrice, 0)
-  const activeInBasket = selectedProducts.filter(item => ownedCodes.includes(item.code))
+  const clearBasketCodes = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
+  const selectedItems = useMemo(() => basket.flatMap(entry => {
+    const product = PAID_PRODUCTS.find(item => item.code === entry.code)
+    return product ? [{ ...entry, product, price: priceForTerm(product, entry.term) }] : []
+  }), [basket])
+  const totalPhp = selectedItems.reduce((sum, item) => sum + item.price, 0)
+  const activeInBasket = selectedItems.filter(item => ownedCodes.includes(item.code))
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
   const pendingCheckoutGroups = useMemo(() => {
     const groups = new Map<string, Order[]>()
@@ -130,6 +144,11 @@ export default function BasketScreen() {
     return [...groups.entries()].map(([id, groupOrders]) => ({
       id,
       orders: groupOrders,
+      items: groupOrders.flatMap(order => {
+        const validCode = PAID_PRODUCTS.some(item => item.code === order.product_code)
+        const term: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' || order.license_term === 'year' ? order.license_term : 'year'
+        return validCode ? [{ code: order.product_code as PaidTrack, term }] : []
+      }),
       codes: [...new Set(groupOrders.map(order => order.product_code))]
         .filter((code): code is PaidTrack => PAID_PRODUCTS.some(item => item.code === code)),
       total: groupOrders.reduce((sum, order) => sum + Number(order.amount_php), 0),
@@ -192,13 +211,19 @@ export default function BasketScreen() {
     return () => { active = false }
   }, [session?.user.id, params])
 
-  const checkout = async (requestedCodes: PaidTrack[] = basket) => {
+  const checkout = async (requestedItems: BasketItem[] = basket) => {
     if (!supabase || !session) {
       navigate('/account')
       setMessage('Sign in to Hyperion first. Your selected tracks are saved in this browser.')
       return
     }
-    const codes = [...new Set(requestedCodes)].filter(code => PAID_PRODUCTS.some(item => item.code === code))
+    const itemsByCode = new Map<PaidTrack, BasketItem>()
+    for (const entry of requestedItems) {
+      if (PAID_PRODUCTS.some(item => item.code === entry.code) &&
+          (entry.term === 'week' || entry.term === 'month' || entry.term === 'year')) itemsByCode.set(entry.code, entry)
+    }
+    const items = [...itemsByCode.values()]
+    const codes = items.map(item => item.code)
     if (!codes.length) {
       setIsError(true)
       setMessage('Your checkout is empty. Return to the shop and add a reviewer track first.')
@@ -213,10 +238,10 @@ export default function BasketScreen() {
 
     setBusy(true)
     setIsError(false)
-    setManualFallbackCodes([])
+    setManualFallbackItems([])
     setMessage('Preparing secure checkout…')
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { productCodes: codes } })
+      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { items: items.map(item => ({ productCode: item.code, term: item.term })) } })
       if (error) throw new Error(await edgeError(error))
       if (data?.error) throw new Error(data.error)
       if (data?.alreadyProcessing === true && typeof data.orderId === 'string') {
@@ -231,7 +256,7 @@ export default function BasketScreen() {
       window.location.assign(url.toString())
     } catch (error) {
       setIsError(true)
-      setManualFallbackCodes(codes)
+      setManualFallbackItems(items)
       setMessage(await edgeError(error))
     } finally {
       setBusy(false)
@@ -343,14 +368,14 @@ export default function BasketScreen() {
     </section> : <>
       {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>
         {message}
-        {isError && manualFallbackCodes.length > 0 && <div style={{ marginTop: '.85rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
+        {isError && manualFallbackItems.length > 0 && <div style={{ marginTop: '.85rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
           <strong style={{ display: 'block', marginBottom: '.3rem' }}>PayMongo checkout is unavailable</strong>
           <p className="basket-muted" style={{ margin: '0 0 .7rem' }}>You can pay by QR instead. Choose the track below to open its dedicated manual payment page. Manual payments require admin review before your license is activated.</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem' }}>
-            {manualFallbackCodes.map(code => {
+            {manualFallbackItems.map(({ code, term }) => {
               const item = PAID_PRODUCTS.find(product => product.code === code)
               if (!item) return null
-              return <Link key={code} className="manual-fallback-link" to={`/manual-payment?product=${encodeURIComponent(code)}`}>Pay manually for {item.label} · ₱{item.annualPrice}</Link>
+              return <Link key={code} className="manual-fallback-link" to={`/manual-payment?product=${encodeURIComponent(code)}&term=${term}`}>Pay manually for {item.label} · ₱{priceForTerm(item, term)}</Link>
             })}
           </div>
         </div>}
@@ -363,11 +388,11 @@ export default function BasketScreen() {
         </div>
         {pendingCheckoutGroups.map(group => <div className="basket-row" key={group.id}>
           <div style={{ minWidth: 0 }}>
-            <strong>{group.codes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(' + ')}</strong>
+            <strong>{group.items.map(entry => `${PAID_PRODUCTS.find(item => item.code === entry.code)?.label ?? entry.code} (${termLabel(entry.term)})`).join(' + ')}</strong>
             <div className="basket-muted" style={{ marginTop: '.25rem' }}>{group.codes.length} track{group.codes.length === 1 ? '' : 's'} · ₱{group.total}</div>
           </div>
           <div className="basket-action-row">
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void checkout(group.codes)}>RESUME CHECKOUT</button>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void checkout(group.items)}>RESUME CHECKOUT</button>
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelCheckout(group.id, group.codes)} style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busyCheckoutId === group.id ? 'CHECKING…' : 'CANCEL'}</button>
           </div>
         </div>)}
@@ -379,24 +404,24 @@ export default function BasketScreen() {
             <div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>Selected tracks</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Only items shown here will be included in this payment.</p></div>
             {basket.length > 0 && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setBasket([])}>CLEAR SELECTION</button>}
           </div>
-          {selectedProducts.length ? selectedProducts.map(item => {
-            const active = ownedCodes.includes(item.code)
-            return <div className="basket-row" key={item.code}>
+          {selectedItems.length ? selectedItems.map(({ code, term, product: item, price }) => {
+            const active = ownedCodes.includes(code)
+            return <div className="basket-row" key={code}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', minWidth: 0 }}>
-                <div className="basket-item-art">{item.code === 'gmdss' ? '📡' : item.code === 'engine_ew' || item.code === 'engine_mgt' ? '⚙️' : '⚓'}</div>
-                <div style={{ minWidth: 0 }}><strong style={{ display: 'block' }}>{item.label}</strong><div className="basket-muted">12-month reviewer license</div>{active && <div style={{ color: 'var(--success, #15803d)', fontWeight: 800, fontSize: '.75rem', marginTop: '.25rem' }}>Already active</div>}</div>
+                <div className="basket-item-art">{code === 'gmdss' ? '📡' : code === 'engine_ew' || code === 'engine_mgt' ? '⚙️' : '⚓'}</div>
+                <div style={{ minWidth: 0 }}><strong style={{ display: 'block' }}>{item.label}</strong><div className="basket-muted">{term === 'week' ? '7-day' : term === 'month' ? '1-month' : '12-month'} reviewer license</div>{active && <div style={{ color: 'var(--success, #15803d)', fontWeight: 800, fontSize: '.75rem', marginTop: '.25rem' }}>Already active</div>}</div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', flexShrink: 0 }}><strong>₱{item.annualPrice}</strong><button type="button" disabled={busy} onClick={() => setBasket(current => current.filter(code => code !== item.code))} style={{ color: 'var(--danger, #dc2626)', fontWeight: 850, padding: '.35rem' }}>Remove</button></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', flexShrink: 0 }}><strong>₱{price}</strong><button type="button" disabled={busy} onClick={() => setBasket(current => current.filter(entry => entry.code !== code))} style={{ color: 'var(--danger, #dc2626)', fontWeight: 850, padding: '.35rem' }}>Remove</button></div>
             </div>
           }) : <div style={{ textAlign: 'center', padding: '2.4rem 1rem', border: '1px dashed var(--border)', borderRadius: 10, marginTop: '1rem' }}><div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🛒</div><strong>Your checkout is empty</strong><p className="basket-muted" style={{ margin: '.35rem 0 1rem' }}>Visit Bond Store and add one or more reviewer tracks.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/account')}>BROWSE TRACKS</button></div>}
         </section>
 
         <aside className="basket-summary" style={style.card}>
           <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Order summary</h2>
-          <p className="basket-muted" style={{ margin: '.3rem 0 1rem' }}>{selectedProducts.length} selected track{selectedProducts.length === 1 ? '' : 's'}</p>
-          {selectedProducts.map(item => <div key={item.code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{item.label}</span><strong>₱{item.annualPrice}</strong></div>)}
+          <p className="basket-muted" style={{ margin: '.3rem 0 1rem' }}>{selectedItems.length} selected track{selectedItems.length === 1 ? '' : 's'}</p>
+          {selectedItems.map(({ code, term, product, price }) => <div key={code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{product.label} <span className="basket-muted">({termLabel(term)})</span></span><strong>₱{price}</strong></div>)}
           <div style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
-          <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedProducts.length || activeInBasket.length > 0} onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : '⚡ CHECK OUT WITH PAYMONGO →'}</button>
+          <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length || activeInBasket.length > 0} onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : '⚡ CHECK OUT WITH PAYMONGO →'}</button>
           {activeInBasket.length > 0 && <p style={{ color: 'var(--danger, #dc2626)', fontSize: '.8rem', lineHeight: 1.45 }}>Remove already active tracks to continue checkout.</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['GCash','Maya','QR Ph','Card'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>
           <p className="basket-muted" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>Each selected track is activated only after PayMongo confirms this exact basket payment.</p>
