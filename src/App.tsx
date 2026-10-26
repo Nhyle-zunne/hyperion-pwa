@@ -8,6 +8,7 @@ import AdminPaymentsScreen from './screens/AdminPaymentsScreen'
 import TrackHubScreen from './screens/TrackHubScreen'
 import AboutScreen from './screens/AboutScreen'
 import TermsScreen from './screens/TermsScreen'
+import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen'
 import PracticeConfigScreen from './screens/PracticeConfigScreen'
 import PracticeCompetenceScreen from './screens/PracticeCompetenceScreen'
 import PracticeQuizScreen from './screens/PracticeQuizScreen'
@@ -63,6 +64,7 @@ export default function App() {
 
   const hideNav = [
     '/terms',
+    '/privacy-policy',
     '/about',
     '/practice/quiz',
     '/mock/exam'
@@ -135,6 +137,7 @@ export default function App() {
           <Route path="/home" element={<HomeScreen />} />
           <Route path="/about" element={<AboutScreen />} />
           <Route path="/terms" element={<TermsScreen />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyScreen />} />
           <Route path="/practice/competences" element={<PracticeCompetenceScreen />} />
           <Route path="/practice" element={<PracticeConfigScreen />} />
           <Route path="/practice/quiz" element={<PracticeQuizScreen />} />
