@@ -152,6 +152,8 @@ export default function HistoryScreen() {
   const clear = useHistoryStore(state => state.clear)
   const purgeExpiredDeleted = useHistoryStore(state => state.purgeExpiredDeleted)
   const refreshCloudEntitlements = useLicenseStore(state => state.refreshCloudEntitlements)
+  const cloudTrackIds = useLicenseStore(state => state.cloudTrackIds)
+  const entitlementsVerified = useLicenseStore(state => state.entitlementsVerified)
   const openPaywall = useUIStore(state => state.openPaywall)
 
   const [selectionMode, setSelectionMode] = useState(false)
@@ -248,6 +250,22 @@ export default function HistoryScreen() {
     })()
     return () => { cancelled = true }
   }, [params, entries, review?.id, refreshCloudEntitlements, openPaywall])
+
+  useEffect(() => {
+    const snapshot = review?.snapshot
+    if (!review || !snapshot?.questions?.length) return
+    let cancelled = false
+    void (async () => {
+      const allowed = await authorizeQuestionSet(snapshot.track, snapshot.questions)
+      if (cancelled || allowed) return
+      setReview(null)
+      const nextParams = new URLSearchParams(params)
+      nextParams.delete('review')
+      setParams(nextParams, { replace: true })
+      openPaywall('This saved question review is no longer available without an active track license.')
+    })()
+    return () => { cancelled = true }
+  }, [review?.id, review?.snapshot, cloudTrackIds, entitlementsVerified, params, setParams, openPaywall])
 
   const closeReview = () => {
     setReview(null)
