@@ -1456,7 +1456,16 @@ a:focus-visible,
 }
 
 
-/* Keep the dashboard at the shared desktop width; portrait sizing belongs to study pages only. */
+/* Desktop sizing: keep the dashboard wide, but preserve the portrait study/config/question layouts. */
+@media (min-width: 900px) {
+  .screen:not(.track-hub-screen):not(.dashboard-screen) {
+    max-width: 560px;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+}
+
+
 
 /* Mock-exam dialogs use a soft blur over the unchanged page beneath them. */
 .mock-exam-backdrop {
