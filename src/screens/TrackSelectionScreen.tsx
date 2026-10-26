@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useHistoryStore } from '../stores/historyStore'
-import { useVaultStore } from '../stores/vaultStore'
 import { useStudyTimeStore, formatDurationMs } from '../stores/studyTimeStore'
 import AppDrawer from '../components/AppDrawer'
 import type { TrackId } from '../types/question'
@@ -35,18 +34,12 @@ function dayKey(ts = Date.now()) {
 export default function TrackSelectionScreen() {
   const navigate = useNavigate()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [targetDate, setTargetDate] = useState(() => {
-    try {
-      return localStorage.getItem('hyperion-target-date') || ''
-    } catch {
-      return ''
-    }
-  })
+  const targetDate = useStudyTimeStore((s) => s.targetDate)
+  const setTargetDate = useStudyTimeStore((s) => s.setTargetDate)
 
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked || s.cloudTrackIds.includes('ALL'))
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
   const segments = useStudyTimeStore((s) => s.segments)
-  const vaultCount = useVaultStore((s) => s.items.length)
   const history = useHistoryStore((s) => s.entries)
 
   const todayMs = useMemo(() => {
@@ -103,16 +96,12 @@ export default function TrackSelectionScreen() {
             </div>
           </div>
           <button className="btn btn-primary" style={{ padding: '0.5rem 0.85rem', fontSize: '0.8rem' }} onClick={saveTarget}>SET DATE →</button>
-          <input id="target-date-input" type="date" value={targetDate} onChange={(e) => {
-            setTargetDate(e.target.value)
-            try { localStorage.setItem('hyperion-target-date', e.target.value) } catch { /* ignore */ }
-          }} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} />
+          <input id="target-date-input" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
           <div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>TODAY</div><div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{formatDurationMs(todayMs)}</div></div>
           <div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>OVERALL ACCURACY</div><div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{avgPercent}%</div></div>
-          <div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>OFFLINE VAULT</div><div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--accent)' }}>⚡ {vaultCount} HYPE</div></div>
         </div>
 
         <div style={{ marginTop: 14 }}>
