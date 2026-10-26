@@ -306,7 +306,7 @@ export default function BasketScreen() {
 
   const style = {
     card: { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', borderRadius: 12 } as const,
-    primary: { width: '100%', minHeight: 48, background: '#0b1f39', borderColor: '#0b1f39', color: '#ffbf32', fontWeight: 900 } as const,
+    primary: { width: '100%', minHeight: 48, background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--btn-primary-text)', fontWeight: 900 } as const,
   }
 
   return <div className="screen basket-page" style={{ width: 'min(calc(100% - 2rem), 1040px)', maxWidth: 1040, margin: '0 auto', paddingBottom: '2rem' }}>
@@ -315,15 +315,18 @@ export default function BasketScreen() {
       .basket-page .basket-row:last-child{border-bottom:0}
       .basket-page .basket-layout{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:1rem;align-items:start}
       .basket-page .basket-summary{position:sticky;top:84px}
-      .basket-page .basket-item-art{width:48px;height:48px;display:grid;place-items:center;background:#042353;color:#f5c75e;border-radius:10px;font-size:1.4rem;flex-shrink:0}
+      .basket-page .basket-item-art{width:48px;height:48px;display:grid;place-items:center;background:var(--bg-elevated);color:var(--accent);border:1px solid var(--border);border-radius:10px;font-size:1.4rem;flex-shrink:0}
       .basket-page .basket-muted{color:var(--text-muted);font-size:.84rem;line-height:1.45}
       .basket-page .basket-action-row{display:flex;gap:.5rem;flex-wrap:wrap}
+      .basket-page .checkout-pay-button{background:var(--accent);border-color:var(--accent);color:var(--btn-primary-text);transition:background-color .16s ease,border-color .16s ease,transform .16s ease}
+      .basket-page .checkout-pay-button:hover:not(:disabled){background:var(--accent-dim);border-color:var(--accent-dim)}
+      .basket-page .checkout-pay-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
       @media(max-width:820px){.basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.basket-page .basket-summary{position:static}}
       @media(max-width:520px){.basket-page .basket-row{align-items:flex-start}.basket-page .basket-action-row button{flex:1}}
     `}</style>
     <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
     <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
-      <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
+      <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
       <span style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'} to purchase</span>
     </div>
 
@@ -334,7 +337,7 @@ export default function BasketScreen() {
     </section> : <>
       {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>{message}</div>}
 
-      {pendingCheckoutGroups.length > 0 && <section style={{ ...style.card, borderColor: '#d6a33a', marginBottom: '1rem' }}>
+      {pendingCheckoutGroups.length > 0 && <section style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
           <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Resume the same payment or cancel it safely. Don’t start a second payment for the same items.</p></div>
           <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshStatus()}>{busy ? 'Checking…' : 'Refresh payment status'}</button>
@@ -374,7 +377,7 @@ export default function BasketScreen() {
           <p className="basket-muted" style={{ margin: '.3rem 0 1rem' }}>{selectedProducts.length} selected track{selectedProducts.length === 1 ? '' : 's'}</p>
           {selectedProducts.map(item => <div key={item.code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{item.label}</span><strong>₱{item.annualPrice}</strong></div>)}
           <div style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
-          <button type="button" className="btn btn-primary" disabled={busy || !supabaseConfigured || !selectedProducts.length || activeInBasket.length > 0} onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : '⚡ CHECK OUT WITH PAYMONGO →'}</button>
+          <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedProducts.length || activeInBasket.length > 0} onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : '⚡ CHECK OUT WITH PAYMONGO →'}</button>
           {activeInBasket.length > 0 && <p style={{ color: 'var(--danger, #dc2626)', fontSize: '.8rem', lineHeight: 1.45 }}>Remove already active tracks to continue checkout.</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['GCash','Maya','QR Ph','Card'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>
           <p className="basket-muted" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>Each selected track is activated only after PayMongo confirms this exact basket payment.</p>
