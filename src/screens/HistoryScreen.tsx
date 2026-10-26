@@ -11,6 +11,8 @@ import {
   type SessionMode
 } from '../stores/historyStore'
 import { getSessionSnapshot, type SessionSnapshot } from '../lib/sessionArchive'
+import { useLicenseStore } from '../stores/licenseStore'
+import { useUIStore } from '../stores/uiStore'
 import type { TrackId } from '../types/question'
 
 const TRACK_LABELS: Record<TrackId, string> = {
@@ -37,6 +39,7 @@ type HistoryRow = {
   part?: number | null
   timestamp: number
   deletedAt?: number
+  isFreeSession?: boolean
   completed: boolean
   correct: number
   total: number
@@ -106,6 +109,7 @@ function buildRows(entries: HistoryEntry[], savedSessions: SavedSessionEntry[]):
     part: entry.part,
     timestamp: entry.finishedAt,
     deletedAt: entry.deletedAt,
+    isFreeSession: entry.isFreeSession === true,
     completed: true,
     correct: entry.correct,
     total: entry.total,
@@ -124,6 +128,7 @@ function buildRows(entries: HistoryEntry[], savedSessions: SavedSessionEntry[]):
     part: session.part,
     timestamp: session.savedAt,
     deletedAt: session.deletedAt,
+    isFreeSession: session.isFreeSession === true,
     completed: false,
     correct: session.correct ?? 0,
     total: session.total,
@@ -145,6 +150,8 @@ export default function HistoryScreen() {
   const permanentlyDelete = useHistoryStore(state => state.permanentlyDelete)
   const clear = useHistoryStore(state => state.clear)
   const purgeExpiredDeleted = useHistoryStore(state => state.purgeExpiredDeleted)
+  const refreshCloudEntitlements = useLicenseStore(state => state.refreshCloudEntitlements)
+  const openPaywall = useUIStore(state => state.openPaywall)
 
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedKeys, setSelectedKeys] = useState<string[]>([])
@@ -191,7 +198,19 @@ export default function HistoryScreen() {
     return streak
   }, [activeRows])
 
+  const canOpenQuestionReview = async (row: HistoryRow) => {
+    if (row.isFreeSession === true) return true
+    await refreshCloudEntitlements()
+    const license = useLicenseStore.getState()
+    return license.entitlementsVerified && (license.isAllAccessUnlocked || license.isTrackUnlocked(row.track))
+  }
+
   const openReview = async (id: string) => {
+    const row = allRows.find(item => item.id === id && item.kind === 'entry')
+    if (!row || !await canOpenQuestionReview(row)) {
+      openPaywall('Reviewing paid question content requires an active license for that track.')
+      return
+    }
     const snapshot = await getSessionSnapshot(id)
     setReview({ id, snapshot, index: 0, tab: 'questions', missedOnly: false })
     const nextParams = new URLSearchParams(params)
@@ -205,11 +224,26 @@ export default function HistoryScreen() {
     const entry = entries.find(item => item.id === id && !item.deletedAt)
     if (!entry) return
     let cancelled = false
-    void getSessionSnapshot(id).then(snapshot => {
+    void (async () => {
+      const allowed = await canOpenQuestionReview({
+        key: 'entry:' + id, kind: 'entry', id, mode: entry.mode, track: entry.track,
+        competenceId: entry.competenceId, timestamp: entry.finishedAt, deletedAt: entry.deletedAt,
+        completed: true, correct: entry.correct, total: entry.total, answered: entry.answered ?? entry.total,
+        percent: entry.percent, durationMs: entry.durationMs, entry, isFreeSession: entry.isFreeSession === true
+      })
+      if (cancelled) return
+      if (!allowed) {
+        openPaywall('Reviewing paid question content requires an active license for that track.')
+        const nextParams = new URLSearchParams(params)
+        nextParams.delete('review')
+        setParams(nextParams, { replace: true })
+        return
+      }
+      const snapshot = await getSessionSnapshot(id)
       if (!cancelled) setReview({ id, snapshot, index: 0, tab: 'questions', missedOnly: false })
-    })
+    })()
     return () => { cancelled = true }
-  }, [params, entries, review?.id])
+  }, [params, entries, review?.id, refreshCloudEntitlements, openPaywall])
 
   const closeReview = () => {
     setReview(null)
