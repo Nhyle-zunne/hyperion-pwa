@@ -263,8 +263,8 @@ export default function AccountScreen() {
     }
   }
 
-  // A checkout return is only a prompt to check the server-owned order. The return
-  // URL itself never grants access; only the verified PayMongo webhook marks it paid.
+  // A checkout return triggers direct server-to-PayMongo verification. The return URL
+  // itself grants nothing; only a paid session checked by the server or signed webhook can activate a license.
   useEffect(() => {
     const paymentState = params.get('payment')
     const orderId = params.get('order_id')
