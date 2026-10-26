@@ -341,3 +341,58 @@
 .track-hub-screen .hub-activate {
   border-radius: 12px;
 }
+
+
+/* Desktop track hub: compact two-by-two examination mode cards. */
+@media (min-width: 900px) {
+  .track-hub-screen {
+    width: min(100% - 3rem, 1120px);
+    max-width: 1120px;
+    padding: 1rem 0 6rem;
+  }
+
+  .track-hub-screen .hub-mode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .track-hub-screen .hub-mode-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 220px;
+    padding: 1rem;
+  }
+
+  .track-hub-screen .hub-mode-top {
+    min-height: 2.4rem;
+    margin-bottom: .7rem;
+  }
+
+  .track-hub-screen .hub-mode-action {
+    padding-top: 1rem;
+  }
+
+  .track-hub-screen .hub-account-button {
+    flex-shrink: 0;
+    min-height: 2.8rem;
+    padding: .7rem 1rem;
+    border: 1px solid var(--accent-dim);
+    background: var(--accent);
+    color: var(--btn-primary-text);
+    font-weight: 800;
+    box-shadow: 0 3px 0 color-mix(in srgb, var(--accent-dim) 70%, transparent);
+  }
+}
+
+.track-hub-screen .hub-account-button {
+  background: var(--accent);
+  border: 1px solid var(--accent-dim);
+  color: var(--btn-primary-text);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.track-hub-screen .hub-account-button:hover {
+  background: var(--accent-dim);
+  color: var(--btn-primary-text);
+}
