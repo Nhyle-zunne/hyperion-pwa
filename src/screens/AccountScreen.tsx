@@ -513,9 +513,7 @@ export default function AccountScreen() {
       {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
 
       <div className="account-toolbar" style={{ justifyContent: 'flex-end' }}>
-        <div className="account-toolbar-actions">
-          <button type="button" className="btn btn-outline" onClick={async () => { await supabase?.auth.signOut(); setMessage('Signed out.') }}>Sign out</button>
-        </div>
+
       </div>
 
       <div className="account-layout">
@@ -542,6 +540,7 @@ export default function AccountScreen() {
               </div>}
               {isAdmin && <button type="button" title="Open admin dashboard" aria-label="Admin" onClick={() => navigate('/admin/payments')} style={{ display: 'block', width: '100%', marginTop: '.9rem', border: '1px solid #86cba0', borderRadius: 8, background: '#dcfce7', color: '#166534', padding: '.65rem .8rem', fontWeight: 850, cursor: 'pointer' }}>Admin</button>}
               <button type="button" className="btn btn-outline" onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')} style={{ display: 'block', width: '100%', marginTop: '.6rem', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>Delete account</button>
+              <button type="button" className="btn btn-outline" onClick={async () => { await supabase?.auth.signOut(); setMessage('Signed out.') }} style={{ display: 'block', width: '100%', marginTop: '.6rem' }}>Sign out</button>
               {accountTab === 'delete' && <section style={{ ...card, marginTop: '1rem', borderColor: 'var(--danger, #dc2626)' }}>
                 <h3 style={{ marginTop: 0, color: 'var(--danger, #dc2626)' }}>Delete account</h3>
                 <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
