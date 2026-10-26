@@ -223,6 +223,10 @@ const SOURCES: BankSource[] = [
 type LoadedSource = { questions: Question[]; sampledByServer: boolean };
 const cache = new Map<string, LoadedSource>();
 
+export function clearPaidQuestionCache() {
+  for (const key of cache.keys()) if (key.endsWith(':full')) cache.delete(key);
+}
+
 function mapAnswer(ans: string): number {
   const a = ans.trim().toUpperCase();
   if (a === 'A' || a === '1') return 0;
