@@ -3,7 +3,8 @@ import type { CSSProperties, FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
-import type { PaidTrack } from '../lib/supabase'
+import type { LicenseTerm, PaidTrack } from '../lib/supabase'
+import { priceForTerm } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Order = {
@@ -43,6 +44,9 @@ export default function ManualPaymentScreen() {
   const rawProduct = params.get('product') ?? ''
   const productCode = PAID_PRODUCTS.some(item => item.code === rawProduct) ? rawProduct as PaidTrack : null
   const product = PAID_PRODUCTS.find(item => item.code === productCode)
+  const rawTerm = params.get('term') ?? 'year'
+  const licenseTerm: LicenseTerm = rawTerm === 'week' || rawTerm === 'month' ? rawTerm : 'year'
+  const licensePrice = product ? priceForTerm(product, licenseTerm) : 0
   const [session, setSession] = useState<Session | null>(null)
   const [authLoaded, setAuthLoaded] = useState(false)
   const [fullName, setFullName] = useState('')
@@ -154,6 +158,7 @@ export default function ManualPaymentScreen() {
       const { data, error } = await supabase.functions.invoke('submit-manual-payment', {
         body: {
           productCode: product.code,
+          licenseTerm,
           paymentMethod,
           paymentReference: reference,
           customerNote: note,
@@ -248,7 +253,7 @@ export default function ManualPaymentScreen() {
           : pendingPayMongoOrder ? <section style={{ ...card, borderColor: '#d6a33a' }}><h2 style={{ marginTop: 0 }}>PayMongo checkout already open</h2><p className="manual-muted">You have an existing PayMongo checkout for this track. Close it safely before switching to manual payment.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongo()} style={{ width: '100%', color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>CANCEL PAYMONGO CHECKOUT</button></section>
           : <div className="manual-grid">
             <section style={card}>
-              <div className="manual-section-title"><div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>{product.label}</h2><p className="manual-muted" style={{ margin: '.25rem 0 0' }}>12-month reviewer license</p></div><strong style={{ fontSize: '1.25rem' }}>₱{product.annualPrice}</strong></div>
+              <div className="manual-section-title"><div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>{product.label}</h2><p className="manual-muted" style={{ margin: '.25rem 0 0' }}>{licenseTerm === 'week' ? '7-day' : licenseTerm === 'month' ? '1-month' : '12-month'} reviewer license</p></div><strong style={{ fontSize: '1.25rem' }}>₱{licensePrice}</strong></div>
               <div className="manual-qr" style={{ marginTop: '1rem' }}>
                 <h3 style={{ margin: '0 0 .3rem', fontSize: '1rem' }}>QR Ph · MariBank / InstaPay</h3>
                 <p style={{ margin: '0 0 .75rem', color: '#4b5563', fontSize: '.85rem' }}>Scan this QR code using your bank or e-wallet app.</p>
@@ -259,7 +264,7 @@ export default function ManualPaymentScreen() {
             </section>
             <aside className="manual-summary" style={card}>
               <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Submit payment details</h2>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '.75rem', borderBottom: '1px solid var(--border)', padding: '.8rem 0' }}><span className="manual-muted">{product.label}</span><strong>₱{product.annualPrice}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '.75rem', borderBottom: '1px solid var(--border)', padding: '.8rem 0' }}><span className="manual-muted">{product.label}</span><strong>₱{licensePrice}</strong></div>
               <form onSubmit={submitPayment}>
                 <label style={label}>Full name<input required maxLength={160} value={fullName} onChange={e => setFullName(e.target.value)} style={field} /></label>
                 <label style={label}>Company (optional)<input maxLength={160} value={company} onChange={e => setCompany(e.target.value)} style={field} /></label>
