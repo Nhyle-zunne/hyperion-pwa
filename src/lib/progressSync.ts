@@ -411,6 +411,9 @@ function scheduleUpload(delay = 800): void {
 
 async function uploadSnapshot(): Promise<void> {
   if (!supabase || !activeUserId || !cloudReady || hydrating) return
+  const expectedUserId = activeUserId
+  const { data: sessionData } = await supabase.auth.getSession()
+  if (!sessionData.session?.user || sessionData.session.user.id !== expectedUserId || activeUserId !== expectedUserId) return
   if (uploadInFlight) {
     uploadQueued = true
     return
@@ -476,6 +479,8 @@ async function uploadSnapshot(): Promise<void> {
 
 async function initializeUser(userId: string): Promise<void> {
   if (!supabase) return
+  const { data: sessionData } = await supabase.auth.getSession()
+  if (!sessionData.session?.user || sessionData.session.user.id !== userId) return
   if (cloudReady && activeUserId === userId) return
   const generation = ++currentGeneration
   if (uploadTimer) { clearTimeout(uploadTimer); uploadTimer = null }
@@ -627,7 +632,9 @@ export function startLearningProgressSync(): () => void {
   }
   window.addEventListener('online', onOnline)
   const handleMockPlanChange = () => noteLocalChange('mockPlan')
+  const handleSavedPracticeChange = () => noteLocalChange('practice')
   window.addEventListener('hyperion:progress-local-change', handleMockPlanChange)
+  window.addEventListener('hyperion:practice-progress-saved', handleSavedPracticeChange)
 
   authSubscription = supabase.auth.onAuthStateChange((_event, session) => {
     // Avoid doing Supabase queries synchronously inside the auth callback.
@@ -658,6 +665,7 @@ export function startLearningProgressSync(): () => void {
     if (heartbeatTimer) clearInterval(heartbeatTimer)
     window.removeEventListener('online', onOnline)
     window.removeEventListener('hyperion:progress-local-change', handleMockPlanChange)
+    window.removeEventListener('hyperion:practice-progress-saved', handleSavedPracticeChange)
     authSubscription?.unsubscribe()
     authSubscription = null
     unsubscribeStores.forEach((unsubscribe) => unsubscribe())
