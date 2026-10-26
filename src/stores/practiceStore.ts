@@ -154,7 +154,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   competenceId: null,
   part: null,
   isFreeSession: false,
-  sessionId: null;
+  sessionId: null,
   finished: false,
   mode: 'PRACTICE',
   startedAt: 0,
