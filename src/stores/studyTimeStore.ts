@@ -3,13 +3,10 @@ import { persist } from 'zustand/middleware';
 import type { TrackId } from '../types/question';
 import type { SessionMode } from './historyStore';
 
-function dayKey(ts = Date.now()) {
+const dayKey = (ts = Date.now()) => {
   const d = new Date(ts);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 export interface StudySegment {
   id: string;
@@ -17,17 +14,13 @@ export interface StudySegment {
   mode: SessionMode;
   track: TrackId | null;
   durationMs: number;
+  /** End timestamp of this segment. Duration is measured backwards from this instant. */
   at: number;
 }
 
 interface StudyTimeState {
   segments: StudySegment[];
-  addSegment: (opts: {
-    mode: SessionMode;
-    track: TrackId | null;
-    durationMs: number;
-    at?: number;
-  }) => void;
+  addSegment: (opts: { mode: SessionMode; track: TrackId | null; durationMs: number; at?: number }) => void;
   clear: () => void;
   todayMs: () => number;
   weekMs: () => number;
@@ -39,48 +32,57 @@ export const useStudyTimeStore = create<StudyTimeState>()(
   persist(
     (set, get) => ({
       segments: [],
-
       addSegment: ({ mode, track, durationMs, at }) => {
-        if (durationMs < 1000) return;
-        const ts = at ?? Date.now();
-        const seg: StudySegment = {
-          id: `st-${ts}-${Math.random().toString(36).slice(2, 7)}`,
-          day: dayKey(ts),
-          mode,
-          track,
-          durationMs,
-          at: ts
-        };
-        set({ segments: [seg, ...get().segments].slice(0, 400) });
+        if (!Number.isFinite(durationMs) || durationMs < 1000) return;
+        const end = Number.isFinite(at) ? (at as number) : Date.now();
+        const start = end - Math.floor(durationMs);
+        if (!Number.isFinite(start) || end <= start) return;
+
+        // Split a finished session at each local midnight, matching Android telemetry.
+        // Each record's end timestamp lets hourly overlap calculations stay exact.
+        const created: StudySegment[] = [];
+        let cursor = start;
+        while (cursor < end) {
+          const current = new Date(cursor);
+          const nextMidnight = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1).getTime();
+          const partEnd = Math.min(end, nextMidnight);
+          const partDuration = partEnd - cursor;
+          if (partDuration >= 1000) {
+            created.push({
+              id: `st-${cursor}-${Math.random().toString(36).slice(2, 9)}`,
+              day: dayKey(cursor),
+              mode,
+              track,
+              durationMs: partDuration,
+              at: partEnd
+            });
+          }
+          cursor = partEnd;
+        }
+        if (created.length) set({ segments: [...created.reverse(), ...get().segments].slice(0, 400) });
       },
-
       clear: () => set({ segments: [] }),
-
       todayMs: () => {
         const key = dayKey();
-        return get()
-          .segments.filter((s) => s.day === key)
-          .reduce((a, s) => a + s.durationMs, 0);
+        return get().segments.filter(s => s.day === key).reduce((sum, s) => sum + s.durationMs, 0);
       },
-
       weekMs: () => {
         const now = Date.now();
-        const weekAgo = now - 7 * 86_400_000;
-        return get()
-          .segments.filter((s) => s.at >= weekAgo)
-          .reduce((a, s) => a + s.durationMs, 0);
+        const monday = new Date(now);
+        monday.setHours(0, 0, 0, 0);
+        monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+        const start = monday.getTime();
+        return get().segments.filter(s => s.at > start && s.at <= now).reduce((sum, s) => sum + s.durationMs, 0);
       },
-
-      totalMs: () => get().segments.reduce((a, s) => a + s.durationMs, 0),
-
+      totalMs: () => get().segments.reduce((sum, s) => sum + s.durationMs, 0),
       byDay: (lastN = 14) => {
         const map = new Map<string, number>();
-        for (const s of get().segments) {
-          map.set(s.day, (map.get(s.day) || 0) + s.durationMs);
-        }
+        for (const s of get().segments) map.set(s.day, (map.get(s.day) || 0) + s.durationMs);
         const days: { day: string; ms: number }[] = [];
         for (let i = 0; i < lastN; i++) {
-          const d = new Date(Date.now() - i * 86_400_000);
+          const d = new Date();
+          d.setHours(0, 0, 0, 0);
+          d.setDate(d.getDate() - i);
           const key = dayKey(d.getTime());
           days.push({ day: key, ms: map.get(key) || 0 });
         }
@@ -92,7 +94,7 @@ export const useStudyTimeStore = create<StudyTimeState>()(
 );
 
 export function formatDurationMs(ms: number): string {
-  const sec = Math.floor(ms / 1000);
+  const sec = Math.max(0, Math.floor(ms / 1000));
   if (sec < 60) return `${sec}s`;
   const m = Math.floor(sec / 60);
   const s = sec % 60;
