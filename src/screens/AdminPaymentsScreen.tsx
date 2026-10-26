@@ -39,7 +39,7 @@ export default function AdminPaymentsScreen() {
     <button type="button" onClick={() => navigate('/account')} style={{ color:'var(--text-muted)', marginBottom:'1rem' }}>← Account</button>
     <h1 className="page-title">Payment Admin</h1>
     <p className="subtitle">Only email addresses configured in the server-side ADMIN_EMAILS secret can review payments.</p>
-    {message && <div role="status" style={card}>{message}</div>}
+    {message && <div role="status" style={card}>{/supabase/i.test(message) ? 'Payment administration is temporarily unavailable. Please try again later.' : message}</div>
     {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void load()}>Retry</button></section> : <>
       <h2>Payment submissions ({orders.length})</h2>
       {orders.length ? orders.map(order => <section key={order.id} style={card}>
