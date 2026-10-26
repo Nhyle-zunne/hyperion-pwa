@@ -51,7 +51,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
       const result = await supabase.auth.getSession();
       session = result.data.session;
     } catch {
-      set({ entitlementsVerified: false });
+      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
       return;
     }
     if (!session?.user) {
@@ -77,11 +77,11 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
         .eq('user_id', session.user.id)
         .eq('status', 'active')
         .gt('expires_at', new Date().toISOString());
-      if (error) { set({ entitlementsVerified: false }); return; }
+      if (error) { set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false }); return; }
       const ids = Array.from(new Set((data ?? []).map((row) => row.track_id as string)));
       set({ cloudTrackIds: ids, ...accessFlags(ids), entitlementsVerified: true });
     } catch {
-      set({ entitlementsVerified: false });
+      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
     }
   },
 
