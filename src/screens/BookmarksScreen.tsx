@@ -88,23 +88,15 @@ export default function BookmarksScreen() {
   }
 
   const practiceBookmarks = async (track: TrackId, selectedItems: BookmarkedQuestion[]) => {
-    const onlyFreeQuestions = selectedItems.every(item => item.paidAtSave === false)
-    if (!onlyFreeQuestions) {
-      await useLicenseStore.getState().refreshCloudEntitlements()
-      const license = useLicenseStore.getState()
-      if (!license.entitlementsVerified || !(license.isAllAccessUnlocked || license.isTrackUnlocked(track))) {
-        openPaywall()
-        return
-      }
-    }
     const selectedIds = new Set(selectedItems.map(item => item.id))
     const questions = asQuestions().filter(q => q.track === track && selectedIds.has(q.id))
     if (!questions.length) return
     const competenceId = questions.every(q => q.competenceId === questions[0].competenceId)
       ? questions[0].competenceId
       : null
-    const started = await startCustomSession({ questions, track, competenceId, isFreeSession: onlyFreeQuestions })
+    const started = await startCustomSession({ questions, track, competenceId })
     if (started) navigate('/practice/quiz')
+    else openPaywall('These saved questions could not be authorized. Renew access or remove unavailable bookmarks.')
   }
 
   return (
