@@ -457,7 +457,7 @@ export default function HistoryScreen() {
         <div style={modalBackdrop} role="presentation">
           <section style={modalStyle} role="dialog" aria-modal="true" aria-labelledby="delete-session-title">
             <h2 id="delete-session-title" style={{ marginTop: 0 }}>Move session to Recently Deleted?</h2>
-            <p style={secondaryText}>{rowTitle(pendingDelete)} will be recoverable for 30 days before it is permanently deleted.</p>
+            <p style={secondaryText}>{rowTitle(pendingDelete)} will be recoverable for 3 days before it is permanently deleted.</p>
             <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
               <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setPendingDelete(null)}>Cancel</button>
               <button className="btn btn-primary" style={{ flex: 1, color: 'var(--danger)' }} onClick={confirmDelete}>Move to Recently Deleted</button>
@@ -471,7 +471,7 @@ export default function HistoryScreen() {
         <div style={modalBackdrop} role="presentation">
           <section style={modalStyle} role="dialog" aria-modal="true" aria-labelledby="clear-history-title">
             <h2 id="clear-history-title" style={{ marginTop: 0 }}>Clear session history?</h2>
-            <p style={secondaryText}>All active and completed session logs will move to Recently Deleted. You can restore them for 30 days.</p>
+            <p style={secondaryText}>All active and completed session logs will move to Recently Deleted. You can restore them for 3 days.</p>
             <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
               <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setShowClearConfirm(false)}>Cancel</button>
               <button className="btn btn-primary" style={{ flex: 1, color: 'var(--danger)' }} onClick={() => { clear(); setShowClearConfirm(false); setSelectedKeys([]); setSelectionMode(false) }}>Clear all</button>
@@ -488,7 +488,7 @@ export default function HistoryScreen() {
               <h2 id="recently-deleted-title" style={{ margin: 0 }}>Recently Deleted Sessions</h2>
               <button className="btn btn-outline" onClick={() => setShowRecentlyDeleted(false)}>Close</button>
             </div>
-            <p style={secondaryText}>Deleted sessions remain recoverable for 30 days.</p>
+            <p style={secondaryText}>Deleted sessions remain recoverable for 3 days.</p>
             {deletedRows.length === 0 ? <p style={secondaryText}>No recently deleted sessions.</p> : (
               <div style={{ display: 'grid', gap: '.6rem' }}>
                 {deletedRows.map(row => {
