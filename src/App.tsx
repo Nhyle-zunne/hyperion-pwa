@@ -4,6 +4,7 @@ import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import HomeScreen from './screens/HomeScreen'
 import TrackSelectionScreen from './screens/TrackSelectionScreen'
 import AccountScreen from './screens/AccountScreen'
+import BasketScreen from './screens/BasketScreen'
 import OAuthCallbackScreen from './screens/OAuthCallbackScreen'
 import AdminPaymentsScreen from './screens/AdminPaymentsScreen'
 import TrackHubScreen from './screens/TrackHubScreen'
@@ -155,6 +156,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<TrackSelectionScreen />} />
           <Route path="/account" element={<AccountScreen />} />
+          <Route path="/basket" element={<BasketScreen />} />
           <Route path="/auth/callback" element={<OAuthCallbackScreen />} />
           <Route path="/admin/payments" element={<AdminPaymentsScreen />} />
           <Route path="/tracks" element={<TrackSelectionScreen />} />
