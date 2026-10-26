@@ -5,6 +5,8 @@ import HomeScreen from './screens/HomeScreen'
 import TrackSelectionScreen from './screens/TrackSelectionScreen'
 import AccountScreen from './screens/AccountScreen'
 import BasketScreen from './screens/BasketScreen'
+import ManualPaymentScreen from './screens/ManualPaymentScreen'
+import OrdersPaymentHistoryScreen from './screens/OrdersPaymentHistoryScreen'
 import OAuthCallbackScreen from './screens/OAuthCallbackScreen'
 import AdminPaymentsScreen from './screens/AdminPaymentsScreen'
 import TrackHubScreen from './screens/TrackHubScreen'
@@ -156,6 +158,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<TrackSelectionScreen />} />
           <Route path="/account" element={<AccountScreen />} />
+          <Route path="/manual-payment" element={<ManualPaymentScreen />} />
+          <Route path="/orders" element={<OrdersPaymentHistoryScreen />} />
           <Route path="/checkout" element={<BasketScreen />} />
           <Route path="/basket" element={<BasketScreen />} />
           <Route path="/auth/callback" element={<OAuthCallbackScreen />} />
