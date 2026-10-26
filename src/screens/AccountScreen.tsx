@@ -98,7 +98,13 @@ export default function AccountScreen() {
         access_token: event.data.access_token,
         refresh_token: event.data.refresh_token,
       }).then(({ error }) => {
-        if (error) setMessage(error.message)
+        if (error) {
+          setMessage(error.message)
+        } else {
+          setMessage('Signed in successfully.')
+          // Complete the sign-in in the main window and return to the dashboard.
+          navigate('/')
+        }
         setBusy(false)
       })
     }
