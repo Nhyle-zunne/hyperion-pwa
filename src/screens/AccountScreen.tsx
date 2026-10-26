@@ -22,7 +22,7 @@ type Order = {
   admin_note: string | null
   checkout_batch_id: string | null
 }
-type OwnedTrack = { product_code: string; order_id: string; granted_at: string; expires_at: string | null; renewed_at: string | null }
+type OwnedTrack = { product_code: string; order_id: string; license_term: LicenseTerm; granted_at: string; expires_at: string | null; renewed_at: string | null }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
 function safeAccountError(error: unknown, fallback: string) {
@@ -167,10 +167,10 @@ export default function AccountScreen() {
   }
   const refreshAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); return }
-    const orderColumns = 'id,product_code,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note,checkout_batch_id'
+    const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note,checkout_batch_id'
     const [entitlements, orderResult] = await Promise.all([
       supabase.from('entitlements')
-        .select('product_code,order_id,granted_at,expires_at,renewed_at')
+        .select('product_code,order_id,license_term,granted_at,expires_at,renewed_at')
         .eq('user_id', session.user.id)
         .eq('status', 'active')
         .gt('expires_at', new Date().toISOString()),
@@ -431,11 +431,12 @@ export default function AccountScreen() {
                   <strong>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code}</strong>
                   <span style={{ color: 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 800 }}>ACTIVE</span>
                 </div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>{item.license_term === 'week' ? 'Weekly' : item.license_term === 'month' ? 'Monthly' : 'Yearly'} access · Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
                 <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
                   <strong style={{ display: 'block', marginBottom: '.25rem' }}>Transaction details</strong>
                   {transaction ? <>
                     {transaction.customer_name && <div>Customer name: {transaction.customer_name}</div>}
+                    <div>Access duration: {transaction.license_term === 'week' ? 'Weekly' : transaction.license_term === 'month' ? 'Monthly' : 'Yearly'}</div>
                     <div>Amount paid: ₱{transaction.amount_php}</div>
                     <div>Purchase date: {new Date(transaction.paid_at || transaction.created_at).toLocaleString()}</div>
                     <div>Payment method: {transaction.payment_method || 'Not recorded'}</div>
