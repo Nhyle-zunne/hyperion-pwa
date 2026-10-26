@@ -34,6 +34,32 @@ export default function PracticeQuizScreen() {
     if (questions.length === 0) restoreSavedProgress()
   }, [])
 
+  // These controls discourage casual copying only; they cannot prevent screenshots or extraction from browser tools.
+  useEffect(() => {
+    const blockCopy = (event: ClipboardEvent) => {
+      if ((event.target as HTMLElement | null)?.closest('.practice-quiz-screen')) event.preventDefault()
+    }
+    const blockContextMenu = (event: MouseEvent) => {
+      if ((event.target as HTMLElement | null)?.closest('.practice-quiz-screen')) event.preventDefault()
+    }
+    const blockShortcuts = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target?.closest('.practice-quiz-screen')) return
+      const key = event.key.toLowerCase()
+      if ((event.ctrlKey || event.metaKey) && ['a', 'c', 'x'].includes(key)) event.preventDefault()
+    }
+    document.addEventListener('copy', blockCopy)
+    document.addEventListener('cut', blockCopy)
+    document.addEventListener('contextmenu', blockContextMenu)
+    document.addEventListener('keydown', blockShortcuts, true)
+    return () => {
+      document.removeEventListener('copy', blockCopy)
+      document.removeEventListener('cut', blockCopy)
+      document.removeEventListener('contextmenu', blockContextMenu)
+      document.removeEventListener('keydown', blockShortcuts, true)
+    }
+  }, [])
+
   useEffect(() => {
     const requestExit = () => setShowExitDialog(true)
     window.addEventListener('hyperion:request-exit-practice', requestExit)
@@ -97,36 +123,9 @@ export default function PracticeQuizScreen() {
             </div>
           )}
         </div>
-        <button
-          className="btn btn-primary"
-          style={{ width: '100%', marginBottom: 8 }}
-          onClick={() => {
-            reset()
-            navigate(mode === 'DRILL' ? '/drill' : mode === 'MOCK' ? '/mock' : '/practice')
-          }}
-        >
-          Try Again
-        </button>
-        <button
-          className="btn btn-outline"
-          style={{ width: '100%', marginBottom: 8 }}
-          onClick={() => {
-            reset()
-            navigate('/history')
-          }}
-        >
-          View History
-        </button>
-        <button
-          className="btn btn-outline"
-          style={{ width: '100%' }}
-          onClick={() => {
-            reset()
-            navigate('/')
-          }}
-        >
-          Home
-        </button>
+        <button className="btn btn-primary" style={{ width: '100%', marginBottom: 8 }} onClick={() => { reset(); navigate(mode === 'DRILL' ? '/drill' : mode === 'MOCK' ? '/mock' : '/practice') }}>Try Again</button>
+        <button className="btn btn-outline" style={{ width: '100%', marginBottom: 8 }} onClick={() => { reset(); navigate('/history') }}>View History</button>
+        <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => { reset(); navigate('/') }}>Home</button>
       </div>
     )
   }
@@ -156,7 +155,6 @@ export default function PracticeQuizScreen() {
           <div style={{fontWeight:800,lineHeight:1.2}}>Question {currentIndex + 1} of {questions.length}</div>
           <div style={{fontSize:'0.82rem',color:'var(--accent)',fontWeight:700}}>{q.track} · {q.competenceId}</div>
         </div>
-
       </header>
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem',fontSize:'0.85rem',color:'var(--text-muted)'}}>
@@ -164,64 +162,31 @@ export default function PracticeQuizScreen() {
         <span>{mode === 'DRILL' && streak > 0 ? 'Streak ' + streak + ' · ' : ''}{q.competenceId}{mode !== 'DRILL' ? ' · ' + q.difficulty : ''}</span>
       </div>
 
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <div style={{ fontSize: 'calc(0.8rem * var(--quiz-text-scale))', color: 'var(--text-muted)', marginBottom: 6 }}>
-          {q.topic}
-        </div>
-        <div style={{ fontSize: 'calc(1.05rem * var(--quiz-text-scale))', lineHeight: 1.55 }}>{q.questionText}</div>
+      <div className="card question-protected-card" style={{ marginBottom: '1rem' }}>
+        <span className="question-watermark" aria-hidden="true">HYPERION MARITIME</span>
+        <div style={{ fontSize: 'calc(0.8rem * var(--quiz-text-scale))', color: 'var(--text-muted)', marginBottom: 6 }}>{q.topic}</div>
+        <div className="question-protected-text" style={{ fontSize: 'calc(1.05rem * var(--quiz-text-scale))', lineHeight: 1.55 }}>{q.questionText}</div>
       </div>
 
-      <div style={{ display: 'grid', gap: '0.6rem' }}>
+      <div className="question-protected-options" style={{ display: 'grid', gap: '0.6rem' }}>
         {q.options.map((opt, idx) => {
           let border = 'var(--border)'
           let bg = 'var(--bg-card)'
           if (showFeedback) {
-            if (idx === q.correctAnswerIndex) {
-              border = 'var(--success)'
-              bg = 'rgba(34,197,94,0.12)'
-            } else if (idx === answer!.selectedIndex && !answer!.isCorrect) {
-              border = 'var(--danger)'
-              bg = 'rgba(239,68,68,0.12)'
-            }
-          } else if (
-            (hasAnswered && idx === answer!.selectedIndex) ||
-            (!hasAnswered && pendingAnswer === idx)
-          ) {
-            border = 'var(--accent)'
-            bg = 'var(--quiz-selection-bg)'
+            if (idx === q.correctAnswerIndex) { border = 'var(--success)'; bg = 'rgba(34,197,94,0.12)' }
+            else if (idx === answer!.selectedIndex && !answer!.isCorrect) { border = 'var(--danger)'; bg = 'rgba(239,68,68,0.12)' }
+          } else if ((hasAnswered && idx === answer!.selectedIndex) || (!hasAnswered && pendingAnswer === idx)) {
+            border = 'var(--accent)'; bg = 'var(--quiz-selection-bg)'
           }
-          return (
-            <button
-              key={idx}
-              onClick={() => {
-                if (mode === 'MOCK') selectAnswer(idx); else if (!hasAnswered) { if (automations.directAnswer) selectAnswer(idx); else setPendingAnswer(idx) }
-              }}
-              disabled={mode !== 'MOCK' && hasAnswered}
-              style={{
-                textAlign: 'left',
-                padding: '0.9rem 1rem',
-                borderRadius: 10,
-                border: `1px solid ${border}`,
-                background: bg,
-                color: 'var(--text)',
-                fontSize: 'calc(0.95rem * var(--quiz-text-scale))',
-                cursor: mode !== 'MOCK' && hasAnswered ? 'default' : 'pointer'
-              }}
-            >
-              <span style={{ fontWeight: 600, marginRight: 8 }}>
-                {String.fromCharCode(65 + idx)}.
-              </span>
-              {opt}
-            </button>
-          )
+          return <button key={idx} onClick={() => { if (mode === 'MOCK') selectAnswer(idx); else if (!hasAnswered) { if (automations.directAnswer) selectAnswer(idx); else setPendingAnswer(idx) } }} disabled={mode !== 'MOCK' && hasAnswered} style={{textAlign:'left',padding:'0.9rem 1rem',borderRadius:10,border:`1px solid ${border}`,background:bg,color:'var(--text)',fontSize:'calc(0.95rem * var(--quiz-text-scale))',cursor:mode !== 'MOCK' && hasAnswered ? 'default' : 'pointer'}}>
+            <span style={{ fontWeight: 600, marginRight: 8 }}>{String.fromCharCode(65 + idx)}.</span>{opt}
+          </button>
         })}
       </div>
 
       {showFeedback && q.explanation && (
-        <div
-          className="card"
-          style={{ marginTop: '1rem', fontSize: 'calc(0.9rem * var(--quiz-text-scale))', color: 'var(--text-muted)' }}
-        >
+        <div className="card question-protected-card" style={{ marginTop: '1rem', fontSize: 'calc(0.9rem * var(--quiz-text-scale))', color: 'var(--text-muted)' }}>
+          <span className="question-watermark" aria-hidden="true">HYPERION MARITIME</span>
           <strong style={{ color: 'var(--text)' }}>Explanation</strong>
           <p style={{ marginTop: 4 }}>{q.explanation}</p>
         </div>
@@ -241,21 +206,7 @@ export default function PracticeQuizScreen() {
           <button className="btn btn-primary" style={{width:'100%',marginTop:12}} onClick={() => setPaletteOpen(false)}>CLOSE</button>
         </section>
       </div>}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          padding: '0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom))',
-          background: 'var(--bg-card)',
-          borderTop: '1px solid var(--border)',
-          display: 'flex',
-          gap: '0.6rem',
-          maxWidth: 720,
-          margin: '0 auto'
-        }}
-      >
+      <div style={{position:'fixed',bottom:0,left:0,right:0,padding:'0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom))',background:'var(--bg-card)',borderTop:'1px solid var(--border)',display:'flex',gap:'0.6rem',maxWidth:720,margin:'0 auto'}}>
         <button className="btn btn-outline" style={{ flex: 1, minWidth: 0 }} onClick={prev} disabled={currentIndex === 0}>← Previous</button>
         <button className="btn btn-outline" style={{ minWidth: 54, padding: '0.65rem' }} onClick={() => { setPaletteOpen(true); setJumpNumber('') }} aria-label="Question palette" title="Question palette">▦</button>
         {mode === 'MOCK' ? <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={() => next()} disabled={!hasAnswered}>{currentIndex === questions.length - 1 ? 'Finish' : 'Next'}</button> : hasAnswered ? <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={() => next()}>{currentIndex === questions.length - 1 ? 'Finish' : 'Next'}</button> : <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={confirmAnswer} disabled={pendingAnswer == null || automations.directAnswer}>Check Answer</button>}
