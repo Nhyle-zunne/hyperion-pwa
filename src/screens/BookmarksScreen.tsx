@@ -48,7 +48,8 @@ export default function BookmarksScreen() {
       for (const track of tracks) {
         const group = items.filter(item => item.track === track)
         if (isAllAccessUnlocked || isTrackUnlocked(track)) {
-          group.forEach(item => valid.add(item.id))
+          // Licensed-only content is shown by the live entitlement predicate below;
+          // never cache it in the verified-free list.
           continue
         }
         // The local paidAtSave flag is editable by users, so use it only to
