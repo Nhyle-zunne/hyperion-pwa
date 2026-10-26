@@ -367,7 +367,7 @@ export default function MockExamScreen() {
 
 export function MockExamRunner() {
   const navigate = useNavigate()
-  const { questions, answers, finished, timeLeftSec, selectAnswer, finish, tick, score, reset, track, competenceId, mode } = usePracticeStore()
+  const { questions, answers, finished, timeLeftSec, selectMockAnswer, finish, tick, score, reset, track, competenceId, mode } = usePracticeStore()
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   const [showLockNotice, setShowLockNotice] = useState(false)
   const completionSavedRef = useRef(false)
@@ -377,6 +377,30 @@ export function MockExamRunner() {
     const timer = window.setInterval(() => tick(), 1000)
     return () => window.clearInterval(timer)
   }, [finished, tick])
+
+  useEffect(() => {
+    const preventClipboard = (event: Event) => event.preventDefault()
+    const preventClipboardShortcuts = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return
+      if (['c', 'x', 'v'].includes(event.key.toLowerCase())) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+
+    document.addEventListener('copy', preventClipboard, true)
+    document.addEventListener('cut', preventClipboard, true)
+    document.addEventListener('paste', preventClipboard, true)
+    document.addEventListener('contextmenu', preventClipboard, true)
+    document.addEventListener('keydown', preventClipboardShortcuts, true)
+    return () => {
+      document.removeEventListener('copy', preventClipboard, true)
+      document.removeEventListener('cut', preventClipboard, true)
+      document.removeEventListener('paste', preventClipboard, true)
+      document.removeEventListener('contextmenu', preventClipboard, true)
+      document.removeEventListener('keydown', preventClipboardShortcuts, true)
+    }
+  }, [])
 
   useEffect(() => {
     const blockExit = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
@@ -425,7 +449,7 @@ export function MockExamRunner() {
 
   if (finished) return <div className="screen" style={{ paddingBottom: '2rem' }}><h1 className="page-title">Mock Exam Results</h1><div className="card" style={{ textAlign: 'center' }}><div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--accent)' }}>{s.percent}%</div><p>{s.correct} / {s.total} correct</p><p>{s.percent >= 70 ? 'PASS' : 'NOT YET PASSED'} · 70% passing cutoff</p></div><button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => { reset(); navigate('/mock') }}>Return to Mock Exams</button><button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => { reset(); navigate('/history') }}>View History</button></div>
 
-  return <div className="screen" style={{ paddingBottom: '7rem', maxWidth: 900, margin: '0 auto' }}>
+  return <div className="screen" style={{ paddingBottom: '7rem', maxWidth: 900, margin: '0 auto', userSelect: 'none', WebkitUserSelect: 'none' }}>
     <header style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '0.8rem 0.25rem', background: 'var(--bg)', borderBottom: '3px solid var(--accent)' }}>
       <div><strong style={{ display: 'block' }}>SIMULATED MOCK EXAM</strong><span style={{ color: 'var(--text-muted)', fontSize: '.85rem' }}>{answered}/{questions.length} answered</span></div>
       <div aria-live="polite" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, color: timeLeftSec < 60 ? 'var(--danger)' : 'var(--accent)', border: '1px solid var(--border)', padding: '.45rem .7rem', borderRadius: 6 }}>⏱ {formatTime(timeLeftSec)}</div>
@@ -453,7 +477,7 @@ export function MockExamRunner() {
                 role="radio"
                 aria-checked={isSelected}
                 disabled={finished}
-                onClick={() => selectAnswer(optionIndex)}
+                onClick={() => selectMockAnswer(q.id, optionIndex)}
                 style={{
                   display: 'flex',
                   alignItems: 'flex-start',
