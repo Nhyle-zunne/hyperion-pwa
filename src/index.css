@@ -1471,3 +1471,30 @@ a:focus-visible,
   -webkit-backdrop-filter: blur(7px);
   background: rgba(3, 8, 18, .58) !important;
 }
+
+
+/* Light theme contrast audit: all solid green action buttons use white text.
+   Scoped to controls with green fills so the dark theme remains unchanged. */
+[data-theme='light'] .btn-primary,
+[data-theme='light'] .hub-account-button,
+[data-theme='light'] .practice-config-screen button[style*="background: var(--accent)"],
+[data-theme='light'] button[style*="background: var(--accent)"],
+[data-theme='light'] button[style*="background:var(--accent)"],
+[data-theme='light'] button[style*="background: #137f3d"],
+[data-theme='light'] button[style*="background:#137f3d"],
+[data-theme='light'] button[style*="background: rgb(19, 127, 61)"],
+[data-theme='light'] a.btn-primary {
+  color: #ffffff !important;
+}
+
+/* Inline styles on the range presets and primary start action need explicit contrast. */
+[data-theme='light'] .question-range-dual ~ div button[style*="background"],
+[data-theme='light'] button[style*="Start Reviewing"] {
+  color: #ffffff;
+}
+
+/* Resume controls appear in session telemetry cards and History. */
+[data-theme='light'] .session-log button.btn-primary,
+[data-theme='light'] .card button.btn-primary {
+  color: #ffffff !important;
+}
