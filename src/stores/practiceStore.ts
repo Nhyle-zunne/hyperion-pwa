@@ -388,7 +388,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       ? historyState.savedSessions.find((item) => item.id === requestedSessionId && !item.deletedAt)
       : historyState.savedSessions.filter((item) => !item.deletedAt).sort((a, b) => b.savedAt - a.savedAt)[0];
 
-    if (requestedSessionId) set({ loading: true, error: null });
+    set({ loading: true, error: null });
     if (selectedSaved) {
       const snapshot = await getSessionSnapshot(selectedSaved.id);
       if (snapshot && snapshot.questions.length > 0 && snapshot.track) {
