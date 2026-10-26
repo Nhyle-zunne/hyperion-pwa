@@ -589,11 +589,6 @@ export default function AccountScreen() {
               </div>
             </div>}
           </section> : <>
-            <div className="account-panel-title" style={{ marginBottom: '.8rem' }}>
-              <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.13em' }}>BOND STORE</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.35rem' }}>Bond Store</h2><p style={{ color: 'var(--text-muted)', margin: '.3rem 0 0', fontSize: '.88rem' }}>Add one or more 12-month track licenses. Open your basket when you are ready to review and pay.</p></div>
-              <div style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .7rem', background: 'var(--bg-card)', fontWeight: 800, fontSize: '.8rem' }}>🔒 Secure checkout</div>
-            </div>
-
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
                 <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Choose the track or tracks you need. Active licenses cannot be purchased again.</p></div>
