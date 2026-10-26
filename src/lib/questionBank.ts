@@ -439,26 +439,64 @@ async function loadSource(src: BankSource, freeOnly = false): Promise<LoadedSour
   }
 }
 
+function shuffleQuestions<T>(items: T[]): T[] {
+  const values = items.slice();
+  for (let i = values.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [values[i - 1], values[j]] = [values[j], values[i - 1]];
+  }
+  return values;
+}
+
 export async function getQuestionsByCompetence(
   track: TrackId,
   competenceId: string,
   part?: number,
-  freeOnly = false
+  freeOnly = false,
+  startItem = 1,
+  limit?: number,
+  randomSample = false
 ): Promise<Question[]> {
-  if (freeOnly) {
-    const allSources = SOURCES.filter(s => s.track === track);
-    const loaded = await Promise.all(allSources.map(src => loadSource(src, true)));
-    const allQuestions = loaded.flatMap(item => item.questions);
-    const sampled = loaded.every(item => item.sampledByServer) ? allQuestions : freeSample(allQuestions, track);
-    return sampled.filter(q => q.competenceId === competenceId &&
-      (part == null || (track === 'GMDSS_GOC' && q.id.includes('-P' + part + '-'))));
+  if (!supabase) throw new Error('Protected question service is not configured.');
+  const firstOffset = Math.max(0, Math.floor(startItem || 1) - 1);
+  let totalWanted = limit == null ? 0 : Math.max(0, Math.floor(limit));
+  if (limit == null) {
+    const counts = await getQuestionCountsByTrack(track, freeOnly);
+    const totalAvailable = counts
+      .filter(item => item.competenceId === competenceId && (part == null || item.part === part))
+      .reduce((sum, item) => sum + item.count, 0);
+    totalWanted = Math.max(0, totalAvailable - firstOffset);
   }
-  const sources = SOURCES.filter(
-    (s) => s.track === track && s.competenceId === competenceId &&
-      (part == null || (track === 'GMDSS_GOC' && s.path.includes(`part${part}.csv.enc`)))
-  );
-  const results = await Promise.all(sources.map(src => loadSource(src, false)));
-  return results.flatMap(item => item.questions);
+  if (totalWanted === 0) return [];
+  if (randomSample && totalWanted > 200) throw new Error('Random exam samples are limited to 200 questions.');
+
+  const requestPage = async (offset: number, pageLimit: number, random: boolean) => {
+    const { data, error } = await supabase!.functions.invoke('question-bank', {
+      body: { action: 'questions', track, competenceId, part, freeOnly, offset, limit: pageLimit, randomSample: random }
+    });
+    if (!error && Array.isArray(data?.questions)) return data.questions as Question[];
+    const status = Number((error as { context?: { status?: number } } | null)?.context?.status || 0);
+    if (freeOnly && status === 503) {
+      // Until private storage has all files, free sample can fall back to the
+      // legacy public assets. This path is free-only and removed after migration.
+      const all = await getQuestionsByTrack(track, true);
+      const scoped = all.filter(question => question.competenceId === competenceId &&
+        (part == null || (track === 'GMDSS_GOC' && question.id.includes('-P' + part + '-'))));
+      if (random) return shuffleQuestions(scoped).slice(0, pageLimit);
+      return scoped.slice(offset, offset + pageLimit);
+    }
+    throw error || new Error(data?.error || 'Protected question delivery failed.');
+  };
+
+  const result: Question[] = [];
+  if (randomSample) return requestPage(0, totalWanted, true);
+  for (let retrieved = 0; retrieved < totalWanted; retrieved += 200) {
+    const pageLimit = Math.min(200, totalWanted - retrieved);
+    const page = await requestPage(firstOffset + retrieved, pageLimit, false);
+    result.push(...page);
+    if (page.length < pageLimit) break;
+  }
+  return result;
 }
 
 /** Minimal java.util.Random so the free OIC-NW sample matches the Android app exactly. */
@@ -539,10 +577,11 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
 }
 
 export async function getQuestionsByTrack(track: TrackId, freeOnly = false): Promise<Question[]> {
+  if (!freeOnly) throw new Error('Full-track question preloading is disabled. Select a competence to access paid questions.');
   const sources = SOURCES.filter((s) => s.track === track);
-  const results = await Promise.all(sources.map(src => loadSource(src, freeOnly)));
+  const results = await Promise.all(sources.map(src => loadSource(src, true)));
   const allQuestions = results.flatMap(item => item.questions);
-  if (freeOnly && !results.every(item => item.sampledByServer)) return freeSample(allQuestions, track);
+  if (!results.every(item => item.sampledByServer)) return freeSample(allQuestions, track);
   return allQuestions;
 }
 
