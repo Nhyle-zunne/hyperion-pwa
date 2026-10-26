@@ -258,7 +258,8 @@ export default function AccountScreen() {
     setMessage('Checking any pending PayMongo payments with the payment provider…')
     try {
       const pending = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
-      if (pending.length === 0) {
+      const checkoutIds = [...new Set(pending.map(order => order.checkout_batch_id || order.id))]
+      if (checkoutIds.length === 0) {
         await refreshAccount()
         setMessage('Account status refreshed. There are no pending PayMongo checkouts to verify.')
         return
@@ -266,15 +267,18 @@ export default function AccountScreen() {
       let activated: string[] = []
       let pendingCount = 0
       let lastError = ''
-      for (const order of pending) {
-        const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId: order.id } })
+      for (const orderId of checkoutIds) {
+        const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
         if (error) {
           lastError = (await edgeFunctionErrorMessage(error)) || 'Payment verification is temporarily unavailable.'
           continue
         }
         if (data?.status === 'paid') {
-          const purchased = PAID_PRODUCTS.find(item => item.code === data.productCode)
-          activated.push(purchased?.label ?? data.productCode ?? order.product_code)
+          const codes: string[] = Array.isArray(data.productCodes)
+            ? data.productCodes
+            : typeof data.productCode === 'string' ? [data.productCode] : []
+          activated.push(...codes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code))
+          clearBasketItems(codes)
         } else if (data?.status === 'pending') {
           pendingCount += 1
         } else if (typeof data?.error === 'string') {
@@ -282,7 +286,7 @@ export default function AccountScreen() {
         }
       }
       await refreshAccount()
-      if (activated.length) setMessage(`Payment confirmed. Activated: ${activated.join(', ')}. Only the purchased track for each order was granted.`)
+      if (activated.length) setMessage(`Payment confirmed. Activated: ${[...new Set(activated)].join(', ')}. Only the tracks in each paid basket were granted.`)
       else if (lastError) setMessage(lastError)
       else setMessage(pendingCount ? 'PayMongo has not yet confirmed these pending checkout(s) as paid. No license was granted. Try refreshing again after payment finishes.' : 'Payment status refreshed.')
     } catch (error) {
@@ -324,9 +328,13 @@ export default function AccountScreen() {
         const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
         if (cancelled) return
         if (!error && data?.status === 'paid') {
-          const purchased = PAID_PRODUCTS.find(item => item.code === data.productCode)
+          const paidCodes: string[] = Array.isArray(data.productCodes)
+            ? data.productCodes
+            : typeof data.productCode === 'string' ? [data.productCode] : []
+          clearBasketItems(paidCodes)
           await refreshAccount()
-          if (!cancelled) setMessage(`Payment confirmed. Your ${purchased?.label ?? data.productCode} license is now active. No manual approval is needed.`)
+          const purchased = paidCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
+          if (!cancelled) setMessage(`Payment confirmed. Activated: ${purchased.join(', ')}. No manual approval is needed.`)
           return
         }
         if (error) lastVerificationMessage = (await edgeFunctionErrorMessage(error)) || 'PayMongo verification is temporarily unavailable.'
@@ -399,34 +407,39 @@ export default function AccountScreen() {
     } catch (error) { setMessage(safeAccountError(error, 'Unable to submit payment. Please try again.')) }
     finally { setBusy(false) }
   }
-  const startPayMongoCheckout = async () => {
+  const startPayMongoCheckout = async (requestedCodes: PaidTrack[] = basket) => {
     if (!supabase || !session) {
       setMessage('Please sign in to your Hyperion account before starting checkout.')
       return
     }
-    if (owned.some(item => item.product_code === product)) {
-      setMessage('This license is already active for your account.')
+    const checkoutCodes = [...new Set(requestedCodes)].filter(code => PAID_PRODUCTS.some(item => item.code === code))
+    if (!checkoutCodes.length) {
+      setMessage('Add at least one reviewer track to your basket before checkout.')
+      return
+    }
+    const alreadyOwned = checkoutCodes.filter(code => owned.some(item => item.product_code === code))
+    if (alreadyOwned.length) {
+      setMessage(`Remove already-active licenses from your basket before checkout: ${alreadyOwned.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(', ')}.`)
       return
     }
     setBusy(true)
     setMessage('Preparing secure PayMongo checkout…')
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { productCode: product } })
+      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { productCodes: checkoutCodes } })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
       if (data?.alreadyProcessing === true) {
-        setMessage('PayMongo has recorded your payment. Hyperion is waiting for the signed payment notification to finish activating the license…')
+        setMessage('PayMongo has recorded your payment. Verifying it securely before activating the purchased track(s)…')
         if (typeof data.orderId === 'string') {
           for (let attempt = 0; attempt < 7; attempt++) {
-            const { data: order, error: orderError } = await supabase
-              .from('orders')
-              .select('status')
-              .eq('id', data.orderId)
-              .eq('user_id', session.user.id)
-              .maybeSingle()
-            if (!orderError && order?.status === 'paid') {
+            const { data: verified, error: verifyError } = await supabase.functions.invoke('verify-checkout', { body: { orderId: data.orderId } })
+            if (!verifyError && verified?.status === 'paid') {
+              const paidCodes: string[] = Array.isArray(verified.productCodes)
+                ? verified.productCodes
+                : typeof verified.productCode === 'string' ? [verified.productCode] : checkoutCodes
+              clearBasketItems(paidCodes)
               await refreshAccount()
-              setMessage('Payment confirmed. Your reviewer license is active for the purchased track.')
+              setMessage(`Payment confirmed. Activated: ${paidCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(', ')}.`)
               setBusy(false)
               return
             }
@@ -434,7 +447,7 @@ export default function AccountScreen() {
           }
         }
         await refreshAccount()
-        setMessage('Payment has been recorded, but automatic activation is still processing. Refresh status shortly; do not pay again.')
+        setMessage('PayMongo reports a recorded payment, but activation is still processing. Refresh status shortly; do not pay again.')
         setBusy(false)
         return
       }
@@ -457,6 +470,16 @@ export default function AccountScreen() {
   const statusLabel: Record<string,string> = { submitted: 'Awaiting manual review', pending: 'Awaiting payment', paid: 'Approved', failed: 'Rejected', refunded: 'Refunded', cancelled: 'Cancelled by you' }
   const activeLicense = owned.find(item => item.product_code === product)
   const pendingPayMongoOrder = orders.find(order => order.product_code === product && order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
+  const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
+  const pendingCheckoutGroups = [...new Map(pendingPayMongoOrders.map(order => [order.checkout_batch_id || order.id, {
+    id: order.checkout_batch_id || order.id,
+    orders: pendingPayMongoOrders.filter(item => (item.checkout_batch_id || item.id) === (order.checkout_batch_id || order.id)),
+  }])).values()].map(group => ({
+    ...group,
+    codes: [...new Set(group.orders.map(order => order.product_code)) as Set<string>],
+    total: group.orders.reduce((sum, order) => sum + order.amount_php, 0),
+    isBatch: Boolean(group.orders[0]?.checkout_batch_id),
+  }))
   const pendingOrder = orders.find(order => order.product_code === product && ['submitted', 'pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
   const deleteAccount = async () => {
     if (!supabase || !session || deleteConfirmation !== 'DELETE') return
