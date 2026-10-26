@@ -11,6 +11,7 @@ import {
   type SessionMode
 } from '../stores/historyStore'
 import { getSessionSnapshot, type SessionSnapshot } from '../lib/sessionArchive'
+import { authorizeQuestionSet } from '../lib/questionBank'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
 import type { TrackId } from '../types/question'
@@ -198,20 +199,22 @@ export default function HistoryScreen() {
     return streak
   }, [activeRows])
 
-  const canOpenQuestionReview = async (row: HistoryRow) => {
-    if (row.isFreeSession === true) return true
+  const canOpenQuestionReview = async (row: HistoryRow, snapshot: SessionSnapshot | null) => {
+    // If there is no saved question content, showing the score/metadata does not
+    // disclose the bank. Never trust a locally editable isFreeSession flag.
+    if (!snapshot?.questions?.length) return true
     await refreshCloudEntitlements()
-    const license = useLicenseStore.getState()
-    return license.entitlementsVerified && (license.isAllAccessUnlocked || license.isTrackUnlocked(row.track))
+    return authorizeQuestionSet(row.track, snapshot.questions)
   }
 
   const openReview = async (id: string) => {
     const row = allRows.find(item => item.id === id && item.kind === 'entry')
-    if (!row || !await canOpenQuestionReview(row)) {
-      openPaywall('Reviewing paid question content requires an active license for that track.')
+    if (!row) return
+    const snapshot = await getSessionSnapshot(id)
+    if (!await canOpenQuestionReview(row, snapshot)) {
+      openPaywall('Reviewing these saved questions requires a current license, unless the questions belong to the free reviewer sample.')
       return
     }
-    const snapshot = await getSessionSnapshot(id)
     setReview({ id, snapshot, index: 0, tab: 'questions', missedOnly: false })
     const nextParams = new URLSearchParams(params)
     nextParams.set('review', id)
@@ -225,21 +228,22 @@ export default function HistoryScreen() {
     if (!entry) return
     let cancelled = false
     void (async () => {
-      const allowed = await canOpenQuestionReview({
+      const row: HistoryRow = {
         key: 'entry:' + id, kind: 'entry', id, mode: entry.mode, track: entry.track,
         competenceId: entry.competenceId, timestamp: entry.finishedAt, deletedAt: entry.deletedAt,
         completed: true, correct: entry.correct, total: entry.total, answered: entry.answered ?? entry.total,
         percent: entry.percent, durationMs: entry.durationMs, entry, isFreeSession: entry.isFreeSession === true
-      })
+      }
+      const snapshot = await getSessionSnapshot(id)
+      const allowed = await canOpenQuestionReview(row, snapshot)
       if (cancelled) return
       if (!allowed) {
-        openPaywall('Reviewing paid question content requires an active license for that track.')
+        openPaywall('Reviewing these saved questions requires a current license, unless the questions belong to the free reviewer sample.')
         const nextParams = new URLSearchParams(params)
         nextParams.delete('review')
         setParams(nextParams, { replace: true })
         return
       }
-      const snapshot = await getSessionSnapshot(id)
       if (!cancelled) setReview({ id, snapshot, index: 0, tab: 'questions', missedOnly: false })
     })()
     return () => { cancelled = true }
