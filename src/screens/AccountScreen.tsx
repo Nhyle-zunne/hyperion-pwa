@@ -772,3 +772,4 @@ export default function AccountScreen() {
       </div>
     </>}
   </div>
+}
