@@ -121,6 +121,7 @@ export default function AccountScreen() {
       setMessage('Sign-in is unavailable because Supabase is not configured.')
       return
     }
+    const authClient = supabase
 
     const requestedReturnTo = window.location.pathname + window.location.search + window.location.hash
     const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//') ? requestedReturnTo : '/'
@@ -150,7 +151,7 @@ export default function AccountScreen() {
       try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
       void (async () => {
         try {
-          const { data, error } = await supabase.auth.getSession()
+          const { data, error } = await authClient.auth.getSession()
           if (error) throw error
           if (data.session) {
             oauthOutcomeRef.current = 'success'
