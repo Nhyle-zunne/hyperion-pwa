@@ -76,7 +76,7 @@ export default function AboutScreen() {
         <div className="card" style={{ lineHeight: 1.65 }}>
           <p style={paragraphStyle}>For account, license, content, or technical support, contact Hyperion through the channels below.</p>
           <p style={paragraphStyle}><strong>Email:</strong> <a href="mailto:hyperionmaritimex@gmail.com" style={{ color: 'var(--accent)' }}>hyperionmaritimex@gmail.com</a></p>
-          
+          <p style={{ ...paragraphStyle, marginBottom: '0.85rem' }}><strong>Facebook:</strong> <a href="https://www.facebook.com/hyperionbynhyle/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>facebook.com/hyperionbynhyle</a></p>
           <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => navigate('/terms')}>Read Terms of Use</button>
         </div>
       </section>
