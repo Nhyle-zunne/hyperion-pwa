@@ -196,12 +196,14 @@ export default function MockExamScreen() {
         <h1 className="page-title" style={{ marginTop: 8, marginBottom: 4 }}>{TRACK_LABELS[trackId]}</h1>
         <p className="subtitle" style={{ marginBottom: 0 }}>MARINA-format timed mock examination · 70% passing cutoff · 1 minute per item</p>
       </div>
-      <div className="card" style={{ borderRadius: 14 }}>
-        <h2 style={{ marginTop: 0 }}>EXAMINATION PROTOCOL</h2>
-        <p style={{ color: 'var(--text-muted)' }}>Choose the functions to include, then select a competence to begin. The timer runs only while answering that competence.</p>
-        <p>{loading ? 'Loading question bank…' : questions.length.toLocaleString() + ' questions available across ' + competences.length + ' competences.'}</p>
-        <button type="button" className="btn btn-primary" disabled={loading} onClick={() => setStage('confirm')} style={{ width: '100%' }}>START OFFICIAL TIMED MOCK EXAM</button>
-      </div>
+      {stage === 'confirm' && (
+        <div className="card" style={{ borderRadius: 14 }}>
+          <h2 style={{ marginTop: 0 }}>EXAMINATION PROTOCOL</h2>
+          <p style={{ color: 'var(--text-muted)' }}>Choose the functions to include, then select a competence to begin. The timer runs only while answering that competence.</p>
+          <p>{loading ? 'Loading question bank…' : questions.length.toLocaleString() + ' questions available across ' + competences.length + ' competences.'}</p>
+          <button type="button" className="btn btn-primary" disabled={loading} onClick={() => setStage('confirm')} style={{ width: '100%' }}>START OFFICIAL TIMED MOCK EXAM</button>
+        </div>
+      )}
 
       {stage === 'confirm' && <div style={overlay}>
         <section role="dialog" aria-modal="true" aria-labelledby="mock-confirm-title" style={dialog}>
@@ -239,11 +241,6 @@ export default function MockExamScreen() {
       </div>}
 
       {stage === 'competences' && <section style={{ margin: '1rem auto 0', width: 'min(100%, 860px)' }}>
-        <div className="card" style={{ borderTop: '3px solid var(--accent)', borderRadius: 12, marginBottom: '1rem' }}>
-          <h2 style={{ marginTop: 0, marginBottom: 6 }}>SELECT A COMPETENCE TO BEGIN</h2>
-          <p style={{ color: 'var(--text-muted)', margin: 0, lineHeight: 1.45 }}>{TRACK_LABELS[trackId]} · {selectedFunctions.join(', ')} · 70% passing cutoff · 1 minute per item</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '.88rem', marginBottom: 0, marginTop: 8 }}>Complete each selected competence. Completed competences become locked, and their results are included when you submit the full mock exam.</p>
-        </div>
         <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-card)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', color: 'var(--text)', fontSize: '.92rem' }}>
             <thead>
