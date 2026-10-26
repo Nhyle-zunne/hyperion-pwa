@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useLicenseStore } from '../stores/licenseStore'
-import { useUIStore } from '../stores/uiStore'
 import { usePracticeStore } from '../stores/practiceStore'
-import { getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import { freeSample, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { Question, TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = { oic_nw: 'DECK_OIC_NW', gmdss: 'GMDSS_GOC', engine_ew: 'ENGINE_OIC_EW', deck_mgt: 'DECK_MGT', engine_mgt: 'ENGINE_MGT' }
@@ -110,8 +108,6 @@ export default function MockExamScreen() {
   const [params] = useSearchParams()
   const trackParam = params.get('track') || 'oic_nw'
   const trackId = TRACK_MAP[trackParam] || 'DECK_OIC_NW'
-  const isUnlocked = useLicenseStore((s) => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
-  const openPaywall = useUIStore((s) => s.openPaywall)
   const startSession = usePracticeStore((s) => s.startSession)
   const [stage, setStage] = useState<Stage>(() => {
     const requestedStage = params.get('stage')
@@ -138,7 +134,8 @@ export default function MockExamScreen() {
     setQuestions([])
     getQuestionsByTrack(trackId).then((items) => {
       if (cancelled) return
-      setQuestions(items)
+      // Mock exams are open to every user and use the same public question pool as Free Reviewer.
+      setQuestions(freeSample(items, trackId))
       setLoading(false)
     }).catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -198,7 +195,6 @@ export default function MockExamScreen() {
     navigate('/mock?track=' + encodeURIComponent(trackParam) + '&stage=results', { replace: true })
   }
   const start = async (competenceId: string) => {
-    if (!isUnlocked) { openPaywall('Mock Exam'); return }
     const pool = questions.filter((q) => q.competenceId === competenceId && selectedFunctions.includes(q.functionId))
     const examItemCount = mockExamItemCount(trackId, competenceId)
     if (!pool.length) return
@@ -208,6 +204,7 @@ export default function MockExamScreen() {
       await startSession({
         mode: 'MOCK', track: trackId, competenceId, limit: Math.min(examItemCount, pool.length), startItem: 1,
         timeLimitSec: Math.min(examItemCount, pool.length) * 60,
+        free: true,
       })
       if (usePracticeStore.getState().error || !usePracticeStore.getState().questions.length) return
       navigate('/mock/exam')
@@ -324,7 +321,7 @@ export default function MockExamScreen() {
                       <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.35, marginTop: 3 }}>{row.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</span>
                     </td>
                     <td style={{ padding: '.7rem .35rem', borderBottom: '1px solid var(--border)', verticalAlign: 'middle', textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: groupSubmitted ? 800 : 500, overflowWrap: 'anywhere' }}>
-                      {groupSubmitted ? (result ? result.percent.toFixed(2) + '%' : '—') : mockExamItemCount(trackId, row.id)}
+                      {groupSubmitted ? (result ? result.percent.toFixed(2) + '%' : '—') : Math.min(mockExamItemCount(trackId, row.id), row.count)}
                     </td>
                     <td style={{ padding: '.55rem .3rem', borderBottom: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>
                       {locked
