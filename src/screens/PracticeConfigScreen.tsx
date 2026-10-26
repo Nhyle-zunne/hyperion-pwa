@@ -5,7 +5,7 @@ import { useLicenseStore } from '../stores/licenseStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { HISTORY_RETENTION_MS, useHistoryStore } from '../stores/historyStore'
 import { useUIStore } from '../stores/uiStore'
-import { freeSample, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import { getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = {
@@ -144,8 +144,9 @@ export default function PracticeConfigScreen() {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const all = await getQuestionsByTrack(trackId)
-      const pool = freeMode || !isUnlocked ? freeSample(all, trackId) : all
+      const restrictedToFreePool = freeMode || !isUnlocked
+      const all = await getQuestionsByTrack(trackId, restrictedToFreePool)
+      const pool = all
       let selected = competenceId ? pool.filter(q => q.competenceId === competenceId) : pool
       if (selectedPart != null) selected = selected.filter(q => q.id.includes('-P' + selectedPart + '-'))
       if (cancelled) return
