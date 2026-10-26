@@ -97,11 +97,6 @@ export default function HomeScreen() {
           onClick={() => requireLicense('Search', () => navigate('/search'))}
         />
         <ActionCard
-          title="Mistakes Vault"
-          desc="Review and drill wrong answers"
-          onClick={() => navigate('/vault')}
-        />
-        <ActionCard
           title="History & Progress"
           desc="Sessions, scores, averages"
           onClick={() => navigate('/history')}
