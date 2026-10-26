@@ -21,9 +21,12 @@ export default function OAuthCallbackScreen() {
     try {
       const stored = localStorage.getItem(RETURN_TO_KEY)
       if (stored) {
-        const parsed = JSON.parse(stored) as { path?: unknown; startedAt?: unknown }
+        const parsed = JSON.parse(stored) as { path?: unknown; startedAt?: unknown; mode?: unknown }
         returnTo = safeReturnTo(parsed.path)
+        // Redirect-based sign-in returns in this same tab. Treat only older
+        // popup attempts as popups while they remain within the compatibility window.
         popupAttempt =
+          parsed.mode !== 'redirect' &&
           typeof parsed.startedAt === 'number' &&
           Date.now() - parsed.startedAt >= 0 &&
           Date.now() - parsed.startedAt < POPUP_ATTEMPT_TTL_MS
