@@ -12,6 +12,7 @@ const OWNER_KEY = 'hyperion-progress-owner'
 const LOCAL_DIRTY_KEY = 'hyperion-progress-unclaimed-dirty'
 const SESSION_CHANGED_AT_KEY = 'hyperion-progress-session-changed-at'
 const DIRTY_SECTIONS_KEY = 'hyperion-progress-dirty-sections'
+const accountCacheKey = (userId: string) => `hyperion-progress-cache:${userId}`
 const DIRTY_PREFIX = 'hyperion-progress-dirty:'
 const STORAGE_KEYS = [
   'hyperion-history',
@@ -480,6 +481,18 @@ async function initializeUser(userId: string): Promise<void> {
   if (uploadTimer) { clearTimeout(uploadTimer); uploadTimer = null }
   cloudReady = false
 
+  let ownerBeforeLoad: string | null = null
+  try { ownerBeforeLoad = localStorage.getItem(OWNER_KEY) } catch { /* storage may be unavailable */ }
+  if (ownerBeforeLoad && ownerBeforeLoad !== userId) {
+    activeUserId = null
+    // Keep an account-keyed recovery copy for offline work, but remove its live
+    // stores from the browser before hydrating the new account.
+    try { localStorage.setItem(accountCacheKey(ownerBeforeLoad), JSON.stringify(captureSnapshot())) } catch { /* best effort local recovery */ }
+    await clearLocalProgress()
+    try { localStorage.removeItem(OWNER_KEY) } catch { /* ignore storage errors */ }
+    if (generation !== currentGeneration) return
+  }
+
   let row: CloudProgressRow | null = null
   try {
     const { data, error } = await supabase
@@ -502,13 +515,20 @@ async function initializeUser(userId: string): Promise<void> {
   if (generation !== currentGeneration) return
 
   const owner = (() => { try { return localStorage.getItem(OWNER_KEY) } catch { return null } })()
+  const cachedSnapshot = (() => {
+    try {
+      const cached = parseJson<LearningProgressSnapshot>(localStorage.getItem(accountCacheKey(userId)))
+      return cached && isSnapshot(cached) ? cached : null
+    } catch { return null }
+  })()
   const localDirty = (() => {
     try {
       return localStorage.getItem(dirtyKey(userId)) != null
         || (owner == null && localStorage.getItem(LOCAL_DIRTY_KEY) != null)
-    } catch { return false }
+        || cachedSnapshot != null
+    } catch { return cachedSnapshot != null }
   })()
-  const localSnapshot = captureSnapshot()
+  const localSnapshot = cachedSnapshot && owner !== userId ? cachedSnapshot : captureSnapshot()
   const remoteSnapshot = row && isSnapshot(row.data) ? row.data : null
   let shouldUpload = false
   let snapshotToApply: LearningProgressSnapshot
@@ -539,6 +559,7 @@ async function initializeUser(userId: string): Promise<void> {
   if (generation !== currentGeneration) return
 
   try {
+    localStorage.removeItem(accountCacheKey(userId))
     localStorage.setItem(OWNER_KEY, userId)
     if (!shouldUpload) {
       localStorage.removeItem(dirtyKey(userId))
