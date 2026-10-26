@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { usePracticeStore } from '../stores/practiceStore'
-import { useHistoryStore } from '../stores/historyStore'
+import { HISTORY_RETENTION_MS, useHistoryStore } from '../stores/historyStore'
 import { useUIStore } from '../stores/uiStore'
 import { freeSample, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
@@ -256,7 +256,7 @@ export default function PracticeConfigScreen() {
     {sessionPendingDelete && <div role="presentation" onClick={() => setSessionPendingDelete(null)} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
       <section role="dialog" aria-modal="true" aria-labelledby="config-delete-session-title" onClick={event => event.stopPropagation()} style={{ width: 'min(100%, 420px)', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderTop: '3px solid var(--accent)', borderRadius: 10, padding: '1rem' }}>
         <h2 id="config-delete-session-title" style={{ marginTop: 0, fontSize: '1.1rem' }}>Delete session log?</h2>
-        <p style={{ ...muted, fontSize: '.88rem', lineHeight: 1.5 }}>This session will move to Recently Deleted and can be restored for 30 days.</p>
+        <p style={{ ...muted, fontSize: '.88rem', lineHeight: 1.5 }}>This session will move to Recently Deleted and can be restored for 3 days.</p>
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => setSessionPendingDelete(null)}>Cancel</button>
           <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => { markSessionDeleted(sessionPendingDelete.kind, sessionPendingDelete.id); setSessionPendingDelete(null) }}>Move to Recently Deleted</button>
@@ -267,10 +267,10 @@ export default function PracticeConfigScreen() {
     {recentlyDeletedOpen && <div role="presentation" onClick={() => setRecentlyDeletedOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
       <section role="dialog" aria-modal="true" aria-labelledby="config-recently-deleted-title" onClick={event => event.stopPropagation()} style={{ width: 'min(100%, 520px)', maxHeight: '85dvh', overflowY: 'auto', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderTop: '3px solid var(--accent)', borderRadius: 10, padding: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><h2 id="config-recently-deleted-title" style={{ margin: 0, fontSize: '1.1rem' }}>Recently Deleted Sessions</h2><button type="button" className="btn btn-outline" onClick={() => setRecentlyDeletedOpen(false)}>Close</button></div>
-        <p style={{ ...muted, fontSize: '.83rem' }}>Deleted sessions remain recoverable for 30 days.</p>
+        <p style={{ ...muted, fontSize: '.83rem' }}>Deleted sessions remain recoverable for 3 days.</p>
         {recentlyDeletedSessions.length ? <div style={{ display: 'grid', gap: '.6rem' }}>
           {recentlyDeletedSessions.map(session => {
-            const days = Math.max(0, Math.ceil(((session.deletedAt ?? Date.now()) + 30 * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000)))
+            const days = Math.max(0, Math.ceil(((session.deletedAt ?? Date.now()) + HISTORY_RETENTION_MS - Date.now()) / (24 * 60 * 60 * 1000)))
             return <div key={session.kind + ':' + session.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '.7rem', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
               <div style={{ minWidth: 0 }}><strong style={{ fontSize: '.8rem' }}>{session.competenceId || 'ALL COMPETENCES'} · {session.mode}</strong><div style={{ ...muted, fontSize: '.72rem', marginTop: 3 }}>{new Date(session.timestamp).toLocaleString()} · Progress {session.answered}/{session.total}</div><div style={{ color: 'var(--warning, #d97706)', fontSize: '.68rem', fontWeight: 900, marginTop: 3 }}>{days <= 0 ? 'EXPIRES TODAY' : 'EXPIRES IN ' + days + (days === 1 ? ' DAY' : ' DAYS')}</div></div>
               <div style={{ display: 'grid', gap: 5, flexShrink: 0 }}><button type="button" className="btn btn-primary" style={{ padding: '.35rem .5rem' }} onClick={() => restoreSession(session.kind, session.id)}>Restore</button><button type="button" className="btn btn-outline" style={{ padding: '.35rem .5rem', color: 'var(--danger)' }} onClick={() => setSessionPendingPermanentDelete(session)}>Delete forever</button></div>
