@@ -58,7 +58,8 @@ export const useStudyTimeStore = create<StudyTimeState>()(
       targetDate: legacyTargetDate(),
       targetDateUpdatedAt: 0,
       setTargetDate: (date) => {
-        if ((date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) || get().targetDate === date) return;
+        const current = get();
+        if ((date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) || (current.targetDate === date && current.targetDateUpdatedAt > 0)) return;
         try {
           if (date) localStorage.setItem('hyperion-target-date', date);
           else localStorage.removeItem('hyperion-target-date');
