@@ -172,7 +172,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
 
     set({
       loading: true, error: null, finished: false, questions: [], answers: {}, currentIndex: 0,
-      track, competenceId: competenceId ?? null, part: part ?? null, sessionId, mode,
+      track, competenceId: competenceId ?? null, part: part ?? null, isFreeSession: false, sessionId, mode,
       streak: 0, bestStreak: 0, timeLimitSec: time, timeLeftSec: time, startedAt
     });
 
