@@ -114,7 +114,7 @@ export default function StudyTimeScreen() {
   const monthDays=Array.from({length:monthStart.getDay()},()=>null as number|null).concat(Array.from({length:new Date(monthStart.getFullYear(),monthStart.getMonth()+1,0).getDate()},(_,i)=>i+1))
   const monthTotal=monthSegments.reduce((sum,s)=>sum+s.durationMs,0)
   const periodGroups=useMemo(()=>{const map=new Map<string,number>();segments.forEach(s=>map.set(s.day,(map.get(s.day)||0)+s.durationMs));return [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0]))},[segments])
-  const changeDay=(delta:number)=>setSelectedDate(d=>{const n=new Date(d);n.setDate(n.getDate()+delta);return n})
+  const changeDay=(delta:number)=>{const next=new Date(selectedDate);next.setDate(next.getDate()+delta);setSelectedDate(next)}
   const displayTime=(ms:number)=>formatDurationMs(ms)
   const headingDate=fmtDate(selectedDate,{year:'numeric',month:'2-digit',day:'2-digit'}).replace(/\//g, '.')+` (${fmtDate(selectedDate,{weekday:'short'}).toUpperCase()})`
 
