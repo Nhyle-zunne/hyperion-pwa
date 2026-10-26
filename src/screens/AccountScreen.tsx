@@ -496,16 +496,6 @@ export default function AccountScreen() {
         </div>}
       </section>
       <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Payment Instructions</h2>
-        <ol style={{ paddingLeft: '1.3rem', lineHeight: 1.65, marginBottom: 0 }}>
-          <li>Select the exam/reviewer track you want to purchase from the dropdown below.</li>
-          <li>Scan the QR Ph code and send the exact amount for your selected track. Each payment covers one track for 12 months. Double-check the amount before confirming your transfer.<ul style={{ marginTop: '.5rem', paddingLeft: '1.25rem' }}>{PAID_PRODUCTS.map(item => <li key={item.code}>{item.label} - ₱{item.annualPrice}/year</li>)}</ul></li>
-          <li>After paying, enter your transaction/reference number in the field below. Then tap <strong>Send Proof to Our Facebook Page</strong> and send a screenshot of your payment in Messenger.</li>
-          <li>Use the Additional notes field if you need to explain anything about your payment or proof of purchase.</li>
-          <li>Finally, click <strong>SUBMIT FOR REVIEW</strong>. Your payment will not be sent for review unless you click this button. Access is granted after verified manual review or confirmed PayMongo checkout.</li>
-        </ol>
-      </section>
-      <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Submit payment details</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.5 }}>Each payment covers one individual track for 12 months. Send the exact amount shown for the reviewer track you selected. Incorrect or short payments may delay approval. Access starts only after verified manual review or confirmed PayMongo checkout.</p>
         <label style={label}>Choose an individual track (12-month subscription)<select value={product} onChange={e => setProduct(e.target.value)} style={field}>{PAID_PRODUCTS.map(item => <option key={item.code} value={item.code}>{item.label} · ₱{item.annualPrice}/year{owned.some(license => license.product_code === item.code) ? ' · LICENSE ACTIVE' : ''}</option>)}</select></label>
