@@ -24,6 +24,7 @@ export default function AccountScreen() {
   const [profileEditing, setProfileEditing] = useState(false)
   const [savedProfile, setSavedProfile] = useState({ fullName: '', company: '', school: '' })
   const [isAdmin, setIsAdmin] = useState(false)
+  const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
   const qrPhImage = '/qr-ph.png'
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -252,7 +253,7 @@ export default function AccountScreen() {
       const { data, error } = await supabase.functions.invoke('submit-manual-payment', { body: { productCode: product, paymentMethod, paymentReference: reference, customerNote: note, customerProfile: { fullName: fullName.trim(), company: company.trim(), school: school.trim() } } })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
-      setMessage(`Payment details submitted. Your reference is ${data.order.id}. Please email your payment screenshot to hyperionmaritimex@gmail.com. Access will be enabled after manual verification.`)
+      setMessage(`Payment details submitted. Your reference is ${data.order.id}. Please send your payment screenshot to our Facebook page. Access will be enabled after manual verification.`)
       setReference(''); setNote('')
       await refreshAccount()
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to submit payment. Please try again.') }
@@ -335,7 +336,7 @@ export default function AccountScreen() {
         {owned.length ? owned.map(item => <div key={item.product_code} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code} · expires {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>) : <p style={{ color: 'var(--text-muted)' }}>No approved subscriptions are linked to this account yet.</p>}
       </section> : accountTab === 'delete' ? <section style={{ ...card, borderColor: 'var(--danger, #dc2626)' }}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem', color: 'var(--danger, #dc2626)' }}>Delete account</h2>
-        <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play or Google.</p>
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
         {!deleteConfirmOpen ? <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmation(''); setDeleteConfirmOpen(true) }} style={{ width: '100%', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>DELETE MY ACCOUNT</button> : <div>
           <label style={label}>To confirm, type DELETE below<input autoComplete="off" value={deleteConfirmation} onChange={e => setDeleteConfirmation(e.target.value)} style={field} /></label>
           <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
@@ -371,7 +372,7 @@ export default function AccountScreen() {
         <ol style={{ paddingLeft: '1.3rem', lineHeight: 1.65, marginBottom: 0 }}>
           <li>Select the exam/reviewer track you want to purchase from the dropdown below.</li>
           <li>Scan the QR Ph code and send the exact amount for your selected track. Each payment covers one track for 12 months. Double-check the amount before confirming your transfer.<ul style={{ marginTop: '.5rem', paddingLeft: '1.25rem' }}>{PAID_PRODUCTS.map(item => <li key={item.code}>{item.label} - ₱{item.annualPrice}/year</li>)}</ul></li>
-          <li>After paying, enter your transaction/reference number in the field below. Then email your payment screenshot to hyperionmaritimex@gmail.com. Include your transaction/reference number in the message.</li>
+          <li>After paying, enter your transaction/reference number in the field below. Then tap <strong>Send Proof to Our Facebook Page</strong> and send a screenshot of your payment in Messenger.</li>
           <li>Use the Additional notes field if you need to explain anything about your payment or proof of purchase.</li>
           <li>Finally, click <strong>SUBMIT FOR REVIEW</strong>. Your payment will not be sent for review unless you click this button. Access is granted only after manual verification.</li>
         </ol>
@@ -399,8 +400,8 @@ export default function AccountScreen() {
           <label style={label}>Payment method<input value="QR Ph (MariBank / InstaPay)" readOnly style={field} /></label>
           <label style={label}>Transaction/reference number<input required maxLength={160} value={reference} onChange={e => setReference(e.target.value)} style={field} /></label>
           <div style={label}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', lineHeight: 1.5 }}>After sending the payment, email your payment screenshot to hyperionmaritimex@gmail.com and include your transaction/reference number. Your subscription can only be approved after the payment is verified.</p>
-            <a href="mailto:hyperionmaritimex@gmail.com?subject=Hyperion%20Payment%20Proof" className="btn btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '.5rem' }}>EMAIL PAYMENT PROOF</a>
+            <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', lineHeight: 1.5 }}>After sending the payment, use the button below to send your payment screenshot to our Facebook page. Your subscription can only be approved after the payment is verified.</p>
+            <a href={facebookPage} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '.5rem' }}>SEND PROOF TO OUR FACEBOOK PAGE</a>
           </div>
           <label style={label}>Additional notes (optional)<textarea maxLength={1000} rows={3} value={note} onChange={e => setNote(e.target.value)} style={field} /></label>
           <button type="submit" className="btn btn-primary" disabled={busy || !supabaseConfigured} style={{ width: '100%', marginTop: '1rem' }}>{busy ? 'Submitting…' : 'SUBMIT FOR REVIEW'}</button>
