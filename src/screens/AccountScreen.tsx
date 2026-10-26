@@ -41,13 +41,14 @@ export default function AccountScreen() {
   }, [])
   useEffect(() => {
     if (params.get('oauth_popup') !== '1' || !window.opener || !supabase) return
+    const authClient = supabase
     let cancelled = false
     const finishPopupOAuth = async () => {
       try {
         // detectSessionInUrl is enabled in the shared Supabase client. getSession()
         // waits for Supabase initialization and its automatic PKCE code exchange;
         // exchanging the same code manually here can race or consume it twice.
-        const { data, error } = await supabase.auth.getSession()
+        const { data, error } = await authClient.auth.getSession()
         if (error) throw error
         const activeSession = data.session
         if (!activeSession) {
