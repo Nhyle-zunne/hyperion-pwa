@@ -172,7 +172,7 @@ export default function TrackHubScreen() {
         <button className="hub-back" onClick={() => navigate('/tracks')}>
           <span aria-hidden="true">←</span> Tracks
         </button>
-        <button type="button" className="btn btn-outline" onClick={() => navigate('/account')}>Account / Purchases</button>
+        <button type="button" className="btn btn-primary hub-account-button" onClick={() => navigate('/account')}>Account / Purchases</button>
       </div>
 
       <section className="hub-hero" aria-label="Track information">
