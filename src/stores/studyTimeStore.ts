@@ -3,6 +3,15 @@ import { persist } from 'zustand/middleware';
 import type { TrackId } from '../types/question';
 import type { SessionMode } from './historyStore';
 
+const legacyTargetDate = () => {
+  try {
+    const value = typeof localStorage !== 'undefined' ? localStorage.getItem('hyperion-target-date') : null;
+    return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
+  } catch {
+    return '';
+  }
+};
+
 const dayKey = (ts = Date.now()) => {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -24,6 +33,10 @@ interface StudyTimeState {
   selectedDate: string;
   selectedDateUpdatedAt: number;
   setSelectedDate: (date: string) => void;
+  /** MARINA exam target date from the dashboard, synced between signed-in devices. */
+  targetDate: string;
+  targetDateUpdatedAt: number;
+  setTargetDate: (date: string) => void;
   addSegment: (opts: { mode: SessionMode; track: TrackId | null; durationMs: number; at?: number }) => void;
   clear: () => void;
   todayMs: () => number;
@@ -41,6 +54,16 @@ export const useStudyTimeStore = create<StudyTimeState>()(
       setSelectedDate: (date) => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || get().selectedDate === date) return;
         set({ selectedDate: date, selectedDateUpdatedAt: Date.now() });
+      },
+      targetDate: legacyTargetDate(),
+      targetDateUpdatedAt: 0,
+      setTargetDate: (date) => {
+        if ((date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) || get().targetDate === date) return;
+        try {
+          if (date) localStorage.setItem('hyperion-target-date', date);
+          else localStorage.removeItem('hyperion-target-date');
+        } catch { /* persisted store remains available if legacy storage is restricted */ }
+        set({ targetDate: date, targetDateUpdatedAt: Date.now() });
       },
       addSegment: ({ mode, track, durationMs, at }) => {
         if (!Number.isFinite(durationMs) || durationMs < 1000) return;
