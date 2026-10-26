@@ -91,7 +91,7 @@ export default function OAuthCallbackScreen() {
           return
         }
         navigate(returnTo, { replace: true })
-      } catch (error) {
+      } catch {
         const message = 'Sign-in could not be completed. Please try again.'
         if (cancelled) return
         clearAttempt()
