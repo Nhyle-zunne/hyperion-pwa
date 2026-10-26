@@ -1456,36 +1456,12 @@ a:focus-visible,
 }
 
 
-/* Desktop reading surfaces: keep study workflows portrait and focused. */
+/* Desktop study screens remain portrait; track hub sets its own two-column layout. */
 @media (min-width: 900px) {
-  .screen {
+  .screen:not(.track-hub-screen) {
     max-width: 560px;
     padding-left: 1.25rem;
     padding-right: 1.25rem;
-  }
-
-  .track-hub-screen {
-    max-width: 720px;
-  }
-
-  .track-hub-screen .hub-mode-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .track-hub-screen .hub-mode-card {
-    min-height: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    padding: 1rem 1.1rem;
-  }
-
-  .track-hub-screen .hub-mode-top {
-    min-height: 0;
-    margin-bottom: .55rem;
-  }
-
-  .track-hub-screen .hub-mode-action {
-    padding-top: .65rem;
   }
 }
 
