@@ -280,10 +280,6 @@ export default function HistoryScreen() {
     }))
   }, [review?.snapshot])
 
-  const cardStyle: React.CSSProperties = {
-    background: 'var(--bg-card)', border: '1px solid var(--border)',
-    borderRadius: 10, padding: '1rem'
-  }
   const secondaryText: React.CSSProperties = { color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.5 }
   const modalBackdrop: React.CSSProperties = {
     position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(0,0,0,.72)',
