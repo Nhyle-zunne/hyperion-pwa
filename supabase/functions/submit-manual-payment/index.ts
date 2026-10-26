@@ -48,9 +48,11 @@ Deno.serve(async req => {
   }
 
   const { data: existing, error: existingError } = await admin.from('orders')
-    .select('id,status').eq('user_id', user.id).eq('product_code', code).in('status', ['submitted', 'pending']).limit(1)
+    .select('id,status,payment_method').eq('user_id', user.id).eq('product_code', code).in('status', ['submitted', 'pending']).limit(20)
   if (existingError) return json({ error: 'Could not check existing payment submissions. Please try again.' }, 500)
-  if (existing?.length) return json({ error: 'You already submitted this reviewer track for review. Check Payment submissions below, or cancel the pending review before submitting again.' }, 409)
+  if (existing?.some(order => order.payment_method !== 'PayMongo Checkout')) {
+    return json({ error: 'You already submitted this reviewer track for manual review. Check Payment submissions below, or cancel the pending review before submitting again.' }, 409)
+  }
 
   const amount = Number(Deno.env.get(product.env))
   if (!Number.isSafeInteger(amount) || amount <= 0) return json({ error: 'This product is not available yet because its price is not configured.' }, 503)
