@@ -380,6 +380,29 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  if (body.action === "flashcards") {
+    const track = body.track || "";
+    const competenceId = typeof body.competenceId === "string" ? body.competenceId : "";
+    const limit = Math.max(1, Math.min(30, Math.floor(body.limit || 20)));
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) return json(req, { error: "Invalid track." }, 400);
+    if (competenceId && !/^C\\d{1,2}$/.test(competenceId)) return json(req, { error: "Invalid competence." }, 400);
+    try {
+      if (!await authorizeTrack(admin, user, isAdmin, track)) return json(req, { error: "An active license is required to open flashcards." }, user ? 403 : 401);
+    } catch { return json(req, { error: "Could not verify your license. Please refresh and try again." }, 503); }
+    try {
+      const matchingPaths = SOURCE_ASSETS.filter(path => trackForPath(path) === track && (!competenceId || sourceInfo(path)?.competenceId === competenceId));
+      const questions: Record<string, unknown>[] = [];
+      for (const assetPath of matchingPaths) questions.push(...toSearchQuestions(assetPath, await privateText(admin, assetPath)));
+      for (let i = questions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [questions[i], questions[j]] = [questions[j], questions[i]];
+      }
+      return json(req, { questions: questions.slice(0, limit), access: isAdmin ? "admin" : "licensed" });
+    } catch {
+      return json(req, { error: "Flashcards could not read the protected question bank." }, 503);
+    }
+  }
+
   if (body.action === "search") {
     const track = body.track || "";
     const query = (body.query || "").trim().toLowerCase();
