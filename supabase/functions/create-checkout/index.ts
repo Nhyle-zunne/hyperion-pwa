@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
     }).select('id').single()
     if (insertError || !order) return json({ error: 'Could not create your order. Please try again.' }, 500)
 
-    const configuredBase = (Deno.env.get('APP_BASE_URL') || 'https://hyperionmaritime.org').replace(/\\/+$/, '')
+    const configuredBase = (Deno.env.get('APP_BASE_URL') || 'https://hyperionmaritime.org').replace(/\/+$/, '')
     let appUrl: URL
     try { appUrl = new URL(configuredBase) } catch {
       await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
