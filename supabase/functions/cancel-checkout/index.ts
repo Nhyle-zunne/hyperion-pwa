@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
     return json({ status: 'already_paid', orderId: order.id })
   }
   if (payments.some((payment: any) => ['pending', 'processing'].includes(payment?.attributes?.status))) {
-    return json({ status: 'processing', orderId: order.id, message: 'A payment attempt is still processing. Please wait for PayMongo to confirm the result before switching to manual payment.' }, 409)
+    return json({ status: 'processing', orderId: order.id, message: 'A payment attempt is still processing. Please wait for PayMongo to confirm the result before switching to manual payment.' })
   }
 
   if (attributes?.status !== 'active' && attributes?.status !== 'expired') {
@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
             return json({ status: 'already_paid', orderId: order.id })
           }
           if (latestPayments.some((payment: any) => ['pending', 'processing'].includes(payment?.attributes?.status))) {
-            return json({ status: 'processing', orderId: order.id, message: 'A payment attempt is still processing. Please wait for PayMongo to confirm the result before switching payment methods.' }, 409)
+            return json({ status: 'processing', orderId: order.id, message: 'A payment attempt is still processing. Please wait for PayMongo to confirm the result before switching payment methods.' })
           }
           if (latestAttrs?.status !== 'expired') {
             return json({ error: 'PayMongo could not close this checkout yet. Your order remains pending; please retry later.' }, 409)
