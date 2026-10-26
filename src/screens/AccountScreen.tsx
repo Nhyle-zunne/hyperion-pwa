@@ -387,7 +387,7 @@ export default function AccountScreen() {
           <div style={{ color: 'var(--text-muted)', fontSize: '.85rem', marginTop: 4 }}>{statusLabel[order.status] || order.status} · {new Date(order.created_at).toLocaleString()}</div>
           <div style={{ fontSize: '.8rem', overflowWrap: 'anywhere' }}>Reference: {order.payment_reference || 'Not provided'} · Order: {order.id}</div>
           {order.admin_note && <p style={{ marginBottom: 0 }}>Admin note: {order.admin_note}</p>}
-        </div>) : <p style={{ color: 'var(--text-muted)' }}>No other payment submissions.</p>}
+        </div>) : <p style={{ color: 'var(--text-muted)' }}>No other orders or payment submissions.</p>}
       </section>
 
       </>}
