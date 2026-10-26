@@ -470,10 +470,13 @@ export default function AccountScreen() {
   const activeLicense = owned.find(item => item.product_code === product)
   const pendingPayMongoOrder = orders.find(order => order.product_code === product && order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
-  const pendingCheckoutGroups = [...new Map(pendingPayMongoOrders.map(order => [order.checkout_batch_id || order.id, {
-    id: order.checkout_batch_id || order.id,
-    orders: pendingPayMongoOrders.filter(item => (item.checkout_batch_id || item.id) === (order.checkout_batch_id || order.id)),
-  }])).values()].map(group => ({
+  const pendingCheckoutGroups = [...new Map<string, { id: string; orders: Order[] }>(pendingPayMongoOrders.map(order => {
+    const id = order.checkout_batch_id || order.id
+    return [id, {
+      id,
+      orders: pendingPayMongoOrders.filter(item => (item.checkout_batch_id || item.id) === id),
+    }] as const
+  })).values()].map(group => ({
     ...group,
     codes: [...new Set(group.orders.map(order => order.product_code))].filter((code): code is PaidTrack => PAID_PRODUCTS.some(item => item.code === code)),
     total: group.orders.reduce((sum, order) => sum + order.amount_php, 0),
