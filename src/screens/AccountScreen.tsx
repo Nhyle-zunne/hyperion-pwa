@@ -27,6 +27,8 @@ export default function AccountScreen() {
   const qrPhImage = '/qr-ph.png'
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
@@ -191,6 +193,28 @@ export default function AccountScreen() {
   const label: React.CSSProperties = { display: 'block', marginTop: '.8rem' }
   const statusLabel: Record<string,string> = { submitted: 'Awaiting manual review', pending: 'Awaiting payment review', paid: 'Approved', failed: 'Rejected', refunded: 'Refunded', cancelled: 'Cancelled by you' }
   const pendingOrder = orders.find(order => order.product_code === product && ['submitted', 'pending'].includes(order.status))
+  const deleteAccount = async () => {
+    if (!supabase || !session || deleteConfirmation !== 'DELETE') return
+    setBusy(true)
+    setMessage('Deleting your account and associated account data…')
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-account', { body: { confirmation: 'DELETE' } })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      await supabase.auth.signOut()
+      setSession(null)
+      setOwned([])
+      setOrders([])
+      setDeleteConfirmOpen(false)
+      setDeleteConfirmation('')
+      setMessage('Your Hyperion account has been deleted.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to delete your account. Please try again or contact support.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const cancelReview = async () => {
     if (!supabase || !pendingOrder) return
     setBusy(true); setMessage('Cancelling your review request…')
@@ -332,6 +356,17 @@ export default function AccountScreen() {
           <div style={{ fontSize: '.8rem', overflowWrap: 'anywhere' }}>Reference: {order.payment_reference || 'Not provided'} · Order: {order.id}</div>
           {order.admin_note && <p style={{ marginBottom: 0 }}>Admin note: {order.admin_note}</p>}
         </div>) : <p style={{ color: 'var(--text-muted)' }}>No payment submissions yet.</p>}
+      </section>
+      <section style={{ ...card, borderColor: 'var(--danger, #dc2626)' }}>
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem', color: 'var(--danger, #dc2626)' }}>Delete account</h2>
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
+        {!deleteConfirmOpen ? <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmation(''); setDeleteConfirmOpen(true) }} style={{ width: '100%', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>DELETE MY ACCOUNT</button> : <div>
+          <label style={label}>To confirm, type DELETE below<input autoComplete="off" value={deleteConfirmation} onChange={e => setDeleteConfirmation(e.target.value)} style={field} /></label>
+          <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
+            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmOpen(false); setDeleteConfirmation('') }} style={{ flex: 1 }}>Cancel</button>
+            <button type="button" className="btn btn-primary" disabled={busy || deleteConfirmation !== 'DELETE'} onClick={() => void deleteAccount()} style={{ flex: 1, background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busy ? 'Deleting…' : 'Permanently delete'}</button>
+          </div>
+        </div>}
       </section>
       </>}
     </>}
