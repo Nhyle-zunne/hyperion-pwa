@@ -147,7 +147,11 @@ Deno.serve(async (req) => {
     .eq('user_id', user.id).eq('status', 'pending')
     .order('created_at', { ascending: false }).limit(10)
   if (pendingBatchError) return json({ error: 'Could not check your previous basket checkout. Please retry.' }, 500)
+  const newestPendingBatch = (pendingBatches ?? [])[0]
   const activePendingBatch = (pendingBatches ?? []).find(batch => batch.paymongo_checkout_session_id)
+  if (newestPendingBatch && !newestPendingBatch.paymongo_checkout_session_id) {
+    return json({ error: 'Your previous basket checkout is still being prepared. Wait a moment and then resume it from Pending checkouts.' }, 409)
+  }
   if (activePendingBatch) {
     const pendingCodes = productOrder.filter(code => (activePendingBatch.product_codes ?? []).includes(code))
     if (pendingCodes.join(',') !== codes.join(',')) {
