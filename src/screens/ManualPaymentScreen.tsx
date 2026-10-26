@@ -72,16 +72,28 @@ export default function ManualPaymentScreen() {
 
   useEffect(() => {
     const metadata = session?.user.user_metadata ?? {}
-    const givenAndFamily = [metadata.given_name, metadata.family_name]
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      .join(' ')
-    const identityName = (session?.user.identities ?? [])
+    const identityNames = (session?.user.identities ?? [])
+      .filter(identity => identity.provider === 'google')
       .map(identity => {
         const data = identity.identity_data as Record<string, unknown> | null
         return data?.full_name ?? data?.name
       })
-      .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    setFullName(String(metadata.full_name || metadata.name || givenAndFamily || identityName || '').trim())
+    const metadataGivenName = [metadata.given_name, metadata.family_name]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join(' ')
+    const emailName = (session?.user.email?.split('@')[0] ?? '')
+      .replace(/[._+-]+/g, ' ')
+      .replace(/\\s+/g, ' ')
+      .trim()
+      .replace(/\\b\\w/g, letter => letter.toUpperCase())
+    const nameCandidate = [
+      metadata.full_name,
+      metadata.name,
+      metadataGivenName,
+      ...identityNames,
+      emailName,
+    ].find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    setFullName(nameCandidate?.trim() ?? '')
     setCompany(typeof metadata.company === 'string' ? metadata.company : '')
     setSchool(typeof metadata.school === 'string' ? metadata.school : '')
   }, [session?.user.id])
