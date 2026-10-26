@@ -284,7 +284,7 @@ export default function MockExamScreen() {
                 <th scope="col" style={{ padding: '.75rem .6rem', borderBottom: '1px solid var(--border)' }}>FUNCTION</th>
                 <th scope="col" style={{ padding: '.75rem .6rem', borderBottom: '1px solid var(--border)' }}>STATUS</th>
                 <th scope="col" style={{ padding: '.75rem .6rem', borderBottom: '1px solid var(--border)' }}>COMPETENCE</th>
-                <th scope="col" style={{ padding: '.75rem .4rem', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>{examPlan?.status === 'submitted' ? 'SCORE' : 'ITEMS'}</th>
+                <th scope="col" style={{ padding: '.75rem .4rem', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>ITEMS</th>
                 <th scope="col" style={{ padding: '.75rem .4rem', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>ACTION</th>
               </tr>
             </thead>
