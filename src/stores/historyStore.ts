@@ -5,7 +5,7 @@ import { deleteSessionSnapshot } from '../lib/sessionArchive'
 
 export type SessionMode = 'PRACTICE' | 'DRILL' | 'MOCK'
 export type HistoryItemKind = 'entry' | 'saved'
-export const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+export const HISTORY_RETENTION_MS = 3 * 24 * 60 * 60 * 1000
 
 export interface HistoryEntry {
   id: string
