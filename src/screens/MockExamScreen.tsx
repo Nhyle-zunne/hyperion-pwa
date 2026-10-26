@@ -240,14 +240,62 @@ export function MockExamRunner() {
     <div style={{ display: 'grid', gap: 12 }}>
       {questions.map((q, index) => {
         const selected = answers[q.id]?.selectedIndex
-        return <section key={q.id} style={card} aria-labelledby={'mock-question-' + index}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--text-muted)', fontSize: '.8rem', fontWeight: 800, marginBottom: 8 }}><span>QUESTION {index + 1} OF {questions.length}</span><span>{q.competenceId}</span></div>
-          {q.topic && <div style={{ color: 'var(--text-muted)', fontSize: '.82rem', marginBottom: 6 }}>{q.topic}</div>}
-          <h2 id={'mock-question-' + index} style={{ fontSize: '1.05rem', lineHeight: 1.55, margin: '0 0 1rem' }}>{q.questionText}</h2>
-          <div style={{ display: 'grid', gap: 8 }}>
-            {q.options.map((option, optionIndex) => <button key={optionIndex} type="button" disabled={finished} onClick={() => selectAnswer(optionIndex)} aria-pressed={selected === optionIndex} style={{ textAlign: 'left', padding: '.8rem .9rem', borderRadius: 8, border: '1px solid ' + (selected === optionIndex ? 'var(--accent)' : 'var(--border)'), background: selected === optionIndex ? 'var(--quiz-selection-bg)' : 'transparent', color: 'var(--text)', cursor: finished ? 'default' : 'pointer' }}><strong style={{ marginRight: 8 }}>{String.fromCharCode(65 + optionIndex)}.</strong>{option}</button>)}
+        return <section
+          key={q.id}
+          style={{ padding: '1.25rem 0 1.5rem', borderBottom: index < questions.length - 1 ? '1px solid var(--border)' : '0' }}
+          aria-labelledby={'mock-question-' + index}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--text-muted)', fontSize: '.8rem', fontWeight: 800, marginBottom: 8 }}>
+            <span>QUESTION {index + 1} OF {questions.length}</span><span>{q.competenceId}</span>
           </div>
-          {selected != null && <p style={{ marginBottom: 0, color: 'var(--success)', fontSize: '.82rem', fontWeight: 700 }}>Answer recorded</p>}
+          {q.topic && <div style={{ color: 'var(--text-muted)', fontSize: '.82rem', marginBottom: 6 }}>{q.topic}</div>}
+          <h2 id={'mock-question-' + index} style={{ fontSize: '1.08rem', lineHeight: 1.55, margin: '0 0 1rem', fontWeight: 800 }}>{q.questionText}</h2>
+          <div role="radiogroup" aria-label={'Answers for question ' + (index + 1)} style={{ display: 'grid', gap: 10 }}>
+            {q.options.map((option, optionIndex) => {
+              const isSelected = selected === optionIndex
+              return <button
+                key={optionIndex}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                disabled={finished}
+                onClick={() => selectAnswer(optionIndex)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '.45rem 0',
+                  border: 0,
+                  borderRadius: 0,
+                  background: 'transparent',
+                  color: 'var(--text)',
+                  font: 'inherit',
+                  lineHeight: 1.5,
+                  cursor: finished ? 'default' : 'pointer',
+                  boxShadow: 'none',
+                  outlineOffset: 3,
+                }}
+              >
+                <span aria-hidden="true" style={{
+                  width: 22,
+                  height: 22,
+                  boxSizing: 'border-box',
+                  flex: '0 0 22px',
+                  marginTop: 2,
+                  borderRadius: '50%',
+                  border: '2px solid ' + (isSelected ? 'var(--accent)' : 'var(--text-muted)'),
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: 'transparent',
+                }}>
+                  {isSelected && <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--accent)' }} />}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, background: 'transparent', fontWeight: 600 }}>{option}</span>
+              </button>
+            })}
+          </div>
         </section>
       })}
     </div>
