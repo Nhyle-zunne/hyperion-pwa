@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useHistoryStore, type SessionMode } from '../stores/historyStore'
 import type { TrackId } from '../types/question'
 
@@ -41,6 +41,8 @@ function formatDuration(ms: number) {
 
 export default function HistoryScreen() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const trackParam = params.get('track') || 'oic_nw'
   const entries = useHistoryStore((s) => s.entries)
   const savedSessions = useHistoryStore((s) => s.savedSessions)
   const clear = useHistoryStore((s) => s.clear)
