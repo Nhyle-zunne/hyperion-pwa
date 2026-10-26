@@ -156,6 +156,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<TrackSelectionScreen />} />
           <Route path="/account" element={<AccountScreen />} />
+          <Route path="/checkout" element={<BasketScreen />} />
           <Route path="/basket" element={<BasketScreen />} />
           <Route path="/auth/callback" element={<OAuthCallbackScreen />} />
           <Route path="/admin/payments" element={<AdminPaymentsScreen />} />
