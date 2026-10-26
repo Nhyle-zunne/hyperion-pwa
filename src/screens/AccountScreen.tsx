@@ -44,33 +44,28 @@ export default function AccountScreen() {
     let cancelled = false
     const finishPopupOAuth = async () => {
       try {
-        // Supabase may return a PKCE authorization code. Explicitly exchange it
-        // before trying to relay a session to the opener.
-        const code = new URLSearchParams(window.location.search).get('code')
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code)
-          if (error) throw error
-        }
+        // detectSessionInUrl is enabled in the shared Supabase client. getSession()
+        // waits for Supabase initialization and its automatic PKCE code exchange;
+        // exchanging the same code manually here can race or consume it twice.
         const { data, error } = await supabase.auth.getSession()
         if (error) throw error
         const activeSession = data.session
         if (!activeSession) {
-          setMessage('Google sign-in did not complete. Please close this window and try again.')
+          if (!cancelled) setMessage('Google sign-in did not complete. Please try again. If this continues, check the Supabase OAuth redirect settings.')
           return
         }
         if (cancelled) return
+        const requested = params.get('return_to') || '/'
+        const returnTo = requested.startsWith('/') && !requested.startsWith('//') ? requested : '/'
         window.opener.postMessage({
           type: 'hyperion-oauth-success',
           access_token: activeSession.access_token,
           refresh_token: activeSession.refresh_token,
-          return_to: (() => {
-            const requested = params.get('return_to') || '/'
-            return requested.startsWith('/') && !requested.startsWith('//') ? requested : '/'
-          })(),
+          return_to: returnTo,
         }, window.location.origin)
         window.close()
       } catch (error) {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : 'Could not complete Google sign-in. Please try again.')
+        if (!cancelled) setMessage(error instanceof Error ? error.message : 'Could not complete sign-in. Please try again.')
       }
     }
     void finishPopupOAuth()
