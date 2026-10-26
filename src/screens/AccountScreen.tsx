@@ -89,8 +89,6 @@ export default function AccountScreen() {
   const addToBasket = (code: PaidTrack) => setBasket(current => current.includes(code) ? current : [...current, code])
   const removeFromBasket = (code: PaidTrack) => setBasket(current => current.filter(item => item !== code))
   const clearBasketItems = (codes: string[]) => setBasket(current => current.filter(code => !codes.includes(code)))
-  const checkoutBasketProducts = PAID_PRODUCTS.filter(item => basket.includes(item.code))
-  const basketTotal = checkoutBasketProducts.reduce((sum, item) => sum + item.annualPrice, 0)
 
   useEffect(() => {
     if (!supabase) return
@@ -406,62 +404,6 @@ export default function AccountScreen() {
     } catch (error) { setMessage(safeAccountError(error, 'Unable to submit payment. Please try again.')) }
     finally { setBusy(false) }
   }
-  const startPayMongoCheckout = async (requestedCodes: PaidTrack[] = basket) => {
-    if (!supabase || !session) {
-      setMessage('Please sign in to your Hyperion account before starting checkout.')
-      return
-    }
-    const checkoutCodes = [...new Set(requestedCodes)].filter(code => PAID_PRODUCTS.some(item => item.code === code))
-    if (!checkoutCodes.length) {
-      setMessage('Add at least one reviewer track to your basket before checkout.')
-      return
-    }
-    const alreadyOwned = checkoutCodes.filter(code => owned.some(item => item.product_code === code))
-    if (alreadyOwned.length) {
-      setMessage(`Remove already-active licenses from your basket before checkout: ${alreadyOwned.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(', ')}.`)
-      return
-    }
-    setBusy(true)
-    setMessage('Preparing secure PayMongo checkout…')
-    try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { productCodes: checkoutCodes } })
-      if (error) throw error
-      if (data?.error) throw new Error(data.error)
-      if (data?.alreadyProcessing === true) {
-        setMessage('PayMongo has recorded your payment. Verifying it securely before activating the purchased track(s)…')
-        if (typeof data.orderId === 'string') {
-          for (let attempt = 0; attempt < 7; attempt++) {
-            const { data: verified, error: verifyError } = await supabase.functions.invoke('verify-checkout', { body: { orderId: data.orderId } })
-            if (!verifyError && verified?.status === 'paid') {
-              const paidCodes: string[] = Array.isArray(verified.productCodes)
-                ? verified.productCodes
-                : typeof verified.productCode === 'string' ? [verified.productCode] : checkoutCodes
-              clearBasketItems(paidCodes)
-              await refreshAccount()
-              setMessage(`Payment confirmed. Activated: ${paidCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(', ')}.`)
-              setBusy(false)
-              return
-            }
-            if (attempt < 6) await new Promise(resolve => window.setTimeout(resolve, 1500))
-          }
-        }
-        await refreshAccount()
-        setMessage('PayMongo reports a recorded payment, but activation is still processing. Refresh status shortly; do not pay again.')
-        setBusy(false)
-        return
-      }
-      const checkoutUrl = typeof data?.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
-      if (!checkoutUrl || checkoutUrl.protocol !== 'https:' || checkoutUrl.hostname !== 'checkout.paymongo.com') {
-        throw new Error('Secure checkout is not configured correctly. Please use manual payment or contact Hyperion support.')
-      }
-      window.location.assign(checkoutUrl.toString())
-    } catch (error) {
-      const serverMessage = await edgeFunctionErrorMessage(error)
-      setMessage(serverMessage || safeAccountError(error, 'PayMongo checkout is not available yet. Please use manual payment or contact Hyperion support.'))
-      setBusy(false)
-    }
-  }
-
   const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', marginBottom: '1rem', borderRadius: 10 }
   const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '.8rem', marginTop: '.35rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, font: 'inherit' }
   const profileField = (editable: boolean): React.CSSProperties => ({ ...field, background: editable ? 'var(--bg-elevated)' : 'var(--bg)', color: editable ? 'var(--text)' : 'var(--text-muted)', border: editable ? '1px solid var(--border)' : '1px solid #cbd5e1', boxShadow: 'none', outline: 'none', cursor: editable ? 'text' : 'default', userSelect: editable ? 'text' : 'none', WebkitUserSelect: editable ? 'text' : 'none', pointerEvents: editable ? 'auto' : 'none', caretColor: editable ? 'auto' : 'transparent' })
@@ -470,18 +412,6 @@ export default function AccountScreen() {
   const activeLicense = owned.find(item => item.product_code === product)
   const pendingPayMongoOrder = orders.find(order => order.product_code === product && order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
-  const pendingCheckoutGroups = [...new Map<string, { id: string; orders: Order[] }>(pendingPayMongoOrders.map(order => {
-    const id = order.checkout_batch_id || order.id
-    return [id, {
-      id,
-      orders: pendingPayMongoOrders.filter(item => (item.checkout_batch_id || item.id) === id),
-    }] as const
-  })).values()].map(group => ({
-    ...group,
-    codes: [...new Set(group.orders.map(order => order.product_code))].filter((code): code is PaidTrack => PAID_PRODUCTS.some(item => item.code === code)),
-    total: group.orders.reduce((sum, order) => sum + order.amount_php, 0),
-    isBatch: Boolean(group.orders[0]?.checkout_batch_id),
-  }))
   const pendingOrder = orders.find(order => order.product_code === product && ['submitted', 'pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
   const deleteAccount = async () => {
     if (!supabase || !session || deleteConfirmation !== 'DELETE') return
@@ -553,9 +483,9 @@ export default function AccountScreen() {
       <div>
         <div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div>
         <h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Account & Reviewer Shop</h1>
-        <p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0', maxWidth: 650 }}>Manage your profile, choose reviewer tracks, and check out securely in one place.</p>
+        <p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0', maxWidth: 650 }}>Manage your profile, choose reviewer tracks, and review your basket on a separate page before checkout.</p>
       </div>
-      <div style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'} in basket</div>
+      <button type="button" onClick={() => navigate('/basket')} className="btn btn-primary" style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.65rem .9rem', background: '#0b1f39', color: '#ffbf32', fontWeight: 900 }}>🛒 VIEW BASKET · {basket.length}</button>
     </div>
 
     {!session ? <section style={{ ...card, maxWidth: 460, margin: '1.5rem auto' }}>
@@ -615,7 +545,7 @@ export default function AccountScreen() {
           <section style={{ ...card, marginBottom: 0 }}>
             <div style={{ color: 'var(--text-muted)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em', marginBottom: '.65rem' }}>ACCOUNT MENU</div>
             <nav className="account-nav" aria-label="Account menu">
-              <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>🛍️ Shop & basket</button>
+              <button type="button" role="tab" aria-selected={accountTab === 'payments'} className={accountTab === 'payments' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('payments')}>🛍️ Reviewer shop</button>
               <button type="button" role="tab" aria-selected={accountTab === 'licenses'} className={accountTab === 'licenses' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('licenses')}>🎫 My licenses</button>
               <button type="button" role="tab" aria-selected={accountTab === 'delete'} className={accountTab === 'delete' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setAccountTab('delete')} style={accountTab === 'delete' ? { background: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' } : { color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>Delete account</button>
             </nav>
@@ -667,22 +597,9 @@ export default function AccountScreen() {
             </div>}
           </section> : <>
             <div className="account-panel-title" style={{ marginBottom: '.8rem' }}>
-              <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.13em' }}>CHOOSE YOUR REVIEWERS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.35rem' }}>Reviewer track shop</h2><p style={{ color: 'var(--text-muted)', margin: '.3rem 0 0', fontSize: '.88rem' }}>Add one or more 12-month track licenses to your basket, then check out once.</p></div>
+              <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.13em' }}>CHOOSE YOUR REVIEWERS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.35rem' }}>Reviewer track shop</h2><p style={{ color: 'var(--text-muted)', margin: '.3rem 0 0', fontSize: '.88rem' }}>Add one or more 12-month track licenses. Open your basket when you are ready to review and pay.</p></div>
               <div style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .7rem', background: 'var(--bg-card)', fontWeight: 800, fontSize: '.8rem' }}>🔒 Secure checkout</div>
             </div>
-
-            {pendingCheckoutGroups.length > 0 && <section style={{ ...card, borderColor: 'var(--warning, #d97706)', marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginBottom: '.5rem' }}><span aria-hidden="true" style={{ fontSize: '1.2rem' }}>↻</span><div><h3 style={{ margin: 0, fontSize: '1rem' }}>Pending checkout{pendingCheckoutGroups.length > 1 ? 's' : ''}</h3><p style={{ margin: '.2rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Resume the same checkout rather than paying twice.</p></div></div>
-              {pendingCheckoutGroups.map(group => <div key={group.id} style={{ borderTop: '1px solid var(--border)', paddingTop: '.75rem', marginTop: '.75rem' }}>
-                <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: '.7rem', flexWrap: 'wrap' }}>
-                  <div><strong>{group.codes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(' + ')}</strong><div style={{ color: 'var(--text-muted)', fontSize: '.82rem', marginTop: '.25rem' }}>{group.codes.length} track{group.codes.length === 1 ? '' : 's'} · ₱{group.total}</div></div>
-                  <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
-                    <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setBasket(group.codes); void startPayMongoCheckout(group.codes) }}>RESUME CHECKOUT</button>
-                    <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongoCheckout(group.id)} style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{cancelingCheckoutId === group.id ? 'CHECKING…' : 'CANCEL CHECKOUT'}</button>
-                  </div>
-                </div>
-              </div>)}
-            </section>}
 
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
@@ -717,31 +634,9 @@ export default function AccountScreen() {
               </div>
             </section>
 
-            <section style={{ ...card, marginBottom: '1rem', borderColor: basket.length ? '#c9a44c' : 'var(--border)' }}>
-              <div className="account-panel-title">
-                <div><h3 style={{ margin: 0, fontSize: '1.08rem' }}>🛒 Your basket <span style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>({basket.length})</span></h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Review the selected tracks before checkout.</p></div>
-                {basket.length > 0 && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setBasket([])}>CLEAR BASKET</button>}
-              </div>
-              {checkoutBasketProducts.length ? <>
-                {checkoutBasketProducts.map(item => <div className="account-cart-row" key={item.code}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', minWidth: 0 }}>
-                    <span aria-hidden="true" style={{ width: 36, height: 36, display: 'grid', placeItems: 'center', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 8, flexShrink: 0 }}>{item.code === 'gmdss' ? '📡' : item.code === 'engine_ew' || item.code === 'engine_mgt' ? '⚙️' : '⚓'}</span>
-                    <div style={{ minWidth: 0 }}><strong style={{ display: 'block', overflowWrap: 'anywhere' }}>{item.label}</strong><span style={{ color: 'var(--text-muted)', fontSize: '.78rem' }}>12-month license</span></div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', flexShrink: 0 }}><strong>₱{item.annualPrice}</strong><button type="button" aria-label={'Remove ' + item.label} disabled={busy} onClick={() => removeFromBasket(item.code)} style={{ color: 'var(--danger, #dc2626)', fontWeight: 850, padding: '.3rem' }}>Remove</button></div>
-                </div>)}
-                <div className="account-total-row"><div><div style={{ color: 'var(--text-muted)', fontSize: '.75rem', fontWeight: 850, letterSpacing: '.08em' }}>TOTAL DUE</div><div style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginTop: '.15rem' }}>{basket.length} selected track{basket.length === 1 ? '' : 's'} · one secure checkout</div></div><strong style={{ fontSize: '1.65rem', color: 'var(--text)' }}>₱{basketTotal}</strong></div>
-                <button type="button" className="btn btn-primary" disabled={busy || !supabaseConfigured} onClick={() => void startPayMongoCheckout()} style={{ width: '100%', minHeight: 51, marginTop: '1rem', background: '#0b1f39', borderColor: '#0b1f39', color: '#ffbf32', fontWeight: 950, fontSize: '.95rem' }}>{busy ? 'PREPARING SECURE CHECKOUT…' : '⚡ CHECK OUT WITH PAYMONGO · ₱' + basketTotal + ' →'}</button>
-                <div className="payment-method-pills" style={{ marginTop: '.7rem', justifyContent: 'center' }}><span>GCash</span><span>Maya</span><span>QR Ph</span><span>Credit / debit card</span></div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', lineHeight: 1.5, textAlign: 'center', marginBottom: 0 }}>Each selected track will be activated individually after PayMongo confirms the total payment. No extra tracks are included.</p>
-              </> : <div style={{ textAlign: 'center', padding: '1.4rem .8rem', border: '1px dashed var(--border)', borderRadius: 9 }}>
-                <div style={{ fontSize: '1.65rem', marginBottom: '.35rem' }}>🛒</div><strong>Your basket is empty</strong><p style={{ color: 'var(--text-muted)', fontSize: '.85rem', margin: '.35rem 0 0' }}>Add a reviewer track above to prepare your checkout.</p>
-              </div>}
-            </section>
-
             {manualPaymentOpen && <section style={card}>
               <div className="account-panel-title"><div><div style={{ color: '#a47e2e', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>MANUAL ALTERNATIVE</div><h3 style={{ margin: '.2rem 0 0', fontSize: '1.08rem' }}>Manual QR payment · {PAID_PRODUCTS.find(item => item.code === product)?.label ?? product}</h3></div><button type="button" className="btn btn-outline" onClick={() => setManualPaymentOpen(false)}>CLOSE</button></div>
-              {activeLicense ? <div style={{ ...card, borderColor: 'var(--success, #15803d)' }}><strong>License already active</strong><p style={{ color: 'var(--text-muted)', marginBottom: 0 }}>This track is already active until {activeLicense.expires_at ? new Date(activeLicense.expires_at).toLocaleDateString() : 'its recorded expiration'}.</p></div> : pendingOrder ? <div style={{ ...card, borderColor: 'var(--warning, #d97706)' }}><strong>You already submitted this track for review.</strong><p style={{ color: 'var(--text-muted)' }}>Cancel the pending request before submitting another payment.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelReview()} style={{ width: '100%' }}>CANCEL REVIEW REQUEST</button></div> : pendingPayMongoOrder ? <div style={{ ...card, borderColor: 'var(--warning, #d97706)' }}><strong>A PayMongo checkout is open for this track.</strong><p style={{ color: 'var(--text-muted)' }}>Close that checkout first to avoid paying twice.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongoCheckout(pendingPayMongoOrder.checkout_batch_id || pendingPayMongoOrder.id)} style={{ width: '100%', color: 'var(--danger, #dc2626)' }}>CANCEL PAYMONGO CHECKOUT</button></div> : <form onSubmit={submitPayment}>
+              {activeLicense ? <div style={{ ...card, borderColor: 'var(--success, #15803d)' }}><strong>License already active</strong><p style={{ color: 'var(--text-muted)', marginBottom: 0 }}>This track is already active until {activeLicense.expires_at ? new Date(activeLicense.expires_at).toLocaleDateString() : 'its recorded expiration'}.</p></div> : pendingOrder ? <div style={{ ...card, borderColor: 'var(--warning, #d97706)' }}><strong>You already submitted this track for review.</strong><p style={{ color: 'var(--text-muted)' }}>Cancel the pending request before submitting another payment.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelReview()} style={{ width: '100%' }}>CANCEL REVIEW REQUEST</button></div> : pendingPayMongoOrder ? <div style={{ ...card, borderColor: 'var(--warning, #d97706)' }}><strong>A PayMongo checkout is open for this track.</strong><p style={{ color: 'var(--text-muted)' }}>Close that checkout first to avoid paying twice.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongoCheckout(pendingPayMongoOrder.checkout_batch_id || pendingPayMongoOrder.id)} style={{ width: '100%', color: 'var(--danger, #dc2626)' }}>{cancelingCheckoutId === (pendingPayMongoOrder.checkout_batch_id || pendingPayMongoOrder.id) ? 'CHECKING WITH PAYMONGO…' : 'CANCEL PAYMONGO CHECKOUT'}</button></div> : <form onSubmit={submitPayment}>
                 <p style={{ color: 'var(--text-muted)', fontSize: '.88rem', lineHeight: 1.5 }}>This fallback needs admin verification. The fastest option is the secure PayMongo basket checkout above.</p>
                 <div style={{ ...card, textAlign: 'center', marginTop: '.9rem', background: '#fff', color: '#172033' }}>
                   <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: '.25rem' }}>QR Ph · MariBank / InstaPay</div>
