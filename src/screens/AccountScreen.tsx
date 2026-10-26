@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
+import type { PaidTrack } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Order = {
@@ -19,6 +20,7 @@ type Order = {
   paid_at: string | null
   reviewed_at: string | null
   admin_note: string | null
+  checkout_batch_id: string | null
 }
 type OwnedTrack = { product_code: string; order_id: string; granted_at: string; expires_at: string | null; renewed_at: string | null }
 
@@ -45,6 +47,18 @@ export default function AccountScreen() {
   const [session, setSession] = useState<Session | null>(null)
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>('payments')
   const [product, setProduct] = useState('oic_nw')
+  const [basket, setBasket] = useState<PaidTrack[]>(() => {
+    try {
+      const raw = localStorage.getItem('hyperion-account-basket-v1')
+      const saved = raw ? JSON.parse(raw) : []
+      return Array.isArray(saved)
+        ? [...new Set(saved.filter((code): code is PaidTrack => typeof code === 'string' && PAID_PRODUCTS.some(item => item.code === code)))]
+        : []
+    } catch {
+      return []
+    }
+  })
+  const [manualPaymentOpen, setManualPaymentOpen] = useState(false)
   const paymentMethod = 'QR Ph (MariBank / InstaPay)'
   const [reference, setReference] = useState('')
   const [note, setNote] = useState('')
@@ -64,6 +78,19 @@ export default function AccountScreen() {
   const [owned, setOwned] = useState<OwnedTrack[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
+
+  useEffect(() => {
+    try {
+      if (basket.length) localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(basket))
+      else localStorage.removeItem('hyperion-account-basket-v1')
+    } catch { /* basket remains available for this page session */ }
+  }, [basket])
+
+  const addToBasket = (code: PaidTrack) => setBasket(current => current.includes(code) ? current : [...current, code])
+  const removeFromBasket = (code: PaidTrack) => setBasket(current => current.filter(item => item !== code))
+  const clearBasketItems = (codes: string[]) => setBasket(current => current.filter(code => !codes.includes(code)))
+  const checkoutBasketProducts = PAID_PRODUCTS.filter(item => basket.includes(item.code))
+  const basketTotal = checkoutBasketProducts.reduce((sum, item) => sum + item.annualPrice, 0)
 
   useEffect(() => {
     if (!supabase) return
@@ -129,7 +156,7 @@ export default function AccountScreen() {
   }
   const refreshAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); return }
-    const orderColumns = 'id,product_code,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note'
+    const orderColumns = 'id,product_code,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note,checkout_batch_id'
     const [entitlements, orderResult] = await Promise.all([
       supabase.from('entitlements')
         .select('product_code,order_id,granted_at,expires_at,renewed_at')
