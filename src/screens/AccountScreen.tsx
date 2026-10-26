@@ -279,7 +279,6 @@ export default function AccountScreen() {
   const profileField = (editable: boolean): React.CSSProperties => ({ ...field, background: editable ? 'var(--bg-elevated)' : 'var(--bg)', color: editable ? 'var(--text)' : 'var(--text-muted)', border: editable ? '1px solid var(--border)' : '1px solid #cbd5e1', boxShadow: 'none', outline: 'none', cursor: editable ? 'text' : 'default', userSelect: editable ? 'text' : 'none', WebkitUserSelect: editable ? 'text' : 'none', pointerEvents: editable ? 'auto' : 'none', caretColor: editable ? 'auto' : 'transparent' })
   const label: React.CSSProperties = { display: 'block', marginTop: '.8rem' }
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
-  const pendingOrder = orders.find(order => order.product_code === product && ['submitted', 'pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
   const deleteAccount = async () => {
     if (!supabase || !session || deleteConfirmation !== 'DELETE') return
     setBusy(true)
