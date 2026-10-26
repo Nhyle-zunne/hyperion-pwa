@@ -6,6 +6,7 @@ const cors = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 }
 
+const productOrder = ['oic_nw', 'gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt'] as const
 const products = {
   oic_nw: { env: 'PRICE_DECK_OIC_NW_PHP', name: 'Hyperion Deck OIC-NW', track: 'DECK_OIC_NW' },
   gmdss: { env: 'PRICE_GMDSS_PHP', name: 'Hyperion GMDSS GOC', track: 'GMDSS_GOC' },
@@ -13,6 +14,29 @@ const products = {
   deck_mgt: { env: 'PRICE_DECK_MGT_PHP', name: 'Hyperion Deck Management', track: 'DECK_MGT' },
   engine_mgt: { env: 'PRICE_ENGINE_MGT_PHP', name: 'Hyperion Engine Management', track: 'ENGINE_MGT' },
 } as const
+
+function profileFor(user: any) {
+  const metadata = user.user_metadata ?? {}
+  const identityNames = (user.identities ?? [])
+    .filter((identity: any) => identity.provider === 'google')
+    .map((identity: any) => {
+      const identityData = identity.identity_data as Record<string, unknown> | null
+      return identityData?.full_name ?? identityData?.name
+    })
+  const metadataGivenName = [metadata.given_name, metadata.family_name]
+    .filter((value: unknown) => typeof value === 'string' && value.trim().length > 0)
+    .join(' ')
+  const emailName = (user.email?.split('@')[0] ?? '').replace(/[._+-]+/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/\b\w/g, (letter: string) => letter.toUpperCase())
+  const customerName = [
+    metadata.full_name, metadata.name, metadataGivenName, ...identityNames, emailName
+  ].find((value: unknown) => typeof value === 'string' && value.trim().length > 0)?.trim().slice(0, 160) ?? null
+  return {
+    customerName,
+    customerCompany: typeof metadata.company === 'string' ? metadata.company.trim().slice(0, 160) : null,
+    customerSchool: typeof metadata.school === 'string' ? metadata.school.trim().slice(0, 160) : null,
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -42,152 +66,204 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userError } = await authClient.auth.getUser()
   if (userError || !user) return json({ error: 'Your session is invalid. Please sign in again.' }, 401)
 
-  let body: { productCode?: string }
+  let body: { productCode?: string; productCodes?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid request body.' }, 400) }
-  const code = body.productCode as keyof typeof products
-  const product = products[code]
-  if (!product) return json({ error: 'Unknown product.' }, 400)
-
-  const metadata = user.user_metadata ?? {}
-  const identityNames = (user.identities ?? [])
-    .filter(identity => identity.provider === 'google')
-    .map(identity => {
-      const identityData = identity.identity_data as Record<string, unknown> | null
-      return identityData?.full_name ?? identityData?.name
-    })
-  const metadataGivenName = [metadata.given_name, metadata.family_name]
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    .join(' ')
-  const emailName = (user.email?.split('@')[0] ?? '').replace(/[._+-]+/g, ' ').replace(/\s+/g, ' ').trim()
-    .replace(/\b\w/g, letter => letter.toUpperCase())
-  const customerName = [
-    metadata.full_name,
-    metadata.name,
-    metadataGivenName,
-    ...identityNames,
-    emailName
-  ].find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim().slice(0, 160) ?? null
-  const customerCompany = typeof metadata.company === 'string' ? metadata.company.trim().slice(0, 160) : null
-  const customerSchool = typeof metadata.school === 'string' ? metadata.school.trim().slice(0, 160) : null
-
-  const price = Number(Deno.env.get(product.env))
-  if (!Number.isSafeInteger(price) || price <= 0) {
-    return json({ error: `Price for ${code} is not configured. Please contact Hyperion support or use manual payment.` }, 503)
+  const inputCodes = Array.isArray(body.productCodes)
+    ? body.productCodes
+    : body.productCode ? [body.productCode] : []
+  if (!inputCodes.length || inputCodes.some((code: unknown) => typeof code !== 'string' || !productOrder.includes(code as typeof productOrder[number]))) {
+    return json({ error: 'Select at least one valid reviewer track.' }, 400)
   }
+  const codes = productOrder.filter(code => inputCodes.includes(code))
+  if (codes.length !== inputCodes.length || codes.length > productOrder.length) {
+    return json({ error: 'Your basket contains duplicate or invalid products. Please review it and try again.' }, 400)
+  }
+
+  const profile = profileFor(user)
+  const productPrices: Record<string, number> = {}
+  for (const code of codes) {
+    const price = Number(Deno.env.get(products[code].env))
+    if (!Number.isSafeInteger(price) || price <= 0) {
+      return json({ error: `Price for ${code} is not configured. Please contact Hyperion support.` }, 503)
+    }
+    productPrices[code] = price
+  }
+  const totalPrice = codes.reduce((sum, code) => sum + productPrices[code], 0)
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
-  const { data: currentEntitlement, error: entitlementLookupError } = await admin
-    .from('entitlements')
-    .select('status,expires_at')
-    .eq('user_id', user.id)
-    .eq('product_code', code)
-    .maybeSingle()
-  if (entitlementLookupError) return json({ error: 'Could not check the current license. Please retry.' }, 500)
-  if (currentEntitlement?.status === 'active' && currentEntitlement.expires_at && new Date(currentEntitlement.expires_at).getTime() > Date.now()) {
-    return json({ error: 'This license is already active for your account. You do not need to purchase this track again.' }, 409)
+
+  // Preserve compatibility with an older single-track checkout already created before
+  // basket checkout was introduced. Never open a second charge for that same product.
+  if (codes.length === 1) {
+    const code = codes[0]
+    const { data: legacyOrder, error: legacyError } = await admin.from('orders')
+      .select('id,paymongo_checkout_session_id')
+      .eq('user_id', user.id).eq('product_code', code).eq('status', 'pending')
+      .eq('payment_method', 'PayMongo Checkout').is('checkout_batch_id', null)
+      .not('paymongo_checkout_session_id', 'is', null)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (legacyError) return json({ error: 'Could not check your existing checkout. Please retry.' }, 500)
+    if (legacyOrder?.paymongo_checkout_session_id) {
+      try {
+        const response = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(legacyOrder.paymongo_checkout_session_id)}`, {
+          headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}` }
+        })
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok) return json({ error: 'An earlier checkout is still pending. Refresh payment status before retrying.' }, 503)
+        const attrs = result?.data?.attributes
+        const payments = Array.isArray(attrs?.payments) ? attrs.payments : []
+        if (payments.some((payment: any) => payment?.attributes?.status === 'paid')) {
+          return json({ alreadyProcessing: true, orderId: legacyOrder.id, productCodes: codes })
+        }
+        if (attrs?.status === 'active' && typeof attrs?.checkout_url === 'string') {
+          const url = new URL(attrs.checkout_url)
+          if (url.protocol !== 'https:' || url.hostname !== 'checkout.paymongo.com') return json({ error: 'PayMongo returned an invalid checkout link.' }, 502)
+          return json({ checkoutUrl: url.toString(), orderId: legacyOrder.id, productCodes: codes, reused: true })
+        }
+        if (attrs?.status === 'expired') {
+          await admin.from('orders').update({ status: 'failed' }).eq('id', legacyOrder.id).eq('status', 'pending')
+        } else {
+          return json({ error: 'An earlier checkout is still open. Resume or safely cancel it before starting another payment.' }, 409)
+        }
+      } catch (error) {
+        if (error instanceof TypeError) return json({ error: 'Could not contact PayMongo to check the previous checkout. Please retry.' }, 502)
+        return json({ error: 'Could not safely check your previous checkout. Please retry.' }, 502)
+      }
+    }
+  } else {
+    const { data: legacyOrders, error: legacyError } = await admin.from('orders')
+      .select('id,product_code')
+      .eq('user_id', user.id).in('product_code', codes).eq('status', 'pending')
+      .eq('payment_method', 'PayMongo Checkout').is('checkout_batch_id', null)
+      .not('paymongo_checkout_session_id', 'is', null)
+    if (legacyError) return json({ error: 'Could not check your previous checkout. Please retry.' }, 500)
+    if (legacyOrders?.length) {
+      return json({ error: 'An older single-track checkout is still open for one item in this basket. Resume or cancel that checkout first, then return to the basket.' }, 409)
+    }
   }
 
-  const { data: manualRequests, error: manualRequestError } = await admin.from('orders')
-    .select('id,payment_method')
-    .eq('user_id', user.id)
-    .eq('product_code', code)
-    .in('status', ['submitted', 'pending'])
-  if (manualRequestError) return json({ error: 'Could not check existing payment submissions. Please retry.' }, 500)
-  if (manualRequests?.some(item => item.payment_method !== 'PayMongo Checkout')) {
-    return json({ error: 'You already submitted this track for manual review. Complete or cancel that request before starting PayMongo checkout.' }, 409)
-  }
-
-  // Reuse a pending checkout instead of creating multiple orders for the same track.
-  const { data: pendingCheckout, error: pendingCheckoutError } = await admin.from('orders')
-    .select('id,paymongo_checkout_session_id')
-    .eq('user_id', user.id)
-    .eq('product_code', code)
-    .eq('status', 'pending')
-    .eq('payment_method', 'PayMongo Checkout')
-    .not('paymongo_checkout_session_id', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (pendingCheckoutError) return json({ error: 'Could not check your existing checkout. Please retry.' }, 500)
-
-  if (pendingCheckout?.paymongo_checkout_session_id) {
-    let existingResponse: Response
-    let existingSession: any
+  const { data: pendingBatches, error: pendingBatchError } = await admin.from('checkout_batches')
+    .select('id,product_codes,paymongo_checkout_session_id')
+    .eq('user_id', user.id).eq('status', 'pending')
+    .order('created_at', { ascending: false }).limit(10)
+  if (pendingBatchError) return json({ error: 'Could not check your previous basket checkout. Please retry.' }, 500)
+  const activePendingBatch = (pendingBatches ?? []).find(batch => batch.paymongo_checkout_session_id)
+  if (activePendingBatch) {
+    const pendingCodes = productOrder.filter(code => (activePendingBatch.product_codes ?? []).includes(code))
+    if (pendingCodes.join(',') !== codes.join(',')) {
+      return json({ error: 'You already have a checkout open for a different basket. Resume or cancel it before checking out these items.' }, 409)
+    }
     try {
-      existingResponse = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(pendingCheckout.paymongo_checkout_session_id)}`, {
+      const response = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${encodeURIComponent(activePendingBatch.paymongo_checkout_session_id)}`, {
         headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}` }
       })
-      existingSession = await existingResponse.json().catch(() => ({}))
-    } catch {
-      return json({ error: 'An earlier PayMongo checkout is still pending. Could not check it safely; please refresh or contact Hyperion support before trying again.' }, 503)
-    }
-    if (!existingResponse.ok) {
-      return json({ error: 'An earlier PayMongo checkout is still pending. Could not check it safely; please contact Hyperion support before paying again.' }, 503)
-    }
-
-    const previousAttributes = existingSession?.data?.attributes
-    const previousPayments = Array.isArray(previousAttributes?.payments) ? previousAttributes.payments : []
-    if (previousPayments.some((payment: any) => payment?.attributes?.status === 'paid')) {
-      return json({ alreadyProcessing: true, orderId: pendingCheckout.id, message: 'Payment is already recorded and its license activation is being finalized.' })
-    }
-
-    const previousCheckoutUrl = previousAttributes?.checkout_url
-    if (previousAttributes?.status === 'active' && typeof previousCheckoutUrl === 'string') {
-      let safeUrl: URL
-      try { safeUrl = new URL(previousCheckoutUrl) } catch { return json({ error: 'The earlier PayMongo checkout link is invalid. Please contact support.' }, 502) }
-      if (safeUrl.protocol !== 'https:' || safeUrl.hostname !== 'checkout.paymongo.com') {
-        return json({ error: 'The earlier PayMongo checkout link is invalid. Please contact support.' }, 502)
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) return json({ error: 'Could not check your existing PayMongo checkout. Please retry.' }, 502)
+      const attrs = result?.data?.attributes
+      const payments = Array.isArray(attrs?.payments) ? attrs.payments : []
+      if (payments.some((payment: any) => payment?.attributes?.status === 'paid')) {
+        return json({ alreadyProcessing: true, orderId: activePendingBatch.id, productCodes: codes })
       }
-      return json({ checkoutUrl: safeUrl.toString(), orderId: pendingCheckout.id, reused: true })
-    }
-
-    if (previousAttributes?.status === 'expired') {
-      await admin.from('orders').update({ status: 'failed' })
-        .eq('id', pendingCheckout.id).eq('status', 'pending')
-    } else {
-      return json({ error: 'An earlier PayMongo checkout is still pending. Resume it from your payment history before trying again.' }, 409)
+      if (attrs?.status === 'active' && typeof attrs?.checkout_url === 'string') {
+        const url = new URL(attrs.checkout_url)
+        if (url.protocol !== 'https:' || url.hostname !== 'checkout.paymongo.com') return json({ error: 'PayMongo returned an invalid checkout link.' }, 502)
+        return json({ checkoutUrl: url.toString(), orderId: activePendingBatch.id, productCodes: codes, reused: true, isBatch: true })
+      }
+      if (attrs?.status === 'expired') {
+        await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', activePendingBatch.id).eq('status', 'pending')
+        await admin.from('orders').update({ status: 'failed' }).eq('checkout_batch_id', activePendingBatch.id).eq('status', 'pending')
+      } else {
+        return json({ error: 'This basket checkout is still open or processing. Resume it or refresh payment status before starting another payment.' }, 409)
+      }
+    } catch {
+      return json({ error: 'Could not safely check your previous basket checkout. Please retry.' }, 502)
     }
   }
 
-  const { data: order, error: insertError } = await admin.from('orders').insert({
+  for (const code of codes) {
+    const { data: entitlement, error } = await admin.from('entitlements')
+      .select('status,expires_at').eq('user_id', user.id).eq('product_code', code).maybeSingle()
+    if (error) return json({ error: 'Could not check your current licenses. Please retry.' }, 500)
+    if (entitlement?.status === 'active' && entitlement.expires_at && new Date(entitlement.expires_at).getTime() > Date.now()) {
+      return json({ error: `${products[code].name} is already active for your account. Remove it from the basket before checkout.` }, 409)
+    }
+  }
+
+  const { data: manualOrders, error: manualOrderError } = await admin.from('orders')
+    .select('id,product_code,payment_method')
+    .eq('user_id', user.id).in('product_code', codes).in('status', ['submitted','pending'])
+  if (manualOrderError) return json({ error: 'Could not check existing payment submissions. Please retry.' }, 500)
+  if (manualOrders?.some(order => order.payment_method !== 'PayMongo Checkout')) {
+    const conflict = manualOrders.find(order => order.payment_method !== 'PayMongo Checkout')
+    return json({ error: `You already have a manual payment waiting for review for ${products[conflict!.product_code as keyof typeof products]?.name ?? conflict!.product_code}. Complete or cancel that request before paying for it through PayMongo.` }, 409)
+  }
+
+  const { data: batch, error: batchError } = await admin.from('checkout_batches').insert({
     user_id: user.id,
-    product_code: code,
-    track_id: product.track,
-    amount_php: price,
+    product_codes: codes,
+    amount_php: totalPrice,
     currency: 'PHP',
     status: 'pending',
     payment_method: 'PayMongo Checkout',
-    customer_name: customerName,
-    customer_company: customerCompany,
-    customer_school: customerSchool
+    customer_name: profile.customerName,
+    customer_company: profile.customerCompany,
+    customer_school: profile.customerSchool
   }).select('id').single()
-  if (insertError || !order) return json({ error: 'Could not create your order. Please try again.' }, 500)
+  if (batchError || !batch) return json({ error: 'Could not create your basket order. Please try again.' }, 500)
+
+  const childOrders = codes.map(code => ({
+    user_id: user.id,
+    product_code: code,
+    track_id: products[code].track,
+    amount_php: productPrices[code],
+    currency: 'PHP',
+    status: 'pending',
+    payment_method: 'PayMongo Checkout',
+    payment_reference: batch.id,
+    checkout_batch_id: batch.id,
+    customer_name: profile.customerName,
+    customer_company: profile.customerCompany,
+    customer_school: profile.customerSchool
+  }))
+  const { error: childInsertError } = await admin.from('orders').insert(childOrders)
+  if (childInsertError) {
+    await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', batch.id)
+    return json({ error: 'Could not add the basket items to your order. Please try again.' }, 500)
+  }
 
   const configuredBase = (Deno.env.get('APP_BASE_URL') || 'https://hyperionmaritime.org').replace(/\/+$/, '')
   let appUrl: URL
   try { appUrl = new URL(configuredBase) } catch {
-    await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+    await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', batch.id)
+    await admin.from('orders').update({ status: 'failed' }).eq('checkout_batch_id', batch.id)
     return json({ error: 'The app return URL is not configured correctly.' }, 503)
   }
   if (appUrl.protocol !== 'https:' && !(appUrl.hostname === 'localhost' && appUrl.protocol === 'http:')) {
-    await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+    await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', batch.id)
+    await admin.from('orders').update({ status: 'failed' }).eq('checkout_batch_id', batch.id)
     return json({ error: 'The app return URL must use HTTPS.' }, 503)
   }
 
+  const metadata = {
+    order_id: batch.id,
+    batch_id: batch.id,
+    user_id: user.id,
+    product_codes: codes.join(',')
+  }
   const payload = {
     data: {
       attributes: {
-        line_items: [{ name: product.name, amount: price * 100, currency: 'PHP', quantity: 1 }],
+        line_items: codes.map(code => ({ name: products[code].name, amount: productPrices[code] * 100, currency: 'PHP', quantity: 1 })),
         billing: {
-          ...(customerName ? { name: customerName } : {}),
+          ...(profile.customerName ? { name: profile.customerName } : {}),
           ...(user.email ? { email: user.email } : {})
         },
         payment_method_types: ['gcash', 'paymaya', 'qrph', 'card'],
-        success_url: `${configuredBase}/account?payment=success&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
-        cancel_url: `${configuredBase}/account?payment=cancelled&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
-        reference_number: order.id,
+        success_url: `${configuredBase}/account?payment=success&order_id=${encodeURIComponent(batch.id)}&product_codes=${encodeURIComponent(codes.join(','))}`,
+        cancel_url: `${configuredBase}/account?payment=cancelled&order_id=${encodeURIComponent(batch.id)}&product_codes=${encodeURIComponent(codes.join(','))}`,
+        reference_number: batch.id,
         send_email_receipt: true,
-        metadata: { order_id: order.id, user_id: user.id, product_code: code }
+        metadata
       }
     }
   }
@@ -205,36 +281,43 @@ Deno.serve(async (req) => {
     })
     result = await response.json().catch(() => ({}))
   } catch {
-    await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+    await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', batch.id)
+    await admin.from('orders').update({ status: 'failed' }).eq('checkout_batch_id', batch.id)
     return json({ error: 'Could not connect to PayMongo. Please retry or use manual payment.' }, 502)
   }
 
   const checkoutUrl = result?.data?.attributes?.checkout_url
   const sessionId = result?.data?.id
   if (!response.ok || !checkoutUrl || !sessionId) {
-    await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+    await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', batch.id)
+    await admin.from('orders').update({ status: 'failed' }).eq('checkout_batch_id', batch.id)
     return json({ error: 'PayMongo could not start checkout. Check the API key and enabled payment methods.' }, 502)
   }
 
   let parsedCheckoutUrl: URL
   try { parsedCheckoutUrl = new URL(checkoutUrl) } catch {
-    await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+    await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', batch.id)
+    await admin.from('orders').update({ status: 'failed' }).eq('checkout_batch_id', batch.id)
     return json({ error: 'PayMongo returned an invalid checkout link.' }, 502)
   }
   if (parsedCheckoutUrl.protocol !== 'https:' || parsedCheckoutUrl.hostname !== 'checkout.paymongo.com') {
-    await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
+    await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', batch.id)
+    await admin.from('orders').update({ status: 'failed' }).eq('checkout_batch_id', batch.id)
     return json({ error: 'PayMongo returned an unexpected checkout domain.' }, 502)
   }
 
-  const { error: updateError } = await admin.from('orders')
-    .update({ paymongo_checkout_session_id: sessionId, payment_reference: order.id })
-    .eq('id', order.id)
+  const { error: updateError } = await admin.from('checkout_batches')
+    .update({ paymongo_checkout_session_id: sessionId, payment_reference: batch.id })
+    .eq('id', batch.id).eq('status', 'pending')
   if (updateError) {
-    // Do not redirect a customer to checkout when the session cannot be attached
-    // to the server-owned order, because the webhook could not safely match it.
-    await admin.from('orders').update({ status: 'failed' }).eq('id', order.id)
-    return json({ error: 'Checkout tracking could not be saved. Please use manual payment or contact support.' }, 500)
+    await fetch(`https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(sessionId)}/expire`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}`, 'Content-Type': 'application/json' }
+    }).catch(() => undefined)
+    await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', batch.id)
+    await admin.from('orders').update({ status: 'failed' }).eq('checkout_batch_id', batch.id)
+    return json({ error: 'Checkout tracking could not be saved. Please retry or contact support.' }, 500)
   }
 
-  return json({ checkoutUrl: parsedCheckoutUrl.toString(), orderId: order.id })
+  return json({ checkoutUrl: parsedCheckoutUrl.toString(), orderId: batch.id, productCodes: codes, isBatch: true })
 })
