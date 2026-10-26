@@ -43,9 +43,9 @@ async function edgeFunctionErrorMessage(error: unknown): Promise<string | null> 
 export default function AccountScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
+  const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
   useEffect(() => { setAccountTab(params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments') }, [params])
   const [session, setSession] = useState<Session | null>(null)
-  const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
   const [basket, setBasket] = useState<PaidTrack[]>(() => {
     try {
       const raw = localStorage.getItem('hyperion-account-basket-v1')
