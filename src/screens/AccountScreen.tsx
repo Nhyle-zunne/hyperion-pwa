@@ -47,7 +47,11 @@ export default function AccountScreen() {
       type: 'hyperion-oauth-success',
       access_token: session.access_token,
       refresh_token: session.refresh_token,
-    }, 'https://hyperionmaritime.org')
+      return_to: (() => {
+        const requested = params.get('return_to') || '/'
+        return requested.startsWith('/') && !requested.startsWith('//') ? requested : '/'
+      })(),
+    }, window.location.origin)
     window.close()
   }, [params, session?.access_token, session?.refresh_token])
 
@@ -102,8 +106,9 @@ export default function AccountScreen() {
           setMessage(error.message)
         } else {
           setMessage('Signed in successfully.')
-          // Complete the sign-in in the main window and return to the dashboard.
-          navigate('/')
+          // Finish in the original tab at the exact page where sign-in was started.
+          const returnTo = typeof event.data.return_to === 'string' ? event.data.return_to : '/'
+          navigate(returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/', { replace: true })
         }
         setBusy(false)
       })
@@ -133,7 +138,7 @@ export default function AccountScreen() {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: 'https://hyperionmaritime.org/account?oauth_popup=1',
+          redirectTo: `https://hyperionmaritime.org/account?oauth_popup=1&return_to=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`,
           skipBrowserRedirect: true,
         },
       })
