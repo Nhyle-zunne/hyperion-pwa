@@ -1458,7 +1458,7 @@ a:focus-visible,
 
 /* Desktop sizing: keep the dashboard wide, but preserve the portrait study/config/question layouts. */
 @media (min-width: 900px) {
-  .screen:not(.track-hub-screen):not(.dashboard-screen) {
+  .screen:not(.track-hub-screen):not(.dashboard-screen):not(.question-runner-screen) {
     max-width: 560px;
     padding-left: 1.25rem;
     padding-right: 1.25rem;
