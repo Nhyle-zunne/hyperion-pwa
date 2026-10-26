@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Question, UserAnswer, TrackId } from '../types/question';
-import { authorizeQuestionSetAccess, getQuestionsByCompetence, getQuestionsByTrack } from '../lib/questionBank';
+import { authorizeQuestionSetAccess, getQuestionsByCompetence } from '../lib/questionBank';
 import { useLicenseStore } from './licenseStore';
 import { useHistoryStore, type SessionMode } from './historyStore';
 import { useVaultStore } from './vaultStore';
@@ -216,23 +216,20 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       const lic = useLicenseStore.getState();
       const licensed = lic.isAllAccessUnlocked || lic.isTrackUnlocked(track);
       const isFreeSession = Boolean(free || !licensed);
-      if (!competenceId && mode !== 'MOCK') {
+      if (!competenceId) {
         set({ loading: false, sessionId: null, questions: [], error: 'Select a competence before starting practice.' });
         return;
       }
-      let qs: Question[];
-      if (isFreeSession) {
-        const sample = await getQuestionsByTrack(track, true);
-        qs = competenceId ? sample.filter((q) => q.competenceId === competenceId) : sample;
-      } else {
-        qs = competenceId
-          ? await getQuestionsByCompetence(track, competenceId)
-          : await getQuestionsByTrack(track);
-      }
-
-      if (track === 'GMDSS_GOC' && part != null) {
-        qs = qs.filter((q) => q.id.includes(`-P${part}-`));
-      }
+      const itemStart = Math.max(1, Math.floor(startItem ?? 1));
+      const qs = await getQuestionsByCompetence(
+        track,
+        competenceId,
+        part,
+        isFreeSession,
+        mode === 'MOCK' ? 1 : itemStart,
+        finalLimit,
+        mode === 'MOCK'
+      );
 
       if (qs.length === 0) {
         set({ loading: false, error: 'No questions available for this selection yet.', sessionId: null, questions: [] });
@@ -249,8 +246,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         delivered = selected.map(shuffleQuestionChoices);
       } else {
         // Practice modes retain their configured item range and optional shuffling.
-        const start = Math.max(1, Math.floor(startItem ?? 1)) - 1;
-        const range = qs.slice(start, start + finalLimit);
+        const range = qs;
         selected = randomizeOrder === false ? range : shuffle(range);
         delivered = shuffleChoices ? selected.map(shuffleQuestionChoices) : selected;
       }
