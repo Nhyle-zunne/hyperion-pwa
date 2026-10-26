@@ -12,7 +12,7 @@ export default function AdminPaymentsScreen() {
   const [message, setMessage] = useState('')
   const [authorized, setAuthorized] = useState(false)
   const call = useCallback(async (body: Record<string,unknown>) => {
-    if (!supabase) throw new Error('Supabase is not configured.')
+    if (!supabase) throw new Error('Payment administration is temporarily unavailable. Please try again later.')
     const { data, error } = await supabase.functions.invoke('admin-payment-review', { body })
     if (error) throw error
     if (data?.error) throw new Error(data.error)
