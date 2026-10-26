@@ -7,6 +7,15 @@ const cors = {
 }
 
 const productOrder = ['oic_nw', 'gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt'] as const
+const termOrder = ['week', 'month', 'year'] as const
+type LicenseTerm = typeof termOrder[number]
+const termPrices: Record<typeof productOrder[number], Record<LicenseTerm, number>> = {
+  oic_nw: { week: 20, month: 50, year: 350 },
+  gmdss: { week: 15, month: 40, year: 250 },
+  engine_ew: { week: 20, month: 50, year: 350 },
+  deck_mgt: { week: 40, month: 100, year: 700 },
+  engine_mgt: { week: 40, month: 100, year: 700 }
+}
 const products = {
   oic_nw: { env: 'PRICE_DECK_OIC_NW_PHP', name: 'Hyperion Deck OIC-NW', track: 'DECK_OIC_NW' },
   gmdss: { env: 'PRICE_GMDSS_PHP', name: 'Hyperion GMDSS GOC', track: 'GMDSS_GOC' },
@@ -66,28 +75,31 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userError } = await authClient.auth.getUser()
   if (userError || !user) return json({ error: 'Your session is invalid. Please sign in again.' }, 401)
 
-  let body: { productCode?: string; productCodes?: unknown }
+  let body: { productCode?: string; productCodes?: unknown; items?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid request body.' }, 400) }
-  const inputCodes = Array.isArray(body.productCodes)
-    ? body.productCodes
-    : body.productCode ? [body.productCode] : []
-  if (!inputCodes.length || inputCodes.some((code: unknown) => typeof code !== 'string' || !productOrder.includes(code as typeof productOrder[number]))) {
-    return json({ error: 'Select at least one valid reviewer track.' }, 400)
+  const rawItems: unknown[] = Array.isArray(body.items)
+    ? body.items
+    : (Array.isArray(body.productCodes) ? body.productCodes : body.productCode ? [body.productCode] : [])
+      .map((entry: unknown) => typeof entry === 'string' ? { productCode: entry, term: 'year' } : entry)
+  if (!rawItems.length || rawItems.length > productOrder.length) return json({ error: 'Select at least one valid reviewer track.' }, 400)
+  const termByCode = new Map<typeof productOrder[number], LicenseTerm>()
+  for (const rawItem of rawItems) {
+    if (!rawItem || typeof rawItem !== 'object') return json({ error: 'Your basket contains an invalid item.' }, 400)
+    const item = rawItem as { productCode?: unknown; term?: unknown }
+    if (typeof item.productCode !== 'string' || !productOrder.includes(item.productCode as typeof productOrder[number])) {
+      return json({ error: 'Select a valid reviewer track.' }, 400)
+    }
+    const term = item.term === undefined ? 'year' : item.term
+    if (typeof term !== 'string' || !termOrder.includes(term as LicenseTerm)) return json({ error: 'Choose a valid access duration for every track.' }, 400)
+    const code = item.productCode as typeof productOrder[number]
+    if (termByCode.has(code)) return json({ error: 'Your basket contains duplicate products. Select one duration per track.' }, 400)
+    termByCode.set(code, term as LicenseTerm)
   }
-  const codes = productOrder.filter(code => inputCodes.includes(code))
-  if (codes.length !== inputCodes.length || codes.length > productOrder.length) {
-    return json({ error: 'Your basket contains duplicate or invalid products. Please review it and try again.' }, 400)
-  }
-
+  const codes = productOrder.filter(code => termByCode.has(code))
+  const termsByCode = Object.fromEntries(codes.map(code => [code, termByCode.get(code)!])) as Record<typeof productOrder[number], LicenseTerm>
   const profile = profileFor(user)
   const productPrices: Record<string, number> = {}
-  for (const code of codes) {
-    const price = Number(Deno.env.get(products[code].env))
-    if (!Number.isSafeInteger(price) || price <= 0) {
-      return json({ error: `Price for ${code} is not configured. Please contact Hyperion support.` }, 503)
-    }
-    productPrices[code] = price
-  }
+  for (const code of codes) productPrices[code] = termPrices[code][termsByCode[code]]
   const totalPrice = codes.reduce((sum, code) => sum + productPrices[code], 0)
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
@@ -97,13 +109,15 @@ Deno.serve(async (req) => {
   if (codes.length === 1) {
     const code = codes[0]
     const { data: legacyOrder, error: legacyError } = await admin.from('orders')
-      .select('id,paymongo_checkout_session_id')
+      .select('id,license_term,paymongo_checkout_session_id')
       .eq('user_id', user.id).eq('product_code', code).eq('status', 'pending')
       .eq('payment_method', 'PayMongo Checkout').is('checkout_batch_id', null)
       .not('paymongo_checkout_session_id', 'is', null)
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
     if (legacyError) return json({ error: 'Could not check your existing checkout. Please retry.' }, 500)
     if (legacyOrder?.paymongo_checkout_session_id) {
+      const existingTerm: LicenseTerm = legacyOrder.license_term === 'week' || legacyOrder.license_term === 'month' ? legacyOrder.license_term : 'year'
+      if (existingTerm !== termsByCode[code]) return json({ error: `You already have an open checkout for ${products[code].name} with the ${existingTerm} term. Resume or cancel it before choosing a different term.` }, 409)
       try {
         const response = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(legacyOrder.paymongo_checkout_session_id)}`, {
           headers: { Authorization: `Basic ${btoa(paymongoKey + ':')}` }
@@ -115,6 +129,7 @@ Deno.serve(async (req) => {
         if (payments.some((payment: any) => payment?.attributes?.status === 'paid')) {
           return json({ alreadyProcessing: true, orderId: legacyOrder.id, productCodes: codes })
         }
+        if (attrs?.metadata?.license_term && attrs.metadata.license_term !== existingTerm) return json({ error: 'The previous checkout duration does not match its saved order. Contact support before paying again.' }, 409)
         if (attrs?.status === 'active' && typeof attrs?.checkout_url === 'string') {
           const url = new URL(attrs.checkout_url)
           if (url.protocol !== 'https:' || url.hostname !== 'checkout.paymongo.com') return json({ error: 'PayMongo returned an invalid checkout link.' }, 502)
@@ -132,7 +147,7 @@ Deno.serve(async (req) => {
     }
   } else {
     const { data: legacyOrders, error: legacyError } = await admin.from('orders')
-      .select('id,product_code')
+      .select('id,product_code,license_term')
       .eq('user_id', user.id).in('product_code', codes).eq('status', 'pending')
       .eq('payment_method', 'PayMongo Checkout').is('checkout_batch_id', null)
       .not('paymongo_checkout_session_id', 'is', null)
@@ -143,7 +158,7 @@ Deno.serve(async (req) => {
   }
 
   const { data: pendingBatches, error: pendingBatchError } = await admin.from('checkout_batches')
-    .select('id,product_codes,paymongo_checkout_session_id')
+    .select('id,product_codes,license_terms,paymongo_checkout_session_id')
     .eq('user_id', user.id).eq('status', 'pending')
     .order('created_at', { ascending: false }).limit(10)
   if (pendingBatchError) return json({ error: 'Could not check your previous basket checkout. Please retry.' }, 500)
@@ -154,8 +169,9 @@ Deno.serve(async (req) => {
   }
   if (activePendingBatch) {
     const pendingCodes = productOrder.filter(code => (activePendingBatch.product_codes ?? []).includes(code))
-    if (pendingCodes.join(',') !== codes.join(',')) {
-      return json({ error: 'You already have a checkout open for a different basket. Resume or cancel it before checking out these items.' }, 409)
+    const pendingTerms = Object.fromEntries(pendingCodes.map((code, index) => [code, activePendingBatch.license_terms?.[index] || 'year']))
+    if (pendingCodes.join(',') !== codes.join(',') || pendingCodes.some(code => pendingTerms[code] !== termsByCode[code])) {
+      return json({ error: 'You already have a checkout open for a different basket or access duration. Resume or cancel it before checking out these items.' }, 409)
     }
     try {
       const response = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(activePendingBatch.paymongo_checkout_session_id)}`, {
@@ -213,6 +229,7 @@ Deno.serve(async (req) => {
       product_code: code,
       track_id: product.track,
       amount_php: price,
+      license_term: termsByCode[code],
       currency: 'PHP',
       status: 'pending',
       payment_method: 'PayMongo Checkout',
@@ -246,7 +263,7 @@ Deno.serve(async (req) => {
           cancel_url: `${configuredBase}/checkout?payment=cancelled&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
           reference_number: order.id,
           send_email_receipt: true,
-          metadata: { order_id: order.id, user_id: user.id, product_code: code }
+          metadata: { order_id: order.id, user_id: user.id, product_code: code, license_term: termsByCode[code] }
         }
       }
     }
@@ -315,6 +332,7 @@ Deno.serve(async (req) => {
   const { data: batch, error: batchError } = await admin.from('checkout_batches').insert({
     user_id: user.id,
     product_codes: codes,
+    license_terms: codes.map(code => termsByCode[code]),
     amount_php: totalPrice,
     currency: 'PHP',
     status: 'pending',
@@ -330,6 +348,7 @@ Deno.serve(async (req) => {
     product_code: code,
     track_id: products[code].track,
     amount_php: productPrices[code],
+    license_term: termsByCode[code],
     currency: 'PHP',
     status: 'pending',
     payment_method: 'PayMongo Checkout',
@@ -362,12 +381,13 @@ Deno.serve(async (req) => {
     order_id: batch.id,
     batch_id: batch.id,
     user_id: user.id,
-    product_codes: codes.join(',')
+    product_codes: codes.join(','),
+    product_terms: codes.map(code => `${code}:${termsByCode[code]}`).join(',')
   }
   const payload = {
     data: {
       attributes: {
-        line_items: codes.map(code => ({ name: products[code].name, amount: productPrices[code] * 100, currency: 'PHP', quantity: 1 })),
+        line_items: codes.map(code => ({ name: `${products[code].name} (${termsByCode[code]})`, amount: productPrices[code] * 100, currency: 'PHP', quantity: 1 })),
         billing: {
           ...(profile.customerName ? { name: profile.customerName } : {}),
           ...(user.email ? { email: user.email } : {})
