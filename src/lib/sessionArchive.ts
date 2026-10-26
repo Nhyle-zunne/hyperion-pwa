@@ -12,6 +12,7 @@ export interface SessionSnapshot {
   competenceId: string | null
   part: number | null
   mode: ArchivedSessionMode
+  isFreeSession?: boolean
   startedAt: number
   timeLimitSec: number
   timeLeftSec: number
