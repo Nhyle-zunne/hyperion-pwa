@@ -26,6 +26,7 @@ interface PracticeState {
   streak: number;
   bestStreak: number;
 
+  startCustomSession: (opts: { questions: Question[]; track: TrackId; competenceId?: string | null; isFreeSession: boolean }) => void;
   startSession: (opts: {
     mode: SessionMode;
     track: TrackId;
@@ -96,7 +97,7 @@ function persistActiveSession(s: PracticeState) {
   useHistoryStore.getState().saveSession({
     id: snapshot.sessionId, mode: s.mode, track: s.track!, competenceId: s.competenceId,
     part: s.part, currentIndex: s.currentIndex, total: s.questions.length,
-    answered, correct, startedAt: s.startedAt, savedAt: Date.now()
+    answered, correct, startedAt: s.startedAt, savedAt: Date.now(), isFreeSession: s.isFreeSession
   });
 }
 
@@ -127,7 +128,7 @@ function recordHistory(get: () => PracticeState) {
   useHistoryStore.getState().removeSavedSessionById(sessionId);
   const historyId = useHistoryStore.getState().addEntry({
     id: sessionId, mode: s.mode, track: s.track, competenceId: s.competenceId,
-    part: s.part, correct, total, answered, percent, durationMs, startedAt, finishedAt
+    part: s.part, isFreeSession: s.isFreeSession, correct, total, answered, percent, durationMs, startedAt, finishedAt
   });
   if (snapshot) void saveSessionSnapshot(historyId, { ...snapshot, sessionId: historyId, finished: true }).catch(() => undefined);
 
@@ -162,6 +163,33 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   timeLeftSec: 0,
   streak: 0,
   bestStreak: 0,
+
+  startCustomSession: ({ questions, track, competenceId, isFreeSession }) => {
+    if (questions.length === 0) return;
+    const selected = shuffle(questions);
+    const startedAt = Date.now();
+    const sessionId = makeSessionId();
+    set({
+      questions: selected,
+      answers: {},
+      currentIndex: 0,
+      loading: false,
+      error: null,
+      track,
+      competenceId: competenceId ?? null,
+      part: null,
+      isFreeSession,
+      sessionId,
+      finished: false,
+      mode: 'PRACTICE',
+      startedAt,
+      timeLimitSec: 0,
+      timeLeftSec: 0,
+      streak: 0,
+      bestStreak: 0
+    });
+    persistActiveSession(get());
+  },
 
   startSession: async ({ mode, track, competenceId, limit, timeLimitSec, free, randomizeOrder, shuffleChoices, startItem, part }) => {
     const defaultLimit = mode === 'MOCK' ? 30 : mode === 'DRILL' ? 12 : 15;
