@@ -88,8 +88,6 @@ export default function App() {
   const isQuestionRunner = isPracticeQuiz || isMockRunner
 
   const hideNav = [
-    '/terms',
-    '/about',
     '/practice/quiz',
     '/mock/exam',
     '/auth/callback'
