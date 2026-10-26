@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { freeSample, getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import { getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
 import type { TrackId } from '../types/question'
@@ -41,8 +41,8 @@ export default function PracticeCompetenceScreen() {
   useEffect(() => {
     let cancelled = false
     async function loadCounts() {
-      const all = await getQuestionsByTrack(track)
-      const pool = freeMode ? freeSample(all, track) : all
+      const restrictedToFreePool = freeMode || !unlocked
+      const pool = await getQuestionsByTrack(track, restrictedToFreePool)
       const next: Record<string, number> = {}
       for (const competence of competences) {
         next[competence.id] = pool.filter(q => q.competenceId === competence.id).length
@@ -51,7 +51,7 @@ export default function PracticeCompetenceScreen() {
     }
     void loadCounts()
     return () => { cancelled = true }
-  }, [track, freeMode])
+  }, [track, freeMode, unlocked])
 
   const chooseCompetence = (id: string) => {
     if (!freeMode && !unlocked) {
