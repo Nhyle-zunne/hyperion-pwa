@@ -99,6 +99,124 @@ Deno.serve(async (req) => {
   if (!supabaseUrl || !serviceKey) return new Response('Payment service is not configured', { status: 503 })
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 
+  // Multi-item basket payment: activate exactly the child orders recorded for this
+  // server-created batch, never a client-supplied product list.
+  const { data: batch, error: batchError } = await admin.from('checkout_batches')
+    .select('*')
+    .eq('id', orderId)
+    .maybeSingle()
+  if (batchError) return new Response('Could not look up basket checkout', { status: 500 })
+  if (batch) {
+    if (batch.status === 'paid') return Response.json({ received: true, duplicate: true })
+    if (batch.status !== 'pending' || batch.paymongo_checkout_session_id !== checkoutSession.id) {
+      return new Response('Basket order status or checkout session mismatch', { status: 409 })
+    }
+    const codes = Array.isArray(batch.product_codes) ? batch.product_codes as string[] : []
+    const metadataCodes = typeof sessionAttrs?.metadata?.product_codes === 'string'
+      ? sessionAttrs.metadata.product_codes.split(',').filter(Boolean).sort()
+      : []
+    if (!codes.length || new Set(codes).size !== codes.length ||
+        sessionAttrs?.reference_number !== batch.id ||
+        (sessionAttrs?.metadata?.batch_id !== batch.id && sessionAttrs?.metadata?.order_id !== batch.id) ||
+        sessionAttrs?.metadata?.user_id !== batch.user_id ||
+        metadataCodes.join(',') !== [...codes].sort().join(',') ||
+        sessionAttrs?.livemode !== isLive) {
+      return new Response('Basket order metadata mismatch', { status: 400 })
+    }
+
+    const paymentAttrs = payment.attributes
+    if (paymentAttrs?.currency !== 'PHP' || Number(paymentAttrs?.amount) !== Number(batch.amount_php) * 100) {
+      return new Response('Basket payment amount mismatch', { status: 400 })
+    }
+
+    const { data: childOrders, error: childError } = await admin.from('orders')
+      .select('id,user_id,product_code,track_id,amount_php,currency,status,customer_name,customer_company,customer_school')
+      .eq('checkout_batch_id', batch.id)
+      .eq('user_id', batch.user_id)
+    if (childError || !childOrders) return new Response('Could not load basket order items', { status: 500 })
+    const childCodes = childOrders.map((order: any) => order.product_code).sort()
+    const expectedCodes = [...codes].sort()
+    const childTotal = childOrders.reduce((sum: number, order: any) => sum + Number(order.amount_php), 0)
+    const products: Record<string, string> = {
+      oic_nw: 'DECK_OIC_NW',
+      gmdss: 'GMDSS_GOC',
+      engine_ew: 'ENGINE_OIC_EW',
+      deck_mgt: 'DECK_MGT',
+      engine_mgt: 'ENGINE_MGT'
+    }
+    if (childOrders.length !== codes.length ||
+        childCodes.some((code: string, index: number) => code !== expectedCodes[index]) ||
+        childOrders.some((order: any) => products[order.product_code] !== order.track_id || order.currency !== 'PHP') ||
+        childTotal !== Number(batch.amount_php)) {
+      return new Response('Basket item list or total mismatch', { status: 400 })
+    }
+
+    const source = paymentAttrs?.source?.type || paymentAttrs?.source?.attributes?.type || 'PayMongo Checkout'
+    const paidAt = new Date().toISOString()
+    const customerName = batch.customer_name || sessionAttrs?.billing?.name || paymentAttrs?.billing?.name || null
+    const customerCompany = batch.customer_company || null
+    const customerSchool = batch.customer_school || null
+
+    for (const order of childOrders) {
+      const { data: existingEntitlement, error: currentError } = await admin.from('entitlements')
+        .select('order_id,status,expires_at')
+        .eq('user_id', order.user_id)
+        .eq('product_code', order.product_code)
+        .maybeSingle()
+      if (currentError) return new Response('Could not check basket entitlement', { status: 500 })
+
+      const alreadyGrantedForOrder = existingEntitlement?.order_id === order.id
+        && existingEntitlement.status === 'active'
+        && existingEntitlement.expires_at
+      if (!alreadyGrantedForOrder) {
+        const now = new Date()
+        const existingExpiry = existingEntitlement?.status === 'active' && existingEntitlement.expires_at
+          ? new Date(existingEntitlement.expires_at)
+          : null
+        const renewalBase = existingExpiry && existingExpiry.getTime() > now.getTime() ? existingExpiry : now
+        const expiresAt = new Date(renewalBase)
+        expiresAt.setUTCFullYear(expiresAt.getUTCFullYear() + 1)
+
+        const { error: grantError } = await admin.from('entitlements').upsert({
+          user_id: order.user_id,
+          product_code: order.product_code,
+          track_id: order.track_id,
+          order_id: order.id,
+          status: 'active',
+          granted_at: now.toISOString(),
+          renewed_at: now.toISOString(),
+          expires_at: expiresAt.toISOString()
+        }, { onConflict: 'user_id,product_code' })
+        if (grantError) return new Response('Could not grant a basket entitlement', { status: 500 })
+      }
+    }
+
+    const { error: ordersUpdateError } = await admin.from('orders').update({
+      status: 'paid',
+      payment_reference: payment.id,
+      payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
+      paid_at: paidAt,
+      customer_name: customerName,
+      customer_company: customerCompany,
+      customer_school: customerSchool
+    }).eq('checkout_batch_id', batch.id).eq('user_id', batch.user_id).in('status', ['pending','paid'])
+    if (ordersUpdateError) return new Response('Could not finalize basket order items', { status: 500 })
+
+    const { error: batchUpdateError } = await admin.from('checkout_batches').update({
+      status: 'paid',
+      paymongo_payment_id: payment.id,
+      payment_reference: payment.id,
+      payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
+      paid_at: paidAt,
+      customer_name: customerName,
+      customer_company: customerCompany,
+      customer_school: customerSchool
+    }).eq('id', batch.id).eq('status', 'pending')
+    if (batchUpdateError) return new Response('Could not finalize basket payment', { status: 500 })
+
+    return Response.json({ received: true, basket: true, productCount: codes.length })
+  }
+
   const { data: order, error: orderError } = await admin.from('orders')
     .select('id,user_id,product_code,track_id,amount_php,status,customer_name,customer_company,customer_school,paymongo_checkout_session_id')
     .eq('id', orderId)
