@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
@@ -11,6 +11,8 @@ export default function AccountScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
+  const oauthPopupRef = useRef<Window | null>(null)
+  const oauthOutcomeRef = useRef<'success' | 'error' | null>(null)
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments'>('payments')
   const [product, setProduct] = useState('oic_nw')
   const paymentMethod = 'QR Ph (MariBank / InstaPay)'
@@ -37,35 +39,73 @@ export default function AccountScreen() {
     return () => listener.subscription.unsubscribe()
   }, [])
   useEffect(() => {
-    if (params.get('oauth_popup') !== '1' || !window.opener || !supabase) return
+    if (params.get('oauth_popup') !== '1' || !supabase) return
     const authClient = supabase
     let cancelled = false
+    const popupReturnTo = (() => {
+      const requested = params.get('return_to') || '/'
+      return requested.startsWith('/') && !requested.startsWith('//') ? requested : '/'
+    })()
+    const callbackParams = new URLSearchParams(window.location.search)
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const callbackError =
+      callbackParams.get('error_description') ||
+      callbackParams.get('error') ||
+      hashParams.get('error_description') ||
+      hashParams.get('error') ||
+      hashParams.get('error_code')
+
+    const reportToOpener = (type: 'hyperion-oauth-success' | 'hyperion-oauth-error', errorMessage?: string) => {
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            type,
+            return_to: popupReturnTo,
+            ...(errorMessage ? { message: errorMessage } : {}),
+          }, 'https://hyperionmaritime.org')
+        }
+      } catch {
+        // The opener can be isolated by browser cross-origin rules. The parent
+        // also checks the shared Supabase session after this popup closes.
+      }
+    }
+
     const finishPopupOAuth = async () => {
       try {
-        // detectSessionInUrl is enabled in the shared Supabase client. getSession()
-        // waits for Supabase initialization and its automatic PKCE code exchange;
-        // exchanging the same code manually here can race or consume it twice.
+        if (callbackError) {
+          const errorMessage = decodeURIComponent(callbackError.replace(/\+/g, ' '))
+          reportToOpener('hyperion-oauth-error', errorMessage)
+          if (!cancelled) setMessage(errorMessage)
+          window.close()
+          return
+        }
+
+        // Supabase is configured with detectSessionInUrl=true, so it processes
+        // the callback and stores the session before getSession resolves.
         const { data, error } = await authClient.auth.getSession()
         if (error) throw error
         const activeSession = data.session
         if (!activeSession) {
-          if (!cancelled) setMessage('Google sign-in did not complete. Please try again. If this continues, check the Supabase OAuth redirect settings.')
+          const errorMessage = 'Sign-in did not complete. Check the provider credentials in Supabase Auth and try again.'
+          reportToOpener('hyperion-oauth-error', errorMessage)
+          if (!cancelled) setMessage(errorMessage)
+          window.close()
           return
         }
         if (cancelled) return
-        const requested = params.get('return_to') || '/'
-        const returnTo = requested.startsWith('/') && !requested.startsWith('//') ? requested : '/'
-        window.opener.postMessage({
-          type: 'hyperion-oauth-success',
-          access_token: activeSession.access_token,
-          refresh_token: activeSession.refresh_token,
-          return_to: returnTo,
-        }, window.location.origin)
+
+        // The popup and main site share same-origin storage. Do not pass auth
+        // tokens through postMessage; notify the parent and close this window.
+        reportToOpener('hyperion-oauth-success')
         window.close()
       } catch (error) {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : 'Could not complete sign-in. Please try again.')
+        const errorMessage = error instanceof Error ? error.message : 'Could not complete sign-in. Please try again.'
+        reportToOpener('hyperion-oauth-error', errorMessage)
+        if (!cancelled) setMessage(errorMessage)
+        window.close()
       }
     }
+
     void finishPopupOAuth()
     return () => { cancelled = true }
   }, [params])
@@ -110,50 +150,97 @@ export default function AccountScreen() {
   }
   useEffect(() => { void refreshAccount() }, [session?.user.id])
   useEffect(() => {
-    const handleOAuthMessage = (event: MessageEvent) => {
+    const handleOAuthMessage = async (event: MessageEvent) => {
       if (event.origin !== 'https://hyperionmaritime.org') return
-      if (event.data?.type !== 'hyperion-oauth-success' || !event.data.access_token || !event.data.refresh_token || !supabase) return
-      void supabase.auth.setSession({
-        access_token: event.data.access_token,
-        refresh_token: event.data.refresh_token,
-      }).then(({ error }) => {
-        if (error) {
-          setMessage(error.message)
-        } else {
-          setMessage('Signed in successfully.')
-          // Finish in the original tab at the exact page where sign-in was started.
-          const returnTo = typeof event.data.return_to === 'string' ? event.data.return_to : '/'
-          navigate(returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/', { replace: true })
-        }
+      if (oauthPopupRef.current && event.source !== oauthPopupRef.current) return
+      if (event.data?.type === 'hyperion-oauth-error') {
+        oauthOutcomeRef.current = 'error'
+        setMessage(typeof event.data.message === 'string' ? event.data.message : 'Sign-in could not be completed. Please try again.')
         setBusy(false)
-      })
+        return
+      }
+      if (event.data?.type !== 'hyperion-oauth-success' || !supabase) return
+
+      try {
+        const { data, error } = await supabase.auth.getSession()
+        if (error) throw error
+        if (!data.session) {
+          setMessage('The provider returned to Hyperion but no signed-in session was found. Check the provider credentials in Supabase Auth.')
+          oauthOutcomeRef.current = 'error'
+          return
+        }
+        oauthOutcomeRef.current = 'success'
+        setSession(data.session)
+        setMessage('Signed in successfully.')
+        const requested = typeof event.data.return_to === 'string' ? event.data.return_to : '/'
+        navigate(requested.startsWith('/') && !requested.startsWith('//') ? requested : '/', { replace: true })
+        await refreshCloudEntitlements()
+      } catch (error) {
+        oauthOutcomeRef.current = 'error'
+        setMessage(error instanceof Error ? error.message : 'Unable to finish sign-in. Please try again.')
+      } finally {
+        setBusy(false)
+      }
     }
     window.addEventListener('message', handleOAuthMessage)
     return () => window.removeEventListener('message', handleOAuthMessage)
-  }, [])
+  }, [navigate, refreshCloudEntitlements])
 
   const openOAuthPopup = async (provider: 'google' | 'facebook') => {
-    if (!supabase) return
-    // Open synchronously from the click so browsers don't block the popup.
+    if (!supabase) {
+      setMessage('Sign-in is unavailable because Supabase is not configured.')
+      return
+    }
+
+    const returnTo = window.location.pathname + window.location.search + window.location.hash
     const popup = window.open('about:blank', 'hyperion-oauth', 'popup=yes,width=520,height=700')
     if (!popup) {
       setMessage('Your browser blocked the sign-in popup. Allow pop-ups for hyperionmaritime.org and try again.')
       return
     }
+
+    oauthPopupRef.current = popup
+    oauthOutcomeRef.current = null
     setBusy(true)
     setMessage('')
-    // If the user closes the provider popup without signing in, release the form's busy state.
+
+    // If the browser drops window.opener during the external-provider roundtrip,
+    // recover from the shared same-origin Supabase session once the popup closes.
     const popupClosePoll = window.setInterval(() => {
-      if (popup.closed) {
-        window.clearInterval(popupClosePoll)
-        setBusy(false)
-      }
-    }, 400)
+      if (!popup.closed) return
+      window.clearInterval(popupClosePoll)
+      if (oauthPopupRef.current === popup) oauthPopupRef.current = null
+      void (async () => {
+        try {
+          const { data, error } = await supabase.auth.getSession()
+          if (error) throw error
+          if (data.session) {
+            oauthOutcomeRef.current = 'success'
+            setSession(data.session)
+            setMessage('Signed in successfully.')
+            navigate(returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/', { replace: true })
+            await refreshCloudEntitlements()
+          } else if (oauthOutcomeRef.current !== 'error') {
+            setMessage('Sign-in did not complete. Supabase did not establish a session. Check the provider credentials and redirect settings, then try again.')
+          }
+        } catch (error) {
+          if (oauthOutcomeRef.current !== 'error') {
+            setMessage(error instanceof Error ? error.message : 'Unable to finish sign-in. Please try again.')
+          }
+        } finally {
+          setBusy(false)
+        }
+      })()
+    }, 300)
+
     try {
+      const redirect = new URL('https://hyperionmaritime.org/account')
+      redirect.searchParams.set('oauth_popup', '1')
+      redirect.searchParams.set('return_to', returnTo)
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `https://hyperionmaritime.org/account?oauth_popup=1&return_to=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`,
+          redirectTo: redirect.toString(),
           skipBrowserRedirect: true,
         },
       })
@@ -164,6 +251,7 @@ export default function AccountScreen() {
     } catch (error) {
       window.clearInterval(popupClosePoll)
       popup.close()
+      if (oauthPopupRef.current === popup) oauthPopupRef.current = null
       setMessage(error instanceof Error ? error.message : `Unable to start ${provider} sign-in. Please try again.`)
       setBusy(false)
     }
