@@ -64,7 +64,6 @@ export default function App() {
 
   const hideNav = [
     '/terms',
-    '/privacy-policy',
     '/about',
     '/practice/quiz',
     '/mock/exam'
