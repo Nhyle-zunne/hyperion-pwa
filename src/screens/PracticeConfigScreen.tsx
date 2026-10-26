@@ -21,6 +21,22 @@ const sectionTitle: React.CSSProperties = { color: 'var(--accent)', fontSize: '.
 const muted: React.CSSProperties = { color: 'var(--text-muted)' }
 const smallButton: React.CSSProperties = { background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text)', padding: '.6rem .7rem', fontWeight: 800, minHeight: 40 }
 
+type ConfigSessionRow = {
+  id: string
+  kind: 'entry' | 'saved'
+  mode: 'PRACTICE' | 'DRILL' | 'MOCK'
+  track: TrackId
+  competenceId: string | null
+  part?: number | null
+  timestamp: number
+  deletedAt?: number
+  completed: boolean
+  correct: number
+  total: number
+  answered: number
+  percent: number
+}
+
 export default function PracticeConfigScreen() {
   const navigate = useNavigate()
   const [params, setSearchParams] = useSearchParams()
@@ -34,6 +50,11 @@ export default function PracticeConfigScreen() {
   const startSession = usePracticeStore(s => s.startSession)
   const historyEntries = useHistoryStore(s => s.entries)
   const savedSessions = useHistoryStore(s => s.savedSessions)
+  const saveSessionRecord = useHistoryStore(s => s.saveSession)
+  const markSessionDeleted = useHistoryStore(s => s.markDeleted)
+  const restoreSession = useHistoryStore(s => s.restoreDeleted)
+  const permanentlyDeleteSession = useHistoryStore(s => s.permanentlyDelete)
+  const purgeExpiredSessions = useHistoryStore(s => s.purgeExpiredDeleted)
   const competences = listAvailableCompetences(trackId)
   const competenceId = params.get('competence') || undefined
   const competence = competences.find(c => c.id === competenceId)
@@ -47,12 +68,76 @@ export default function PracticeConfigScreen() {
   const [prioritizeUnseen, setPrioritizeUnseen] = useState(false)
   const [intensiveMode, setIntensiveMode] = useState(false)
   const [starting, setStarting] = useState(false)
-  const [hasSavedProgress, setHasSavedProgress] = useState(false)
-  useEffect(() => {
-    try { setHasSavedProgress(Boolean(localStorage.getItem('hyperion-saved-practice'))) }
-    catch { setHasSavedProgress(false) }
-  }, [])
+  const [recentlyDeletedOpen, setRecentlyDeletedOpen] = useState(false)
+  const [sessionPendingDelete, setSessionPendingDelete] = useState<ConfigSessionRow | null>(null)
+  const [sessionPendingPermanentDelete, setSessionPendingPermanentDelete] = useState<ConfigSessionRow | null>(null)
 
+  useEffect(() => { purgeExpiredSessions() }, [purgeExpiredSessions])
+
+  // Migrate older one-slot localStorage progress into the session archive so
+  // existing users can continue a session from History and this telemetry panel.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('hyperion-saved-practice')
+      if (!raw) return
+      const legacy = JSON.parse(raw) as {
+        sessionId?: string; questions?: unknown[]; answers?: Record<string, { selectedIndex?: number | null; isCorrect?: boolean }>
+        track?: string; competenceId?: string | null; part?: number | null; mode?: string
+        currentIndex?: number; startedAt?: number
+      }
+      const validTracks: TrackId[] = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT']
+      if (!Array.isArray(legacy.questions) || !legacy.questions.length || !validTracks.includes(legacy.track as TrackId)) return
+      if (!['PRACTICE', 'DRILL', 'MOCK'].includes(legacy.mode || '')) return
+      const track = legacy.track as TrackId
+      const mode = legacy.mode as 'PRACTICE' | 'DRILL' | 'MOCK'
+      const competence = legacy.competenceId ?? null
+      const id = legacy.sessionId || `legacy-${track}-${competence ?? 'all'}-${mode}`
+      if (!legacy.sessionId) {
+        legacy.sessionId = id
+        localStorage.setItem('hyperion-saved-practice', JSON.stringify(legacy))
+      }
+      if (savedSessions.some(session => session.id === id)) return
+      const answers = legacy.answers ?? {}
+      saveSessionRecord({
+        id, mode, track, competenceId: competence, part: legacy.part ?? null,
+        currentIndex: Math.max(0, legacy.currentIndex ?? 0),
+        total: legacy.questions.length,
+        answered: Object.values(answers).filter(answer => answer?.selectedIndex != null).length,
+        correct: Object.values(answers).filter(answer => answer?.selectedIndex != null && answer?.isCorrect).length,
+        startedAt: legacy.startedAt ?? Date.now(),
+        savedAt: Date.now()
+      })
+    } catch { /* Ignore malformed or unavailable legacy progress. */ }
+  }, [savedSessions, saveSessionRecord])
+
+  const scopedSessionRows = useMemo<ConfigSessionRow[]>(() => {
+    const completed: ConfigSessionRow[] = historyEntries
+      .filter(entry => entry.track === trackId && entry.competenceId === (competenceId ?? null))
+      .map(entry => ({
+        id: entry.id, kind: 'entry', mode: entry.mode, track: entry.track,
+        competenceId: entry.competenceId, part: entry.part, timestamp: entry.finishedAt,
+        deletedAt: entry.deletedAt, completed: true, correct: entry.correct, total: entry.total,
+        answered: entry.answered ?? entry.total, percent: entry.percent
+      }))
+    const saved: ConfigSessionRow[] = savedSessions
+      .filter(entry => entry.track === trackId && entry.competenceId === (competenceId ?? null))
+      .map(entry => ({
+        id: entry.id, kind: 'saved', mode: entry.mode, track: entry.track,
+        competenceId: entry.competenceId, part: entry.part, timestamp: entry.savedAt,
+        deletedAt: entry.deletedAt, completed: false, correct: entry.correct ?? 0, total: entry.total,
+        answered: entry.answered, percent: entry.answered > 0
+          ? Math.round(((entry.correct ?? 0) / entry.answered) * 100) : 0
+      }))
+    return [...saved, ...completed].sort((a, b) => {
+      if (a.completed !== b.completed) return a.completed ? 1 : -1
+      return b.timestamp - a.timestamp
+    })
+  }, [historyEntries, savedSessions, trackId, competenceId])
+
+  const recentSessions = scopedSessionRows.filter(session => !session.deletedAt).slice(0, 3)
+  const recentlyDeletedSessions = scopedSessionRows
+    .filter(session => session.deletedAt)
+    .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0))
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -107,11 +192,6 @@ export default function PracticeConfigScreen() {
   )
 
   return <div className="screen practice-config-screen" style={{ padding: '0 0 2rem', color: 'var(--text)' }}>
-    {hasSavedProgress && <section className="card" style={{ marginBottom: '1rem', borderColor: 'var(--accent)' }}>
-      <strong>Saved practice session available</strong>
-      <p style={{ color: 'var(--text-muted)', margin: '.35rem 0 .75rem' }}>Continue where you left off instead of starting a new session.</p>
-      <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={() => navigate('/practice/quiz')}>Resume Saved Session</button>
-    </section>}
     <button type="button" onClick={() => navigate(competenceId ? `/practice/competences?track=${trackParam}${freeMode ? '&free=1' : ''}` : `/track?track=${trackParam}`)} style={{ ...muted, marginBottom: '.8rem', padding: '.4rem 0' }}>← Back</button>
     <div style={{ ...panel, borderTop: '3px solid #00e5a0', background: 'var(--bg-elevated)', marginBottom: '1.2rem' }}>
       <div style={{ ...muted, background: 'var(--accent-soft)', color: 'var(--text)', display: 'inline-block', padding: '.2rem .5rem', fontWeight: 900, letterSpacing: '.12em', fontSize: '.75rem' }}>STEP 2 OF 2 · {freeMode ? 'FREE REVIEWER' : isDrill ? 'DRILL CONFIGURATION' : 'PRACTICE ALL QUESTIONS'}</div>
@@ -120,28 +200,90 @@ export default function PracticeConfigScreen() {
       <div style={{ ...muted, fontWeight: 650, lineHeight: 1.5, marginTop: '.25rem' }}>{competence?.label || 'Questions from the selected track, using the available question pool.'}</div>
     </div>
 
-    <section style={{ ...panel, background: 'var(--bg-elevated)', padding: '.75rem' }}>
-      <div style={{ ...muted, fontWeight: 900, letterSpacing: '.05em' }}>■ SESSION LOG & TELEMETRY</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--accent)', fontWeight: 900, letterSpacing: '.08em', fontSize: '.8rem', margin: '.7rem 0' }}><span>RECENT SESSIONS · THIS COMPETENCE</span><button type="button" onClick={() => navigate('/history')} style={{ color: 'var(--accent)', background: 'transparent', border: 0, fontWeight: 900, cursor: 'pointer' }}>SESSION HISTORY »</button></div>
-      {(() => {
-        const completed = historyEntries
-          .filter(entry => entry.track === trackId && entry.competenceId === (competenceId ?? null))
-          .map(entry => ({ id: entry.id, kind: 'completed' as const, timestamp: entry.finishedAt, mode: entry.mode, detail: `${entry.correct}/${entry.total} correct · ${entry.percent}%`, date: entry.finishedAt }))
-        const saved = savedSessions
-          .filter(entry => entry.track === trackId && entry.competenceId === (competenceId ?? null))
-          .map(entry => ({ id: entry.id, kind: 'saved' as const, timestamp: entry.savedAt, mode: entry.mode, detail: `Question ${Math.min(entry.currentIndex + 1, entry.total)} of ${entry.total} · ${entry.answered} answered`, date: entry.savedAt }))
-        const recent = [...saved, ...completed].sort((a, b) => b.timestamp - a.timestamp).slice(0, 3)
-        return recent.length ? <div style={{ display: 'grid', gap: '.5rem' }}>
-          {recent.map(entry => <div key={entry.id} style={{ border: '1px solid var(--border)', background: 'var(--bg-card)', padding: '.7rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.75rem' }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ color: 'var(--text)', fontWeight: 850, fontSize: '.86rem' }}>{entry.mode === 'DRILL' ? 'Drill' : entry.mode === 'MOCK' ? 'Mock Exam' : 'Practice'} · {entry.kind === 'saved' ? 'Saved progress' : 'Completed'}</div>
-              <div style={{ ...muted, fontSize: '.78rem', marginTop: '.2rem' }}>{new Date(entry.date).toLocaleString()}<br />{entry.detail}</div>
+    <section style={{ ...panel, background: 'var(--bg-elevated)', padding: '.65rem' }} data-testid="session-telemetry">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '.45rem', color: 'var(--text-muted)', fontWeight: 900, letterSpacing: '.05em', fontSize: '.78rem' }}>
+        <span style={{ width: 8, height: 8, display: 'inline-block', background: recentSessions.some(session => !session.completed) ? 'var(--success)' : 'var(--text-muted)' }} />
+        SESSION LOG &amp; TELEMETRY
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, margin: '.45rem 0 .55rem' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, fontSize: '.7rem', fontWeight: 900, letterSpacing: '.04em' }}>
+          {recentSessions.some(session => !session.completed) && <span style={{ color: 'var(--success)' }}>RESUME</span>}
+          <button type="button" onClick={() => setRecentlyDeletedOpen(true)} style={{ color: 'var(--accent)', background: 'transparent', border: 0, padding: 0, fontWeight: 900, cursor: 'pointer' }}>RECENTLY DELETED{recentlyDeletedSessions.length ? ' (' + recentlyDeletedSessions.length + ')' : ''}</button>
+          <button type="button" onClick={() => navigate('/history')} style={{ color: 'var(--accent)', background: 'transparent', border: 0, padding: 0, fontWeight: 900, cursor: 'pointer' }}>ARCHIVE »</button>
+        </div>
+        <span style={{ ...muted, fontSize: '.72rem' }}>LATEST 3 · THIS COMPETENCE</span>
+      </div>
+
+      {recentSessions.length ? (
+        <div style={{ overflowX: 'auto', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+          <div role="table" aria-label="Recent session log" style={{ minWidth: 440 }}>
+            <div role="row" style={{ display: 'grid', gridTemplateColumns: 'minmax(115px,1fr) 56px 62px 74px 38px', alignItems: 'stretch', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
+              {['SESSION', 'PASSING', 'PROGRESS', 'ACTION', 'DEL'].map(label => <div key={label} role="columnheader" style={{ padding: '.4rem .25rem', fontSize: '.62rem', fontWeight: 900, color: 'var(--text-muted)', textAlign: label === 'SESSION' ? 'left' : 'center', borderRight: '1px solid var(--border)' }}>{label}</div>)}
             </div>
-            {entry.kind === 'saved' && <button type="button" onClick={() => navigate('/practice/quiz')} style={{ ...smallButton, background: 'var(--accent)', color: 'var(--btn-primary-text)', whiteSpace: 'nowrap' }}>Resume</button>}
-          </div>)}
-        </div> : <div style={{ border: '1px solid var(--border)', padding: '.8rem', ...muted, fontSize: '.85rem', lineHeight: 1.6 }}>No sessions recorded for this exact track and competence yet.</div>
-      })()}
+            {recentSessions.map((session, index) => {
+              const passColor = session.percent >= 70 ? 'var(--success, #15803d)' : 'var(--danger, #dc2626)'
+              const label = (session.competenceId || 'ALL COMPETENCES') + (session.part ? ' P' + session.part : '')
+              return <div key={session.kind + ':' + session.id} role="row" style={{ display: 'grid', gridTemplateColumns: 'minmax(115px,1fr) 56px 62px 74px 38px', alignItems: 'stretch', background: index % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-elevated)', borderBottom: index < recentSessions.length - 1 ? '1px solid var(--border)' : 0 }}>
+                <div role="cell" style={{ minWidth: 0, padding: '.35rem .3rem', borderRight: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '.68rem', fontWeight: 900, color: 'var(--text)', overflowWrap: 'anywhere' }}>{label}</div>
+                  <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 2 }}>{new Date(session.timestamp).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                  <div style={{ fontSize: '.6rem', color: 'var(--text-muted)' }}>{session.mode === 'MOCK' ? 'MOCK EXAM' : session.mode}</div>
+                </div>
+                <div role="cell" style={{ display: 'grid', placeItems: 'center', padding: '.25rem .1rem', borderRight: '1px solid var(--border)', color: passColor, fontSize: '.68rem', fontWeight: 900 }}>{session.percent.toFixed(1)}%</div>
+                <div role="cell" style={{ display: 'grid', placeItems: 'center', padding: '.25rem .1rem', borderRight: '1px solid var(--border)', color: 'var(--text)', fontSize: '.68rem', fontWeight: 800 }}>{session.answered}/{session.total}</div>
+                <div role="cell" style={{ display: 'grid', placeItems: 'center', padding: '.2rem', borderRight: '1px solid var(--border)' }}>
+                  <button type="button" onClick={() => session.completed ? navigate('/history?review=' + encodeURIComponent(session.id)) : navigate('/practice/quiz?resume=' + encodeURIComponent(session.id))} style={{ border: 0, padding: '.25rem .1rem', background: 'transparent', color: session.completed ? 'var(--accent)' : 'var(--success, #15803d)', fontSize: '.62rem', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' }}>{session.completed ? 'REVIEW »' : 'RESUME »'}</button>
+                </div>
+                <div role="cell" style={{ display: 'grid', placeItems: 'center', padding: '.1rem' }}>
+                  <button type="button" aria-label="Move session to Recently Deleted" onClick={() => setSessionPendingDelete(session)} style={{ border: 0, background: 'transparent', color: 'var(--text-muted)', fontWeight: 900, fontSize: '1rem', cursor: 'pointer', minWidth: 28 }}>×</button>
+                </div>
+              </div>
+            })}
+          </div>
+        </div>
+      ) : (
+        <div style={{ border: '1px solid var(--border)', background: 'var(--bg-card)', padding: '.8rem', fontSize: '.74rem', lineHeight: 1.6 }}>
+          <strong style={{ display: 'block', color: 'var(--text-muted)', fontSize: '.7rem', letterSpacing: '.03em' }}>NO SESSIONS RECORDED FOR THIS COMPETENCE</strong>
+          <span style={muted}>Active and completed sessions for this competence are preserved here automatically.</span>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '.5rem' }}><button type="button" onClick={() => navigate('/history')} style={{ color: 'var(--accent)', background: 'transparent', border: 0, fontWeight: 900, cursor: 'pointer' }}>OPEN SESSION LOG ARCHIVE »</button></div>
+        </div>
+      )}
     </section>
+
+    {sessionPendingDelete && <div role="presentation" onClick={() => setSessionPendingDelete(null)} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="config-delete-session-title" onClick={event => event.stopPropagation()} style={{ width: 'min(100%, 420px)', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderTop: '3px solid var(--accent)', borderRadius: 10, padding: '1rem' }}>
+        <h2 id="config-delete-session-title" style={{ marginTop: 0, fontSize: '1.1rem' }}>Delete session log?</h2>
+        <p style={{ ...muted, fontSize: '.88rem', lineHeight: 1.5 }}>This session will move to Recently Deleted and can be restored for 30 days.</p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => setSessionPendingDelete(null)}>Cancel</button>
+          <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => { markSessionDeleted(sessionPendingDelete.kind, sessionPendingDelete.id); setSessionPendingDelete(null) }}>Move to Recently Deleted</button>
+        </div>
+      </section>
+    </div>}
+
+    {recentlyDeletedOpen && <div role="presentation" onClick={() => setRecentlyDeletedOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="config-recently-deleted-title" onClick={event => event.stopPropagation()} style={{ width: 'min(100%, 520px)', maxHeight: '85dvh', overflowY: 'auto', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderTop: '3px solid var(--accent)', borderRadius: 10, padding: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><h2 id="config-recently-deleted-title" style={{ margin: 0, fontSize: '1.1rem' }}>Recently Deleted Sessions</h2><button type="button" className="btn btn-outline" onClick={() => setRecentlyDeletedOpen(false)}>Close</button></div>
+        <p style={{ ...muted, fontSize: '.83rem' }}>Deleted sessions remain recoverable for 30 days.</p>
+        {recentlyDeletedSessions.length ? <div style={{ display: 'grid', gap: '.6rem' }}>
+          {recentlyDeletedSessions.map(session => {
+            const days = Math.max(0, Math.ceil(((session.deletedAt ?? Date.now()) + 30 * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000)))
+            return <div key={session.kind + ':' + session.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '.7rem', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+              <div style={{ minWidth: 0 }}><strong style={{ fontSize: '.8rem' }}>{session.competenceId || 'ALL COMPETENCES'} · {session.mode}</strong><div style={{ ...muted, fontSize: '.72rem', marginTop: 3 }}>{new Date(session.timestamp).toLocaleString()} · Progress {session.answered}/{session.total}</div><div style={{ color: 'var(--warning, #d97706)', fontSize: '.68rem', fontWeight: 900, marginTop: 3 }}>{days <= 0 ? 'EXPIRES TODAY' : 'EXPIRES IN ' + days + (days === 1 ? ' DAY' : ' DAYS')}</div></div>
+              <div style={{ display: 'grid', gap: 5, flexShrink: 0 }}><button type="button" className="btn btn-primary" style={{ padding: '.35rem .5rem' }} onClick={() => restoreSession(session.kind, session.id)}>Restore</button><button type="button" className="btn btn-outline" style={{ padding: '.35rem .5rem', color: 'var(--danger)' }} onClick={() => setSessionPendingPermanentDelete(session)}>Delete forever</button></div>
+            </div>
+          })}
+        </div> : <p style={muted}>No recently deleted sessions for this track and competence.</p>}
+      </section>
+    </div>}
+
+    {sessionPendingPermanentDelete && <div role="presentation" onClick={() => setSessionPendingPermanentDelete(null)} style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(0,0,0,.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="config-permanent-delete-title" onClick={event => event.stopPropagation()} style={{ width: 'min(100%, 420px)', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderTop: '3px solid var(--danger)', borderRadius: 10, padding: '1rem' }}>
+        <h2 id="config-permanent-delete-title" style={{ marginTop: 0, fontSize: '1.1rem' }}>Permanently delete session?</h2>
+        <p style={{ ...muted, fontSize: '.88rem', lineHeight: 1.5 }}>This action cannot be undone.</p>
+        <div style={{ display: 'flex', gap: 8 }}><button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => setSessionPendingPermanentDelete(null)}>Cancel</button><button type="button" className="btn btn-primary" style={{ flex: 1, color: 'var(--danger)' }} onClick={() => { permanentlyDeleteSession(sessionPendingPermanentDelete.kind, sessionPendingPermanentDelete.id); setSessionPendingPermanentDelete(null) }}>Permanently Delete</button></div>
+      </section>
+    </div>}
 
     {trackId === 'GMDSS_GOC' && competenceId && gmdssParts.length > 0 && <section style={panel}>
       <h2 style={sectionTitle}>SELECT QUESTION PART</h2>
