@@ -54,7 +54,7 @@ export default function AdminPaymentsScreen() {
         <p style={{ margin:'.4rem 0' }}>Method: {order.payment_method || 'Not provided'}<br/>Transaction reference: {order.payment_reference || 'Not provided'}</p>
         {order.proof_url && <p><a href={order.proof_url} target="_blank" rel="noreferrer">Open proof of payment</a></p>}
         {order.customer_note && <p>Student note: {order.customer_note}</p>}
-        {order.status !== 'paid' && order.status !== 'failed' && <>
+        {order.payment_method === 'PayMongo Checkout' && order.status === 'pending' ? <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', lineHeight: 1.5 }}>Awaiting PayMongo confirmation. Do not manually approve this order; Hyperion activates the license after the verified webhook arrives.</p> : order.status !== 'paid' && order.status !== 'failed' && <>
           <label>Admin note<textarea rows={2} value={note[order.id] || ''} onChange={e => setNote(old => ({...old,[order.id]:e.target.value}))} style={field}/></label>
           <div style={{ display:'flex', gap:8, marginTop:'.8rem' }}><button className="btn btn-primary" disabled={busy} onClick={() => void review(order.id,'approve')}>Approve & unlock</button><button className="btn btn-outline" disabled={busy} onClick={() => void review(order.id,'reject')}>Reject</button></div>
         </>}
