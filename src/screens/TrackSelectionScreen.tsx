@@ -20,61 +20,11 @@ const TRACKS: {
   tierCheck: string
   mock: string
 }[] = [
-  {
-    id: 'oic_nw',
-    trackId: 'DECK_OIC_NW',
-    title: 'DECK OIC-NW',
-    regulation: 'STCW REGULATION II/1',
-    questions: '6,448',
-    meta: '12 COMPETENCIES · 200-ITEM MOCK',
-    icon: '🧭',
-    tierCheck: 'OIC',
-    mock: '200'
-  },
-  {
-    id: 'gmdss',
-    trackId: 'GMDSS_GOC',
-    title: 'GMDSS RADIO (GOC)',
-    regulation: 'STCW REGULATION IV/2',
-    questions: '2,260',
-    meta: '2 COMPETENCIES · 100-ITEM MOCK',
-    icon: '📡',
-    tierCheck: 'GOC',
-    mock: '100'
-  },
-  {
-    id: 'engine_ew',
-    trackId: 'ENGINE_OIC_EW',
-    title: 'ENGINE OIC-EW',
-    regulation: 'STCW REGULATION III/1',
-    questions: '5,380',
-    meta: '13 COMPETENCIES · 200-ITEM MOCK',
-    icon: '🔧',
-    tierCheck: 'EW',
-    mock: '200'
-  },
-  {
-    id: 'engine_mgt',
-    trackId: 'ENGINE_MGT',
-    title: 'ENGINE MANAGEMENT',
-    regulation: 'STCW REGULATION III/2',
-    questions: '5,589',
-    meta: '14 COMPETENCIES · 200-ITEM MOCK',
-    icon: '⚙️',
-    tierCheck: 'EM',
-    mock: '200'
-  },
-  {
-    id: 'deck_mgt',
-    trackId: 'DECK_MGT',
-    title: 'DECK MANAGEMENT',
-    regulation: 'STCW REGULATION II/2',
-    questions: '6,081',
-    meta: '18 COMPETENCIES · 200-ITEM MOCK',
-    icon: '▲',
-    tierCheck: 'DM',
-    mock: '200'
-  }
+  { id: 'oic_nw', trackId: 'DECK_OIC_NW', title: 'DECK OIC-NW', regulation: 'STCW REGULATION II/1', questions: '6,448', meta: '12 COMPETENCIES · 200-ITEM MOCK', icon: '🧭', tierCheck: 'OIC', mock: '200' },
+  { id: 'gmdss', trackId: 'GMDSS_GOC', title: 'GMDSS RADIO (GOC)', regulation: 'STCW REGULATION IV/2', questions: '2,260', meta: '2 COMPETENCIES · 100-ITEM MOCK', icon: '📡', tierCheck: 'GOC', mock: '100' },
+  { id: 'engine_ew', trackId: 'ENGINE_OIC_EW', title: 'ENGINE OIC-EW', regulation: 'STCW REGULATION III/1', questions: '5,380', meta: '13 COMPETENCIES · 200-ITEM MOCK', icon: '🔧', tierCheck: 'EW', mock: '200' },
+  { id: 'engine_mgt', trackId: 'ENGINE_MGT', title: 'ENGINE MANAGEMENT', regulation: 'STCW REGULATION III/2', questions: '5,589', meta: '14 COMPETENCIES · 200-ITEM MOCK', icon: '⚙️', tierCheck: 'EM', mock: '200' },
+  { id: 'deck_mgt', trackId: 'DECK_MGT', title: 'DECK MANAGEMENT', regulation: 'STCW REGULATION II/2', questions: '6,081', meta: '18 COMPETENCIES · 200-ITEM MOCK', icon: '▲', tierCheck: 'DM', mock: '200' }
 ]
 
 function dayKey(ts = Date.now()) {
@@ -123,11 +73,7 @@ export default function TrackSelectionScreen() {
   }, [segments, history])
 
   const streakCount = streakDays.filter(Boolean).length
-
-  const select = (track: (typeof TRACKS)[0]) => {
-    navigate(`/track?track=${track.id}`)
-  }
-
+  const select = (track: (typeof TRACKS)[0]) => navigate(`/track?track=${track.id}`)
   const saveTarget = () => {
     const el = document.getElementById('target-date-input') as HTMLInputElement | null
     el?.showPicker?.()
@@ -139,250 +85,94 @@ export default function TrackSelectionScreen() {
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <div className="dash-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <div>
-            <h1>Select examination track</h1>
-            <div className="sub">STCW &apos;78 AS AMENDED · MARINA CRP</div>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: '0.7rem', letterSpacing: '0.16em', fontWeight: 800, color: 'var(--accent)', marginBottom: 6 }}>
+            LEARNING SHOULDN’T BE A LUXURY
+          </div>
+          <h1>Welcome to Hyperion Maritime</h1>
+          <div className="sub" style={{ marginTop: 6, lineHeight: 1.6 }}>
+            Your maritime licensure exam reviewer for Deck, Engine, GMDSS, and management tracks. Practice by competency, build confidence, and prepare for the MARINA CRP examination.
+          </div>
+          <div className="sub" style={{ marginTop: 8, fontSize: '0.72rem' }}>
+            STCW ’78 AS AMENDED · MARINA CRP
           </div>
         </div>
       </div>
 
-      {/* Target date + stats */}
       <div className="card" style={{ marginBottom: '0.85rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ fontSize: '1.2rem' }}>📅</span>
             <div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                MARINA LICENSURE EXAM
-              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>MARINA LICENSURE EXAM</div>
               <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                {targetDate
-                  ? `Target · ${new Date(targetDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
-                  : 'SET TARGET DATE'}
+                {targetDate ? `Target · ${new Date(targetDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : 'SET TARGET DATE'}
               </div>
             </div>
           </div>
-          <button className="btn btn-primary" style={{ padding: '0.5rem 0.85rem', fontSize: '0.8rem' }} onClick={saveTarget}>
-            SET DATE →
-          </button>
-          <input
-            id="target-date-input"
-            type="date"
-            value={targetDate}
-            onChange={(e) => {
-              setTargetDate(e.target.value)
-              try {
-                localStorage.setItem('hyperion-target-date', e.target.value)
-              } catch {
-                /* ignore */
-              }
-            }}
-            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
-          />
+          <button className="btn btn-primary" style={{ padding: '0.5rem 0.85rem', fontSize: '0.8rem' }} onClick={saveTarget}>SET DATE →</button>
+          <input id="target-date-input" type="date" value={targetDate} onChange={(e) => {
+            setTargetDate(e.target.value)
+            try { localStorage.setItem('hyperion-target-date', e.target.value) } catch { /* ignore */ }
+          }} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} />
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr',
-            gap: 8,
-            marginTop: 14,
-            paddingTop: 12,
-            borderTop: '1px solid var(--border)',
-            textAlign: 'center'
-          }}
-        >
-          <div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>TODAY</div>
-            <div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{formatDurationMs(todayMs)}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-              OVERALL ACCURACY
-            </div>
-            <div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{avgPercent}%</div>
-          </div>
-          <div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-              OFFLINE VAULT
-            </div>
-            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--accent)' }}>
-              ⚡ {vaultCount} HYPE
-            </div>
-          </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
+          <div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>TODAY</div><div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{formatDurationMs(todayMs)}</div></div>
+          <div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>OVERALL ACCURACY</div><div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{avgPercent}%</div></div>
+          <div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>OFFLINE VAULT</div><div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--accent)' }}>⚡ {vaultCount} HYPE</div></div>
         </div>
 
         <div style={{ marginTop: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-              ROLLING 7-DAY STREAK
-            </span>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-              {streakCount} / 7 DAYS
-            </span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>ROLLING 7-DAY STREAK</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>{streakCount} / 7 DAYS</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
             {streakDays.map((on, i) => (
-              <div
-                key={i}
-                style={{
-                  aspectRatio: '1',
-                  borderRadius: 8,
-                  border: on ? '2px solid var(--accent)' : '1px solid var(--border)',
-                  background: on ? 'var(--accent-soft)' : 'var(--streak-empty)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '0.65rem',
-                  fontWeight: 700,
-                  color: on ? 'var(--accent)' : 'var(--text-muted)'
-                }}
-              >
-                <span>D{i + 1}</span>
-                <span>{on ? '✓' : '–'}</span>
+              <div key={i} style={{ aspectRatio: '1', borderRadius: 8, border: on ? '2px solid var(--accent)' : '1px solid var(--border)', background: on ? 'var(--accent-soft)' : 'var(--streak-empty)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: on ? 'var(--accent)' : 'var(--text-muted)' }}>
+                <span>D{i + 1}</span><span>{on ? '✓' : '–'}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Track grid — forced 2 columns for all screen sizes */}
       <div className="track-grid">
         {TRACKS.map((t) => {
           const unlocked = isAllAccessUnlocked || isTrackUnlocked(t.tierCheck)
           return (
             <button key={t.id} type="button" className="track-card" onClick={() => select(t)}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 4 }}>
-                <span
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    background: 'var(--bg-elevated)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.9rem',
-                    flexShrink: 0
-                  }}
-                >
-                  {t.icon}
-                </span>
-                <span className="badge-verified" style={{ fontSize: '0.58rem', padding: '0.15rem 0.35rem' }}>
-                  {unlocked ? 'VERIFIED' : 'FREE TIER'}
-                </span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', flexShrink: 0 }}>{t.icon}</span>
+                <span className="badge-verified" style={{ fontSize: '0.58rem', padding: '0.15rem 0.35rem' }}>{unlocked ? 'VERIFIED' : 'FREE TIER'}</span>
               </div>
               <div className="track-title">{t.title}</div>
-              <div className="track-reg" style={{ marginTop: 2 }}>
-                {t.regulation}
-              </div>
+              <div className="track-reg" style={{ marginTop: 2 }}>{t.regulation}</div>
               <div className="qcount">{t.questions}</div>
               <div className="track-meta">QUESTIONS AVAILABLE</div>
-              <div className="track-meta" style={{ marginTop: 4 }}>
-                {t.meta}
-              </div>
-              <div
-                style={{
-                  marginTop: 'auto',
-                  paddingTop: 8,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
+              <div className="track-meta" style={{ marginTop: 4 }}>{t.meta}</div>
+              <div style={{ marginTop: 'auto', paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span className="track-meta">PROGRESS 0%</span>
-                <span
-                  style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: 6,
-                    background: 'var(--accent)',
-                    color: 'var(--btn-primary-text)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    fontSize: '0.85rem',
-                    flexShrink: 0
-                  }}
-                >
-                  →
-                </span>
+                <span style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--accent)', color: 'var(--btn-primary-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.85rem', flexShrink: 0 }}>→</span>
               </div>
             </button>
           )
         })}
 
-        {/* Facebook community card */}
-        <a
-          href={FB}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="track-card"
-          style={{ borderColor: '#1877F2', textDecoration: 'none' }}
-        >
+        <a href={FB} target="_blank" rel="noopener noreferrer" className="track-card" style={{ borderColor: '#1877F2', textDecoration: 'none' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                background: '#1877F2',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 800,
-                fontSize: '1.1rem'
-              }}
-            >
-              f
-            </span>
-            <span
-              className="badge-verified"
-              style={{ borderColor: '#1877F2', color: '#1877F2' }}
-            >
-              COMMUNITY
-            </span>
+            <span style={{ width: 32, height: 32, borderRadius: 8, background: '#1877F2', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.1rem' }}>f</span>
+            <span className="badge-verified" style={{ borderColor: '#1877F2', color: '#1877F2' }}>COMMUNITY</span>
           </div>
           <div style={{ fontWeight: 800, fontSize: '0.88rem', marginTop: 10 }}>CONNECT WITH US</div>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>
-            OFFICIAL PAGE & SUPPORT
-          </div>
-          <div className="qcount" style={{ fontSize: '1.35rem' }}>
-            FACEBOOK
-          </div>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-            UPDATES & INQUIRIES
-          </div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>OFFICIAL PAGE & SUPPORT</div>
+          <div className="qcount" style={{ fontSize: '1.35rem' }}>FACEBOOK</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>UPDATES & INQUIRIES</div>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>@hyperionbynhyle</div>
-          <div
-            style={{
-              marginTop: 'auto',
-              paddingTop: 10,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}
-          >
+          <div style={{ marginTop: 'auto', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>VISIT PAGE</span>
-            <span
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                background: 'var(--accent)',
-                color: 'var(--btn-primary-text)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 800
-              }}
-            >
-              →
-            </span>
+            <span style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--accent)', color: 'var(--btn-primary-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>→</span>
           </div>
         </a>
       </div>
