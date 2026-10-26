@@ -154,8 +154,8 @@ Deno.serve(async (req) => {
       attributes: {
         line_items: [{ name: product.name, amount: price * 100, currency: 'PHP', quantity: 1 }],
         payment_method_types: ['gcash', 'paymaya', 'qrph', 'card'],
-        success_url: `${configuredBase}/account?payment=success&order_id=${encodeURIComponent(order.id)}`,
-        cancel_url: `${configuredBase}/account?payment=cancelled&order_id=${encodeURIComponent(order.id)}`,
+        success_url: `${configuredBase}/account?payment=success&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
+        cancel_url: `${configuredBase}/account?payment=cancelled&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
         reference_number: order.id,
         send_email_receipt: true,
         metadata: { order_id: order.id, user_id: user.id, product_code: code }
