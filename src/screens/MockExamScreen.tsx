@@ -18,15 +18,6 @@ const FUNCTION_LABELS: Record<TrackId, Record<string, string>> = {
   DECK_MGT: { F1: 'NAVIGATION AT THE MANAGEMENT LEVEL', F2: 'CARGO HANDLING AND STOWAGE AT THE MANAGEMENT LEVEL', F3: 'CONTROLLING SHIP OPERATIONS AND CARE FOR PERSONS ON BOARD' },
   ENGINE_MGT: { F1: 'MARINE ENGINEERING AT THE MANAGEMENT LEVEL', F2: 'ELECTRICAL, ELECTRONIC AND CONTROL ENGINEERING AT THE MANAGEMENT LEVEL', F3: 'MAINTENANCE AND REPAIR AT THE MANAGEMENT LEVEL', F4: 'CONTROLLING SHIP OPERATIONS AND CARE FOR PERSONS ON BOARD' }
 }
-const FUNCTION_DESCRIPTIONS: Record<string, string> = {
-  F1: 'Navigation, watchkeeping, position fixing and safe navigation procedures.',
-  F2: 'Cargo handling, stowage, securing and care of cargo during the voyage.',
-  F3: 'Pollution prevention, seaworthiness and legislative compliance.',
-  GMDSS: 'Transmit and receive information and provide radio services in emergencies.',
-  EW: 'Engineering watchkeeping, machinery operations, maintenance and safety.',
-  DM: 'Voyage planning, ship handling, cargo, stability and management duties.',
-  EM: 'Propulsion plant, electrical systems, maintenance and engine-room management.'
-}
 // Official mock-exam item distribution mirrored from HYPERION-REVIEWER's
 // MaritimeCompetenceRegistry / NewTrackCompetences permit distributions.
 const MOCK_EXAM_ITEMS: Record<TrackId, Record<string, number>> = {
