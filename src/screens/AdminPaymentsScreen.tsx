@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; amount_php: number; status: string; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; admin_note: string | null; created_at: string }
 function safeAdminError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : ''
-  if (!message || /supabase|postgrest|postgres|sqlstate|provider credentials|redirect settings|edge function|row[- ]level security|\\bpgrst\\b|\\bjwt\\b|database schema|relation .* does not exist|violates .* constraint/i.test(message)) return fallback
+  if (!message || /supabase|postgrest|postgres|sqlstate|provider credentials|redirect settings|edge function|row[- ]level security|\bpgrst\b|\bjwt\b|database schema|relation .* does not exist|violates .* constraint/i.test(message)) return fallback
   return message
 }
 const names: Record<string,string> = { oic_nw:'Deck OIC-NW', gmdss:'GMDSS GOC', engine_ew:'Engine OIC-EW', deck_mgt:'Deck Management', engine_mgt:'Engine Management', all_access:'All-Access Bundle' }
