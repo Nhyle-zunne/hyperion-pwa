@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
@@ -17,8 +17,6 @@ export default function AccountScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
-  const oauthPopupRef = useRef<Window | null>(null)
-  const oauthOutcomeRef = useRef<'success' | 'error' | null>(null)
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>('payments')
   const [product, setProduct] = useState('oic_nw')
   const paymentMethod = 'QR Ph (MariBank / InstaPay)'
@@ -95,161 +93,41 @@ export default function AccountScreen() {
     await refreshCloudEntitlements()
   }
   useEffect(() => { void refreshAccount() }, [session?.user.id])
-  useEffect(() => {
-    const authClient = supabase
-    const handleOAuthMessage = async (event: MessageEvent) => {
-      if (event.origin !== 'https://hyperionmaritime.org') return
-      if (oauthPopupRef.current && event.source !== oauthPopupRef.current) return
-      if (event.data?.type === 'hyperion-oauth-error') {
-        oauthOutcomeRef.current = 'error'
-        setMessage('Sign-in could not be completed. Please try again.')
-        setBusy(false)
-        return
-      }
-      if (event.data?.type !== 'hyperion-oauth-success' || !authClient) return
-
-      try {
-        const { data, error } = await authClient.auth.getSession()
-        if (error) throw error
-        if (!data.session) {
-          setMessage('Sign-in could not be completed. Please try again.')
-          oauthOutcomeRef.current = 'error'
-          return
-        }
-        oauthOutcomeRef.current = 'success'
-        setSession(data.session)
-        setMessage('Signed in successfully.')
-        const requested = typeof event.data.return_to === 'string' ? event.data.return_to : '/'
-        navigate(requested.startsWith('/') && !requested.startsWith('//') ? requested : '/', { replace: true })
-        // Close the popup immediately after session confirmation. Do not wait for
-        // entitlement refresh/network requests, which may take longer or fail.
-        const popup = oauthPopupRef.current
-        if (popup && !popup.closed) popup.close()
-        if (popup && popup.closed && oauthPopupRef.current === popup) oauthPopupRef.current = null
-        await refreshCloudEntitlements()
-      } catch {
-        oauthOutcomeRef.current = 'error'
-        setMessage('Sign-in could not be completed. Please try again.')
-      } finally {
-        setBusy(false)
-      }
-    }
-    window.addEventListener('message', handleOAuthMessage)
-    return () => window.removeEventListener('message', handleOAuthMessage)
-  }, [navigate, refreshCloudEntitlements])
-
-  const openOAuthPopup = async () => {
+  const signInWithGoogle = async () => {
     if (!supabase) {
       setMessage('Sign-in is temporarily unavailable. Please try again later.')
       return
     }
-    const authClient = supabase
 
     const requestedReturnTo = window.location.pathname + window.location.search + window.location.hash
     const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//') ? requestedReturnTo : '/'
     try {
-      localStorage.setItem('hyperion-oauth-return-to', JSON.stringify({ path: returnTo, startedAt: Date.now() }))
+      localStorage.setItem('hyperion-oauth-return-to', JSON.stringify({
+        path: returnTo,
+        startedAt: Date.now(),
+        mode: 'redirect',
+      }))
     } catch {
-      // The callback still has a safe dashboard fallback if browser storage is blocked.
-    }
-    const popup = window.open('about:blank', 'hyperion-oauth', 'popup=yes,width=520,height=700')
-    if (!popup) {
-      try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
-      setMessage('Your browser blocked the sign-in popup. Allow pop-ups for hyperionmaritime.org and try again.')
-      return
+      // The callback will fall back to the dashboard if browser storage is unavailable.
     }
 
-    oauthPopupRef.current = popup
-    oauthOutcomeRef.current = null
     setBusy(true)
     setMessage('')
-
-    // If the browser drops window.opener during the external-provider roundtrip,
-    // recover from the shared same-origin Supabase session once the popup closes.
-    let sessionCheckInFlight = false
-    const popupClosePoll = window.setInterval(() => {
-      // Some browsers complete the OAuth redirect in the popup but fail to
-      // deliver the postMessage/opener relationship afterward. Detect the
-      // shared Supabase session from the main window and close the popup here.
-      if (!popup.closed && oauthOutcomeRef.current === null && !sessionCheckInFlight) {
-        sessionCheckInFlight = true
-        void authClient.auth.getSession().then(async ({ data, error }) => {
-          if (error || !data.session || popup.closed || oauthOutcomeRef.current !== null) return
-
-          oauthOutcomeRef.current = 'success'
-          window.clearInterval(popupClosePoll)
-          if (oauthPopupRef.current === popup) oauthPopupRef.current = null
-          try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
-          setSession(data.session)
-          setMessage('Signed in successfully.')
-          navigate(returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/', { replace: true })
-          popup.close()
-          setBusy(false)
-          await refreshCloudEntitlements()
-        }).catch(() => {
-          // Keep polling; the callback may still be completing.
-        }).finally(() => {
-          sessionCheckInFlight = false
-        })
-        return
-      }
-
-      if (!popup.closed) return
-      window.clearInterval(popupClosePoll)
-      if (oauthPopupRef.current === popup) oauthPopupRef.current = null
-      try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
-      // The message handler may already have confirmed the session and closed
-      // the popup. Do not run the recovery flow a second time.
-      if (oauthOutcomeRef.current === 'success') {
-        setBusy(false)
-        return
-      }
-      void (async () => {
-        try {
-          const { data, error } = await authClient.auth.getSession()
-          if (error) throw error
-          if (data.session) {
-            oauthOutcomeRef.current = 'success'
-            setSession(data.session)
-            setMessage('Signed in successfully.')
-            navigate(returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/', { replace: true })
-            await refreshCloudEntitlements()
-          } else if (oauthOutcomeRef.current !== 'error') {
-            setMessage('Sign-in could not be completed. Please try again.')
-          }
-        } catch {
-          if (oauthOutcomeRef.current !== 'error') {
-            setMessage('Sign-in could not be completed. Please try again.')
-          }
-        } finally {
-          setBusy(false)
-        }
-      })()
-    }, 300)
-
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      // Let Supabase navigate this same tab to Google, then back to our callback.
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: 'https://hyperionmaritime.org/auth/callback',
-          skipBrowserRedirect: true,
         },
       })
       if (error) throw error
-      if (!data.url) throw new Error('The sign-in provider did not return a login URL.')
-      popup.location.href = data.url
-      popup.focus()
     } catch {
-      window.clearInterval(popupClosePoll)
-      popup.close()
-      if (oauthPopupRef.current === popup) oauthPopupRef.current = null
       try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
       setMessage('Sign-in could not be completed. Please try again.')
       setBusy(false)
     }
   }
-
-  const signInWithGoogle = async () => openOAuthPopup()
 
   const submitPayment = async (event: FormEvent) => {
     event.preventDefault()
