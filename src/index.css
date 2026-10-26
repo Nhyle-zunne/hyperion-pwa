@@ -1454,3 +1454,44 @@ a:focus-visible,
 .practice-quiz-screen .question-protected-options button {
   position: relative;
 }
+
+
+/* Desktop reading surfaces: keep study workflows portrait and focused. */
+@media (min-width: 900px) {
+  .screen {
+    max-width: 560px;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+
+  .track-hub-screen {
+    max-width: 720px;
+  }
+
+  .track-hub-screen .hub-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .track-hub-screen .hub-mode-card {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 1rem 1.1rem;
+  }
+
+  .track-hub-screen .hub-mode-top {
+    min-height: 0;
+    margin-bottom: .55rem;
+  }
+
+  .track-hub-screen .hub-mode-action {
+    padding-top: .65rem;
+  }
+}
+
+/* Mock-exam dialogs use a soft blur over the unchanged page beneath them. */
+.mock-exam-backdrop {
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  background: rgba(3, 8, 18, .58) !important;
+}
