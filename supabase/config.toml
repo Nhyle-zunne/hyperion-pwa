@@ -13,5 +13,4 @@ verify_jwt = false
 [functions.cancel-checkout]
 verify_jwt = true
 
-[functions.cancel-checkout]
 verify_jwt = true
