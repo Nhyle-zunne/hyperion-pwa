@@ -91,7 +91,11 @@ export default function PracticeConfigScreen() {
       const track = legacy.track as TrackId
       const mode = legacy.mode as 'PRACTICE' | 'DRILL' | 'MOCK'
       const competence = legacy.competenceId ?? null
-      const id = legacy.sessionId || `legacy-${track}-${competence ?? 'all'}-${mode}`
+      const matchingExisting = savedSessions.find(session =>
+        !session.deletedAt && session.track === track &&
+        session.competenceId === competence && session.mode === mode
+      )
+      const id = legacy.sessionId || matchingExisting?.id || `legacy-${track}-${competence ?? 'all'}-${mode}`
       if (!legacy.sessionId) {
         legacy.sessionId = id
         localStorage.setItem('hyperion-saved-practice', JSON.stringify(legacy))
