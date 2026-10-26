@@ -7,6 +7,7 @@ import { useLicenseStore } from '../stores/licenseStore'
 type Order = {
   id: string
   product_code: string
+  license_term: 'week' | 'month' | 'year'
   amount_php: number
   status: string
   payment_reference: string | null
@@ -74,7 +75,7 @@ export default function OrdersPaymentHistoryScreen() {
       return []
     }
     const { data, error } = await supabase.from('orders')
-      .select('id,product_code,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,customer_note,admin_note,created_at,paid_at,reviewed_at,checkout_batch_id')
+      .select('id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,customer_note,admin_note,created_at,paid_at,reviewed_at,checkout_batch_id')
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: false })
       .limit(100)
@@ -200,7 +201,7 @@ export default function OrdersPaymentHistoryScreen() {
               return <article className="orders-entry" key={order.id}>
                 <div className="orders-title-row">
                   <div style={{ minWidth: 0 }}>
-                    <strong style={{ display: 'block', fontSize: '1rem' }}>{product?.label ?? order.product_code} · ₱{order.amount_php}</strong>
+                    <strong style={{ display: 'block', fontSize: '1rem' }}>{product?.label ?? order.product_code} · {order.license_term === 'week' ? 'Weekly' : order.license_term === 'month' ? 'Monthly' : 'Yearly'} · ₱{order.amount_php}</strong>
                     <div className="orders-meta" style={{ marginTop: '.3rem' }}>{new Date(order.paid_at || order.created_at).toLocaleString()} · {order.payment_method || 'Payment method not recorded'}</div>
                   </div>
                   <span className="orders-status" style={paid ? { color: 'var(--success, #15803d)', borderColor: '#86cba0', background: 'rgba(34,197,94,.08)' } : rejected ? { color: 'var(--text-muted)' } : { color: '#9a6b07', borderColor: '#e8c875', background: 'rgba(245,199,94,.09)' }}>{status}</span>
