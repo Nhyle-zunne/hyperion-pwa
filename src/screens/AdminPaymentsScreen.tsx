@@ -42,7 +42,7 @@ export default function AdminPaymentsScreen() {
       if (error || data?.error) throw new Error('Could not check private question storage status.')
       setBankStatus(data.status || 'unknown')
       setBankAssetCount(Number(data.assetCount) || 0)
-      setBankMessage(data.errorSummary ? 'Last migration error: ' + data.errorSummary : data.status === 'complete' ? 'All question files are copied to private storage. Public static copies remain until the protected loader is deployed.' : '')
+      setBankMessage(data.errorSummary ? 'Last migration error: ' + data.errorSummary : data.status === 'complete' ? 'All question files are copied to private storage. Public static copies remain until we verify the private copy and remove them in a follow-up deployment.' : '')
     } catch {
       setBankStatus('unknown')
     }
@@ -92,7 +92,7 @@ export default function AdminPaymentsScreen() {
     {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void load()}>Retry</button></section> : <>
       <section style={{ ...card, borderColor: bankStatus === 'complete' ? 'var(--success, #15803d)' : 'var(--border)' }}>
         <h2 style={{ marginTop: 0 }}>Question-bank protection</h2>
-        <p style={{ marginTop: 0, lineHeight: 1.5 }}>Copy the encrypted question files into private Supabase Storage before switching the app to protected question delivery. This one-time step does not delete the currently working public files.</p>
+        <p style={{ marginTop: 0, lineHeight: 1.5 }}>Copy the encrypted question files into private Supabase Storage. The currently served public files will stay in place until the private copy is verified, then they can be removed in a follow-up deployment.</p>
         <p style={{ fontWeight: 800 }}>Status: {bankStatus === 'complete' ? 'PRIVATE COPY COMPLETE' : bankStatus === 'running' || bankBusy ? 'COPYING FILES…' : bankStatus === 'failed' ? 'COPY FAILED' : bankStatus === 'pending' ? 'NOT COPIED YET' : bankStatus === 'unknown' ? 'STATUS UNAVAILABLE' : 'CHECKING…'} · {bankAssetCount}/69 files</p>
         {bankMessage && <p role="status" style={{ overflowWrap: 'anywhere', lineHeight: 1.5 }}>{bankMessage}</p>}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
