@@ -436,7 +436,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       const snapshot = await getSessionSnapshot(selectedSaved.id);
       if (snapshot && snapshot.questions.length > 0 && snapshot.track) {
         await useLicenseStore.getState().refreshCloudEntitlements();
-        const permitted = await authorizeQuestionSet(snapshot.track, snapshot.questions);
+        const access = await authorizeQuestionSetAccess(snapshot.track, snapshot.questions);
         if (!access) {
           set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample.' });
           return false;
@@ -444,7 +444,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         set({
           ...snapshot,
           sessionId: selectedSaved.id,
-          isFreeSession: !licensed,
+          isFreeSession: access === 'free-sample',
           loading: false,
           error: null,
           finished: false,
@@ -470,7 +470,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       );
       if (!matchesRequested) { set({ loading: false }); return false; }
       await useLicenseStore.getState().refreshCloudEntitlements();
-      const permitted = await authorizeQuestionSet(saved.track, saved.questions);
+      const access = await authorizeQuestionSetAccess(saved.track, saved.questions);
       if (!access) {
         set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample.' });
         return false;
@@ -483,7 +483,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         track: saved.track,
         competenceId: saved.competenceId ?? null,
         part: saved.part ?? selectedSaved?.part ?? null,
-        isFreeSession: !licensed,
+        isFreeSession: access === 'free-sample',
         sessionId,
         finished: false,
         mode: saved.mode ?? selectedSaved?.mode ?? 'PRACTICE',
