@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useInstallPrompt } from '../hooks/useInstallPrompt'
 import GooglePlayBadge from './GooglePlayBadge'
+import DesktopInstallBadge from './DesktopInstallBadge'
 
 type InstallPromptProps = { force?: boolean; variant?: 'card' | 'modal' }
 
@@ -117,9 +118,7 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 9 }}>
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void startInstall()} style={{ minHeight: 46 }}>
-              {busy ? 'Opening install prompt…' : canNativePrompt ? 'INSTALL HYPERION ON THIS COMPUTER' : showSteps ? 'HIDE DESKTOP INSTALL STEPS' : 'SHOW DESKTOP INSTALL STEPS'}
-            </button>
+            <DesktopInstallBadge busy={busy} onClick={() => void startInstall()} disabled={busy} />
           </div>
         )}
 
