@@ -66,16 +66,6 @@ function headerIndex(rows: string[][], format: "standard" | "gmdss") {
   }
   return format === "gmdss" ? 3 : 0;
 }
-function answerIndex(ans: string) {
-  const a = ans.trim().toUpperCase();
-  if (["A", "1"].includes(a)) return 0;
-  if (["B", "2"].includes(a)) return 1;
-  if (["C", "3"].includes(a)) return 2;
-  if (["D", "4"].includes(a)) return 3;
-  if (["E", "5"].includes(a)) return 4;
-  if (["F", "6"].includes(a)) return 5;
-  return 0;
-}
 function validStandard(row: string[]) {
   if (row.length < 7) return false;
   const number = Number.parseInt(row[0].trim(), 10);
