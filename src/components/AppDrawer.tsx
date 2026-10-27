@@ -112,28 +112,6 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
 
         <Item label="Study time" path="/studytime" icon="⏱" />
         <Item label="Contact us" external={FB} icon="💬" />
-
-        <div className="drawer-section">Question bank & tools</div>
-        <Item label="Search question bank" path="/search" icon="🔍" />
-        <Item label="Bookmarked questions" path="/bookmarks" icon="🔖" />
-        <Item label="Session log & history" path="/history" icon="📋" />
-
-        <div className="drawer-section">Account & support</div>
-        <button type="button" className={`drawer-item${location.pathname === '/account' || location.pathname.startsWith('/account/') || ['/checkout', '/basket', '/orders', '/manual-payment'].includes(location.pathname) ? ' active' : ''}`} onClick={() => setAccountExpanded(value => !value)} aria-expanded={accountExpanded} aria-controls="account-submenu">
-          <span style={{ width: 22, textAlign: 'center' }}>👤</span>
-          <span style={{ flex: 1, textAlign: 'left' }}>Account & subscriptions</span>
-          <span aria-hidden="true" style={{ display: 'inline-block', transform: accountExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 220ms ease' }}>›</span>
-        </button>
-        <div id="account-submenu" aria-hidden={!accountExpanded} style={{ display: 'grid', gridTemplateRows: accountExpanded ? '1fr' : '0fr', opacity: accountExpanded ? 1 : 0, transform: accountExpanded ? 'translateY(0)' : 'translateY(-5px)', visibility: accountExpanded ? 'visible' : 'hidden', pointerEvents: accountExpanded ? 'auto' : 'none', transition: 'grid-template-rows 260ms cubic-bezier(.2,.7,.2,1), opacity 180ms ease, transform 220ms ease, visibility 260ms', paddingLeft: '1rem' }}>
-          <div style={{ overflow: 'hidden', minHeight: 0 }}>
-            <Item label="Bond Store" path="/account?tab=payments" icon="🛍️" />
-            <Item label="My licenses" path="/account?tab=licenses" icon="🎫" />
-            <Item label="Orders & payment history" path="/orders" icon="🧾" />
-          </div>
-        </div>
-        <Item label="Checkout" path="/checkout" icon="🛒" />
-        <Item label="About Hyperion" path="/about" icon="ℹ" />
-
         <div className="drawer-section">Install Hyperion</div>
         <button type="button" className="drawer-item" onClick={() => setInstallExpanded(value => !value)} aria-expanded={installExpanded} aria-controls="install-guide-submenu">
           <span style={{ width: 22, textAlign: 'center' }}>⬇️</span>
@@ -195,6 +173,29 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
             ))}
           </div>
         </div>
+
+
+
+        <div className="drawer-section">Question bank & tools</div>
+        <Item label="Search question bank" path="/search" icon="🔍" />
+        <Item label="Bookmarked questions" path="/bookmarks" icon="🔖" />
+        <Item label="Session log & history" path="/history" icon="📋" />
+
+        <div className="drawer-section">Account & support</div>
+        <button type="button" className={`drawer-item${location.pathname === '/account' || location.pathname.startsWith('/account/') || ['/checkout', '/basket', '/orders', '/manual-payment'].includes(location.pathname) ? ' active' : ''}`} onClick={() => setAccountExpanded(value => !value)} aria-expanded={accountExpanded} aria-controls="account-submenu">
+          <span style={{ width: 22, textAlign: 'center' }}>👤</span>
+          <span style={{ flex: 1, textAlign: 'left' }}>Account & subscriptions</span>
+          <span aria-hidden="true" style={{ display: 'inline-block', transform: accountExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 220ms ease' }}>›</span>
+        </button>
+        <div id="account-submenu" aria-hidden={!accountExpanded} style={{ display: 'grid', gridTemplateRows: accountExpanded ? '1fr' : '0fr', opacity: accountExpanded ? 1 : 0, transform: accountExpanded ? 'translateY(0)' : 'translateY(-5px)', visibility: accountExpanded ? 'visible' : 'hidden', pointerEvents: accountExpanded ? 'auto' : 'none', transition: 'grid-template-rows 260ms cubic-bezier(.2,.7,.2,1), opacity 180ms ease, transform 220ms ease, visibility 260ms', paddingLeft: '1rem' }}>
+          <div style={{ overflow: 'hidden', minHeight: 0 }}>
+            <Item label="Bond Store" path="/account?tab=payments" icon="🛍️" />
+            <Item label="My licenses" path="/account?tab=licenses" icon="🎫" />
+            <Item label="Orders & payment history" path="/orders" icon="🧾" />
+          </div>
+        </div>
+        <Item label="Checkout" path="/checkout" icon="🛒" />
+        <Item label="About Hyperion" path="/about" icon="ℹ" />
 
         <div className="drawer-section">Legal & compliance</div>
         <Item label="Terms of use" path="/terms" icon="📄" />
