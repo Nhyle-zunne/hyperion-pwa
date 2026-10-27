@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
     if (batch.status === 'paid') {
       return json({ status: 'paid', orderId: batch.id, productCodes: codes, totalPhp: batch.amount_php })
     }
-    if (batch.status !== 'pending' || !batch.paymongo_checkout_session_id) {
+    if (!['pending', 'failed', 'cancelled'].includes(batch.status) || !batch.paymongo_checkout_session_id) {
       return json({ error: 'This basket checkout is no longer pending.' }, 409)
     }
 
@@ -199,41 +199,31 @@ Deno.serve(async (req) => {
 
     const profile = user.user_metadata ?? {}
     const fallbackName = profileName(user) || attributes?.billing?.name || paymentAttrs?.billing?.name || batch.customer_name || null
-    const fallbackCompany = typeof profile.company === 'string' ? profile.company : batch.customer_company || null
-    const fallbackSchool = typeof profile.school === 'string' ? profile.school : batch.customer_school || null
-    const expires: Record<string, string> = {}
-    try {
-      for (const order of childOrders) expires[order.product_code] = await grantOrder(admin, order)
-    } catch {
-      return json({ error: 'PayMongo confirmed payment, but a license could not be saved. Contact Hyperion support with your order ID.' }, 500)
+    const fallbackCompany = typeof profile.company === 'string' && profile.company.trim() ? profile.company : batch.customer_company || null
+    const fallbackSchool = typeof profile.school === 'string' && profile.school.trim() ? profile.school : batch.customer_school || null
+    const source = paymentAttrs?.source?.type || paymentAttrs?.source?.attributes?.type || 'Checkout'
+    const { data: finalized, error: finalizeError } = await admin.rpc('finalize_paymongo_checkout', {
+      p_checkout_reference: batch.id,
+      p_checkout_session_id: batch.paymongo_checkout_session_id,
+      p_payment_id: paidPayment.id,
+      p_payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
+      p_currency: paymentAttrs?.currency,
+      p_amount_minor: Number(paymentAttrs?.amount),
+      p_customer_name: fallbackName,
+      p_customer_company: fallbackCompany,
+      p_customer_school: fallbackSchool
+    })
+    if (finalizeError || !finalized) {
+      console.error('[verify-checkout] Atomic basket finalization failed', JSON.stringify({ orderId: batch.id, code: finalizeError?.code || 'no_result' }))
+      return json({ error: 'PayMongo confirmed payment, but Hyperion could not finalize the basket. Please refresh status or contact support with your order ID.' }, 500)
     }
-
-    const paidAt = new Date().toISOString()
-    const source = paymentAttrs?.source?.type || paymentAttrs?.source?.attributes?.type || 'PayMongo Checkout'
-    const { error: ordersUpdateError } = await admin.from('orders').update({
-      status: 'paid',
-      payment_reference: paidPayment.id,
-      payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
-      paid_at: paidAt,
-      customer_name: fallbackName,
-      customer_company: fallbackCompany,
-      customer_school: fallbackSchool
-    }).eq('checkout_batch_id', batch.id).eq('user_id', user.id).in('status', ['pending','paid'])
-    if (ordersUpdateError) return json({ error: 'Licenses were saved, but the basket order status could not be finalized. Refresh status shortly.' }, 500)
-
-    const { error: batchUpdateError } = await admin.from('checkout_batches').update({
-      status: 'paid',
-      paymongo_payment_id: paidPayment.id,
-      payment_reference: paidPayment.id,
-      payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
-      paid_at: paidAt,
-      customer_name: fallbackName,
-      customer_company: fallbackCompany,
-      customer_school: fallbackSchool
-    }).eq('id', batch.id).eq('status', 'pending')
-    if (batchUpdateError) return json({ error: 'Licenses were saved, but the basket payment status could not be finalized. Refresh status shortly.' }, 500)
-
-    return json({ status: 'paid', orderId: batch.id, productCodes: codes, totalPhp: batch.amount_php, expiresAtByProduct: expires })
+    if (finalized.status === 'reconciliation_required') {
+      return json({ error: 'PayMongo confirmed payment, but this payment needs reconciliation. Contact Hyperion support with your order ID.' }, 409)
+    }
+    if (finalized.duplicatePayment) {
+      console.error('[verify-checkout] Additional paid transaction needs reconciliation', JSON.stringify({ orderId: batch.id, paymentId: paidPayment.id }))
+    }
+    return json(finalized)
   }
 
   // Backward-compatible path for checkouts created before basket checkout was introduced.
@@ -248,7 +238,7 @@ Deno.serve(async (req) => {
   if (order.status === 'paid') {
     return json({ status: 'paid', orderId: order.id, productCode: order.product_code, trackId: order.track_id, productCodes: [order.product_code] })
   }
-  if (order.status !== 'pending') return json({ error: 'This checkout order is no longer pending.' }, 409)
+  if (!['pending', 'failed', 'cancelled'].includes(order.status)) return json({ error: 'This checkout order is no longer pending.' }, 409)
   if (!products[order.product_code as ProductCode] || products[order.product_code as ProductCode].track !== order.track_id || order.currency !== 'PHP') {
     return json({ error: 'The order product or currency does not match Hyperion’s product catalogue.' }, 409)
   }
@@ -282,22 +272,31 @@ Deno.serve(async (req) => {
     return json({ error: 'The confirmed payment amount or currency does not match this order. No license was granted.' }, 409)
   }
 
-  let expiresAt: string
-  try {
-    expiresAt = await grantOrder(admin, order)
-  } catch {
-    return json({ error: 'Payment was confirmed, but Hyperion could not save the license. Please contact support with your order ID.' }, 500)
-  }
-  const source = paidPayment.attributes?.source?.type || paidPayment.attributes?.source?.attributes?.type || 'PayMongo Checkout'
+  const source = paidPayment.attributes?.source?.type || paidPayment.attributes?.source?.attributes?.type || 'Checkout'
   const billingName = attributes?.billing?.name || paidPayment.attributes?.billing?.name || null
-  const { error: updateError } = await admin.from('orders').update({
-    status: 'paid',
-    paymongo_payment_id: paidPayment.id,
-    payment_reference: paidPayment.id,
-    payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
-    paid_at: new Date().toISOString(),
-    customer_name: order.customer_name || profileName(user) || billingName
-  }).eq('id', order.id).eq('status', 'pending')
-  if (updateError) return json({ error: 'License was saved but Hyperion could not finalize the order status.' }, 500)
-  return json({ status: 'paid', orderId: order.id, productCode: order.product_code, trackId: order.track_id, productCodes: [order.product_code], expiresAt })
+  const metadata = user.user_metadata ?? {}
+  const customerCompany = typeof metadata.company === 'string' && metadata.company.trim() ? metadata.company : order.customer_company || null
+  const customerSchool = typeof metadata.school === 'string' && metadata.school.trim() ? metadata.school : order.customer_school || null
+  const { data: finalized, error: finalizeError } = await admin.rpc('finalize_paymongo_checkout', {
+    p_checkout_reference: order.id,
+    p_checkout_session_id: order.paymongo_checkout_session_id,
+    p_payment_id: paidPayment.id,
+    p_payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
+    p_currency: paidPayment.attributes?.currency,
+    p_amount_minor: Number(paidPayment.attributes?.amount),
+    p_customer_name: order.customer_name || profileName(user) || billingName,
+    p_customer_company: customerCompany,
+    p_customer_school: customerSchool
+  })
+  if (finalizeError || !finalized) {
+    console.error('[verify-checkout] Atomic order finalization failed', JSON.stringify({ orderId: order.id, code: finalizeError?.code || 'no_result' }))
+    return json({ error: 'Payment was confirmed, but Hyperion could not finalize the license. Please refresh status or contact support with your order ID.' }, 500)
+  }
+  if (finalized.status === 'reconciliation_required') {
+    return json({ error: 'PayMongo confirmed payment, but this payment needs reconciliation. Contact Hyperion support with your order ID.' }, 409)
+  }
+  if (finalized.duplicatePayment) {
+    console.error('[verify-checkout] Additional paid transaction needs reconciliation', JSON.stringify({ orderId: order.id, paymentId: paidPayment.id }))
+  }
+  return json(finalized)
 })
