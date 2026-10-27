@@ -45,7 +45,7 @@ Deno.serve(async req => {
     for (const id of ids) { const { data: userData } = await admin.auth.admin.getUserById(id); if (userData.user?.email) emails[id] = userData.user.email }
     const paidOrderIds = (data || []).filter(row => row.status === 'paid').map(row => row.id)
     const { data: accessRows, error: accessError } = paidOrderIds.length
-      ? await admin.from('entitlements').select('order_id,status,expires_at').in('order_id', paidOrderIds)
+      ? await admin.from('entitlements').select('order_id,status,expires_at,granted_at').in('order_id', paidOrderIds)
       : { data: [], error: null }
     if (accessError) return json({ error: 'Could not load license access status.' }, 500)
     const accessByOrder: Record<string, { status: string; expires_at: string | null }> = {}
@@ -88,13 +88,30 @@ Deno.serve(async req => {
     if (hasActiveLicense && currentEntitlement?.order_id !== order.id) {
       return json({ error: 'This user already has an active license for this track. Reject this duplicate order instead.' }, 409)
     }
-    const renewalBase = currentExpiry && currentExpiry.getTime() > now.getTime() ? currentExpiry : now
     const term: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' ? order.license_term : 'year'
-    const expiresAt = expiryForTerm(renewalBase, term)
-    const { error: entitlementError } = await admin.from('entitlements').upsert({ user_id: order.user_id, product_code: order.product_code, track_id: order.track_id, order_id: order.id, license_term: term, status: 'active', granted_at: now.toISOString(), renewed_at: now.toISOString(), expires_at: expiresAt.toISOString() }, { onConflict: 'user_id,product_code' })
+    // On a retry after a partial prior approval, preserve this order's original expiry
+    // rather than adding the term again.
+    const existingSameOrderExpiry = currentEntitlement?.order_id === order.id && currentEntitlement.expires_at
+      ? new Date(currentEntitlement.expires_at)
+      : null
+    const reuseSameOrderExpiry = existingSameOrderExpiry !== null && existingSameOrderExpiry.getTime() > now.getTime()
+    const renewalBase = reuseSameOrderExpiry
+      ? existingSameOrderExpiry!
+      : currentExpiry && currentExpiry.getTime() > now.getTime() ? currentExpiry : now
+    const expiresAt = reuseSameOrderExpiry ? existingSameOrderExpiry! : expiryForTerm(renewalBase, term)
+    const { error: entitlementError } = await admin.from('entitlements').upsert({
+      user_id: order.user_id, product_code: order.product_code, track_id: order.track_id,
+      order_id: order.id, license_term: term, status: 'active',
+      granted_at: reuseSameOrderExpiry && currentEntitlement?.granted_at ? currentEntitlement.granted_at : now.toISOString(),
+      renewed_at: now.toISOString(), expires_at: expiresAt.toISOString()
+    }, { onConflict: 'user_id,product_code' })
     if (entitlementError) return json({ error: 'Could not grant access. Review was not completed.' }, 500)
-    const { error } = await admin.from('orders').update({ status: 'paid', admin_note: adminNote, reviewed_by: user.email, reviewed_at: new Date().toISOString(), paid_at: new Date().toISOString() }).eq('id', order.id).in('status', ['submitted','pending'])
-    if (error) return json({ error: 'Access was granted but order status update failed. Please inspect this order.' }, 500)
+    const { data: finalizedOrder, error } = await admin.from('orders').update({
+      status: 'paid', admin_note: adminNote, reviewed_by: user.email,
+      reviewed_at: new Date().toISOString(), paid_at: new Date().toISOString()
+    }).eq('id', order.id).in('status', ['submitted','pending']).select('id').maybeSingle()
+    if (error) return json({ error: 'Access was updated but order status could not be finalized. Retry approval; it will not extend this license twice.' }, 500)
+    if (!finalizedOrder) return json({ error: 'This order was modified concurrently. Refresh before retrying; the existing license expiry was preserved.' }, 409)
   } else {
     const { error } = await admin.from('orders').update({ status: 'failed', admin_note: adminNote, reviewed_by: user.email, reviewed_at: new Date().toISOString() }).eq('id', order.id).in('status', ['submitted','pending'])
     if (error) return json({ error: 'Could not reject this submission.' }, 500)
