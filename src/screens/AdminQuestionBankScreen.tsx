@@ -46,6 +46,7 @@ export default function AdminQuestionBankScreen() {
   const [dragging, setDragging] = useState(false)
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
+  const [batchResult, setBatchResult] = useState<{ attempted: number; updated: number; failed: number } | null>(null)
 
   const call = useCallback(async (body: Record<string, unknown>) => {
     if (!supabase) throw new Error('Question-bank administration is not configured.')
@@ -85,6 +86,16 @@ export default function AdminQuestionBankScreen() {
   const successCount = queue.filter(item => item.status === 'success').length
   const problemCount = queue.filter(item => !item.targetPath || duplicatePaths.has(item.targetPath) || item.file.size > fileSizeLimit(item.file) || !!item.error).length
 
+  const queueGroups = useMemo(() => {
+    const groups = TRACKS.map(([track, label]) => {
+      const items = queue.filter(item => assetByPath.get(item.targetPath)?.track === track)
+      return { key: track, label, items }
+    }).filter(group => group.items.length > 0)
+    const unmatched = queue.filter(item => !assetByPath.get(item.targetPath))
+    if (unmatched.length) groups.push({ key: 'needs-mapping', label: 'Needs mapping / unsupported files', items: unmatched })
+    return groups
+  }, [queue, assetByPath])
+
   const addFiles = (list: FileList | File[]) => {
     const incoming = Array.from(list)
     if (!incoming.length) return
@@ -100,6 +111,7 @@ export default function AdminQuestionBankScreen() {
       }
     })
     setQueue(old => [...old, ...additions])
+    setBatchResult(null)
     setMessage('')
     setIsError(false)
     if (incoming.some(file => !csvFileSupported(file))) {
@@ -109,6 +121,7 @@ export default function AdminQuestionBankScreen() {
   }
 
   const updateTarget = (id: string, targetPath: string) => {
+    setBatchResult(null)
     setQueue(old => old.map(item => item.id === id ? { ...item, targetPath, status: item.status === 'success' ? 'success' : 'ready', error: undefined } : item))
   }
 
@@ -117,6 +130,11 @@ export default function AdminQuestionBankScreen() {
     if (!todo.length) {
       setMessage('All files in this queue are already published.')
       setIsError(false)
+      return
+    }
+    if (todo.some(item => !csvFileSupported(item.file))) {
+      setMessage('Remove unsupported files. Only raw .csv and Hyperion-compatible .csv.enc files can be published.')
+      setIsError(true)
       return
     }
     if (todo.some(item => !item.targetPath)) {
@@ -145,6 +163,7 @@ export default function AdminQuestionBankScreen() {
     if (!window.confirm('Publish ' + todo.length + ' CSV file(s)? Each private question set will be replaced only after its private rollback backup is saved.')) return
 
     setBusy(true)
+    setBatchResult(null)
     setIsError(false)
     setMessage('Publishing ' + todo.length + ' file(s) one by one…')
     let completed = 0
@@ -169,7 +188,8 @@ export default function AdminQuestionBankScreen() {
       }
     }
     setBusy(false)
-    setMessage('Bulk publish finished: ' + completed + ' updated, ' + failed + ' failed. Review each file result below.')
+    setBatchResult({ attempted: todo.length, updated: completed, failed })
+    setMessage(failed === 0 ? 'All ' + completed + ' file(s) in this run published successfully.' : 'Batch run finished: ' + completed + ' updated, ' + failed + ' failed. Review the failed rows and retry.')
     setIsError(failed > 0)
   }
 
@@ -179,7 +199,7 @@ export default function AdminQuestionBankScreen() {
   const statusLabel: Record<QueueStatus, string> = { ready: 'READY', publishing: 'PUBLISHING…', success: 'PUBLISHED', error: 'FAILED' }
 
   return <div className="screen" style={{ width: 'min(calc(100% - 1rem), 1180px)', maxWidth: 1180, margin: '0 auto', paddingBottom: '2rem' }}>
-    <style>{".admin-qb-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:190px;border:2px dashed var(--border);border-radius:10px;padding:1.25rem;text-align:center;background:var(--bg-elevated);transition:border-color .15s,background .15s}.admin-qb-drop.is-dragging{border-color:var(--accent);background:var(--bg-card)}.admin-qb-queue-row{display:grid;grid-template-columns:minmax(180px,1.1fr) minmax(220px,1.5fr) minmax(105px,.55fr) auto;gap:.7rem;align-items:center;border:1px solid var(--border);border-radius:8px;padding:.7rem;margin-top:.5rem;min-width:0}.admin-qb-filename{font-weight:800;overflow-wrap:anywhere}@media(max-width:800px){.admin-qb-queue-row{grid-template-columns:1fr;gap:.4rem}}"} </style>
+    <style>{" .admin-qb-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:190px;border:2px dashed var(--border);border-radius:10px;padding:1.25rem;text-align:center;background:var(--bg-elevated);transition:border-color .15s,background .15s}.admin-qb-drop.is-dragging{border-color:var(--accent);background:var(--bg-card)}.admin-qb-folder{border:1px solid var(--border);border-radius:8px;background:var(--bg-card);overflow:hidden}.admin-qb-folder-summary{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;list-style:none;cursor:pointer;padding:.7rem .8rem;min-height:28px}.admin-qb-folder-summary::-webkit-details-marker{display:none}.admin-qb-folder[open] .admin-qb-folder-summary{border-bottom:1px solid var(--border);background:var(--bg-elevated)}.admin-qb-folder-glyph{font-size:1rem}.admin-qb-folder-name{font-weight:850;font-size:.86rem}.admin-qb-folder-count{color:var(--text-muted);font-size:.78rem}.admin-qb-folder-state{margin-left:auto;font-size:.72rem;font-weight:850;color:var(--text-muted)}.admin-qb-folder-state.is-done{color:var(--success,#15803d)}.admin-qb-folder-state.has-error{color:var(--danger,#dc2626)}.admin-qb-folder-files{padding:.35rem .55rem}.admin-qb-file-row{display:grid;grid-template-columns:minmax(160px,1fr) minmax(200px,1.25fr) minmax(95px,.6fr) auto;gap:.55rem;align-items:center;padding:.5rem .35rem;border-bottom:1px solid var(--border);min-width:0}.admin-qb-file-row:last-child{border-bottom:0}.admin-qb-file-primary{display:flex;align-items:flex-start;gap:.45rem;min-width:0}.admin-qb-file-glyph{font-size:.9rem;margin-top:.05rem}.admin-qb-file-primary>div{display:flex;align-items:baseline;gap:.35rem .5rem;flex-wrap:wrap;min-width:0}.admin-qb-file-name{font-size:.8rem;overflow-wrap:anywhere}.admin-qb-file-size,.admin-qb-file-questions{font-size:.72rem;color:var(--text-muted)}.admin-qb-file-questions{color:var(--success,#15803d)}.admin-qb-target-label{font-size:.64rem;font-weight:850;color:var(--text-muted);min-width:0}.admin-qb-target-select{width:100%;margin-top:.18rem;background:var(--bg-elevated);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.45rem;font:inherit;font-size:.76rem;min-width:0}.admin-qb-path{display:block;font-size:.67rem;font-weight:500;margin-top:.15rem;overflow-wrap:anywhere}.admin-qb-file-status{display:flex;flex-direction:column;align-items:flex-start;gap:.15rem;min-width:0}.admin-qb-status-pill{font-size:.67rem;font-weight:900}.admin-qb-status-pill.success{color:var(--success,#15803d)}.admin-qb-status-pill.error{color:var(--danger,#dc2626)}.admin-qb-status-pill.ready{color:var(--text-muted)}.admin-qb-status-pill.publishing{color:var(--accent)}.admin-qb-row-error{font-size:.68rem;color:var(--danger,#dc2626);overflow-wrap:anywhere}.admin-qb-backup-note{font-size:.66rem;color:var(--text-muted)}.admin-qb-remove{padding:.35rem .5rem;font-size:.72rem}.admin-qb-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:.9rem;padding-top:.7rem;border-top:1px solid var(--border)}@media(max-width:800px){.admin-qb-file-row{grid-template-columns:minmax(0,1fr) auto;gap:.45rem}.admin-qb-target-label{grid-column:1/-1}.admin-qb-file-status{grid-column:1}.admin-qb-remove{grid-column:2;grid-row:3;justify-self:end}}"} </style>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: '.8rem' }}>
       <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)' }}>← Account</button>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -206,47 +226,96 @@ export default function AdminQuestionBankScreen() {
     </section>
     <section style={card}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Upload queue ({queue.length})</h2>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Upload queue ({queue.length})</h2>
+          {!!queue.length && <p style={{ ...secondaryText, margin: '.25rem 0 0' }}>{queue.length} files · {(totalBytes / 1024).toFixed(1)} KB · {successCount} published · {problemCount} need attention</p>}
+        </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="btn btn-outline" disabled={loading || busy} onClick={() => void loadAssets()}>Refresh question sets</button>
-          <button type="button" className="btn btn-outline" disabled={busy || !queue.length} onClick={() => { setQueue([]); setMessage(''); setIsError(false) }}>Clear queue</button>
+          <button type="button" className="btn btn-outline" disabled={busy || !queue.length} onClick={() => { setQueue([]); setBatchResult(null); setMessage(''); setIsError(false) }}>Clear queue</button>
         </div>
       </div>
+
+      {batchResult && !busy && <div role="status" aria-live="polite" style={{
+        display: 'flex', alignItems: 'flex-start', gap: '.65rem', marginTop: '.8rem', padding: '.8rem .9rem', borderRadius: 8,
+        border: '1px solid ' + (batchResult.failed ? 'var(--danger, #dc2626)' : 'var(--success, #15803d)'),
+        background: 'var(--bg-elevated)'
+      }}>
+        <strong style={{ fontSize: '1.1rem', color: batchResult.failed ? 'var(--danger, #dc2626)' : 'var(--success, #15803d)' }}>{batchResult.failed ? '!' : '✓'}</strong>
+        <div style={{ minWidth: 0 }}>
+          <strong>{batchResult.failed === 0 && queue.length > 0 && queue.every(item => item.status === 'success')
+            ? 'All ' + queue.length + ' files updated successfully.'
+            : 'Batch finished: ' + batchResult.updated + ' updated, ' + batchResult.failed + ' failed.'}</strong>
+          <div style={{ ...secondaryText, marginTop: '.15rem' }}>{batchResult.failed === 0
+            ? 'Each replacement was validated and backed up privately. Refresh Hyperion to verify the changes.'
+            : 'Successful files are already updated. Expand the folders marked with failures and retry only those files.'}</div>
+        </div>
+      </div>}
+
       {loading && <p style={secondaryText}>Loading supported question sets…</p>}
       {!loading && !queue.length && <p style={secondaryText}>No files added yet. Drop your CSV files above to get started.</p>}
-      {!!queue.length && <p style={secondaryText}>{queue.length} file(s) · {(totalBytes / 1024).toFixed(1)} KB combined · {successCount} published · {problemCount} need attention</p>}
-      {queue.map(item => {
-        const target = assetByPath.get(item.targetPath)
-        const duplicate = !!item.targetPath && duplicatePaths.has(item.targetPath) && item.status !== 'success'
-        const tooLarge = item.file.size > fileSizeLimit(item.file)
-        const rowError = item.error || (tooLarge ? 'Over 700 KB per file.' : duplicate ? 'Duplicate target. Keep one file per question set.' : !item.targetPath ? 'No automatic match. Select the correct target.' : '')
-        return <div key={item.id} className="admin-qb-queue-row">
-          <div>
-            <div className="admin-qb-filename">{item.file.name}</div>
-            <div style={secondaryText}>{(item.file.size / 1024).toFixed(1)} KB</div>
-            {item.questionCount != null && <div style={{ fontSize: '.78rem', color: 'var(--success, #15803d)', marginTop: '.2rem' }}>{item.questionCount.toLocaleString()} question rows</div>}
-          </div>
-          <label style={{ fontSize: '.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>REPLACE QUESTION SET
-            <select value={item.targetPath} disabled={busy || item.status === 'success'} onChange={event => updateTarget(item.id, event.target.value)} style={field}>
-              <option value="">Choose target…</option>
-              {TRACKS.map(([track, label]) => <optgroup key={track} label={label}>
-                {assets.filter(asset => asset.track === track).map(asset => <option key={asset.path} value={asset.path}>{asset.label}</option>)}
-              </optgroup>)}
-            </select>
-            {target && <div style={{ fontWeight: 500, marginTop: '.2rem', overflowWrap: 'anywhere' }}>{target.path}</div>}
-          </label>
-          <div>
-            <strong style={{ fontSize: '.76rem', color: item.status === 'success' ? 'var(--success, #15803d)' : item.status === 'error' || rowError ? 'var(--danger, #dc2626)' : 'var(--text-muted)' }}>{statusLabel[item.status]}</strong>
-            {rowError && item.status !== 'success' && <div style={{ fontSize: '.74rem', color: 'var(--danger, #dc2626)', marginTop: '.2rem' }}>{rowError}</div>}
-            {item.status === 'error' && item.error && <div style={{ fontSize: '.74rem', marginTop: '.2rem' }}>{item.error}</div>}
-            {item.backupPath && <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', overflowWrap: 'anywhere', marginTop: '.2rem' }}>Backup saved privately</div>}
-          </div>
-          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setQueue(old => old.filter(row => row.id !== item.id))} aria-label={'Remove ' + item.file.name} style={{ padding: '.5rem .65rem' }}>REMOVE</button>
-        </div>
-      })}
-      {!!queue.length && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: '1rem' }}>
-        <p style={{ ...secondaryText, margin: 0 }}>Files publish one by one, so one failure won’t stop the rest. Maximum 700 KB per raw CSV and 1 MiB per encrypted CSV. Only one file per target in each batch.</p>
-        <button type="button" className="btn btn-primary" disabled={busy || loading || !queue.some(item => item.status !== 'success')} onClick={() => void publishBatch()}>{busy ? 'PUBLISHING BATCH…' : 'VALIDATE & PUBLISH BATCH'}</button>
+
+      {!!queue.length && <div style={{ marginTop: '.75rem', display: 'grid', gap: '.45rem' }}>
+        {queueGroups.map(group => {
+          const published = group.items.filter(item => item.status === 'success').length
+          const failed = group.items.filter(item => item.status === 'error').length
+          const openInitially = group.items.some(item => item.status === 'error' || !item.targetPath || !!item.error)
+          return <details key={group.key} className="admin-qb-folder" open={openInitially || undefined}>
+            <summary className="admin-qb-folder-summary">
+              <span className="admin-qb-folder-glyph" aria-hidden="true">📁</span>
+              <span className="admin-qb-folder-name">{group.label}</span>
+              <span className="admin-qb-folder-count">{group.items.length} file{group.items.length === 1 ? '' : 's'}</span>
+              <span className={'admin-qb-folder-state' + (failed ? ' has-error' : published === group.items.length ? ' is-done' : '')}>
+                {failed ? failed + ' failed' : published === group.items.length ? 'Published' : published + '/' + group.items.length + ' published'}
+              </span>
+            </summary>
+            <div className="admin-qb-folder-files">
+              {group.items.map(item => {
+                const target = assetByPath.get(item.targetPath)
+                const duplicate = !!item.targetPath && duplicatePaths.has(item.targetPath) && item.status !== 'success'
+                const tooLarge = item.file.size > fileSizeLimit(item.file)
+                const rowError = item.error || (tooLarge ? (isEncryptedCsv(item.file) ? 'Encrypted file exceeds 1 MiB.' : 'Raw CSV exceeds 700 KB.') : duplicate ? 'Duplicate target in this batch.' : !item.targetPath ? 'Choose a destination.' : '')
+                const unsupported = !csvFileSupported(item.file)
+                return <div key={item.id} className="admin-qb-file-row">
+                  <div className="admin-qb-file-primary">
+                    <span className="admin-qb-file-glyph" aria-hidden="true">📄</span>
+                    <div style={{ minWidth: 0 }}>
+                      <strong className="admin-qb-file-name">{item.file.name}</strong>
+                      <span className="admin-qb-file-size">{(item.file.size / 1024).toFixed(1)} KB</span>
+                      {item.questionCount != null && <span className="admin-qb-file-questions">{item.questionCount.toLocaleString()} rows</span>}
+                    </div>
+                  </div>
+                  <label className="admin-qb-target-label">DESTINATION
+                    <select value={item.targetPath} disabled={busy || item.status === 'success' || unsupported} onChange={event => updateTarget(item.id, event.target.value)} className="admin-qb-target-select">
+                      <option value="">Choose target…</option>
+                      {TRACKS.map(([track, label]) => <optgroup key={track} label={label}>
+                        {assets.filter(asset => asset.track === track).map(asset => <option key={asset.path} value={asset.path}>{asset.label}</option>)}
+                      </optgroup>)}
+                    </select>
+                    {target && <span className="admin-qb-path">{target.path}</span>}
+                  </label>
+                  <div className="admin-qb-file-status">
+                    <span className={'admin-qb-status-pill ' + item.status}>{statusLabel[item.status]}</span>
+                    {rowError && item.status !== 'success' && <span className="admin-qb-row-error">{rowError}</span>}
+                    {item.backupPath && <span className="admin-qb-backup-note">Backup saved privately</span>}
+                  </div>
+                  <button type="button" className="btn btn-outline admin-qb-remove" disabled={busy} onClick={() => { setQueue(old => old.filter(row => row.id !== item.id)); setBatchResult(null) }} aria-label={'Remove ' + item.file.name}>Remove</button>
+                </div>
+              })}
+            </div>
+          </details>
+        })}
+      </div>}
+
+      {!!queue.length && <div className="admin-qb-footer">
+        <p style={{ ...secondaryText, margin: 0 }}>Each file publishes separately. Raw CSV limit: 700 KB; encrypted CSV limit: 1 MiB. One file per destination in each batch.</p>
+        <button type="button" className="btn btn-primary" disabled={busy || loading || !queue.some(item => item.status !== 'success')}
+          onClick={() => void publishBatch()}>
+          {busy ? 'PUBLISHING BATCH…'
+            : queue.length > 0 && queue.every(item => item.status === 'success') ? 'ALL FILES UPDATED ✓'
+              : queue.some(item => item.status === 'error') && !queue.some(item => item.status === 'ready') ? 'RETRY FAILED FILES'
+                : 'VALIDATE & PUBLISH BATCH'}
+        </button>
       </div>}
     </section>
     <section style={{ ...card, background: 'var(--bg-elevated)' }}>
