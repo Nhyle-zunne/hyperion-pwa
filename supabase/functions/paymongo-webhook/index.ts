@@ -146,8 +146,7 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (batchError) return new Response('Could not look up basket checkout', { status: 500 })
   if (batch) {
-    if (batch.status === 'paid') return Response.json({ received: true, duplicate: true })
-    if (batch.status !== 'pending' || batch.paymongo_checkout_session_id !== checkoutSession.id) {
+    if (!['pending', 'paid', 'failed', 'cancelled'].includes(batch.status) || batch.paymongo_checkout_session_id !== checkoutSession.id) {
       return new Response('Basket order status or checkout session mismatch', { status: 409 })
     }
     const codes = Array.isArray(batch.product_codes) ? batch.product_codes as string[] : []
@@ -193,71 +192,33 @@ Deno.serve(async (req) => {
       return new Response('Basket item list or total mismatch', { status: 400 })
     }
 
-    const source = paymentAttrs?.source?.type || paymentAttrs?.source?.attributes?.type || 'PayMongo Checkout'
-    const paidAt = new Date().toISOString()
+    const source = paymentAttrs?.source?.type || paymentAttrs?.source?.attributes?.type || 'Checkout'
     const customerName = batch.customer_name || sessionAttrs?.billing?.name || paymentAttrs?.billing?.name || null
     const customerCompany = batch.customer_company || null
     const customerSchool = batch.customer_school || null
-
-    for (const order of childOrders) {
-      const { data: existingEntitlement, error: currentError } = await admin.from('entitlements')
-        .select('order_id,status,expires_at')
-        .eq('user_id', order.user_id)
-        .eq('product_code', order.product_code)
-        .maybeSingle()
-      if (currentError) return new Response('Could not check basket entitlement', { status: 500 })
-
-      const alreadyGrantedForOrder = existingEntitlement?.order_id === order.id
-        && existingEntitlement.status === 'active'
-        && existingEntitlement.expires_at
-      if (!alreadyGrantedForOrder) {
-        const now = new Date()
-        const existingExpiry = existingEntitlement?.status === 'active' && existingEntitlement.expires_at
-          ? new Date(existingEntitlement.expires_at)
-          : null
-        const renewalBase = existingExpiry && existingExpiry.getTime() > now.getTime() ? existingExpiry : now
-        const term: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' ? order.license_term : 'year'
-        const expiresAt = expiryForTerm(renewalBase, term)
-
-        const { error: grantError } = await admin.from('entitlements').upsert({
-          user_id: order.user_id,
-          product_code: order.product_code,
-          track_id: order.track_id,
-          order_id: order.id,
-          license_term: term,
-          status: 'active',
-          granted_at: now.toISOString(),
-          renewed_at: now.toISOString(),
-          expires_at: expiresAt.toISOString()
-        }, { onConflict: 'user_id,product_code' })
-        if (grantError) return new Response('Could not grant a basket entitlement', { status: 500 })
-      }
+    const { data: finalized, error: finalizeError } = await admin.rpc('finalize_paymongo_checkout', {
+      p_checkout_reference: batch.id,
+      p_checkout_session_id: checkoutSession.id,
+      p_payment_id: payment.id,
+      p_payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
+      p_currency: paymentAttrs?.currency,
+      p_amount_minor: Number(paymentAttrs?.amount),
+      p_customer_name: customerName,
+      p_customer_company: customerCompany,
+      p_customer_school: customerSchool
+    })
+    if (finalizeError || !finalized) {
+      console.error('[paymongo-webhook] Atomic basket finalization failed', JSON.stringify({ orderId: batch.id, code: finalizeError?.code || 'no_result' }))
+      return new Response('Could not finalize verified basket payment', { status: 500 })
     }
-
-    const { error: ordersUpdateError } = await admin.from('orders').update({
-      status: 'paid',
-      payment_reference: payment.id,
-      payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
-      paid_at: paidAt,
-      customer_name: customerName,
-      customer_company: customerCompany,
-      customer_school: customerSchool
-    }).eq('checkout_batch_id', batch.id).eq('user_id', batch.user_id).in('status', ['pending','paid'])
-    if (ordersUpdateError) return new Response('Could not finalize basket order items', { status: 500 })
-
-    const { error: batchUpdateError } = await admin.from('checkout_batches').update({
-      status: 'paid',
-      paymongo_payment_id: payment.id,
-      payment_reference: payment.id,
-      payment_method: `PayMongo · ${String(source).slice(0, 80)}`,
-      paid_at: paidAt,
-      customer_name: customerName,
-      customer_company: customerCompany,
-      customer_school: customerSchool
-    }).eq('id', batch.id).eq('status', 'pending')
-    if (batchUpdateError) return new Response('Could not finalize basket payment', { status: 500 })
-
-    return Response.json({ received: true, basket: true, productCount: codes.length })
+    if (finalized.status === 'reconciliation_required') {
+      console.error('[paymongo-webhook] Payment requires reconciliation', JSON.stringify({ orderId: batch.id, paymentId: payment.id }))
+      return Response.json({ received: true, reconciliation_required: true })
+    }
+    if (finalized.duplicatePayment) {
+      console.error('[paymongo-webhook] Additional paid transaction needs reconciliation', JSON.stringify({ orderId: batch.id, paymentId: payment.id }))
+    }
+    return Response.json({ received: true, basket: true, duplicate: !!finalized.duplicate, productCount: codes.length })
   }
 
   const { data: order, error: orderError } = await admin.from('orders')
@@ -265,8 +226,7 @@ Deno.serve(async (req) => {
     .eq('id', orderId)
     .maybeSingle()
   if (orderError || !order) return new Response('Order not found', { status: 404 })
-  if (order.status === 'paid') return Response.json({ received: true, duplicate: true })
-  if (order.status !== 'pending' || order.paymongo_checkout_session_id !== checkoutSession.id) {
+  if (!['pending', 'paid', 'failed', 'cancelled'].includes(order.status) || order.paymongo_checkout_session_id !== checkoutSession.id) {
     return new Response('Order status or checkout session mismatch', { status: 409 })
   }
   if (
@@ -283,51 +243,31 @@ Deno.serve(async (req) => {
     return new Response('Payment amount mismatch', { status: 400 })
   }
 
-  // Make retry handling idempotent. If the entitlement was written before a prior
-  // delivery failed, reuse its expiry instead of extending the subscription twice.
-  const { data: existingEntitlement, error: currentError } = await admin.from('entitlements')
-    .select('order_id,status,expires_at')
-    .eq('user_id', order.user_id)
-    .eq('product_code', order.product_code)
-    .maybeSingle()
-  if (currentError) return new Response('Could not check current entitlement', { status: 500 })
-
-  const alreadyGrantedForOrder = existingEntitlement?.order_id === order.id
-    && existingEntitlement.status === 'active'
-    && existingEntitlement.expires_at
-  if (!alreadyGrantedForOrder) {
-    const now = new Date()
-    const existingExpiry = existingEntitlement?.status === 'active' && existingEntitlement.expires_at
-      ? new Date(existingEntitlement.expires_at)
-      : null
-    const hasFutureExpiry = existingExpiry && existingExpiry.getTime() > now.getTime()
-    const renewalBase = hasFutureExpiry ? existingExpiry : now
-    const expiresAt = expiryForTerm(renewalBase, singleTerm)
-
-    const { error: entitlementError } = await admin.from('entitlements').upsert({
-      user_id: order.user_id,
-      product_code: order.product_code,
-      track_id: order.track_id,
-      order_id: order.id,
-      license_term: singleTerm,
-      status: 'active',
-      granted_at: now.toISOString(),
-      renewed_at: now.toISOString(),
-      expires_at: expiresAt.toISOString()
-    }, { onConflict: 'user_id,product_code' })
-    if (entitlementError) return new Response('Could not grant entitlement', { status: 500 })
+  const paymentSource = paymentAttrs?.source?.type || paymentAttrs?.source?.attributes?.type || 'Checkout'
+  const customerName = order.customer_name || sessionAttrs?.billing?.name || paymentAttrs?.billing?.name || null
+  const customerCompany = order.customer_company || null
+  const customerSchool = order.customer_school || null
+  const { data: finalized, error: finalizeError } = await admin.rpc('finalize_paymongo_checkout', {
+    p_checkout_reference: order.id,
+    p_checkout_session_id: checkoutSession.id,
+    p_payment_id: payment.id,
+    p_payment_method: `PayMongo · ${String(paymentSource).slice(0, 80)}`,
+    p_currency: paymentAttrs?.currency,
+    p_amount_minor: Number(paymentAttrs?.amount),
+    p_customer_name: customerName,
+    p_customer_company: customerCompany,
+    p_customer_school: customerSchool
+  })
+  if (finalizeError || !finalized) {
+    console.error('[paymongo-webhook] Atomic order finalization failed', JSON.stringify({ orderId: order.id, code: finalizeError?.code || 'no_result' }))
+    return new Response('Could not finalize verified payment', { status: 500 })
   }
-
-  const paymentSource = paymentAttrs?.source?.type || paymentAttrs?.source?.attributes?.type || 'PayMongo Checkout'
-  const { error: updateError } = await admin.from('orders').update({
-    status: 'paid',
-    paymongo_payment_id: payment.id,
-    payment_reference: payment.id,
-    payment_method: `PayMongo · ${String(paymentSource).slice(0, 80)}`,
-    paid_at: new Date().toISOString(),
-    customer_name: order.customer_name || sessionAttrs?.billing?.name || paymentAttrs?.billing?.name || null
-  }).eq('id', order.id).eq('paymongo_checkout_session_id', checkoutSession.id).neq('status', 'paid')
-  if (updateError) return new Response('Could not update paid order', { status: 500 })
-
-  return Response.json({ received: true })
+  if (finalized.status === 'reconciliation_required') {
+    console.error('[paymongo-webhook] Payment requires reconciliation', JSON.stringify({ orderId: order.id, paymentId: payment.id }))
+    return Response.json({ received: true, reconciliation_required: true })
+  }
+  if (finalized.duplicatePayment) {
+    console.error('[paymongo-webhook] Additional paid transaction needs reconciliation', JSON.stringify({ orderId: order.id, paymentId: payment.id }))
+  }
+  return Response.json({ received: true, duplicate: !!finalized.duplicate })
 })
