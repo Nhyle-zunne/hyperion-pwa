@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
@@ -60,6 +60,7 @@ async function edgeError(error: unknown): Promise<string> {
 
 export default function BasketScreen() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [params] = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
   const [basket, setBasket] = useState<BasketItem[]>(savedBasket)
@@ -72,7 +73,10 @@ export default function BasketScreen() {
   const [manualFallbackItems, setManualFallbackItems] = useState<BasketItem[]>([])
   const [paymongoCheckoutEnabled, setPaymongoCheckoutEnabled] = useState<boolean | null>(null)
   const [checkoutUrlFallback, setCheckoutUrlFallback] = useState<string | null>(null)
-  const [purchaseConfirmation, setPurchaseConfirmation] = useState<PurchaseConfirmation | null>(null)
+  const [purchaseConfirmation, setPurchaseConfirmation] = useState<PurchaseConfirmation | null>(() => {
+    const state = location.state as { purchaseConfirmation?: PurchaseConfirmation } | null
+    return state?.purchaseConfirmation ?? null
+  })
   const handledSuccessOrderRef = useRef<string | null>(null)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
@@ -212,6 +216,11 @@ export default function BasketScreen() {
   }, [session?.user.id])
 
   const clearBasketCodes = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
+  const dismissPurchaseConfirmation = () => {
+    setPurchaseConfirmation(null)
+    // Clear the persisted router state too, so a refresh doesn't reopen a dismissed dialog.
+    navigate('/checkout', { replace: true, state: null })
+  }
   const selectedItems = useMemo(() => basket.flatMap(entry => {
     const product = PAID_PRODUCTS.find(item => item.code === entry.code)
     return product ? [{ ...entry, product, price: priceForTerm(product, entry.term) }] : []
@@ -340,9 +349,12 @@ export default function BasketScreen() {
             .filter(code => PAID_PRODUCTS.some(item => item.code === code))
           const productCodes = returnedCodes.length ? returnedCodes : [...new Set(orderCodes)]
           handledSuccessOrderRef.current = orderId
-          setPurchaseConfirmation({ orderId, productCodes })
+          const confirmation = { orderId, productCodes }
+          setPurchaseConfirmation(confirmation)
           setMessage('')
-          navigate('/checkout', { replace: true })
+          // App.tsx remounts route content when search params change. Carry the
+          // confirmation in router state so the thank-you dialog survives URL cleanup.
+          navigate('/checkout', { replace: true, state: { purchaseConfirmation: confirmation } })
         } else {
           setIsError(true)
           setMessage(current => current || 'PayMongo has not confirmed this checkout as paid yet. Do not pay again; use Refresh payment status shortly.')
@@ -517,7 +529,7 @@ export default function BasketScreen() {
     `}</style>
     {purchaseConfirmation && <div
       role="presentation"
-      onClick={() => setPurchaseConfirmation(null)}
+      onClick={dismissPurchaseConfirmation}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         display: 'grid', placeItems: 'center',
