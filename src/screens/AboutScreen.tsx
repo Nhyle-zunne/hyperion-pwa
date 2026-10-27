@@ -50,8 +50,11 @@ export default function AboutScreen() {
       <section style={sectionStyle}>
         <h2 style={headingStyle}>Access and accounts</h2>
         <div className="card" style={{ lineHeight: 1.65 }}>
-          <p style={paragraphStyle}>The Android app and website may offer different account and storage experiences. The website/PWA supports account sign-in and account-linked access features. Some features or tracks may be free, while others may require an eligible license or subscription.</p>
-          <p style={{ ...paragraphStyle, marginBottom: 0 }}>Website license requests may be reviewed before access is granted. Access is governed by the offer displayed to you and our <button type="button" onClick={() => navigate('/terms')} style={{ display: 'inline', border: 0, padding: 0, background: 'transparent', color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>Terms of Use</button>.</p>
+          <p style={paragraphStyle}>Hyperion has separate Android-app and website/PWA licensing systems. They are not one shared subscription, even if you use the same email address or Google account on both platforms. Features, prices, access periods, renewal rules, and available tracks may differ.</p>
+          <p style={paragraphStyle}><strong>Google Play subscriptions:</strong> A subscription purchased inside the Android app is billed and managed through Google Play. It applies to the eligible Android-app access described in the Google Play offer. It does not automatically unlock a website/PWA license.</p>
+          <p style={paragraphStyle}><strong>Website/PWA licenses:</strong> A license purchased at <a href="https://hyperionmaritime.org/account?tab=payments" style={{ color: 'var(--accent)' }}>hyperionmaritime.org</a> is linked to the Hyperion account signed in on the website. Website checkout is processed through PayMongo; QR transfers submitted through manual payment require verification before access is activated. Website access is sold for the duration shown at purchase and does not automatically renew unless the checkout expressly states otherwise.</p>
+          <p style={paragraphStyle}>A website/PWA purchase does not activate a Google Play subscription or an Android device-bound offline activation pass. A Google Play subscription does not activate a website/PWA license. These purchases, their cancellation/refund processes, and their access records cannot be transferred or combined automatically. Please check which platform you are buying for before paying.</p>
+          <p style={{ ...paragraphStyle, marginBottom: 0 }}>Website license activation and access are governed by the offer displayed at checkout and our <button type="button" onClick={() => navigate('/terms')} style={{ display: 'inline', border: 0, padding: 0, background: 'transparent', color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>Terms of Use</button>.</p>
         </div>
       </section>
 
@@ -66,7 +69,7 @@ export default function AboutScreen() {
       <section style={sectionStyle}>
         <h2 style={headingStyle}>Privacy</h2>
         <div className="card" style={{ lineHeight: 1.65 }}>
-          <p style={paragraphStyle}>The information Hyperion handles depends on whether you use the Android app or the website/PWA. Our Privacy Policy describes account sign-in, locally stored study progress, license verification, service providers, retention, and account-deletion options.</p>
+          <p style={paragraphStyle}>Information handling differs by platform. The Android app stores study data locally and uses Google Play Billing for Play purchases; the website/PWA uses Google sign-in, account-linked learning progress, and separate website payment and license records. Our Privacy Policy explains these differences, the third-party providers involved, retention, and deletion options.</p>
           <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => navigate('/privacy-policy')}>Read Privacy Policy</button>
         </div>
       </section>
