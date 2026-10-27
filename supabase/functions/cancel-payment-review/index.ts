@@ -32,12 +32,13 @@ Deno.serve(async req => {
   }
   if (!['submitted', 'pending'].includes(order.status)) return json({ error: 'Only a payment submission awaiting review can be cancelled.' }, 409)
 
-  const { error } = await admin.from('orders').update({
+  const { data: cancelledOrder, error } = await admin.from('orders').update({
     status: 'cancelled',
     admin_note: 'Cancelled by the customer before review.',
     reviewed_at: new Date().toISOString(),
     reviewed_by: user.id
-  }).eq('id', orderId).eq('user_id', user.id).in('status', ['submitted', 'pending'])
+  }).eq('id', orderId).eq('user_id', user.id).in('status', ['submitted', 'pending']).select('id').maybeSingle()
   if (error) return json({ error: 'Could not cancel the payment submission. Please refresh and try again.' }, 500)
+  if (!cancelledOrder) return json({ error: 'This submission was changed while you were cancelling it. Refresh the page and check its current status.' }, 409)
   return json({ success: true, orderId, status: 'cancelled' })
 })
