@@ -80,6 +80,7 @@ export default function AccountScreen() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [deletionSuccess, setDeletionSuccess] = useState(false)
+  const [signedOutSuccess, setSignedOutSuccess] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
@@ -341,6 +342,24 @@ export default function AccountScreen() {
     return () => { active = false; window.clearInterval(timer) }
   }, [session?.user.id, pendingCheckoutIds])
 
+  const signOut = async () => {
+    if (!supabase) {
+      setMessage('Sign-out is temporarily unavailable. Please try again.')
+      return
+    }
+    setBusy(true)
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      setMessage('')
+      setSignedOutSuccess(true)
+    } catch {
+      setMessage('Unable to sign out. Please check your connection and try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const deleteAccount = async () => {
     if (!supabase || !session || deleteConfirmation !== 'DELETE') return
     setBusy(true)
@@ -404,6 +423,23 @@ export default function AccountScreen() {
       @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar-actions{display:flex;justify-content:flex-end}.account-page .profile-mobile-toggle{display:inline-flex}.account-page .account-profile-content{display:none}.account-page .account-profile-content.is-expanded{display:block}.account-page .account-section-tabs{display:grid;grid-template-columns:1fr;gap:.45rem}.account-page .account-section-tabs button{text-align:left}}
       @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
     `}</style>
+
+    {signedOutSuccess && <div
+      role="presentation"
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'grid', placeItems: 'center', padding: '1rem', background: 'rgba(3, 8, 18, .72)', boxSizing: 'border-box' }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sign-out-success-title"
+        style={{ width: 'min(100%, 440px)', boxSizing: 'border-box', padding: '1.5rem', borderRadius: 16, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 24px 70px rgba(0,0,0,.4)', textAlign: 'center' }}
+      >
+        <div aria-hidden="true" style={{ display: 'grid', placeItems: 'center', width: 54, height: 54, margin: '0 auto .9rem', borderRadius: '50%', background: 'rgba(20,125,67,.14)', color: '#16834a', fontSize: '2rem', fontWeight: 900 }}>✓</div>
+        <h2 id="sign-out-success-title" style={{ margin: '0 0 .6rem' }}>Signed out successfully</h2>
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.6, margin: '0 0 1.25rem' }}>You have been signed out of your Hyperion account.</p>
+        <button type="button" className="btn btn-primary" autoFocus onClick={() => setSignedOutSuccess(false)} style={{ width: '100%', minHeight: 46 }}>Continue</button>
+      </section>
+    </div>}
 
     {deletionSuccess && <div
       role="presentation"
@@ -474,7 +510,7 @@ export default function AccountScreen() {
                 <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
               </div>}
               <button type="button" className="btn btn-outline" onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')} style={{ display: 'block', width: '100%', marginTop: '.6rem', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>Delete account</button>
-              <button type="button" className="btn btn-outline" onClick={async () => { await supabase?.auth.signOut(); setMessage('Signed out.') }} style={{ display: 'block', width: '100%', marginTop: '.6rem' }}>Sign out</button>
+              <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void signOut()} style={{ display: 'block', width: '100%', marginTop: '.6rem' }}>{busy ? 'Signing out…' : 'Sign out'}</button>
               {accountTab === 'delete' && <section style={{ ...card, marginTop: '1rem', borderColor: 'var(--danger, #dc2626)' }}>
                 <h3 style={{ marginTop: 0, color: 'var(--danger, #dc2626)' }}>Delete account</h3>
                 <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
