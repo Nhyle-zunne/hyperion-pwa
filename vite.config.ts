@@ -51,12 +51,8 @@ export default defineConfig({
       workbox: {
         // Question banks are delivered by the protected Supabase Edge Function.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}'],
-        // Large question banks – raise limit (default 2 MiB)
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         runtimeCaching: [
-              cacheableResponse: { statuses: [0, 200] }
-            }
-          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
@@ -65,8 +61,7 @@ export default defineConfig({
               expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 }
             }
           }
-        ]
-      },
+        ],
       devOptions: {
         enabled: false
       }

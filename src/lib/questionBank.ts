@@ -427,15 +427,6 @@ async function loadSource(src: BankSource, freeOnly = false): Promise<LoadedSour
   }
 }
 
-function shuffleQuestions<T>(items: T[]): T[] {
-  const values = items.slice();
-  for (let i = values.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [values[i - 1], values[j]] = [values[j], values[i - 1]];
-  }
-  return values;
-}
-
 export async function getQuestionsByCompetence(
   track: TrackId,
   competenceId: string,
