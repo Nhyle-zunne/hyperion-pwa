@@ -8,7 +8,6 @@ interface BeforeInstallPromptEvent extends Event {
 function isStandalone(): boolean {
   if (typeof window === 'undefined') return false
   const mq = window.matchMedia('(display-mode: standalone)').matches
-  // iOS Safari
   const ios = (navigator as Navigator & { standalone?: boolean }).standalone === true
   return mq || ios
 }
@@ -27,13 +26,45 @@ function isAndroid(): boolean {
   return /android/i.test(navigator.userAgent)
 }
 
+// Capture the browser event at module load instead of waiting for a component
+// effect. Some Chromium browsers fire beforeinstallprompt early in page startup.
+let deferredInstallEvent: BeforeInstallPromptEvent | null = null
+let installedState = false
+const installSubscribers = new Set<() => void>()
+const notifyInstallSubscribers = () => {
+  installSubscribers.forEach(subscriber => subscriber())
+}
+
+if (typeof window !== 'undefined') {
+  installedState = isStandalone()
+
+  window.addEventListener('beforeinstallprompt', (event: Event) => {
+    event.preventDefault()
+    deferredInstallEvent = event as BeforeInstallPromptEvent
+    notifyInstallSubscribers()
+  })
+
+  window.addEventListener('appinstalled', () => {
+    installedState = true
+    deferredInstallEvent = null
+    notifyInstallSubscribers()
+  })
+
+  document.addEventListener('visibilitychange', () => {
+    if (isStandalone() && !installedState) {
+      installedState = true
+      deferredInstallEvent = null
+      notifyInstallSubscribers()
+    }
+  })
+}
+
 export function useInstallPrompt() {
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null)
-  const [installed, setInstalled] = useState(isStandalone)
+  const [, setVersion] = useState(0)
   const [dismissed, setDismissed] = useState(() => {
     try {
       // iOS dismissal is session-scoped so an old desktop/permanent dismissal
-      // does not hide the Safari instructions indefinitely.
+      // does not hide Safari instructions indefinitely.
       if (isIos()) return sessionStorage.getItem('hyperion-install-dismissed-ios') === '1'
       return localStorage.getItem('hyperion-install-dismissed') === '1'
     } catch {
@@ -42,39 +73,32 @@ export function useInstallPrompt() {
   })
 
   useEffect(() => {
-    const onBip = (e: Event) => {
-      e.preventDefault()
-      setDeferred(e as BeforeInstallPromptEvent)
-    }
-    const onInstalled = () => {
-      setInstalled(true)
-      setDeferred(null)
-    }
-    window.addEventListener('beforeinstallprompt', onBip)
-    window.addEventListener('appinstalled', onInstalled)
-    // Re-check standalone after focus (user may have installed)
-    const onVis = () => {
-      if (isStandalone()) setInstalled(true)
-    }
-    document.addEventListener('visibilitychange', onVis)
+    const subscriber = () => setVersion(version => version + 1)
+    installSubscribers.add(subscriber)
     return () => {
-      window.removeEventListener('beforeinstallprompt', onBip)
-      window.removeEventListener('appinstalled', onInstalled)
-      document.removeEventListener('visibilitychange', onVis)
+      installSubscribers.delete(subscriber)
     }
   }, [])
 
   const promptInstall = useCallback(async () => {
-    if (!deferred) return false
-    await deferred.prompt()
-    const choice = await deferred.userChoice
-    setDeferred(null)
-    if (choice.outcome === 'accepted') {
-      setInstalled(true)
-      return true
+    const deferred = deferredInstallEvent
+    if (!deferred || installedState || isStandalone()) return false
+
+    try {
+      // Call prompt directly within the click-triggered invocation so the
+      // browser can associate it with the user's activation.
+      await deferred.prompt()
+      const choice = await deferred.userChoice
+      if (deferredInstallEvent === deferred) deferredInstallEvent = null
+      if (choice.outcome === 'accepted') installedState = true
+      notifyInstallSubscribers()
+      return choice.outcome === 'accepted'
+    } catch {
+      if (deferredInstallEvent === deferred) deferredInstallEvent = null
+      notifyInstallSubscribers()
+      return false
     }
-    return false
-  }, [deferred])
+  }, [])
 
   const dismiss = useCallback(() => {
     setDismissed(true)
@@ -96,8 +120,9 @@ export function useInstallPrompt() {
     }
   }, [])
 
+  const installed = installedState || isStandalone()
   return {
-    canNativePrompt: !!deferred && !installed,
+    canNativePrompt: !!deferredInstallEvent && !installed,
     installed,
     isIos: isIos(),
     isAndroid: isAndroid(),
@@ -105,7 +130,6 @@ export function useInstallPrompt() {
     promptInstall,
     dismiss,
     resetDismiss,
-    /** Show install UI unless already installed */
     showInstallUi: !installed
   }
 }
