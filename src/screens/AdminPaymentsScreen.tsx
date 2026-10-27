@@ -77,10 +77,22 @@ export default function AdminPaymentsScreen() {
 
   const card: React.CSSProperties = { background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, padding:'1rem', marginBottom:'1rem' }
   const field: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'.8rem', marginTop:'.4rem', background:'var(--bg-elevated)', color:'var(--text)', border:'1px solid var(--border)', borderRadius:6, font:'inherit' }
-  return <div className="screen" style={{ paddingBottom:'2rem' }}>
-    <div style={{ display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:'.8rem' }}>
+  return <div className="screen admin-payments-page" style={{ width:'min(calc(100% - 1rem), 1180px)', maxWidth:1180, margin:'0 auto', paddingBottom:'2rem' }}>
+    <style>{`
+      .admin-payments-page .page-title{text-align:left;margin:.2rem 0 .3rem}
+      .admin-payments-page .subtitle{ text-align:left }
+      .admin-admin-nav{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+      .admin-payment-orders-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;align-items:start}
+      .admin-payment-orders-grid>section{margin:0;min-width:0}
+      .admin-payment-orders-grid textarea{min-height:76px}
+      @media(max-width:760px){.admin-payment-orders-grid{grid-template-columns:1fr}.admin-admin-nav{width:100%;justify-content:stretch}.admin-admin-nav button{flex:1 1 160px}}
+    `}</style>
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap', marginBottom:'.8rem' }}>
       <button type="button" onClick={() => navigate('/account')} style={{ color:'var(--text-muted)' }}>← Account</button>
-      <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/licenses')}>MANAGE USER LICENSES »</button>
+      <div className="admin-admin-nav">
+        <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/licenses')}>USER LICENSES</button>
+        <button type="button" className="btn btn-primary" onClick={() => navigate('/admin/payments')}>PAYMENT SUBMISSIONS</button>
+      </div>
     </div>
     <h1 className="page-title">Payment Submissions</h1>
     <p className="subtitle">Review manual payment submissions here. License activation, extension, and revocation are managed separately in User Licenses.</p>
@@ -88,7 +100,7 @@ export default function AdminPaymentsScreen() {
     {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void load()}>Retry</button></section> : <>
       <section style={{ ...card, borderColor: bankStatus === 'complete' ? 'var(--success, #15803d)' : 'var(--border)' }}>
         <h2 style={{ marginTop: 0 }}>Question-bank protection</h2>
-        <p style={{ marginTop: 0, lineHeight: 1.5 }}>Copy the encrypted question files into private Supabase Storage. The currently served public files will stay in place until the private copy is verified, then they can be removed in a follow-up deployment.</p>
+        <p style={{ marginTop: 0, lineHeight: 1.5 }}>The encrypted question banks are served from private Supabase Storage. Keep this status panel for verifying that all 69 bank files remain available to the protected question-bank service.</p>
         <p style={{ fontWeight: 800 }}>Status: {bankStatus === 'complete' ? 'PRIVATE COPY COMPLETE' : bankStatus === 'running' || bankBusy ? 'COPYING FILES…' : bankStatus === 'failed' ? 'COPY FAILED' : bankStatus === 'pending' ? 'NOT COPIED YET' : bankStatus === 'unknown' ? 'STATUS UNAVAILABLE' : 'CHECKING…'} · {bankAssetCount}/69 files</p>
         {bankMessage && <p role="status" style={{ overflowWrap: 'anywhere', lineHeight: 1.5 }}>{bankMessage}</p>}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -96,8 +108,11 @@ export default function AdminPaymentsScreen() {
           <button type="button" className="btn btn-outline" disabled={bankBusy} onClick={() => void loadBankStatus()}>Refresh status</button>
         </div>
       </section>
-      <h2>Payment submissions ({orders.length})</h2>
-      {orders.length ? orders.map(order => <section key={order.id} style={card}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap', marginBottom:'.65rem' }}>
+        <h2 style={{ margin:0 }}>Payment submissions ({orders.length})</h2>
+        <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void load()} style={{ padding:'.55rem .8rem' }}>Refresh submissions</button>
+      </div>
+      {orders.length ? <div className="admin-payment-orders-grid">{orders.map(order => <section key={order.id} style={card}>
         <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'space-between', gap:8 }}><strong>{names[order.product_code] || order.product_code} · {duration(order.license_term || 'year')} · ₱{order.amount_php}</strong><strong>{order.status.toUpperCase()}</strong></div>
         <p style={{ margin:'.6rem 0', overflowWrap:'anywhere' }}>{order.email}<br/>Submitted: {new Date(order.created_at).toLocaleString()}<br/>Order ID: {order.id}</p>
         <p style={{ margin:'.4rem 0' }}><strong>Customer name:</strong> {order.customer_name || 'Not provided'}{order.customer_company ? <><br/>Company: {order.customer_company}</> : null}{order.customer_school ? <><br/>School: {order.customer_school}</> : null}</p>
@@ -109,7 +124,7 @@ export default function AdminPaymentsScreen() {
           <label>Admin note<textarea rows={2} value={note[order.id] || ''} onChange={e => setNote(old => ({...old,[order.id]:e.target.value}))} style={field}/></label>
           <div style={{ display:'flex', gap:8, marginTop:'.8rem' }}><button className="btn btn-primary" disabled={busy} onClick={() => void review(order.id,'approve')}>Approve & unlock</button><button className="btn btn-outline" disabled={busy} onClick={() => void review(order.id,'reject')}>Reject</button></div>
         </>}
-      </section>) : <p>No payment submissions yet.</p>}
+      </section>)}</div> : <section style={card}><p style={{ margin:0 }}>No payment submissions yet.</p></section>}
     </>}
   </div>
 }
