@@ -27,6 +27,7 @@ import FlashcardsScreen from './screens/FlashcardsScreen'
 import BookmarksScreen from './screens/BookmarksScreen'
 import SearchScreen from './screens/SearchScreen'
 import StudyTimeScreen from './screens/StudyTimeScreen'
+import IOSInstallGuideScreen from './screens/IOSInstallGuideScreen'
 import PaywallDialog from './components/PaywallDialog'
 import BottomNav from './components/BottomNav'
 import { useUIStore } from './stores/uiStore'
@@ -268,6 +269,7 @@ export default function App() {
           <Route path="/bookmarks" element={<BookmarksScreen />} />
           <Route path="/search" element={<SearchScreen />} />
           <Route path="/studytime" element={<StudyTimeScreen />} />
+          <Route path="/install/ios" element={<IOSInstallGuideScreen />} />
           <Route path="/streak" element={<StudyTimeScreen />} />
           <Route path="*" element={<TrackSelectionScreen />} />
         </Routes>

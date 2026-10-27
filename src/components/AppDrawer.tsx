@@ -149,7 +149,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
               ['desktop', 'PC / Desktop', '💻']
             ] as const).map(([key, label, icon]) => (
               <div key={key}>
-                <button type="button" className="drawer-item" onClick={() => setInstallPlatform(current => current === key ? null : key)} aria-expanded={installPlatform === key} aria-controls={'install-guide-' + key} style={{ fontSize: '.88rem' }}>
+                <button type="button" className="drawer-item" onClick={() => { if (key === 'ios') { go('/install/ios'); return } setInstallPlatform(current => current === key ? null : key) }} aria-expanded={installPlatform === key} aria-controls={'install-guide-' + key} style={{ fontSize: '.88rem' }}>
                   <span style={{ width: 22, textAlign: 'center' }}>{icon}</span>
                   <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
                   <span aria-hidden="true" style={{ display: 'inline-block', transform: installPlatform === key ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 220ms ease' }}>›</span>
