@@ -178,13 +178,11 @@ export default function BasketScreen() {
         }
         if (active && activated.length) {
           const uniqueCodes = [...new Set(activated)]
+          const labels = uniqueCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
+          setIsError(false)
+          setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
           clearBasketCodes(uniqueCodes)
           await refreshData()
-          if (active) {
-            setIsError(false)
-            const labels = uniqueCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
-            setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
-          }
         }
       } catch {
         // Retry on the next interval after transient failures.
