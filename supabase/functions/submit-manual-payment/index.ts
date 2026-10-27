@@ -63,6 +63,19 @@ Deno.serve(async req => {
     return json({ error: 'This license is already active for your account. You do not need to purchase this track again.' }, 409)
   }
 
+  const { data: failedPayMongoSessions, error: failedPayMongoError } = await admin.from('orders')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('product_code', code)
+    .eq('status', 'failed')
+    .eq('payment_method', 'PayMongo Checkout')
+    .not('paymongo_checkout_session_id', 'is', null)
+    .limit(1)
+  if (failedPayMongoError) return json({ error: 'Could not verify your previous PayMongo checkout. Please try again.' }, 500)
+  if (failedPayMongoSessions?.length) {
+    return json({ error: 'A previous PayMongo checkout still has a provider session attached. Resolve or safely cancel it before submitting a manual payment to avoid a double charge.' }, 409)
+  }
+
   const { data: existing, error: existingError } = await admin.from('orders')
     .select('id,status,payment_method').eq('user_id', user.id).eq('product_code', code).in('status', ['submitted', 'pending']).limit(20)
   if (existingError) return json({ error: 'Could not check existing payment submissions. Please try again.' }, 500)
@@ -75,7 +88,6 @@ Deno.serve(async req => {
 
   const amount = prices[code][term]
   const { data: order, error } = await admin.from('orders').insert({ user_id: user.id, product_code: code, track_id: product.track, license_term: term, amount_php: amount, status: 'submitted', payment_method: paymentMethod, payment_reference: paymentReference, proof_url: proofUrl || null, customer_note: customerNote || null, customer_name: customerName, customer_company: customerCompany || null, customer_school: customerSchool || null }).select('id,amount_php,status,license_term').single()
-  if (error?.code === '23505') return json({ error: 'A payment request for this track was just opened in another session. Refresh your orders before submitting again.' }, 409)
   if (error || !order) return json({ error: 'Could not submit payment for review. Please try again.' }, 500)
   return json({ order })
 })
