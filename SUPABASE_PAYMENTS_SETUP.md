@@ -29,12 +29,9 @@ supabase secrets set PAYMONGO_EXPECT_LIVEMODE=false
 supabase secrets set PAYMONGO_CHECKOUT_ENABLED=false
 supabase secrets set APP_BASE_URL=https://hyperionmaritime.org
 
-# These must match the prices shown in Hyperion's Account page.
-supabase secrets set PRICE_DECK_OIC_NW_PHP=350
-supabase secrets set PRICE_GMDSS_PHP=250
-supabase secrets set PRICE_ENGINE_EW_PHP=350
-supabase secrets set PRICE_DECK_MGT_PHP=700
-supabase secrets set PRICE_ENGINE_MGT_PHP=700
+# Prices are defined in the client catalogue and validated by the
+# create-checkout, verify-checkout, and paymongo-webhook functions.
+# Do not configure PRICE_* secrets: the current functions do not read them.
 
 supabase functions deploy create-checkout
 supabase functions deploy verify-checkout
@@ -46,9 +43,9 @@ supabase functions deploy admin-payment-review
 
 Replace both key placeholders with your actual values locally. Do not paste the keys into ChatGPT or GitHub.
 
-The five price secrets are whole Philippine pesos, matching the current Account page prices. If you change your pricing later, update the Account page product catalogue and these server-side secrets together. The server-side secret remains authoritative for the amount actually charged. The app refuses to start checkout unless `PAYMONGO_CHECKOUT_ENABLED=true`, a key for the configured mode is present, and the expected test/live mode is explicitly configured.
+Current prices are hard-coded in `src/lib/supabase.ts` and repeated in the `create-checkout`, `verify-checkout`, and `paymongo-webhook` Edge Functions. These values currently match: OIC-NW ₱20/week, ₱50/month, ₱350/year; GMDSS ₱15/week, ₱40/month, ₱250/year; Engine OIC-EW ₱20/week, ₱50/month, ₱350/year; Deck Management and Engine Management ₱40/week, ₱100/month, ₱700/year. If prices change, update the client catalogue and all three server-side price maps in the same release, then retest checkout, webhook, and verification before enabling payments. The server-side price map is authoritative for amounts charged. Checkout requires `PAYMONGO_CHECKOUT_ENABLED=true`, a key for the configured mode, and an explicit expected test/live mode.
 
-Once you have registered the **test-mode webhook**, save its signing secret, configured the test API key and prices, and confirmed the expected mode is `false`, enable test checkout:
+Once you have registered the **test-mode webhook**, saved its signing secret, configured the test API key, and confirmed the expected mode is `false`, enable test checkout:
 
 ```sh
 supabase secrets set PAYMONGO_CHECKOUT_ENABLED=true
@@ -92,8 +89,7 @@ The existing QR/manual process remains available as a fallback. Manual payments 
 - Complete a one-item checkout and confirm its `checkout_batches` row (or legacy `orders` row) is `paid`.
 - Add at least two tracks to the basket and make one test checkout. Confirm that the batch total equals the sum of the displayed prices, each selected track has one paid order row, and each has an active entitlement.
 - Confirm no unselected track is activated and each entitlement expires about one year after confirmation.
-- Test cancellation/resume, failed checkout creation, wrong amount/currency, invalid webhook signatures, delayed webhook delivery, and duplicate webhook delivery. Duplicate deliveries must not extend the same purchase twice.
-- Verify that an arbitrary `?payment=success` URL does not grant access.
+- Test cancellation/resume, failed checkout creation, wrong amount/currency, invalid webhook signatures, delayed webhook delivery, duplicate webhook delivery, and retried checkout creation. Duplicate deliveries must not extend the same purchase twice; creation retries should reuse the same persisted order/batch ID as the PayMongo `Idempotency-Key`.
 - Verify that an arbitrary `?payment=success` URL does not grant access.
 - After testing, switch the checkout API key, webhook signing secret, and expected live-mode setting together before accepting real payments. Only then set `PAYMONGO_CHECKOUT_ENABLED=true`.
 
