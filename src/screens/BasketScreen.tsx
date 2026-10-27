@@ -303,9 +303,13 @@ export default function BasketScreen() {
           ? data.productCodes
           : typeof data.productCode === 'string' ? [data.productCode] : []
         clearBasketCodes(codes)
-        await refreshData()
+        // Do not block the purchase-success UI on secondary account refreshes.
+        // The server has already verified the payment and finalized the entitlement.
         setIsError(false)
         setMessage(`Payment confirmed. Activated: ${codes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(', ')}. No manual approval is needed.`)
+        void refreshData().catch(() => {
+          // A slow account refresh must not delay the thank-you dialog.
+        })
         return true
       }
       if (error) setMessage(await edgeError(error))
