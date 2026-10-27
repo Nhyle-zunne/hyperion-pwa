@@ -16,7 +16,7 @@ function detectDesktopPlatform(): DesktopPlatform {
 
 export default function DesktopInstallBadge({ onClick, disabled = false, busy = false }: DesktopInstallBadgeProps) {
   const platform = detectDesktopPlatform()
-  const smallLabel = platform === 'mac' ? 'ADD IT TO' : platform === 'windows' ? 'GET IT ON' : 'INSTALL ON'
+  const smallLabel = platform === 'desktop' ? 'INSTALL ON' : 'GET IT ON'
   const mainLabel = platform === 'mac' ? 'Mac' : platform === 'windows' ? 'Windows' : 'Desktop'
 
   return (
