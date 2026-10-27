@@ -150,7 +150,7 @@ Deno.serve(async req => {
 
   if (!['grant', 'revoke'].includes(body.action || '')) return json(req, { error: 'Invalid license action.' }, 400)
   if (!body.userId || !uuidPattern.test(body.userId)) return json(req, { error: 'Choose a valid user.' }, 400)
-  if (!body.productCode || !(body.productCode in PRODUCT_MAP)) return json(req, { error: 'Choose a valid track.' }, 400)
+  if (!body.productCode || !PRODUCTS.some(product => product.code === body.productCode)) return json(req, { error: 'Choose a valid track.' }, 400)
   const product = PRODUCT_MAP[body.productCode as ProductCode]
   const userResult = await admin.auth.admin.getUserById(body.userId)
   if (userResult.error || !userResult.data.user) return json(req, { error: 'Account not found.' }, 404)
