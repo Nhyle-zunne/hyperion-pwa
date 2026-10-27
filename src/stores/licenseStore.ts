@@ -20,6 +20,14 @@ interface LicenseState {
 
 const TRACK_IDS = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'];
 
+function canUseOfflineEntitlementsAfterError(error: unknown): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  const status = Number((error as { context?: { status?: number } } | null)?.context?.status || 0);
+  // Never fall back to a locally cached license after an authorization/client error.
+  // Only genuine network failures and server-side outages may use offline access.
+  return status === 0 || status >= 500;
+}
+
 function accessFlags(trackIds: string[]) {
   const all = trackIds.includes('ALL') || TRACK_IDS.every((id) => trackIds.includes(id));
   return {
@@ -81,10 +89,16 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
         .eq('status', 'active')
         .gt('expires_at', new Date().toISOString());
       if (error) {
-        // Only use a previously verified, unexpired local entitlement when the server is unreachable.
-        const offlineIds = getOfflineEntitledTracks(session.user.id);
-        if (offlineIds.length) set({ cloudTrackIds: offlineIds, ...accessFlags(offlineIds), entitlementsVerified: true });
-        else set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+        // Fail closed for 4xx authorization/client errors; only use a saved license
+        // when offline or when the backend has a network/server outage.
+        if (canUseOfflineEntitlementsAfterError(error)) {
+          const offlineIds = getOfflineEntitledTracks(session.user.id);
+          if (offlineIds.length) {
+            set({ cloudTrackIds: offlineIds, ...accessFlags(offlineIds), entitlementsVerified: true });
+            return;
+          }
+        }
+        set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
         return;
       }
       const rows = data ?? [];
