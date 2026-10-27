@@ -377,7 +377,7 @@ export default function HistoryScreen() {
             </div>
           </div>
 
-          <section className="card" style={{ marginBottom: '1rem', borderLeft: '4px solid #f59e0b', borderRadius: 10 }}>
+          <section className="card" style={{ marginBottom: '1rem', borderLeft: '4px solid var(--accent)', borderRadius: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{ width: 42, height: 42, display: 'grid', placeItems: 'center', background: 'rgba(245,158,11,.15)', fontSize: '1.45rem' }}>🔥</div>
@@ -386,7 +386,7 @@ export default function HistoryScreen() {
                   <div style={secondaryText}>{currentStreak ? 'Keep your daily review going.' : 'Complete a session today to start your streak.'}</div>
                 </div>
               </div>
-              <span style={{ fontWeight: 900, color: '#f59e0b', whiteSpace: 'nowrap' }}>{currentStreak} DAYS</span>
+              <span style={{ fontWeight: 900, color: 'var(--accent)', whiteSpace: 'nowrap' }}>{currentStreak} DAYS</span>
             </div>
           </section>
 
@@ -450,7 +450,7 @@ export default function HistoryScreen() {
             const statusText = !row.completed ? 'IN PROGRESS'
               : row.mode === 'MOCK' ? (row.percent >= 70 ? 'PASSED' : 'FAILED')
                 : row.percent >= 70 ? 'PASSED' : 'COMPLETED'
-            const statusColor = !row.completed ? '#d97706'
+            const statusColor = !row.completed ? 'var(--warning, #c2410c)'
               : row.percent >= 70 ? 'var(--success)' : row.mode === 'MOCK' ? 'var(--danger)' : 'var(--accent)'
             const activate = () => {
               if (skipNextClick.current) { skipNextClick.current = false; return }
@@ -554,7 +554,7 @@ export default function HistoryScreen() {
                     <div style={{ minWidth: 0 }}>
                       <strong style={{ fontSize: '.85rem', overflowWrap: 'anywhere' }}>{rowTitle(row)}</strong>
                       <div style={secondaryText}>{formatDate(row.timestamp)} · Progress {row.answered}/{row.total}</div>
-                      <div style={{ fontSize: '.72rem', color: 'var(--warning, #d97706)', fontWeight: 800, marginTop: '.25rem' }}>{days <= 0 ? 'EXPIRES TODAY' : 'EXPIRES IN ' + days + (days === 1 ? ' DAY' : ' DAYS')}</div>
+                      <div style={{ fontSize: '.72rem', color: 'var(--warning, #c2410c)', fontWeight: 800, marginTop: '.25rem' }}>{days <= 0 ? 'EXPIRES TODAY' : 'EXPIRES IN ' + days + (days === 1 ? ' DAY' : ' DAYS')}</div>
                     </div>
                     <div style={{ display: 'grid', gap: 5, flexShrink: 0 }}>
                       <button className="btn btn-primary" onClick={() => { restoreDeleted(row.kind, row.id) }} style={{ padding: '.35rem .55rem' }}>Restore</button>
