@@ -22,7 +22,7 @@ type Order = {
 }
 
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
-type PurchaseConfirmation = { orderId: string; productCodes: string[] }
+type PurchaseConfirmation = { orderId: string; productCodes: string[]; stage: 'verifying' | 'success' | 'pending' }
 
 function savedBasket(): BasketItem[] {
   try {
@@ -75,7 +75,8 @@ export default function BasketScreen() {
   const [checkoutUrlFallback, setCheckoutUrlFallback] = useState<string | null>(null)
   const [purchaseConfirmation, setPurchaseConfirmation] = useState<PurchaseConfirmation | null>(() => {
     const state = location.state as { purchaseConfirmation?: PurchaseConfirmation } | null
-    return state?.purchaseConfirmation ?? null
+    const saved = state?.purchaseConfirmation
+    return saved ? { ...saved, stage: saved.stage ?? 'success' } : null
   })
   const handledSuccessOrderRef = useRef<string | null>(null)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
@@ -175,6 +176,7 @@ export default function BasketScreen() {
       void refreshData().catch(async error => {
         if (active) {
           setIsError(true)
+          setPurchaseConfirmation({ orderId, productCodes: [], stage: 'pending' })
           setMessage(await edgeError(error))
         }
       })
@@ -217,6 +219,7 @@ export default function BasketScreen() {
 
   const clearBasketCodes = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
   const dismissPurchaseConfirmation = () => {
+    if (purchaseConfirmation?.stage === 'verifying') return
     setPurchaseConfirmation(null)
     // Clear the persisted router state too, so a refresh doesn't reopen a dismissed dialog.
     navigate('/checkout', { replace: true, state: null })
@@ -333,6 +336,7 @@ export default function BasketScreen() {
     }
     if (paymentState !== 'success' || handledSuccessOrderRef.current === orderId) return
     setCheckoutUrlFallback(null)
+    setPurchaseConfirmation({ orderId, productCodes: [], stage: 'verifying' })
     setBusy(true)
     setIsError(false)
     setMessage('Checking the completed payment directly with PayMongo…')
@@ -353,14 +357,14 @@ export default function BasketScreen() {
             .filter(code => PAID_PRODUCTS.some(item => item.code === code))
           const productCodes = returnedCodes.length ? returnedCodes : [...new Set(orderCodes)]
           handledSuccessOrderRef.current = orderId
-          const confirmation = { orderId, productCodes }
+          const confirmation = { orderId, productCodes, stage: 'success' as const }
           setPurchaseConfirmation(confirmation)
           setMessage('')
-          // App.tsx remounts route content when search params change. Carry the
-          // confirmation in router state so the thank-you dialog survives URL cleanup.
-          navigate('/checkout', { replace: true, state: { purchaseConfirmation: confirmation } })
+          // Keep this route mounted so the payment-verification spinner can morph
+          // into the approved checkmark. The URL is cleaned when the customer closes it.
         } else {
           setIsError(true)
+          setPurchaseConfirmation({ orderId, productCodes: [], stage: 'pending' })
           setMessage(current => current || 'PayMongo has not confirmed this checkout as paid yet. Do not pay again; use Refresh payment status shortly.')
         }
       } catch (error) {
@@ -516,6 +520,17 @@ export default function BasketScreen() {
   return <div className="screen basket-page" style={{ width: 'min(calc(100% - 2rem), 1040px)', maxWidth: 1040, margin: '0 auto', paddingBottom: '2rem' }}>
     <style>{`
       .basket-page .basket-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;border-bottom:1px solid var(--border);padding:.9rem 0}
+      .purchase-status-circle{width:78px;height:78px;box-sizing:border-box;margin:1rem auto .95rem;border:5px solid rgba(21,128,61,.16);border-top-color:#15803d;border-right-color:#15803d;border-radius:50%;display:grid;place-items:center;animation:purchase-spin .85s linear infinite;transition:background .32s ease,border-color .32s ease,transform .32s ease}
+      .purchase-status-circle.is-success{animation:none;background:rgba(21,128,61,.12);border:0;transform:scale(1)}
+      .purchase-status-circle.is-pending{animation:none;border:3px solid var(--border);color:var(--text-muted)}
+      .purchase-checkmark{width:42px;height:42px;overflow:visible}
+      .purchase-checkmark path{fill:none;stroke:#15803d;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:42;stroke-dashoffset:42;animation:purchase-draw-check .58s cubic-bezier(.2,.75,.25,1) .08s forwards}
+      .purchase-status-label{animation:purchase-fade-up .36s ease both}
+      .purchase-status-title{animation:purchase-fade-up .42s ease both}
+      @keyframes purchase-spin{to{transform:rotate(360deg)}}
+      @keyframes purchase-draw-check{to{stroke-dashoffset:0}}
+      @keyframes purchase-fade-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+      @media(prefers-reduced-motion:reduce){.purchase-status-circle,.purchase-checkmark path,.purchase-status-label,.purchase-status-title{animation:none!important;transition:none!important}.purchase-checkmark path{stroke-dashoffset:0!important}}
       .basket-page .basket-row:last-child{border-bottom:0}
       .basket-page .basket-layout{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:1rem;align-items:start}
       .basket-page .basket-summary{position:sticky;top:84px}
@@ -533,42 +548,52 @@ export default function BasketScreen() {
     `}</style>
     {purchaseConfirmation && <div
       role="presentation"
-      onClick={dismissPurchaseConfirmation}
+      onClick={() => { if (purchaseConfirmation.stage !== 'verifying') dismissPurchaseConfirmation() }}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         display: 'grid', placeItems: 'center',
-        padding: '1rem', background: 'rgba(4, 18, 39, .68)',
-        backdropFilter: 'blur(4px)'
+        padding: '1rem', background: 'rgba(4, 18, 39, .72)',
+        backdropFilter: 'blur(7px)'
       }}
     >
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="purchase-confirmation-title"
+        aria-live="polite"
         onClick={event => event.stopPropagation()}
         style={{
           width: 'min(100%, 440px)', boxSizing: 'border-box',
           background: 'var(--bg-card)', color: 'var(--text)',
-          border: '1px solid var(--border)', borderRadius: 18,
-          boxShadow: '0 24px 80px rgba(0,0,0,.28)',
-          padding: 'clamp(1.25rem, 5vw, 2rem)', textAlign: 'center'
+          border: '1px solid var(--border)', borderRadius: 22,
+          boxShadow: '0 28px 100px rgba(0,0,0,.34)',
+          padding: 'clamp(1.35rem, 5vw, 2.1rem)', textAlign: 'center'
         }}
       >
-        <button type="button" aria-label="Close purchase confirmation"
+        {purchaseConfirmation.stage !== 'verifying' && <button type="button" aria-label="Close purchase confirmation"
           onClick={dismissPurchaseConfirmation}
-          style={{ float: 'right', border: '1px solid var(--border)', borderRadius: 8, padding: '.3rem .55rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', cursor: 'pointer' }}>✕</button>
-        <div aria-hidden="true" style={{
-          margin: '1rem auto .9rem', width: 66, height: 66,
-          display: 'grid', placeItems: 'center', borderRadius: '50%',
-          background: 'rgba(21,128,61,.12)', color: '#15803d',
-          fontSize: '2.25rem', fontWeight: 950
-        }}>✓</div>
-        <p style={{ margin: 0, color: '#15803d', fontSize: '.75rem', fontWeight: 950, letterSpacing: '.14em' }}>PAYMENT APPROVED</p>
-        <h2 id="purchase-confirmation-title" style={{ fontSize: '1.55rem', lineHeight: 1.2, margin: '.55rem 0 .7rem' }}>Thank you for your purchase!</h2>
-        <p style={{ color: 'var(--text-muted)', lineHeight: 1.55, margin: '0 0 1rem' }}>
-          Your payment was verified and your Hyperion license{purchaseConfirmation.productCodes.length === 1 ? ' is' : 's are'} now active. You can start studying right away.
+          style={{ float: 'right', border: '1px solid var(--border)', borderRadius: 8, padding: '.3rem .55rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', cursor: 'pointer' }}>✕</button>}
+        <div aria-hidden="true" key={purchaseConfirmation.stage} className={`purchase-status-circle ${purchaseConfirmation.stage === 'success' ? 'is-success' : purchaseConfirmation.stage === 'pending' ? 'is-pending' : ''}`}>
+          {purchaseConfirmation.stage === 'success'
+            ? <svg className="purchase-checkmark" viewBox="0 0 48 48"><path d="M9 25.5 19.5 36 39 12" /></svg>
+            : purchaseConfirmation.stage === 'pending'
+              ? <span style={{ fontSize: '2rem', fontWeight: 800 }}>…</span>
+              : <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>Verifying payment</span>}
+        </div>
+        <p className="purchase-status-label" style={{ margin: 0, color: purchaseConfirmation.stage === 'success' ? '#15803d' : 'var(--text-muted)', fontSize: '.75rem', fontWeight: 950, letterSpacing: '.14em' }}>
+          {purchaseConfirmation.stage === 'success' ? 'PAYMENT APPROVED' : purchaseConfirmation.stage === 'pending' ? 'PAYMENT STATUS PENDING' : 'SECURE PAYMENT VERIFICATION'}
         </p>
-        {purchaseConfirmation.productCodes.length > 0 && <div style={{
+        <h2 id="purchase-confirmation-title" className="purchase-status-title" style={{ fontSize: '1.55rem', lineHeight: 1.2, margin: '.65rem 0 .7rem' }}>
+          {purchaseConfirmation.stage === 'success' ? 'Thank you for your purchase!' : purchaseConfirmation.stage === 'pending' ? 'We’re still confirming your payment' : 'Verifying your payment…'}
+        </h2>
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.55, margin: '0 0 1rem' }}>
+          {purchaseConfirmation.stage === 'success'
+            ? `Your payment was verified and your Hyperion license${purchaseConfirmation.productCodes.length === 1 ? ' is' : 's are'} now active. You can start studying right away.`
+            : purchaseConfirmation.stage === 'pending'
+              ? 'PayMongo has not confirmed this payment as paid yet. Please do not pay again. Check Orders & Payment History for the latest status.'
+              : 'Please wait while Hyperion securely confirms your payment with PayMongo. Keep this page open.'}
+        </p>
+        {purchaseConfirmation.stage === 'success' && purchaseConfirmation.productCodes.length > 0 && <div style={{
           border: '1px solid var(--border)', borderRadius: 10,
           padding: '.8rem .9rem', marginBottom: '1rem',
           background: 'var(--bg-elevated)', textAlign: 'left'
@@ -579,15 +604,20 @@ export default function BasketScreen() {
             {PAID_PRODUCTS.find(item => item.code === code)?.label ?? code}
           </div>)}
         </div>}
-        <p style={{ color: 'var(--text-muted)', fontSize: '.76rem', lineHeight: 1.45, overflowWrap: 'anywhere', margin: '0 0 1.1rem' }}>
+        {purchaseConfirmation.stage !== 'verifying' && <p style={{ color: 'var(--text-muted)', fontSize: '.76rem', lineHeight: 1.45, overflowWrap: 'anywhere', margin: '0 0 1.1rem' }}>
           Order reference: {purchaseConfirmation.orderId}
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '.6rem' }}>
-          <button type="button" className="btn btn-primary" onClick={() => { setPurchaseConfirmation(null); navigate('/account?tab=licenses') }}
-            style={{ minHeight: 46, fontWeight: 900 }}>VIEW MY LICENSES</button>
-          <button type="button" className="btn btn-outline" onClick={() => { setPurchaseConfirmation(null); navigate('/orders') }}
-            style={{ minHeight: 44, fontWeight: 850 }}>ORDERS &amp; PAYMENT HISTORY</button>
-        </div>
+        </p>}
+        {purchaseConfirmation.stage === 'success'
+          ? <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '.6rem' }}>
+              <button type="button" className="btn btn-primary" onClick={() => { setPurchaseConfirmation(null); navigate('/account?tab=licenses') }}
+                style={{ minHeight: 46, fontWeight: 900 }}>VIEW MY LICENSES</button>
+              <button type="button" className="btn btn-outline" onClick={() => { setPurchaseConfirmation(null); navigate('/orders') }}
+                style={{ minHeight: 44, fontWeight: 850 }}>ORDERS &amp; PAYMENT HISTORY</button>
+            </div>
+          : purchaseConfirmation.stage === 'pending'
+            ? <button type="button" className="btn btn-outline" onClick={() => { setPurchaseConfirmation(null); navigate('/orders') }}
+                style={{ minHeight: 44, width: '100%', fontWeight: 850 }}>ORDERS &amp; PAYMENT HISTORY</button>
+            : null}
       </section>
     </div>}
     <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
