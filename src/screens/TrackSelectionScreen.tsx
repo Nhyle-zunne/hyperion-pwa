@@ -71,22 +71,20 @@ export default function TrackSelectionScreen() {
     for (const s of segments) active.add(s.day)
     for (const h of history) active.add(dayKey(h.finishedAt))
 
-    // Show the most recent day first: Day 1 is today, Day 2 is yesterday.
-    // Use local noon + setDate so calendar days stay stable across timezone/DST boundaries.
+    // Display the rolling week in chronological order: Day 1 is six days ago,
+    // and Day 7 is today. Local noon + setDate keeps dates stable across DST changes.
     const today = new Date()
     today.setHours(12, 0, 0, 0)
     const days: { dayNumber: number; active: boolean; label: string; dateLabel: string }[] = []
-    for (let i = 0; i < 7; i++) {
+    for (let dayNumber = 1; dayNumber <= 7; dayNumber++) {
+      const daysAgo = 7 - dayNumber
       const date = new Date(today)
-      date.setDate(today.getDate() - i)
+      date.setDate(today.getDate() - daysAgo)
       const key = dayKey(date.getTime())
-      const label = i === 0
-        ? 'TODAY'
-        : i === 1
-          ? 'YDAY'
-          : new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date).toUpperCase()
-      const dateLabel = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
-      days.push({ dayNumber: i + 1, active: active.has(key), label, dateLabel })
+      const label = `DAY ${dayNumber}`
+      const formattedDate = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
+      const dateLabel = dayNumber === 7 ? `TODAY · ${formattedDate}` : formattedDate
+      days.push({ dayNumber, active: active.has(key), label, dateLabel })
     }
     return days
   }, [segments, history])
