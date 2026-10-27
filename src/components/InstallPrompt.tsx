@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useInstallPrompt } from '../hooks/useInstallPrompt'
+import GooglePlayBadge from './GooglePlayBadge'
 
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.nhyle.hyperionmaritime'
 type InstallPromptProps = { force?: boolean; variant?: 'card' | 'modal' }
@@ -102,9 +103,7 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
 
         {isAndroid ? (
           <div style={{ display: 'grid', gap: 9 }}>
-            <a className="btn btn-primary" href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', textDecoration: 'none', minHeight: 46 }}>
-              INSTALL ANDROID APP · GOOGLE PLAY
-            </a>
+            <GooglePlayBadge />
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void startInstall()} style={{ minHeight: 46 }}>
               {busy ? 'Opening install prompt…' : canNativePrompt ? 'ADD HYPERION TO HOME SCREEN' : showSteps ? 'HIDE HOME SCREEN STEPS' : 'INSTALL WEBSITE / ADD TO HOME SCREEN'}
             </button>
