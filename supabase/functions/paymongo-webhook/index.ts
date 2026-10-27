@@ -73,31 +73,50 @@ Deno.serve(async (req) => {
 
   const timestamp = parts.t
   const webhookSecret = Deno.env.get('PAYMONGO_WEBHOOK_SECRET')?.trim()
-  if (!webhookSecret || !timestamp || (!parts.te && !parts.li)) {
-    console.warn('[paymongo-webhook] Signature header/config missing', JSON.stringify({
-      configuredSecret: Boolean(webhookSecret),
+  const expectedMode = Deno.env.get('PAYMONGO_EXPECT_LIVEMODE')
+  if (expectedMode !== 'true' && expectedMode !== 'false') {
+    console.error('[paymongo-webhook] Expected PayMongo mode is not configured')
+    return new Response('Expected PayMongo live/test mode is not configured', { status: 503 })
+  }
+  if (!webhookSecret) {
+    console.error('[paymongo-webhook] Webhook signing secret is not configured')
+    return new Response('Webhook signing secret is not configured', { status: 503 })
+  }
+  if (!timestamp || (!parts.te && !parts.li)) {
+    console.warn('[paymongo-webhook] Signature header missing required fields', JSON.stringify({
       hasTimestamp: Boolean(timestamp),
       hasTestSignature: Boolean(parts.te),
       hasLiveSignature: Boolean(parts.li)
     }))
-    return new Response('Webhook not configured or signature missing', { status: 401 })
+    return new Response('Webhook signature missing', { status: 401 })
   }
-  if (!/^\d+$/.test(timestamp) || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) {
+  if (!/^\\d+$/.test(timestamp) || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) {
     console.warn('[paymongo-webhook] Rejected stale or invalid signature timestamp', JSON.stringify({
-      timestampIsNumeric: /^\d+$/.test(timestamp),
-      ageSeconds: /^\d+$/.test(timestamp) ? Math.round(Date.now() / 1000 - Number(timestamp)) : null
+      timestampIsNumeric: /^\\d+$/.test(timestamp),
+      ageSeconds: /^\\d+$/.test(timestamp) ? Math.round(Date.now() / 1000 - Number(timestamp)) : null
     }))
     return new Response('Stale webhook', { status: 401 })
+  }
+
+  // Authenticate the untouched body before parsing any untrusted payload fields.
+  // The configured deployment mode chooses which signature to validate.
+  const isLive = expectedMode === 'true'
+  const suppliedSignature = isLive ? parts.li : parts.te
+  const expectedSignature = await hmacHex(webhookSecret, `${timestamp}.${raw}`)
+  if (!suppliedSignature || !equalConstantTime(expectedSignature, suppliedSignature)) {
+    console.warn('[paymongo-webhook] Signature mismatch', JSON.stringify({
+      configuredMode: isLive ? 'live' : 'test',
+      configuredSecret: Boolean(webhookSecret),
+      matchingSignaturePresent: Boolean(suppliedSignature)
+    }))
+    return new Response('Invalid signature', { status: 401 })
   }
 
   let payload: any
   try { payload = JSON.parse(raw) } catch { return new Response('Invalid JSON', { status: 400 }) }
 
-  // PayMongo has documented both the legacy event envelope
-  // { data: { id, type: "event", attributes: { type, livemode, data } } }
-  // and the newer dispatch envelope
-  // { event_type: "send.webhook", data: { type, livemode, data } }.
-  // Normalize both before verifying the signature and processing the session.
+  // Normalize the documented legacy and dispatch webhook envelopes only after
+  // authenticating the exact raw body with the endpoint's signing secret.
   const eventRoot = payload?.data
   const legacyAttributes = eventRoot?.attributes
   const eventType = typeof legacyAttributes?.type === 'string'
@@ -115,24 +134,7 @@ Deno.serve(async (req) => {
   if (!eventType || typeof isLiveValue !== 'boolean') {
     return new Response('Invalid webhook event envelope', { status: 400 })
   }
-
-  const isLive = isLiveValue
-  const suppliedSignature = isLive ? parts.li : parts.te
-  const expectedSignature = await hmacHex(webhookSecret, `${timestamp}.${raw}`)
-  if (!suppliedSignature || !equalConstantTime(expectedSignature, suppliedSignature)) {
-    console.warn('[paymongo-webhook] Signature mismatch', JSON.stringify({
-      eventMode: isLive ? 'live' : 'test',
-      configuredSecret: Boolean(webhookSecret),
-      matchingSignaturePresent: Boolean(suppliedSignature)
-    }))
-    return new Response('Invalid signature', { status: 401 })
-  }
-
-  const expectedMode = Deno.env.get('PAYMONGO_EXPECT_LIVEMODE')
-  if (expectedMode !== 'true' && expectedMode !== 'false') {
-    return new Response('Expected PayMongo live/test mode is not configured', { status: 503 })
-  }
-  if ((expectedMode === 'true') !== isLive) {
+  if (isLiveValue !== isLive) {
     return new Response('Webhook event mode does not match configured checkout mode', { status: 400 })
   }
 
