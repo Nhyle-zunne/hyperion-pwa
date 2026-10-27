@@ -38,6 +38,7 @@ import { useHistoryStore } from './stores/historyStore'
 import { supabase } from './lib/supabase'
 import { startLearningProgressSync } from './lib/progressSync'
 import { useStudyTimeStore } from './stores/studyTimeStore'
+import { withPageLoading } from './lib/pageLoading'
 import { useRef, useState } from 'react'
 import { clearPaidQuestionCache } from './lib/questionBank'
 import { deletePaidQuestionSnapshotsForTrack } from './lib/sessionArchive'
@@ -78,11 +79,15 @@ export default function App() {
   const lastCloudTrackIds = useRef<string[]>([])
   useEffect(() => {
     let alive = true
-    const refresh = async () => {
-      await refreshCloudEntitlements()
+    const refresh = async (showLoadingIndicator = false) => {
+      if (showLoadingIndicator) {
+        await withPageLoading('Checking licenses and access', () => refreshCloudEntitlements())
+      } else {
+        await refreshCloudEntitlements()
+      }
       if (alive) setEntitlementsChecked(true)
     }
-    void refresh()
+    void refresh(true)
     const authListener = supabase?.auth.onAuthStateChange(() => {
       clearPaidQuestionCache()
       setEntitlementsChecked(false)
