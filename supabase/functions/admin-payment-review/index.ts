@@ -76,54 +76,37 @@ Deno.serve(async req => {
     const { error } = await admin.from('payment_settings').upsert({ id: 1, instructions, updated_at: new Date().toISOString() })
     return error ? json({ error: 'Could not save payment instructions.' }, 500) : json({ ok: true })
   }
-  if (body.action !== 'review' || !body.orderId || !['approve','reject'].includes(body.decision || '')) return json({ error: 'Invalid review action.' }, 400)
-  const { data: order, error: lookupError } = await admin.from('orders').select('*').eq('id', body.orderId).maybeSingle()
-  if (lookupError || !order) return json({ error: 'Order not found.' }, 404)
-  if (order.status === 'paid') return json({ error: 'This payment is already approved.' }, 409)
-  if (order.payment_method === 'PayMongo Checkout' || order.paymongo_checkout_session_id) {
-    return json({ error: 'PayMongo checkout orders can only be approved by the verified payment webhook.' }, 409)
+  if (body.action !== 'review' || typeof body.orderId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.orderId) ||
+      !['approve','reject'].includes(body.decision || '')) {
+    return json({ error: 'Invalid review action.' }, 400)
   }
-  if (!['submitted','pending'].includes(order.status)) return json({ error: 'This order is not awaiting review.' }, 409)
+
   const adminNote = String(body.adminNote || '').trim().slice(0, 1000) || null
-  if (body.decision === 'approve') {
-    const now = new Date()
-    const { data: currentEntitlement, error: currentError } = await admin.from('entitlements').select('order_id,status,expires_at').eq('user_id', order.user_id).eq('product_code', order.product_code).maybeSingle()
-    if (currentError) return json({ error: 'Could not check the existing subscription.' }, 500)
-    const currentExpiry = currentEntitlement?.status === 'active' && currentEntitlement.expires_at
-      ? new Date(currentEntitlement.expires_at)
-      : null
-    const hasActiveLicense = currentEntitlement?.status === 'active' &&
-      (!currentExpiry || currentExpiry.getTime() > now.getTime())
-    if (hasActiveLicense && currentEntitlement?.order_id !== order.id) {
-      return json({ error: 'This user already has an active license for this track. Reject this duplicate order instead.' }, 409)
+  const { data: reviewed, error: reviewError } = await admin.rpc('review_manual_payment', {
+    p_order_id: body.orderId,
+    p_decision: body.decision,
+    p_admin_email: user.email,
+    p_admin_note: adminNote
+  })
+
+  if (reviewError || !reviewed) {
+    const code = reviewError?.code
+    if (code === 'P0002') return json({ error: 'Order not found.' }, 404)
+    if (code === '23514' || code === '40001') {
+      const detail = reviewError?.message || ''
+      if (detail.includes('already has an active license')) {
+        return json({ error: 'This user already has an active license for this track. Reject this duplicate order instead.' }, 409)
+      }
+      if (detail.includes('PayMongo checkout orders')) {
+        return json({ error: 'PayMongo checkout orders can only be approved by verified PayMongo processing.' }, 409)
+      }
+      if (detail.includes('not awaiting review')) return json({ error: 'This order is not awaiting review. Refresh the list.' }, 409)
+      return json({ error: 'This order changed while being reviewed. Refresh the list and try again.' }, 409)
     }
-    const term: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' ? order.license_term : 'year'
-    // On a retry after a partial prior approval, preserve this order's original expiry
-    // rather than adding the term again.
-    const existingSameOrderExpiry = currentEntitlement?.order_id === order.id && currentEntitlement.expires_at
-      ? new Date(currentEntitlement.expires_at)
-      : null
-    const reuseSameOrderExpiry = existingSameOrderExpiry !== null && existingSameOrderExpiry.getTime() > now.getTime()
-    const renewalBase = reuseSameOrderExpiry
-      ? existingSameOrderExpiry!
-      : currentExpiry && currentExpiry.getTime() > now.getTime() ? currentExpiry : now
-    const expiresAt = reuseSameOrderExpiry ? existingSameOrderExpiry! : expiryForTerm(renewalBase, term)
-    const { error: entitlementError } = await admin.from('entitlements').upsert({
-      user_id: order.user_id, product_code: order.product_code, track_id: order.track_id,
-      order_id: order.id, license_term: term, status: 'active',
-      granted_at: reuseSameOrderExpiry && currentEntitlement?.granted_at ? currentEntitlement.granted_at : now.toISOString(),
-      renewed_at: now.toISOString(), expires_at: expiresAt.toISOString()
-    }, { onConflict: 'user_id,product_code' })
-    if (entitlementError) return json({ error: 'Could not grant access. Review was not completed.' }, 500)
-    const { data: finalizedOrder, error } = await admin.from('orders').update({
-      status: 'paid', admin_note: adminNote, reviewed_by: user.email,
-      reviewed_at: new Date().toISOString(), paid_at: new Date().toISOString()
-    }).eq('id', order.id).in('status', ['submitted','pending']).select('id').maybeSingle()
-    if (error) return json({ error: 'Access was updated but order status could not be finalized. Retry approval; it will not extend this license twice.' }, 500)
-    if (!finalizedOrder) return json({ error: 'This order was modified concurrently. Refresh before retrying; the existing license expiry was preserved.' }, 409)
-  } else {
-    const { error } = await admin.from('orders').update({ status: 'failed', admin_note: adminNote, reviewed_by: user.email, reviewed_at: new Date().toISOString() }).eq('id', order.id).in('status', ['submitted','pending'])
-    if (error) return json({ error: 'Could not reject this submission.' }, 500)
+    console.error('[admin-payment-review] Manual review transaction failed', JSON.stringify({ orderId: body.orderId, code: code || 'unknown' }))
+    return json({ error: 'Could not finalize the manual payment review. Please refresh and retry.' }, 500)
   }
-  return json({ ok: true })
+
+  return json(reviewed)
 })
