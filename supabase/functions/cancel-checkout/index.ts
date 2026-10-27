@@ -47,11 +47,11 @@ Deno.serve(async (req) => {
   if (batchError) return json({ error: 'Could not check your basket checkout.' }, 500)
   if (batch) {
     if (batch.status === 'paid') return json({ status: 'already_paid', orderId: batch.id })
-    if (batch.status === 'cancelled') return json({ status: 'cancelled', orderId: batch.id })
+    if (batch.status === 'cancelled' && !batch.paymongo_checkout_session_id) return json({ status: 'cancelled', orderId: batch.id })
     if (batch.status === 'failed' && !batch.paymongo_checkout_session_id) {
       return json({ status: 'cancelled', orderId: batch.id })
     }
-    if (!['pending', 'failed'].includes(batch.status) || !batch.paymongo_checkout_session_id) {
+    if (!['pending', 'failed', 'cancelled'].includes(batch.status) || !batch.paymongo_checkout_session_id) {
       return json({ error: 'This basket checkout cannot be cancelled in its current status.' }, 409)
     }
 
@@ -130,14 +130,14 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (orderError || !order) return json({ error: 'Checkout order not found.' }, 404)
   if (order.status === 'paid') return json({ status: 'already_paid', orderId: order.id })
-  if (order.status === 'cancelled') return json({ status: 'cancelled', orderId: order.id })
+  if (order.status === 'cancelled' && !order.paymongo_checkout_session_id) return json({ status: 'cancelled', orderId: order.id })
   if (order.status === 'failed' && !order.paymongo_checkout_session_id) {
     return json({ status: 'cancelled', orderId: order.id })
   }
   if (order.payment_method !== 'PayMongo Checkout' || !order.paymongo_checkout_session_id) {
     return json({ error: 'This order is not a tracked PayMongo checkout.' }, 409)
   }
-  if (!['pending', 'failed'].includes(order.status)) return json({ error: 'This checkout cannot be cancelled in its current status.' }, 409)
+  if (!['pending', 'failed', 'cancelled'].includes(order.status)) return json({ error: 'This checkout cannot be cancelled in its current status.' }, 409)
 
   const sessionUrl = `https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(order.paymongo_checkout_session_id)}`
   const auth = `Basic ${btoa(paymongoKey + ':')}`
