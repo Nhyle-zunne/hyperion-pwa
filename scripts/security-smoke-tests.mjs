@@ -68,7 +68,8 @@ assert.match(functionConfig, /\[functions\.create-checkout\]\s*verify_jwt = true
 assert.ok(checkout.includes("body.action === 'status'"), 'Checkout endpoint exposes only a non-secret availability status action');
 assert.ok(checkout.includes("const enabled = checkoutEnabled && Boolean(serviceKey) && keyMatchesMode"), 'Checkout status fails closed unless enabled and correctly configured');
 assert.ok(basketScreen.includes("body: { action: 'status' }"), 'Basket loads checkout availability from the server');
-assert.ok(basketScreen.includes('paymongoCheckoutEnabled !== true'), 'PayMongo CTA is disabled until server availability is confirmed');
+assert.ok(basketScreen.includes('paymongoCheckoutEnabled !== true'), 'Checkout handler fails closed until server availability is confirmed');
+assert.ok(basketScreen.includes('paymongoCheckoutEnabled === true ? <button'), 'PayMongo button is only rendered when the server says checkout is enabled');
 assert.ok(basketScreen.includes('showManualPaymentFallback'), 'Basket exposes manual payment fallback when checkout is disabled');
 
 for (const route of [
