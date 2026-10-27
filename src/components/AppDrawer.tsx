@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useUIStore } from '../stores/uiStore'
+import GooglePlayBadge from './GooglePlayBadge'
 import { useInstallPrompt } from '../hooks/useInstallPrompt'
 
 const FB = 'https://www.facebook.com/hyperionbynhyle/'
@@ -138,7 +139,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
                   {key === 'android' ? (
                     <>
                       <strong>Option 1: Android app</strong>
-                      <a href="https://play.google.com/store/apps/details?id=com.nhyle.hyperionmaritime" target="_blank" rel="noopener noreferrer" style={{ display: 'block', margin: '.35rem 0 .65rem', color: 'var(--accent)', fontWeight: 850 }}>Install from Google Play ↗</a>
+                      <div style={{ margin: '.45rem 0 .8rem' }}><GooglePlayBadge /></div>
                       <strong>Option 2: Add website to Home Screen</strong>
                       <button
                         type="button"
