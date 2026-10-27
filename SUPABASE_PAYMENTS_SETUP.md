@@ -21,9 +21,9 @@ From the repository root, after installing the Supabase CLI:
 supabase login
 supabase link --project-ref evnjoezffghtrzqacwcj
 
-# Use your PayMongo TEST secret key while testing.
+# Use your PayMongo TEST API key and TEST endpoint signing secret while testing.
 supabase secrets set PAYMONGO_SECRET_KEY=sk_test_REPLACE_WITH_YOUR_TEST_KEY
-supabase secrets set PAYMONGO_WEBHOOK_SECRET=REPLACE_WITH_THE_TEST_WEBHOOK_SIGNING_SECRET
+supabase secrets set PAYMONGO_TEST_WEBHOOK_SECRET=REPLACE_WITH_THE_TEST_WEBHOOK_SIGNING_SECRET
 supabase secrets set PAYMONGO_EXPECT_LIVEMODE=false
 # Start safely with checkout disabled. Enable test checkout only after the test webhook is registered.
 supabase secrets set PAYMONGO_CHECKOUT_ENABLED=false
@@ -58,7 +58,7 @@ Complete the end-to-end test below. To pause checkouts at any time, set the togg
 
 **Release gate:** Do not switch on live checkout until a correctly signed test-mode webhook event returns 2xx and a controlled test checkout verifies the corresponding order and fixed-term entitlement. A signature mismatch must be fixed by using the signing secret for the exact webhook endpoint/mode; never disable signature verification.
 
-For **production/live mode**, change `PAYMONGO_SECRET_KEY` to your PayMongo live secret key (`sk_live_...`), set `PAYMONGO_WEBHOOK_SECRET` to the signing secret for the live webhook endpoint, and set `PAYMONGO_EXPECT_LIVEMODE=true`. First set `PAYMONGO_CHECKOUT_ENABLED=false` while switching to live credentials and registering the live webhook. Verify the live API key and signing secret are matched to live mode; then set `PAYMONGO_CHECKOUT_ENABLED=true`. Keep the test and live keys separate. Do not use test-mode events to activate production subscriptions.
+For **production/live mode**, change `PAYMONGO_SECRET_KEY` to your PayMongo live secret key (`sk_live_...`), set `PAYMONGO_LIVE_WEBHOOK_SECRET` to the signing secret for the live webhook endpoint, and set `PAYMONGO_EXPECT_LIVEMODE=true`. The legacy `PAYMONGO_WEBHOOK_SECRET` remains supported as a fallback for the mode selected by `PAYMONGO_EXPECT_LIVEMODE`. First set `PAYMONGO_CHECKOUT_ENABLED=false` while switching to live credentials and registering the live webhook. Verify the live API key and signing secret are matched to live mode; then set `PAYMONGO_CHECKOUT_ENABLED=true`. Keep the test and live keys separate. Do not use test-mode events to activate production subscriptions.
 
 The `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are supplied to Supabase Edge Functions. Do not add the service-role key to Cloudflare or frontend environment variables.
 
@@ -70,7 +70,7 @@ In the PayMongo Dashboard:
 2. Use this URL for the connected Hyperion Supabase project:
    `https://evnjoezffghtrzqacwcj.supabase.co/functions/v1/paymongo-webhook`
 3. Subscribe to `checkout_session.payment.paid`.
-4. Copy that webhook endpoint's **signing secret** into the Supabase Function secret `PAYMONGO_WEBHOOK_SECRET`. This is not the PayMongo API secret key.
+4. Copy that webhook endpoint's **signing secret** into the matching Supabase Function secret: `PAYMONGO_TEST_WEBHOOK_SECRET` for the Test Mode endpoint or `PAYMONGO_LIVE_WEBHOOK_SECRET` for the Live Mode endpoint. This is not the PayMongo API secret key. Keep the two values separate.
 5. For test mode, use a test-mode endpoint/key and `PAYMONGO_EXPECT_LIVEMODE=false`. For live mode, use the live endpoint's signing secret and `PAYMONGO_EXPECT_LIVEMODE=true`.
 
 Supabase's configuration intentionally disables JWT verification only for `paymongo-webhook`, because PayMongo does not send a Supabase user JWT. The function verifies the PayMongo signature itself and rejects missing, invalid, or stale signatures. `create-checkout` still requires a signed-in Hyperion user.
