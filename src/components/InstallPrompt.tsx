@@ -9,7 +9,7 @@ type InstallPromptProps = { force?: boolean; variant?: 'card' | 'modal' }
 export default function InstallPrompt({ force = false, variant = 'card' }: InstallPromptProps) {
   const { canNativePrompt, installed, isIos, isAndroid, dismissed, promptInstall, dismiss, showInstallUi } = useInstallPrompt()
   const [busy, setBusy] = useState(false)
-  const [showSteps, setShowSteps] = useState(false)
+  const [installMessage, setInstallMessage] = useState('')
 
   useEffect(() => {
     if (variant !== 'modal') return
@@ -23,14 +23,15 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
   if (installed || !showInstallUi || (!force && dismissed)) return null
 
   const startInstall = async () => {
-    if (!canNativePrompt) {
-      setShowSteps(value => !value)
-      return
-    }
+    setInstallMessage('')
     setBusy(true)
     try {
       const accepted = await promptInstall()
-      if (!accepted) setShowSteps(true)
+      if (!accepted) {
+        setInstallMessage(canNativePrompt
+          ? 'The install prompt was dismissed. Tap the button to try again.'
+          : 'Your browser has not made its direct install prompt available.')
+      }
     } finally {
       setBusy(false)
     }
@@ -60,10 +61,10 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
         <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
           {isAndroid && <a className="btn btn-outline" href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" style={{ flex: '1 1 160px', textAlign: 'center' }}>Install from Google Play</a>}
           <button type="button" className="btn btn-primary" style={{ flex: '1 1 160px' }} disabled={busy} onClick={() => void startInstall()}>
-            {busy ? 'Opening…' : canNativePrompt ? 'Install app' : isIos ? 'How to install' : 'Install / Add to Home'}
+            {busy ? 'Opening install prompt…' : canNativePrompt ? 'Install app' : isIos ? 'How to install' : 'Install / Add to Home'}
           </button>
         </div>
-        {(showSteps || isIos) && <InstallSteps isIos={isIos} isAndroid={isAndroid} />}
+        {isIos && <InstallSteps isIos={isIos} isAndroid={isAndroid} />}
       </div>
     )
   }
@@ -106,7 +107,7 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
           <div style={{ display: 'grid', gap: 9 }}>
             <GooglePlayBadge />
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void startInstall()} style={{ minHeight: 46 }}>
-              {busy ? 'Opening install prompt…' : canNativePrompt ? 'ADD HYPERION TO HOME SCREEN' : showSteps ? 'HIDE HOME SCREEN STEPS' : 'INSTALL WEBSITE / ADD TO HOME SCREEN'}
+              {busy ? 'Opening install prompt…' : 'ADD HYPERION TO HOME SCREEN'}
             </button>
           </div>
         ) : isIos ? (
@@ -123,7 +124,7 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
           </div>
         )}
 
-        {!isIos && showSteps && <InstallSteps isIos={false} isAndroid={isAndroid} />}
+        {installMessage && <p role="status" aria-live="polite" style={{ margin: '.6rem 0 0', color: 'var(--text-muted)', fontSize: '.8rem', lineHeight: 1.4 }}>{installMessage}</p>}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: '1rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '.75rem' }}>You can find these steps later in the app drawer.</span>
           {!force && <button type="button" onClick={dismiss} style={{ color: 'var(--text-muted)', background: 'transparent', border: 0, cursor: 'pointer', padding: '.45rem' }}>Not now</button>}
