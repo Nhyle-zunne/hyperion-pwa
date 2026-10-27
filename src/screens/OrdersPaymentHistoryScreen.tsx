@@ -173,13 +173,11 @@ export default function OrdersPaymentHistoryScreen() {
           activated.push(...codes)
         }
         if (active && activated.length) {
+          const labels = [...new Set(activated)].map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
+          setErrorMessage(false)
+          setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
           await loadOrders()
           await refreshCloudEntitlements()
-          if (active) {
-            const labels = [...new Set(activated)].map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
-            setErrorMessage(false)
-            setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
-          }
         }
       } catch {
         // A transient failure is retried on the next interval.
