@@ -417,7 +417,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceKey) return json(req, { error: "Question service is not configured." }, 503);
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let body: { action?: string; path?: string; csvText?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown };
+  let body: { action?: string; path?: string; csvText?: string; uploadFormat?: string; encryptedBase64?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown };
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
   let user: any = null, isAdmin = false;
   const authHeader = req.headers.get("Authorization");
@@ -445,22 +445,47 @@ Deno.serve(async (req: Request) => {
     if (!user || !isAdmin) return json(req, { error: "Forbidden." }, 403);
     const path = body.path;
     if (typeof path !== "string" || !SOURCE_ASSETS.includes(path)) return json(req, { error: "Choose a supported question-bank file." }, 400);
-    if (typeof body.csvText !== "string") return json(req, { error: "Paste CSV text before publishing." }, 400);
-    const csvText = body.csvText.charCodeAt(0) === 0xFEFF ? body.csvText.slice(1) : body.csvText;
-    const raw = new TextEncoder().encode(csvText);
-    if (raw.length < 20 || raw.length > 700000) return json(req, { error: "CSV must be between 20 bytes and 700 KB." }, 413);
-    if (!csvText.trim() || !csvText.includes(",")) return json(req, { error: "The pasted content does not look like CSV." }, 400);
-    let count = 0;
+    if (body.uploadFormat !== "csv" && body.uploadFormat !== "encrypted") return json(req, { error: "Choose a raw CSV or compatible encrypted CSV file." }, 400);
+
+    let csvText = "";
+    let plainBytes: Uint8Array;
+    let replacementBytes: Uint8Array;
+    if (body.uploadFormat === "encrypted") {
+      if (typeof body.encryptedBase64 !== "string" || body.encryptedBase64.length > 1400000 ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.encryptedBase64)) {
+        return json(req, { error: "Encrypted CSV data is missing or invalid." }, 400);
+      }
+      try {
+        const binary = atob(body.encryptedBase64);
+        replacementBytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+        if (replacementBytes.length < 28 || replacementBytes.length > 1048576) return json(req, { error: "Encrypted CSV must be between 28 bytes and 1 MiB." }, 413);
+        csvText = await decryptToText(replacementBytes);
+        plainBytes = new TextEncoder().encode(csvText);
+      } catch {
+        return json(req, { error: "This .csv.enc file could not be decrypted with Hyperion's current key. No file was changed." }, 400);
+      }
+    } else {
+      if (typeof body.csvText !== "string") return json(req, { error: "Raw CSV text is missing." }, 400);
+      csvText = body.csvText.charCodeAt(0) === 0xFEFF ? body.csvText.slice(1) : body.csvText;
+      plainBytes = new TextEncoder().encode(csvText);
+      if (plainBytes.length < 20 || plainBytes.length > 700000) return json(req, { error: "Raw CSV must be between 20 bytes and 700 KB." }, 413);
+      replacementBytes = new Uint8Array(0);
+    }
+
+    if (plainBytes.length < 20 || plainBytes.length > 700000) return json(req, { error: "Decrypted CSV must be between 20 bytes and 700 KB." }, 413);
+    if (!csvText.trim() || !csvText.includes(",")) return json(req, { error: "The file does not look like a CSV." }, 400);
+    let questionCount = 0;
     try {
-      if (path.startsWith("gmdss/")) count = validGmdssRows(csvText).length;
+      if (path.startsWith("gmdss/")) questionCount = validGmdssRows(csvText).length;
       else {
         const rows = parseCsv(csvText);
-        count = rows.slice(headerIndex(rows, "standard") + 1).filter(validStandard).length;
+        questionCount = rows.slice(headerIndex(rows, "standard") + 1).filter(validStandard).length;
       }
     } catch {
       return json(req, { error: "Could not parse CSV. Check quotes, commas, and columns." }, 400);
     }
-    if (!count) return json(req, { error: "No valid question rows were found." }, 400);
+    if (!questionCount) return json(req, { error: "No valid question rows were found." }, 400);
+
     let state: any;
     try { state = await migrationState(admin); } catch { return json(req, { error: "Could not verify the private question bank." }, 503); }
     if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Private question bank is not marked complete; no file was changed." }, 503);
@@ -473,17 +498,22 @@ Deno.serve(async (req: Request) => {
     const backup = await bucket.upload(backupPath, backupBytes, { contentType: "application/octet-stream", cacheControl: "0", upsert: false });
     if (backup.error) return json(req, { error: "Could not save a private backup. No file was changed." }, 500);
     try {
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const key = await crypto.subtle.importKey("raw", deriveKeyBytes(), { name: "AES-GCM" }, false, ["encrypt"]);
-      const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, tagLength: 128 }, key, raw));
-      const encrypted = new Uint8Array(iv.length + ciphertext.length);
-      encrypted.set(iv); encrypted.set(ciphertext, iv.length);
-      const upload = await bucket.upload(path, encrypted, { contentType: "application/octet-stream", cacheControl: "0", upsert: true });
-      if (upload.error) return json(req, { error: "Replacement failed. The previous file is backed up at " + backupPath + "." }, 500);
+      if (body.uploadFormat === "csv") {
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const key = await crypto.subtle.importKey("raw", deriveKeyBytes(), { name: "AES-GCM" }, false, ["encrypt"]);
+        const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, tagLength: 128 }, key, plainBytes));
+        replacementBytes = new Uint8Array(iv.length + ciphertext.length);
+        replacementBytes.set(iv, 0);
+        replacementBytes.set(ciphertext, iv.length);
+      }
+      const upload = await bucket.upload(path, replacementBytes, { contentType: "application/octet-stream", cacheControl: "0", upsert: true });
+      if (upload.error) return json(req, { error: "Replacement failed. Previous file backed up at " + backupPath + "." }, 500);
       privateTextCache.delete(path);
-      return json(req, { ok: true, path, questionCount: count, backupPath, updatedAt: new Date().toISOString() });
+      const updatedTrack = trackForPath(path);
+      if (updatedTrack) freeQuestionFingerprintCache.delete(updatedTrack);
+      return json(req, { ok: true, path, uploadFormat: body.uploadFormat, questionCount, backupPath, updatedAt: new Date().toISOString() });
     } catch {
-      return json(req, { error: "Could not encrypt or publish this CSV. Previous file is backed up at " + backupPath + "." }, 500);
+      return json(req, { error: "Could not encrypt or publish this CSV. Previous file backed up at " + backupPath + "." }, 500);
     }
   }
 

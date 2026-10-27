@@ -13,9 +13,27 @@ const TRACKS = [
   ['ENGINE_MGT', 'Engine Management']
 ] as const
 const MAX_FILE_BYTES = 700000
+const MAX_ENCRYPTED_FILE_BYTES = 1048576
 function rawCsvName(path: string) {
   const name = path.split('/').pop() || ''
   return name.endsWith('.enc') ? name.slice(0, -4).toLowerCase() : name.toLowerCase()
+}
+function uploadedCsvName(name: string) {
+  const lower = name.toLowerCase()
+  return lower.endsWith('.csv.enc') ? lower.slice(0, -4) : lower
+}
+function isEncryptedCsv(file: File) { return file.name.toLowerCase().endsWith('.csv.enc') }
+function csvFileSupported(file: File) {
+  const name = file.name.toLowerCase()
+  return name.endsWith('.csv') || name.endsWith('.csv.enc')
+}
+function fileSizeLimit(file: File) { return isEncryptedCsv(file) ? MAX_ENCRYPTED_FILE_BYTES : MAX_FILE_BYTES }
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = ''
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+  }
+  return btoa(binary)
 }
 
 export default function AdminQuestionBankScreen() {
@@ -45,7 +63,7 @@ export default function AdminQuestionBankScreen() {
       setAssets(rows)
       setQueue(old => old.map(item => {
         if (item.targetPath && rows.some(asset => asset.path === item.targetPath)) return item
-        const match = rows.find(asset => rawCsvName(asset.path) === item.file.name.toLowerCase())
+        const match = rows.find(asset => rawCsvName(asset.path) === uploadedCsvName(item.file.name))
         return { ...item, targetPath: match?.path || item.targetPath }
       }))
     } catch (reason) {
@@ -65,27 +83,27 @@ export default function AdminQuestionBankScreen() {
   }, [queue])
   const totalBytes = useMemo(() => queue.reduce((sum, item) => sum + item.file.size, 0), [queue])
   const successCount = queue.filter(item => item.status === 'success').length
-  const problemCount = queue.filter(item => !item.targetPath || duplicatePaths.has(item.targetPath) || item.file.size > MAX_FILE_BYTES || !!item.error).length
+  const problemCount = queue.filter(item => !item.targetPath || duplicatePaths.has(item.targetPath) || item.file.size > fileSizeLimit(item.file) || !!item.error).length
 
   const addFiles = (list: FileList | File[]) => {
     const incoming = Array.from(list)
     if (!incoming.length) return
     const additions: QueueItem[] = incoming.map((file, index) => {
-      const match = assets.find(asset => rawCsvName(asset.path) === file.name.toLowerCase())
-      const isCsv = file.name.toLowerCase().endsWith('.csv')
+      const match = assets.find(asset => rawCsvName(asset.path) === uploadedCsvName(file.name))
+      const isCsv = csvFileSupported(file)
       return {
         id: file.name + '-' + file.size + '-' + file.lastModified + '-' + Date.now() + '-' + index,
         file,
         targetPath: isCsv ? (match?.path || '') : '',
         status: 'ready',
-        error: isCsv ? undefined : 'Not a CSV file. Choose the editable raw CSV, not an encrypted file.'
+        error: !isCsv ? 'Unsupported file. Choose a raw .csv or Hyperion-compatible .csv.enc file.' : file.size > fileSizeLimit(file) ? (isEncryptedCsv(file) ? 'Encrypted file exceeds 1 MiB.' : 'Raw CSV exceeds 700 KB.') : undefined
       }
     })
     setQueue(old => [...old, ...additions])
     setMessage('')
     setIsError(false)
-    if (incoming.some(file => !file.name.toLowerCase().endsWith('.csv'))) {
-      setMessage('Only raw CSV files are supported. Do not upload encrypted .csv.enc files here.')
+    if (incoming.some(file => !csvFileSupported(file))) {
+      setMessage('Only raw .csv and Hyperion-compatible .csv.enc files are supported.')
       setIsError(true)
     }
   }
@@ -118,9 +136,9 @@ export default function AdminQuestionBankScreen() {
       setIsError(true)
       return
     }
-    const overLimit = todo.filter(item => item.file.size > MAX_FILE_BYTES)
+    const overLimit = todo.filter(item => item.file.size > fileSizeLimit(item.file))
     if (overLimit.length) {
-      setMessage('These files exceed the 700 KB limit: ' + overLimit.map(item => item.file.name).join(', '))
+      setMessage('These files exceed their upload size limits: ' + overLimit.map(item => item.file.name).join(', '))
       setIsError(true)
       return
     }
@@ -134,8 +152,11 @@ export default function AdminQuestionBankScreen() {
     for (const item of todo) {
       setQueue(old => old.map(row => row.id === item.id ? { ...row, status: 'publishing', error: undefined } : row))
       try {
-        const csvText = await item.file.text()
-        const result = await call({ action: 'update-csv', path: item.targetPath, csvText })
+        const encrypted = isEncryptedCsv(item.file)
+        const payload = encrypted
+          ? { action: 'update-csv', path: item.targetPath, uploadFormat: 'encrypted', encryptedBase64: bytesToBase64(new Uint8Array(await item.file.arrayBuffer())) }
+          : { action: 'update-csv', path: item.targetPath, uploadFormat: 'csv', csvText: await item.file.text() }
+        const result = await call(payload)
         setQueue(old => old.map(row => row.id === item.id ? {
           ...row, status: 'success', questionCount: Number(result.questionCount) || 0,
           backupPath: result.backupPath, error: undefined
@@ -168,7 +189,7 @@ export default function AdminQuestionBankScreen() {
       </div>
     </div>
     <h1 className="page-title" style={{ textAlign: 'left' }}>Question Bank Update</h1>
-    <p className="subtitle" style={{ textAlign: 'left' }}>Drag in one CSV or a whole batch. Hyperion matches filenames to question sets, validates each file, encrypts it on the server, and saves a private backup before replacing anything.</p>
+    <p className="subtitle" style={{ textAlign: 'left' }}>Drag in raw .csv files or already-encrypted .csv.enc files, individually or in bulk. Hyperion matches filenames to question sets and validates each file before replacement.</p>
     {message && <div role="status" aria-live="polite" style={{ ...card, borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--success, #15803d)' }}>{message}</div>}
     <section style={card}>
       <div className={'admin-qb-drop' + (dragging ? ' is-dragging' : '')}
@@ -178,10 +199,10 @@ export default function AdminQuestionBankScreen() {
         <strong style={{ fontSize: '1.05rem' }}>Drag and drop CSV files here</strong>
         <p style={{ ...secondaryText, margin: '.4rem 0 .8rem' }}>Drop several files at once, or choose multiple files from your computer.</p>
         <button type="button" className="btn btn-primary" disabled={loading || busy} onClick={() => pickerRef.current?.click()}>CHOOSE CSV FILES</button>
-        <input ref={pickerRef} type="file" accept=".csv,text/csv" multiple hidden disabled={loading || busy}
+        <input ref={pickerRef} type="file" accept=".csv,.csv.enc,text/csv,application/octet-stream" multiple hidden disabled={loading || busy}
           onChange={event => { if (event.currentTarget.files) addFiles(event.currentTarget.files); event.currentTarget.value = '' }} />
       </div>
-      <p style={secondaryText}>Use the editable raw CSV files, not encrypted files. Names such as <code>oic_nw_c1.csv</code>, <code>dm_c6.csv</code>, <code>ew_c4.csv</code>, <code>em_c3.csv</code>, and <code>c1_part1.csv</code> are matched automatically. You can choose the target manually if a filename differs.</p>
+      <p style={secondaryText}>Use raw .csv files or original Hyperion-compatible .csv.enc files. Names such as <code>oic_nw_c1.csv</code>, <code>dm_c6.csv</code>, <code>ew_c4.csv</code>, <code>em_c3.csv</code>, and <code>c1_part1.csv</code> are matched automatically. You can choose the target manually if a filename differs.</p>
     </section>
     <section style={card}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
@@ -197,7 +218,7 @@ export default function AdminQuestionBankScreen() {
       {queue.map(item => {
         const target = assetByPath.get(item.targetPath)
         const duplicate = !!item.targetPath && duplicatePaths.has(item.targetPath) && item.status !== 'success'
-        const tooLarge = item.file.size > MAX_FILE_BYTES
+        const tooLarge = item.file.size > fileSizeLimit(item.file)
         const rowError = item.error || (tooLarge ? 'Over 700 KB per file.' : duplicate ? 'Duplicate target. Keep one file per question set.' : !item.targetPath ? 'No automatic match. Select the correct target.' : '')
         return <div key={item.id} className="admin-qb-queue-row">
           <div>
@@ -224,13 +245,13 @@ export default function AdminQuestionBankScreen() {
         </div>
       })}
       {!!queue.length && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: '1rem' }}>
-        <p style={{ ...secondaryText, margin: 0 }}>Files publish one by one, so one failure won’t stop the rest. Maximum 700 KB per CSV. Only one file per target in each batch.</p>
+        <p style={{ ...secondaryText, margin: 0 }}>Files publish one by one, so one failure won’t stop the rest. Maximum 700 KB per raw CSV and 1 MiB per encrypted CSV. Only one file per target in each batch.</p>
         <button type="button" className="btn btn-primary" disabled={busy || loading || !queue.some(item => item.status !== 'success')} onClick={() => void publishBatch()}>{busy ? 'PUBLISHING BATCH…' : 'VALIDATE & PUBLISH BATCH'}</button>
       </div>}
     </section>
     <section style={{ ...card, background: 'var(--bg-elevated)' }}>
       <strong>Before publishing</strong>
-      <p style={{ ...secondaryText, marginBottom: 0 }}>Publishing replaces the selected question set; it does not merge questions. The server checks that valid question rows exist, but it cannot verify every answer’s factual correctness. Refresh Hyperion and test the updated questions. Students with offline packs must download the updated bank again.</p>
+      <p style={{ ...secondaryText, marginBottom: 0 }}>Publishing replaces the selected question set; it does not merge questions. Encrypted uploads are decrypted in memory only to validate the questions, then stored unchanged. The server checks row structure but cannot verify every answer’s factual correctness. Refresh Hyperion and test the updated questions. Students with offline packs must download the updated bank again.</p>
     </section>
   </div>
 }
