@@ -35,6 +35,11 @@ Deno.serve(async req => {
   if (requestedTerm !== 'week' && requestedTerm !== 'month' && requestedTerm !== 'year') return json({ error: 'Choose a valid access duration.' }, 400)
   const term: LicenseTerm = requestedTerm
   const paymentMethod = String(body.paymentMethod || '').trim().slice(0, 80)
+  // This endpoint is only for manual QR transfer submissions. Never accept
+  // PayMongo's internal method marker from a client-provided request.
+  if (paymentMethod !== 'QR Ph (MariBank / InstaPay)') {
+    return json({ error: 'Choose a supported manual payment method.' }, 400)
+  }
   const paymentReference = String(body.paymentReference || '').trim().slice(0, 160)
   const proofUrl = String(body.proofUrl || '').trim().slice(0, 1000)
   const customerNote = String(body.customerNote || '').trim().slice(0, 1000)
