@@ -99,15 +99,41 @@ Deno.serve(async (req) => {
   }
 
   // Authenticate the untouched body before parsing any untrusted payload fields.
-  // The configured deployment mode chooses which signature to validate.
+  // PayMongo's setup guide documents HMAC(timestamp + "." + raw body), while
+  // another official best-practices example describes raw-body HMAC. Evaluate
+  // both for diagnostics, but continue accepting only the timestamp-bound form
+  // until the actual endpoint behavior is confirmed.
   const isLive = expectedMode === 'true'
   const suppliedSignature = isLive ? parts.li : parts.te
   const expectedSignature = await hmacHex(webhookSecret, `${timestamp}.${raw}`)
   if (!suppliedSignature || !equalConstantTime(expectedSignature, suppliedSignature)) {
+    // These booleans/lengths are safe diagnostics; do not log secrets, signatures,
+    // payload bodies, payment data, or webhook event identifiers.
+    let rawBodySignatureMatches = false
+    let strippedPrefixSignatureMatches = false
+    try {
+      const rawBodySignature = await hmacHex(webhookSecret, raw)
+      rawBodySignatureMatches = Boolean(suppliedSignature) &&
+        equalConstantTime(rawBodySignature, suppliedSignature)
+      if (webhookSecret.startsWith('whsk_')) {
+        const strippedSecretTimestampSignature = await hmacHex(webhookSecret.slice(5), `${timestamp}.${raw}`)
+        strippedPrefixSignatureMatches = Boolean(suppliedSignature) &&
+          equalConstantTime(strippedSecretTimestampSignature, suppliedSignature)
+      }
+    } catch {
+      // Keep the request rejected if diagnostics fail.
+    }
     console.warn('[paymongo-webhook] Signature mismatch', JSON.stringify({
       configuredMode: isLive ? 'live' : 'test',
       configuredSecret: Boolean(webhookSecret),
-      matchingSignaturePresent: Boolean(suppliedSignature)
+      secretLength: webhookSecret.length,
+      rawBodyBytes: new TextEncoder().encode(raw).length,
+      timestampAgeSeconds: Math.round(Date.now() / 1000 - Number(timestamp)),
+      matchingSignaturePresent: Boolean(suppliedSignature),
+      suppliedSignatureLength: suppliedSignature?.length ?? 0,
+      timestampBoundSignatureMatches: false,
+      rawBodySignatureMatches,
+      strippedPrefixSignatureMatches
     }))
     return new Response('Invalid signature', { status: 401 })
   }
