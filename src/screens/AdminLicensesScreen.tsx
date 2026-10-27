@@ -177,6 +177,7 @@ export default function AdminLicensesScreen() {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-primary" onClick={() => navigate('/admin/licenses')}>USER LICENSES</button>
         <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/payments')}>PAYMENT SUBMISSIONS</button>
+        <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/questions')}>QUESTION BANK</button>
       </div>
     </div>
     <h1 className="page-title" style={{ textAlign: 'left' }}>User License Management</h1>

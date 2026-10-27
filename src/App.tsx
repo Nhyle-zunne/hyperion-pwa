@@ -10,6 +10,7 @@ import OrdersPaymentHistoryScreen from './screens/OrdersPaymentHistoryScreen'
 import OAuthCallbackScreen from './screens/OAuthCallbackScreen'
 import AdminPaymentsScreen from './screens/AdminPaymentsScreen'
 import AdminLicensesScreen from './screens/AdminLicensesScreen'
+import AdminQuestionBankScreen from './screens/AdminQuestionBankScreen'
 import TrackHubScreen from './screens/TrackHubScreen'
 import AboutScreen from './screens/AboutScreen'
 import TermsScreen from './screens/TermsScreen'
@@ -247,6 +248,7 @@ export default function App() {
           <Route path="/auth/callback" element={<OAuthCallbackScreen />} />
           <Route path="/admin/licenses" element={<AdminLicensesScreen />} />
           <Route path="/admin/payments" element={<AdminPaymentsScreen />} />
+          <Route path="/admin/questions" element={<AdminQuestionBankScreen />} />
           <Route path="/tracks" element={<TrackSelectionScreen />} />
           <Route path="/track" element={<TrackHubScreen />} />
           <Route path="/home" element={<HomeScreen />} />

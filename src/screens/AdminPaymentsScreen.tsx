@@ -56,6 +56,7 @@ export default function AdminPaymentsScreen() {
       <div className="admin-admin-nav">
         <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/licenses')}>USER LICENSES</button>
         <button type="button" className="btn btn-primary" onClick={() => navigate('/admin/payments')}>PAYMENT SUBMISSIONS</button>
+        <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/questions')}>QUESTION BANK</button>
       </div>
     </div>
     <h1 className="page-title">Payment Submissions</h1>
