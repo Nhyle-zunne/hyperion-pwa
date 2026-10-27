@@ -1,0 +1,81 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+const [
+  pricing, checkout, verify, webhook, questionBank, questionBankMigration,
+  finalizerMigration, functionConfig, app, practiceStore, mockExam, licenseStore
+] = await Promise.all([
+  read('../src/lib/supabase.ts'),
+  read('../supabase/functions/create-checkout/index.ts'),
+  read('../supabase/functions/verify-checkout/index.ts'),
+  read('../supabase/functions/paymongo-webhook/index.ts'),
+  read('../supabase/functions/question-bank/index.ts'),
+  read('../supabase/migrations/20261026142927_secure_question_bank_private_storage.sql'),
+  read('../supabase/migrations/20261027102007_harden_paymongo_finalizer_search_path.sql'),
+  read('../supabase/config.toml'),
+  read('../src/App.tsx'),
+  read('../src/stores/practiceStore.ts'),
+  read('../src/screens/MockExamScreen.tsx'),
+  read('../src/stores/licenseStore.ts')
+]);
+
+// A regression test for webhook timestamp parsing: a numeric timestamp must match.
+const timestampMatch = webhook.match(/if \(!\/(.+?)\/\.test\(timestamp\)/);
+assert.ok(timestampMatch, 'Webhook timestamp-validation regex exists');
+assert.equal(new RegExp(timestampMatch[1]).test('1793097458'), true, 'Webhook regex accepts numeric timestamps');
+assert.equal(new RegExp(timestampMatch[1]).test('bad-timestamp'), false, 'Webhook regex rejects non-numeric timestamps');
+
+const signatureIndex = webhook.indexOf('const expectedSignature = await hmacHex');
+const parseIndex = webhook.indexOf('JSON.parse(raw)');
+assert.ok(signatureIndex >= 0 && parseIndex > signatureIndex, 'Webhook verifies the exact raw body before parsing JSON');
+assert.ok(webhook.includes("const suppliedSignature = isLive ? parts.li : parts.te"), 'Webhook signature selection follows configured mode');
+assert.ok(webhook.includes("Deno.env.get('PAYMONGO_WEBHOOK_SECRET')?.trim()"), 'Webhook signing secret is whitespace-normalized');
+assert.ok(webhook.includes('equalConstantTime(expectedSignature, suppliedSignature)'), 'Webhook uses a constant-time signature comparison');
+assert.ok(webhook.includes("Math.abs(Date.now() / 1000 - Number(timestamp)) > 300"), 'Webhook rejects stale signed requests');
+
+const terms = [
+  ['oic_nw', 20, 50, 350],
+  ['gmdss', 15, 40, 250],
+  ['engine_ew', 20, 50, 350],
+  ['deck_mgt', 40, 100, 700],
+  ['engine_mgt', 40, 100, 700]
+];
+for (const [code, weekly, monthly, yearly] of terms) {
+  assert.ok(
+    pricing.includes(`code: '${code}'`) &&
+    pricing.includes(`weeklyPrice: ${weekly}, monthlyPrice: ${monthly}, annualPrice: ${yearly}`),
+    `Frontend catalogue has the canonical price for ${code}`
+  );
+  const serverMap = `${code}: { week: ${weekly}, month: ${monthly}, year: ${yearly} }`;
+  assert.ok(checkout.includes(serverMap), `Checkout server price for ${code}`);
+  assert.ok(verify.includes(serverMap), `Verification server price for ${code}`);
+  assert.ok(webhook.includes(serverMap), `Webhook server price for ${code}`);
+  assert.ok(finalizerMigration.includes(`when '${code}' then case v_order.license_term`), `Database finalizer covers ${code}`);
+}
+
+assert.match(questionBankMigration, /values\s*\('question-banks',\s*'question-banks',\s*false/i, 'Question bank bucket is private');
+assert.match(questionBank, /\.auth\.getUser\(\)/, 'Question-bank endpoint validates authenticated users');
+assert.match(questionBank, /FREE_FINGERPRINT_CACHE_TTL_MS/, 'Free-question authorization fingerprints expire or invalidate');
+assert.match(finalizerMigration, /search_path|SECURITY DEFINER/i, 'Finalizer migration defines a database function');
+assert.match(finalizerMigration, /service_role/i, 'Finalizer is restricted to service-role execution');
+assert.match(functionConfig, /\[functions\.paymongo-webhook\]\s*verify_jwt = false/, 'Webhook uses provider signature verification, not Supabase user JWT');
+assert.match(functionConfig, /\[functions\.question-bank\]\s*verify_jwt = false/, 'Question bank performs application-level authorization');
+assert.match(functionConfig, /\[functions\.create-checkout\]\s*verify_jwt = true/, 'Checkout requires an authenticated Hyperion session');
+
+for (const route of [
+  '/account', '/checkout', '/manual-payment', '/orders', '/admin/licenses',
+  '/admin/payments', '/admin/questions', '/practice/competences', '/practice',
+  '/practice/quiz', '/drill', '/quick-scan', '/quick-scan/view', '/mock',
+  '/mock/exam', '/history', '/flashcards', '/bookmarks', '/studytime'
+]) {
+  assert.ok(app.includes(`path="${route}"`), `App route exists: ${route}`);
+}
+assert.ok(practiceStore.includes('useHistoryStore.getState().saveSession'), 'Practice session saves History metadata');
+assert.ok(practiceStore.includes('await saveSessionSnapshot(snapshot.sessionId, snapshot)'), 'Practice session snapshot is persisted');
+assert.ok(practiceStore.includes('authorizeQuestionSetAccess(snapshot.track, snapshot.questions)'), 'Restoring saved questions rechecks authorization');
+assert.ok(mockExam.includes('SUBMIT EXAM'), 'Mock exam requires explicit submission');
+assert.ok(mockExam.includes("window.addEventListener('beforeunload', blockExit)"), 'Mock exam guards accidental exit');
+assert.ok(licenseStore.includes('canUseOfflineEntitlementsAfterError'), 'Offline entitlement fallback is constrained to offline/server outage scenarios');
+
+console.log('Release-safety smoke checks passed.');
