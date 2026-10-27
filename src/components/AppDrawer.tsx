@@ -19,7 +19,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
   const [installPlatform, setInstallPlatform] = useState<'android' | 'ios' | 'desktop' | null>(null)
   const [showAndroidInstallHelp, setShowAndroidInstallHelp] = useState(false)
   const [desktopInstallBusy, setDesktopInstallBusy] = useState(false)
-  const [showDesktopInstallDialog, setShowDesktopInstallDialog] = useState(false)
+  const [desktopInstallNotice, setDesktopInstallNotice] = useState('')
   const { canNativePrompt, promptInstall } = useInstallPrompt()
 
   useEffect(() => {
@@ -45,14 +45,16 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
   }
 
   const openDesktopInstall = async () => {
-    if (!canNativePrompt) {
-      setShowDesktopInstallDialog(true)
-      return
-    }
+    setDesktopInstallNotice('')
     setDesktopInstallBusy(true)
     try {
+      // Always attempt the retained native event first from this user click.
       const accepted = await promptInstall()
-      if (!accepted) setShowDesktopInstallDialog(true)
+      if (!accepted) {
+        setDesktopInstallNotice(canNativePrompt
+          ? 'The browser install prompt was dismissed.'
+          : 'This browser has not made a one-click install prompt available.')
+      }
     } finally {
       setDesktopInstallBusy(false)
     }
@@ -199,6 +201,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
                           onClick={() => void openDesktopInstall()}
                           disabled={desktopInstallBusy}
                         />
+                        {desktopInstallNotice && <p role="status" aria-live="polite" style={{ margin: '.4rem 0 0', fontSize: '.75rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{desktopInstallNotice}</p>}
                       </div>
                     </>
                   )}
@@ -235,64 +238,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
         <Item label="Terms of use" path="/terms" icon="📄" />
         <Item label="Privacy policy" path="/privacy-policy" icon="🔒" />
       </aside>
-      {showDesktopInstallDialog && (
-        <div
-          role="presentation"
-          onClick={event => { if (event.target === event.currentTarget) setShowDesktopInstallDialog(false) }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 10000, display: 'grid', placeItems: 'center',
-            padding: '1rem', background: 'rgba(2, 9, 25, .72)', backdropFilter: 'blur(4px)',
-            boxSizing: 'border-box'
-          }}
-        >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="desktop-install-dialog-title"
-            onClick={event => event.stopPropagation()}
-            style={{
-              width: 'min(100%, 510px)', maxHeight: 'min(88dvh, 760px)', overflowY: 'auto',
-              background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)',
-              borderTop: '4px solid var(--accent)', borderRadius: 16, padding: '1.2rem',
-              boxShadow: '0 24px 80px rgba(0,0,0,.36)', boxSizing: 'border-box'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ color: 'var(--accent)', fontSize: '.7rem', fontWeight: 900, letterSpacing: '.12em' }}>HYPERION MARITIME</div>
-                <h2 id="desktop-install-dialog-title" style={{ fontSize: '1.35rem', lineHeight: 1.2, margin: '.35rem 0 0' }}>Install Hyperion on your computer</h2>
-              </div>
-              <button type="button" onClick={() => setShowDesktopInstallDialog(false)} aria-label="Close install instructions" style={{ fontSize: '1.5rem', color: 'var(--text-muted)', border: 0, background: 'transparent', cursor: 'pointer', lineHeight: 1 }}>×</button>
-            </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.5, margin: '.75rem 0 1rem' }}>
-              Your browser has not provided a direct install prompt. You can still install Hyperion from its browser menu:
-            </p>
-            <div style={{ border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 9, padding: '.8rem', marginBottom: '.65rem' }}>
-              <strong>Brave (Windows)</strong>
-              <ol style={{ paddingLeft: '1.2rem', margin: '.4rem 0 0', fontSize: '.85rem', lineHeight: 1.55 }}>
-                <li>Click the <strong>☰ menu</strong> in the top-right corner of Brave.</li>
-                <li>Choose <strong>Save and share</strong>.</li>
-                <li>Click <strong>Install Hyperion Maritime…</strong> (or the install option shown for this site).</li>
-                <li>Confirm by clicking <strong>Install</strong>.</li>
-              </ol>
-            </div>
-            <div style={{ border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 9, padding: '.8rem', marginBottom: '.65rem' }}>
-              <strong>Google Chrome</strong>
-              <p style={{ margin: '.35rem 0 0', fontSize: '.85rem', lineHeight: 1.5 }}>Click <strong>⋮ → Cast, save, and share → Install page as app</strong>, then confirm.</p>
-            </div>
-            <div style={{ border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 9, padding: '.8rem', marginBottom: '.65rem' }}>
-              <strong>Microsoft Edge</strong>
-              <p style={{ margin: '.35rem 0 0', fontSize: '.85rem', lineHeight: 1.5 }}>Click <strong>… → More tools → Apps → Install this site as an app</strong>, then confirm.</p>
-            </div>
-            <div style={{ border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 9, padding: '.8rem' }}>
-              <strong>MacBook using Safari</strong>
-              <p style={{ margin: '.35rem 0 0', fontSize: '.85rem', lineHeight: 1.5 }}>Choose <strong>File → Add to Dock</strong> from Safari's menu bar.</p>
-            </div>
-            {canNativePrompt && <button type="button" className="btn btn-primary" disabled={desktopInstallBusy} onClick={() => void openDesktopInstall()} style={{ marginTop: '1rem', width: '100%' }}>{desktopInstallBusy ? 'Opening install prompt…' : 'OPEN INSTALL PROMPT'}</button>}
-            <button type="button" className={canNativePrompt ? 'btn btn-outline' : 'btn btn-primary'} onClick={() => setShowDesktopInstallDialog(false)} style={{ marginTop: '1rem', width: '100%' }}>GOT IT</button>
-          </section>
-        </div>
-      )}
+
     </>
   )
 }
