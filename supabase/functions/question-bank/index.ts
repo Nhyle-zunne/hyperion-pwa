@@ -368,7 +368,8 @@ async function authorizeTrack(admin: any, user: any, isAdmin: boolean, track: st
   if (isAdmin) return true;
   return await checkEntitlement(admin, user.id, track);
 }
-const freeQuestionFingerprintCache = new Map<string, Set<string>>();
+const FREE_FINGERPRINT_CACHE_TTL_MS = 30_000;
+const freeQuestionFingerprintCache = new Map<string, { fingerprints: Set<string>; cachedAt: number }>();
 function questionIdBelongsToTrack(id: string, track: string) {
   if (track === "DECK_OIC_NW") return id.startsWith("D-");
   if (track === "GMDSS_GOC") return id.startsWith("G-");
@@ -384,7 +385,7 @@ async function questionFingerprint(question: { questionText: string; options: st
 }
 async function freeQuestionFingerprints(admin: any, track: string): Promise<Set<string>> {
   const cached = freeQuestionFingerprintCache.get(track);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.cachedAt < FREE_FINGERPRINT_CACHE_TTL_MS) return cached.fingerprints;
   const fingerprints = new Set<string>();
   for (const path of SOURCE_ASSETS.filter(item => trackForPath(item) === track)) {
     const sample = sampleFreeCsv(path, await privateText(admin, path));
@@ -396,7 +397,7 @@ async function freeQuestionFingerprints(admin: any, track: string): Promise<Set<
     })));
     hashes.forEach(hash => fingerprints.add(hash));
   }
-  freeQuestionFingerprintCache.set(track, fingerprints);
+  freeQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now() });
   return fingerprints;
 }
 Deno.serve(async (req: Request) => {
