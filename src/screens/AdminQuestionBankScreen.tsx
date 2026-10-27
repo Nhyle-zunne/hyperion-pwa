@@ -87,7 +87,7 @@ export default function AdminQuestionBankScreen() {
   const problemCount = queue.filter(item => !item.targetPath || duplicatePaths.has(item.targetPath) || item.file.size > fileSizeLimit(item.file) || !!item.error).length
 
   const queueGroups = useMemo(() => {
-    const groups = TRACKS.map(([track, label]) => {
+    const groups: { key: string; label: string; items: QueueItem[] }[] = TRACKS.map(([track, label]) => {
       const items = queue.filter(item => assetByPath.get(item.targetPath)?.track === track)
       return { key: track, label, items }
     }).filter(group => group.items.length > 0)
