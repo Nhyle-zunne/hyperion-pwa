@@ -5,6 +5,7 @@ import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { priceForTerm, termLabel } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
+import AccountSectionTabs from '../components/AccountSectionTabs'
 
 type Order = {
   id: string
@@ -356,6 +357,7 @@ export default function BasketScreen() {
       @media(max-width:520px){.basket-page .basket-row{align-items:flex-start}.basket-page .basket-action-row button{flex:1}}
     `}</style>
     <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
+    <AccountSectionTabs active={null} />
     <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
       <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
       <span style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'} to purchase</span>
