@@ -56,6 +56,8 @@ supabase secrets set PAYMONGO_CHECKOUT_ENABLED=true
 
 Complete the end-to-end test below. To pause checkouts at any time, set the toggle back to `false`.
 
+**Release gate:** Do not switch on live checkout until a correctly signed test-mode webhook event returns 2xx and a controlled test checkout verifies the corresponding order and fixed-term entitlement. A signature mismatch must be fixed by using the signing secret for the exact webhook endpoint/mode; never disable signature verification.
+
 For **production/live mode**, change `PAYMONGO_SECRET_KEY` to your PayMongo live secret key (`sk_live_...`), set `PAYMONGO_WEBHOOK_SECRET` to the signing secret for the live webhook endpoint, and set `PAYMONGO_EXPECT_LIVEMODE=true`. First set `PAYMONGO_CHECKOUT_ENABLED=false` while switching to live credentials and registering the live webhook. Verify the live API key and signing secret are matched to live mode; then set `PAYMONGO_CHECKOUT_ENABLED=true`. Keep the test and live keys separate. Do not use test-mode events to activate production subscriptions.
 
 The `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are supplied to Supabase Edge Functions. Do not add the service-role key to Cloudflare or frontend environment variables.
@@ -98,12 +100,12 @@ For a successful PayMongo payment that remains pending in Hyperion:
 
 PayMongo documents that webhook delivery can be retried and that an endpoint may be automatically disabled after repeated failures. It also warns that missed events may not be redelivered after an outage, which is why the server-side verification fallback matters. See https://docs.paymongo.com/reference/webhook-resource and https://docs.paymongo.com/docs/developer-tools-webhook-setup-management.
 
-## 5. Test before switching to live payments
+## 6. Test before switching to live payments
 
 - Use test keys and the PayMongo webhook test-event tool first.
 - Complete a one-item checkout and confirm its `checkout_batches` row (or legacy `orders` row) is `paid`, its matching entitlement is `active`, and the expiry matches the selected term: 7 days, one calendar month, or one calendar year.
 - Add at least two tracks to the basket and make one test checkout. Confirm that the batch total equals the sum of the displayed prices, each selected track has one paid order row, and each has an active entitlement.
-- Confirm no unselected track is activated and each entitlement expires about one year after confirmation.
+- Confirm no unselected track is activated and each entitlement expiry matches its selected term (week, month, or year).
 - Test cancellation/resume, failed checkout creation, wrong amount/currency, invalid webhook signatures, delayed webhook delivery, duplicate webhook delivery, and retried checkout creation. Duplicate deliveries must not extend the same purchase twice; creation retries should reuse the same persisted order/batch ID as the PayMongo `Idempotency-Key`.
 - Verify that an arbitrary `?payment=success` URL does not grant access.
 - Confirm replaying the same webhook/payment ID returns a duplicate success response without moving the entitlement expiry.
