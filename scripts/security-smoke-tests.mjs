@@ -32,7 +32,8 @@ const signatureIndex = webhook.indexOf('const expectedSignature = await hmacHex'
 const parseIndex = webhook.indexOf('JSON.parse(raw)');
 assert.ok(signatureIndex >= 0 && parseIndex > signatureIndex, 'Webhook verifies the exact raw body before parsing JSON');
 assert.ok(webhook.includes("const suppliedSignature = isLive ? parts.li : parts.te"), 'Webhook signature selection follows configured mode');
-assert.ok(webhook.includes("Deno.env.get('PAYMONGO_WEBHOOK_SECRET')?.trim()"), 'Webhook signing secret is whitespace-normalized');
+assert.ok(webhook.includes("Deno.env.get('PAYMONGO_TEST_WEBHOOK_SECRET')") && webhook.includes("Deno.env.get('PAYMONGO_LIVE_WEBHOOK_SECRET')"), 'Webhook supports dedicated test and live signing secrets');
+assert.ok(webhook.includes(")?.trim()"), 'Webhook signing secret is whitespace-normalized');
 assert.ok(webhook.includes('equalConstantTime(expectedSignature, suppliedSignature)'), 'Webhook uses a constant-time signature comparison');
 assert.ok(webhook.includes("Math.abs(Date.now() / 1000 - Number(timestamp)) > 300"), 'Webhook rejects stale signed requests');
 
