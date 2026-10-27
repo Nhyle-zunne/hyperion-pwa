@@ -176,7 +176,6 @@ export default function BasketScreen() {
       void refreshData().catch(async error => {
         if (active) {
           setIsError(true)
-          setPurchaseConfirmation({ orderId, productCodes: [], stage: 'pending' })
           setMessage(await edgeError(error))
         }
       })
@@ -370,6 +369,7 @@ export default function BasketScreen() {
       } catch (error) {
         if (active) {
           setIsError(true)
+          setPurchaseConfirmation({ orderId, productCodes: [], stage: 'pending' })
           setMessage(await edgeError(error))
         }
       } finally {
