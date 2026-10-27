@@ -176,7 +176,8 @@ async function migrationState(admin: any) {
 }
 
 type SourceInfo = { track: string; competenceId: string; part: number | null; format: "standard" | "gmdss"; functionId: string; idPrefix: string };
-const privateTextCache = new Map<string, string>();
+const PRIVATE_TEXT_CACHE_TTL_MS = 15_000;
+const privateTextCache = new Map<string, { text: string; cachedAt: number }>();
 function sourceInfo(path: string): SourceInfo | null {
   const track = trackForPath(path);
   if (!track) return null;
@@ -213,11 +214,11 @@ function sourceInfo(path: string): SourceInfo | null {
 }
 async function privateText(admin: any, path: string): Promise<string> {
   const cached = privateTextCache.get(path);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.cachedAt < PRIVATE_TEXT_CACHE_TTL_MS) return cached.text;
   const result = await admin.storage.from("question-banks").download(path);
   if (result.error || !result.data) throw new Error("Question asset is not available in private storage.");
   const text = await decryptToText(new Uint8Array(await result.data.arrayBuffer()));
-  privateTextCache.set(path, text);
+  privateTextCache.set(path, { text, cachedAt: Date.now() });
   return text;
 }
 function validGmdssRows(text: string): string[][] {
