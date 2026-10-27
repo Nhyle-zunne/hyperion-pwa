@@ -155,7 +155,8 @@ export default function OrdersPaymentHistoryScreen() {
 
   // Automatically reconcile open PayMongo checkouts while the customer views their history.
   useEffect(() => {
-    if (!supabase || !session?.user.id || !pendingCheckoutIds) return
+    const client = supabase
+    if (!client || !session?.user.id || !pendingCheckoutIds) return
     let active = true
     let checking = false
     const checkPending = async () => {
@@ -164,7 +165,7 @@ export default function OrdersPaymentHistoryScreen() {
       try {
         const activated: string[] = []
         for (const orderId of pendingCheckoutIds.split(',').filter(Boolean)) {
-          const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
+          const { data, error } = await client.functions.invoke('verify-checkout', { body: { orderId } })
           if (!active) return
           if (error || data?.status !== 'paid') continue
           const codes: string[] = Array.isArray(data.productCodes)
