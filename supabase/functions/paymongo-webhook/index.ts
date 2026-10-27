@@ -74,9 +74,19 @@ Deno.serve(async (req) => {
   const timestamp = parts.t
   const webhookSecret = Deno.env.get('PAYMONGO_WEBHOOK_SECRET')
   if (!webhookSecret || !timestamp || (!parts.te && !parts.li)) {
+    console.warn('[paymongo-webhook] Signature header/config missing', JSON.stringify({
+      configuredSecret: Boolean(webhookSecret),
+      hasTimestamp: Boolean(timestamp),
+      hasTestSignature: Boolean(parts.te),
+      hasLiveSignature: Boolean(parts.li)
+    }))
     return new Response('Webhook not configured or signature missing', { status: 401 })
   }
   if (!/^\d+$/.test(timestamp) || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) {
+    console.warn('[paymongo-webhook] Rejected stale or invalid signature timestamp', JSON.stringify({
+      timestampIsNumeric: /^\d+$/.test(timestamp),
+      ageSeconds: /^\d+$/.test(timestamp) ? Math.round(Date.now() / 1000 - Number(timestamp)) : null
+    }))
     return new Response('Stale webhook', { status: 401 })
   }
 
@@ -110,6 +120,11 @@ Deno.serve(async (req) => {
   const suppliedSignature = isLive ? parts.li : parts.te
   const expectedSignature = await hmacHex(webhookSecret, `${timestamp}.${raw}`)
   if (!suppliedSignature || !equalConstantTime(expectedSignature, suppliedSignature)) {
+    console.warn('[paymongo-webhook] Signature mismatch', JSON.stringify({
+      eventMode: isLive ? 'live' : 'test',
+      configuredSecret: Boolean(webhookSecret),
+      matchingSignaturePresent: Boolean(suppliedSignature)
+    }))
     return new Response('Invalid signature', { status: 401 })
   }
 
