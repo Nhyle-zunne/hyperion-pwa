@@ -15,7 +15,11 @@ function isStandalone(): boolean {
 
 function isIos(): boolean {
   if (typeof navigator === 'undefined') return false
-  return /iphone|ipad|ipod/i.test(navigator.userAgent)
+  const ua = navigator.userAgent
+  const classicIos = /iphone|ipad|ipod/i.test(ua)
+  // iPadOS may identify itself as macOS in desktop-style browsing.
+  const ipadOs = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+  return classicIos || ipadOs
 }
 
 function isAndroid(): boolean {

@@ -4,6 +4,7 @@ import { useLicenseStore } from '../stores/licenseStore'
 import { useHistoryStore } from '../stores/historyStore'
 import { useStudyTimeStore, formatDurationMs } from '../stores/studyTimeStore'
 import AppDrawer from '../components/AppDrawer'
+import InstallPrompt from '../components/InstallPrompt'
 import type { TrackId } from '../types/question'
 
 const FB = 'https://www.facebook.com/hyperionbynhyle/'
@@ -87,6 +88,7 @@ export default function TrackSelectionScreen() {
   return (
     <div className="screen dashboard-screen" style={{ paddingTop: 0 }}>
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <InstallPrompt variant="modal" />
 
       <div className="dash-header">
         <div>
