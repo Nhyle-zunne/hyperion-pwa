@@ -18,7 +18,6 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
   const [installExpanded, setInstallExpanded] = useState(false)
   const [installPlatform, setInstallPlatform] = useState<'android' | 'ios' | 'desktop' | null>(null)
   const [showAndroidInstallHelp, setShowAndroidInstallHelp] = useState(false)
-  const [showDesktopInstallHelp, setShowDesktopInstallHelp] = useState(false)
   const [desktopInstallBusy, setDesktopInstallBusy] = useState(false)
   const [showDesktopInstallDialog, setShowDesktopInstallDialog] = useState(false)
   const { canNativePrompt, promptInstall } = useInstallPrompt()
@@ -201,17 +200,6 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
                           disabled={desktopInstallBusy}
                         />
                       </div>
-                      {showDesktopInstallHelp && (
-                        <>
-                          <ol style={{ paddingLeft: '1.15rem', margin: '.35rem 0 0' }}>
-                            <li>Open this site in <strong>Chrome</strong> or <strong>Edge</strong>.</li>
-                            <li>Click the install icon in the address bar, or open the browser menu (<strong>⋮</strong> / <strong>…</strong>).</li>
-                            <li>Choose <strong>Install Hyperion</strong> or <strong>Install this site as an app</strong>, then confirm.</li>
-                            <li>Launch it from your Start menu or app launcher.</li>
-                          </ol>
-                          <p style={{ margin: '.45rem 0 0' }}>On MacBook using Safari, select <strong>File → Add to Dock</strong>. The button opens these steps when Safari cannot show a native install prompt.</p>
-                        </>
-                      )}
                     </>
                   )}
                 </div>}
