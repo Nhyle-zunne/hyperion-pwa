@@ -157,6 +157,56 @@ function mergeById<T extends { id: string }>(remoteItems: T[], localItems: T[], 
   return Array.from(merged.values())
 }
 
+function dayOrdinal(dateKey: string): number {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000)
+}
+
+type DailyCheckIn = { startDate: string; lastDate: string; count: number; updatedAt: number }
+
+function readDailyCheckIn(state: Record<string, unknown>): DailyCheckIn | null {
+  const startDate = state.dailyCheckInStartDate
+  const lastDate = state.dailyCheckInLastDate
+  const count = Number(state.dailyCheckInCount ?? 0)
+  if (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return null
+  if (typeof lastDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(lastDate)) return null
+  if (!Number.isInteger(count) || count < 1 || startDate > lastDate) return null
+  return { startDate, lastDate, count, updatedAt: Number(state.dailyCheckInUpdatedAt ?? 0) }
+}
+
+function mergeDailyCheckIn(localState: Record<string, unknown>, remoteState: Record<string, unknown>): Record<string, unknown> {
+  const local = readDailyCheckIn(localState)
+  const remote = readDailyCheckIn(remoteState)
+  if (!local && !remote) return {}
+  if (!local) return { dailyCheckInStartDate: remote!.startDate, dailyCheckInLastDate: remote!.lastDate, dailyCheckInCount: remote!.count, dailyCheckInUpdatedAt: remote!.updatedAt }
+  if (!remote) return { dailyCheckInStartDate: local.startDate, dailyCheckInLastDate: local.lastDate, dailyCheckInCount: local.count, dailyCheckInUpdatedAt: local.updatedAt }
+
+  if (local.lastDate === remote.lastDate) {
+    return {
+      dailyCheckInStartDate: local.startDate <= remote.startDate ? local.startDate : remote.startDate,
+      dailyCheckInLastDate: local.lastDate,
+      dailyCheckInCount: Math.max(local.count, remote.count),
+      dailyCheckInUpdatedAt: Math.max(local.updatedAt, remote.updatedAt)
+    }
+  }
+
+  const localIsLater = local.lastDate > remote.lastDate
+  const later = localIsLater ? local : remote
+  const earlier = localIsLater ? remote : local
+  const gap = dayOrdinal(later.lastDate) - dayOrdinal(earlier.lastDate)
+  if (gap === 1) {
+    // Adjacent dates across devices mean the streak continued even if one device was stale.
+    const startDate = earlier.startDate <= later.startDate ? earlier.startDate : later.startDate
+    return {
+      dailyCheckInStartDate: startDate,
+      dailyCheckInLastDate: later.lastDate,
+      dailyCheckInCount: Math.max(later.count, earlier.count + 1),
+      dailyCheckInUpdatedAt: Math.max(local.updatedAt, remote.updatedAt)
+    }
+  }
+  return { dailyCheckInStartDate: later.startDate, dailyCheckInLastDate: later.lastDate, dailyCheckInCount: later.count, dailyCheckInUpdatedAt: later.updatedAt }
+}
+
 function mergePersistedStore(
   key: ProgressStorageKey,
   localRaw: string | null,
@@ -233,6 +283,8 @@ function mergePersistedStore(
         state.targetDate = rs.targetDate
         state.targetDateUpdatedAt = remoteTargetAt
       }
+
+      Object.assign(state, mergeDailyCheckIn(ls, rs))
     }
     return JSON.stringify({ version: local.version ?? remote.version ?? 0, state })
   }
@@ -401,6 +453,7 @@ async function applySnapshot(snapshot: LearningProgressSnapshot): Promise<void> 
       competenceId: activeSessionFrom(snapshot)?.competenceId ?? null
     }
   }))
+  window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
 }
 
 async function clearLocalProgress(): Promise<void> {
@@ -414,7 +467,7 @@ async function clearLocalProgress(): Promise<void> {
       localStorage.removeItem(DIRTY_SECTIONS_KEY)
     } catch { /* ignore storage errors */ }
     useHistoryStore.setState({ entries: [], savedSessions: [] })
-    useStudyTimeStore.setState({ segments: [] })
+    useStudyTimeStore.setState({ segments: [], dailyCheckInStartDate: '', dailyCheckInLastDate: '', dailyCheckInCount: 0, dailyCheckInUpdatedAt: 0 })
     useVaultStore.setState({ items: [] })
     useBookmarksStore.setState({ items: [] })
     resetActiveSession()
@@ -545,6 +598,7 @@ async function initializeUser(userId: string): Promise<void> {
     // Do not overwrite a local account's data when the cloud read fails. The user
     // can continue locally; reconnecting or re-authenticating will retry hydration.
     console.warn('[Hyperion progress sync] Cloud restore failed; keeping local progress.', error)
+    window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
     if (localStorage.getItem(OWNER_KEY) === userId) activeUserId = userId
     if (navigator.onLine !== false) {
       retryTimer = setTimeout(() => { void initializeUser(userId) }, 8000)
