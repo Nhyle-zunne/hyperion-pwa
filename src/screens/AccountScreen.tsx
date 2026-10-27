@@ -321,12 +321,10 @@ export default function AccountScreen() {
         }
         if (active && activated.length) {
           const uniqueCodes = [...new Set(activated)]
+          const labels = uniqueCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
+          setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
           clearBasketItems(uniqueCodes)
           await refreshAccount()
-          if (active) {
-            const labels = uniqueCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
-            setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
-          }
         }
       } catch {
         // A transient network or provider issue is retried by the next interval.
