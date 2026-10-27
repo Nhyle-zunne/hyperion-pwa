@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useUIStore } from '../stores/uiStore'
+import { useInstallPrompt } from '../hooks/useInstallPrompt'
 
 const FB = 'https://www.facebook.com/hyperionbynhyle/'
 
@@ -14,6 +15,8 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
   const [accountExpanded, setAccountExpanded] = useState(location.pathname === '/account' || location.pathname.startsWith('/account/') || ['/checkout', '/basket', '/orders', '/manual-payment'].includes(location.pathname))
   const [installExpanded, setInstallExpanded] = useState(false)
   const [installPlatform, setInstallPlatform] = useState<'android' | 'ios' | 'desktop' | null>(null)
+  const [showAndroidInstallHelp, setShowAndroidInstallHelp] = useState(false)
+  const { canNativePrompt, promptInstall } = useInstallPrompt()
 
   useEffect(() => {
     if (location.pathname === '/account' || location.pathname.startsWith('/account/') || ['/checkout', '/basket', '/orders', '/manual-payment'].includes(location.pathname)) {
@@ -137,11 +140,26 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
                       <strong>Option 1: Android app</strong>
                       <a href="https://play.google.com/store/apps/details?id=com.nhyle.hyperionmaritime" target="_blank" rel="noopener noreferrer" style={{ display: 'block', margin: '.35rem 0 .65rem', color: 'var(--accent)', fontWeight: 850 }}>Install from Google Play ↗</a>
                       <strong>Option 2: Add website to Home Screen</strong>
-                      <ol style={{ paddingLeft: '1.15rem', margin: '.35rem 0 0' }}>
-                        <li>Open this site in Chrome (not Facebook/Instagram's in-app browser).</li>
-                        <li>Tap <strong>⋮</strong> → <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
-                        <li>Confirm the install/add prompt.</li>
-                      </ol>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ display: 'block', width: '100%', marginTop: '.45rem' }}
+                        onClick={async () => {
+                          if (canNativePrompt) {
+                            const accepted = await promptInstall()
+                            if (!accepted) setShowAndroidInstallHelp(true)
+                          } else {
+                            setShowAndroidInstallHelp(true)
+                          }
+                        }}
+                      >
+                        Add Hyperion to Home Screen
+                      </button>
+                      {showAndroidInstallHelp && (
+                        <p style={{ margin: '.5rem 0 0', color: 'var(--text-muted)', fontSize: '.8rem', lineHeight: 1.5 }}>
+                          If no install prompt appeared, open this page in Chrome, tap <strong>⋮</strong>, choose <strong>Install app</strong> or <strong>Add to Home screen</strong>, then confirm. Some browsers do not allow websites to open the install prompt directly.
+                        </p>
+                      )}
                     </>
                   ) : key === 'ios' ? (
                     <>
