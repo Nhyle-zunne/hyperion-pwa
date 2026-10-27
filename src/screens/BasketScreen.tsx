@@ -551,7 +551,7 @@ export default function BasketScreen() {
         }}
       >
         <button type="button" aria-label="Close purchase confirmation"
-          onClick={() => setPurchaseConfirmation(null)}
+          onClick={dismissPurchaseConfirmation}
           style={{ float: 'right', border: '1px solid var(--border)', borderRadius: 8, padding: '.3rem .55rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', cursor: 'pointer' }}>✕</button>
         <div aria-hidden="true" style={{
           margin: '1rem auto .9rem', width: 66, height: 66,
