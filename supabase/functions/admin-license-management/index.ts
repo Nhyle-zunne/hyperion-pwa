@@ -48,7 +48,10 @@ function expiryForTerm(base: Date, term: LicenseTerm) {
 }
 function effectiveStatus(row: any, now = Date.now()): 'active' | 'expired' | 'revoked' {
   if (row.status === 'revoked') return 'revoked'
-  if (row.expires_at && new Date(row.expires_at).getTime() <= now) return 'expired'
+  // Every paid license is a fixed term; missing or invalid expiry is not unlimited access.
+  if (!row.expires_at) return 'expired'
+  const expiry = Date.parse(row.expires_at)
+  if (!Number.isFinite(expiry) || expiry <= now) return 'expired'
   return 'active'
 }
 function profileName(user: any): string | null {
