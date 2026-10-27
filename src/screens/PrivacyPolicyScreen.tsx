@@ -90,7 +90,7 @@ export default function PrivacyPolicyScreen() {
         <ul>
           <li><strong>Android local data:</strong> remains on your device until you clear app storage or uninstall the app.</li>
           <li><strong>Website account and synced progress:</strong> are retained while needed to provide the service and are removed through the account-deletion flow after successful completion, subject to limited legal, security, backup, or audit exceptions.</li>
-          <li><strong>Website orders and license records:</strong> are used to provide access, verify payment, resolve disputes, prevent duplicate payment/ fraud, and administer expiry. The account-deletion flow removes account-linked orders and entitlements when it completes; some security logs, backups, or records required by law may remain for a limited period.</li>
+          <li><strong>Website orders and license records:</strong> are used to provide access, verify payment, resolve disputes, prevent duplicate payments or fraud, and administer expiry. The account-deletion flow removes account-linked orders and entitlements when it completes; some security logs, backups, or records required by law may remain for a limited period.</li>
           <li><strong>Support messages:</strong> may be retained for a reasonable period needed to resolve the request, keep support records, or establish/defend legal claims.</li>
           <li><strong>Third-party records:</strong> Google Play, PayMongo, Meta, and other providers may keep their own transaction, billing, support, or technical records under their separate policies and legal obligations. Hyperion cannot delete records held independently by those providers through your Hyperion account deletion.</li>
         </ul>
