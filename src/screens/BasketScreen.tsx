@@ -70,6 +70,7 @@ export default function BasketScreen() {
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
   const [manualFallbackItems, setManualFallbackItems] = useState<BasketItem[]>([])
+  const [paymongoCheckoutEnabled, setPaymongoCheckoutEnabled] = useState<boolean | null>(null)
   const [checkoutUrlFallback, setCheckoutUrlFallback] = useState<string | null>(null)
   const [purchaseConfirmation, setPurchaseConfirmation] = useState<PurchaseConfirmation | null>(null)
   const handledSuccessOrderRef = useRef<string | null>(null)
@@ -88,6 +89,54 @@ export default function BasketScreen() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
     return () => listener.subscription.unsubscribe()
   }, [])
+
+  // Read the server-side checkout switch on entry and when the user returns to
+  // this tab. Never show an actionable PayMongo button while availability is
+  // disabled or cannot be verified.
+  useEffect(() => {
+    let active = true
+    if (!supabase || !session?.user.id) {
+      setPaymongoCheckoutEnabled(null)
+      return
+    }
+    const refreshCheckoutAvailability = async () => {
+      try {
+        const { data, error } = await supabase!.functions.invoke('create-checkout', { body: { action: 'status' } })
+        if (!active) return
+        if (error || data?.action !== 'status' || typeof data?.enabled !== 'boolean') {
+          setPaymongoCheckoutEnabled(false)
+          setCheckoutUrlFallback(null)
+          setManualFallbackItems([])
+          setIsError(false)
+          setMessage('PayMongo checkout availability could not be verified. For your safety, checkout is disabled here for now. Please use manual payment.')
+          return
+        }
+        setPaymongoCheckoutEnabled(data.enabled)
+        if (!data.enabled) {
+          setCheckoutUrlFallback(null)
+          setManualFallbackItems([])
+          setIsError(false)
+          setMessage('PayMongo checkout is not enabled yet. Please use manual payment for now.')
+        } else {
+          setMessage(current => /PayMongo checkout is not enabled yet|availability could not be verified/i.test(current) ? '' : current)
+        }
+      } catch {
+        if (!active) return
+        setPaymongoCheckoutEnabled(false)
+        setCheckoutUrlFallback(null)
+        setManualFallbackItems([])
+        setIsError(false)
+        setMessage('PayMongo checkout availability could not be verified. For your safety, checkout is disabled here for now. Please use manual payment.')
+      }
+    }
+    void refreshCheckoutAvailability()
+    const onFocus = () => { void refreshCheckoutAvailability() }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      active = false
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [session?.user.id])
 
   const refreshData = async () => {
     if (!supabase || !session?.user.id) {
@@ -169,6 +218,11 @@ export default function BasketScreen() {
   }), [basket])
   const totalPhp = selectedItems.reduce((sum, item) => sum + item.price, 0)
   const activeInBasket = selectedItems.filter(item => ownedCodes.includes(item.code))
+  const manualPaymentItems: BasketItem[] = manualFallbackItems.length
+    ? manualFallbackItems
+    : paymongoCheckoutEnabled === false ? selectedItems.map(({ code, term }) => ({ code, term })) : []
+  const showManualPaymentFallback = manualPaymentItems.length > 0 &&
+    (paymongoCheckoutEnabled === false || (isError && manualFallbackItems.length > 0))
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
   const pendingCheckoutGroups = useMemo(() => {
     const groups = new Map<string, Order[]>()
@@ -311,6 +365,11 @@ export default function BasketScreen() {
       setMessage('Sign in to Hyperion first. Your selected tracks are saved in this browser.')
       return
     }
+    if (paymongoCheckoutEnabled !== true) {
+      setIsError(false)
+      setMessage('PayMongo checkout is not available right now. Please use manual payment instead.')
+      return
+    }
     const itemsByCode = new Map<PaidTrack, BasketItem>()
     for (const entry of requestedItems) {
       if (PAID_PRODUCTS.some(item => item.code === entry.code) &&
@@ -354,7 +413,11 @@ export default function BasketScreen() {
     } catch (error) {
       setIsError(true)
       setManualFallbackItems(items)
-      setMessage(await edgeError(error))
+      const errorMessage = await edgeError(error)
+      setMessage(errorMessage)
+      if (/PayMongo checkout is not enabled|not fully configured|key does not match the configured payment mode/i.test(errorMessage)) {
+        setPaymongoCheckoutEnabled(false)
+      }
     } finally {
       setBusy(false)
     }
@@ -529,11 +592,11 @@ export default function BasketScreen() {
           <a href={checkoutUrlFallback} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, padding: '.7rem 1rem', textDecoration: 'none' }}>CONTINUE TO PAYMONGO SECURE CHECKOUT</a>
           <p className="basket-muted" style={{ margin: '.5rem 0 0' }}>If payment is already complete, don't pay again. Return to this page or refresh payment status to verify it.</p>
         </div>}
-        {isError && manualFallbackItems.length > 0 && <div style={{ marginTop: '.85rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
+        {showManualPaymentFallback && <div style={{ marginTop: '.85rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
           <strong style={{ display: 'block', marginBottom: '.3rem' }}>PayMongo checkout is unavailable</strong>
           <p className="basket-muted" style={{ margin: '0 0 .7rem' }}>You can pay by QR instead. Choose the track below to open its dedicated manual payment page. Manual payments require admin review before your license is activated.</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem' }}>
-            {manualFallbackItems.map(({ code, term }) => {
+            {manualPaymentItems.map(({ code, term }) => {
               const item = PAID_PRODUCTS.find(product => product.code === code)
               if (!item) return null
               return <Link key={code} className="manual-fallback-link" to={`/manual-payment?product=${encodeURIComponent(code)}&term=${term}`}>Pay manually for {item.label} · ₱{priceForTerm(item, term)}</Link>
@@ -582,10 +645,10 @@ export default function BasketScreen() {
           <p className="basket-muted" style={{ margin: '.3rem 0 1rem' }}>{selectedItems.length} selected track{selectedItems.length === 1 ? '' : 's'}</p>
           {selectedItems.map(({ code, term, product, price }) => <div key={code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{product.label} <span className="basket-muted">({termLabel(term)})</span></span><strong>₱{price}</strong></div>)}
           <div style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
-          <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length || activeInBasket.length > 0} onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : '⚡ CHECK OUT WITH PAYMONGO →'}</button>
+          <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || paymongoCheckoutEnabled !== true || !supabaseConfigured || !selectedItems.length || activeInBasket.length > 0} onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem', ...(paymongoCheckoutEnabled !== true ? { opacity: .62, cursor: 'not-allowed' } : {}) }}>{busy ? 'PROCESSING…' : paymongoCheckoutEnabled === null ? 'CHECKING PAYMENT OPTIONS…' : paymongoCheckoutEnabled ? '⚡ CHECK OUT WITH PAYMONGO →' : 'PAYMONGO CHECKOUT DISABLED'}</button>
           {activeInBasket.length > 0 && <p style={{ color: 'var(--danger, #dc2626)', fontSize: '.8rem', lineHeight: 1.45 }}>Remove already active tracks to continue checkout.</p>}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['GCash','Maya','QR Ph','Card'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>
-          <p className="basket-muted" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>Each selected track is activated only after PayMongo confirms this exact basket payment.</p>
+          {paymongoCheckoutEnabled === true && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['GCash','Maya','QR Ph','Card'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>}
+          <p className="basket-muted" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{paymongoCheckoutEnabled === true ? 'Each selected track is activated only after PayMongo confirms this exact basket payment.' : paymongoCheckoutEnabled === null ? 'Checking whether PayMongo checkout is available…' : 'Use the manual-payment option above. Manual payments require admin review before your license is activated.'}</p>
         </aside>
       </div>
     </>}
