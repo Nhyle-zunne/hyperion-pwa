@@ -5,7 +5,8 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
   pricing, checkout, verify, webhook, questionBank, questionBankMigration,
   finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen, accountScreen,
-  indexCss, manualPayment, ordersHistory, historyScreen, studyTimeScreen, trackSelectionScreen, studyTimeStore, progressSync
+  indexCss, manualPayment, ordersHistory, historyScreen, studyTimeScreen, trackSelectionScreen, studyTimeStore, progressSync,
+  aboutScreen, termsScreen, privacyScreen
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -29,7 +30,10 @@ const [
   read('../src/screens/StudyTimeScreen.tsx'),
   read('../src/screens/TrackSelectionScreen.tsx'),
   read('../src/stores/studyTimeStore.ts'),
-  read('../src/lib/progressSync.ts')
+  read('../src/lib/progressSync.ts'),
+  read('../src/screens/AboutScreen.tsx'),
+  read('../src/screens/TermsScreen.tsx'),
+  read('../src/screens/PrivacyPolicyScreen.tsx')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -112,6 +116,16 @@ assert.ok(studyTimeStore.includes('dailyCheckInStartDate') && studyTimeStore.inc
 assert.ok(app.includes('hyperion:learning-progress-ready') && app.includes('recordDailyCheckIn()') && app.includes("addEventListener('visibilitychange', handleResume)"), 'App open and resume record daily check-ins after account progress hydration');
 assert.ok(progressSync.includes('mergeDailyCheckIn(ls, rs)') && progressSync.includes("new Event('hyperion:learning-progress-ready')"), 'Daily check-in state merges across devices and initializes when cloud restore is unavailable');
 assert.ok(progressSync.includes("dailyCheckInStartDate: '', dailyCheckInLastDate: '', dailyCheckInCount: 0"), 'Account switching clears the previous account check-in streak');
+assert.ok(aboutScreen.includes('Google Play subscriptions:') && aboutScreen.includes('Website/PWA licenses:'), 'About page explicitly explains both platform license types');
+assert.ok(aboutScreen.includes('same email address') && aboutScreen.includes('cannot be transferred or combined automatically'), 'About page warns that licenses are not merged by email');
+assert.ok(termsScreen.includes('3.1 Google Play subscriptions (Android app)') && termsScreen.includes('3.2 Website/PWA licenses (hyperionmaritime.org)'), 'Terms distinguish Play subscriptions from website fixed-term licenses');
+assert.ok(termsScreen.includes('does not automatically unlock a website/PWA license') && termsScreen.includes('do not automatically renew'), 'Terms explain cross-platform separation and website non-renewal');
+assert.ok(termsScreen.includes('play.google.com/store/account/subscriptions') && termsScreen.includes('website account deletion does not automatically cancel'), 'Terms provide the correct Play subscription management path and cancellation separation');
+assert.ok(termsScreen.includes('October 27, 2026'), 'Terms updated date matches the latest substantive revision');
+assert.ok(privacyScreen.includes('Firebase Analytics') && privacyScreen.includes('PayMongo') && privacyScreen.includes('daily app-open check-in streak'), 'Privacy policy describes current analytics, payment, and synced progress handling');
+assert.ok(privacyScreen.includes('does not cancel a Google Play subscription') && privacyScreen.includes('website/PWA licenses are independent'), 'Privacy policy explains separate license and deletion effects');
+assert.ok(privacyScreen.includes('href="/account?tab=delete"') && !privacyScreen.includes('hyperionmaritime.org/delete-account'), 'Privacy policy links to the real in-app website account-deletion route');
+assert.ok(privacyScreen.includes('October 27, 2026'), 'Privacy policy updated date matches the latest substantive revision');
 
 for (const route of [
   '/account', '/checkout', '/manual-payment', '/orders', '/admin/licenses',
