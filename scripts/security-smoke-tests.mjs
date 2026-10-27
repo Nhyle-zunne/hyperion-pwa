@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
   pricing, checkout, verify, webhook, questionBank, questionBankMigration,
-  finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore
+  finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -18,7 +18,8 @@ const [
   read('../src/App.tsx'),
   read('../src/stores/practiceStore.ts'),
   read('../src/screens/MockExamScreen.tsx'),
-  read('../src/stores/licenseStore.ts')
+  read('../src/stores/licenseStore.ts'),
+  read('../src/screens/BasketScreen.tsx')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -64,6 +65,11 @@ assert.match(priceCorrectionMigration, /month.*then 40/i, 'GMDSS monthly price c
 assert.match(functionConfig, /\[functions\.paymongo-webhook\]\s*verify_jwt = false/, 'Webhook uses provider signature verification, not Supabase user JWT');
 assert.match(functionConfig, /\[functions\.question-bank\]\s*verify_jwt = false/, 'Question bank performs application-level authorization');
 assert.match(functionConfig, /\[functions\.create-checkout\]\s*verify_jwt = true/, 'Checkout requires an authenticated Hyperion session');
+assert.ok(checkout.includes("body.action === 'status'"), 'Checkout endpoint exposes only a non-secret availability status action');
+assert.ok(checkout.includes("const enabled = checkoutEnabled && Boolean(serviceKey) && keyMatchesMode"), 'Checkout status fails closed unless enabled and correctly configured');
+assert.ok(basketScreen.includes("body: { action: 'status' }"), 'Basket loads checkout availability from the server');
+assert.ok(basketScreen.includes('paymongoCheckoutEnabled !== true'), 'PayMongo CTA is disabled until server availability is confirmed');
+assert.ok(basketScreen.includes('showManualPaymentFallback'), 'Basket exposes manual payment fallback when checkout is disabled');
 
 for (const route of [
   '/account', '/checkout', '/manual-payment', '/orders', '/admin/licenses',
