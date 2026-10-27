@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { withPageLoading } from './pageLoading';
 import {
   getOfflineEntitlementExpiry,
   getOfflineQuestionCounts,
@@ -484,7 +485,7 @@ async function loadSource(src: BankSource, freeOnly = false): Promise<LoadedSour
   }
 }
 
-export async function getQuestionsByCompetence(
+async function loadQuestionsByCompetenceInternal(
   track: TrackId,
   competenceId: string,
   part?: number,
@@ -533,6 +534,20 @@ export async function getQuestionsByCompetence(
     if (page.length < pageLimit) break
   }
   return result
+}
+
+export async function getQuestionsByCompetence(
+  track: TrackId,
+  competenceId: string,
+  part?: number,
+  freeOnly = false,
+  startItem = 1,
+  limit?: number,
+  randomSample = false
+): Promise<Question[]> {
+  return withPageLoading('Loading questions', () =>
+    loadQuestionsByCompetenceInternal(track, competenceId, part, freeOnly, startItem, limit, randomSample)
+  )
 }
 
 /** Minimal java.util.Random so the free OIC-NW sample matches the Android app exactly. */
@@ -612,7 +627,7 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
   return out;
 }
 
-export async function getQuestionsByTrack(track: TrackId, freeOnly = false): Promise<Question[]> {
+async function loadQuestionsByTrackInternal(track: TrackId, freeOnly = false): Promise<Question[]> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     if (!(await mayUseOfflineTrack(track, freeOnly))) {
       throw new Error('Offline access to this paid track is unavailable or the saved license has expired.')
@@ -632,6 +647,10 @@ export async function getQuestionsByTrack(track: TrackId, freeOnly = false): Pro
   const allQuestions = results.flatMap(item => item.questions);
   if (!results.every(item => item.sampledByServer)) return freeSample(allQuestions, track);
   return allQuestions;
+}
+
+export async function getQuestionsByTrack(track: TrackId, freeOnly = false): Promise<Question[]> {
+  return withPageLoading('Loading question bank', () => loadQuestionsByTrackInternal(track, freeOnly))
 }
 
 export interface QuestionBankCount {
@@ -696,7 +715,7 @@ export async function authorizeQuestionSet(track: TrackId, questions: Question[]
 }
 
 /** Returns question counts only; paid question text stays on the protected question endpoint. */
-export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
+async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     if (!(await mayUseOfflineTrack(track, freeOnly))) throw new Error('Offline access to this paid track is unavailable or the saved license has expired.')
     const cached = await getOfflineQuestionCounts(track, freeOnly)
@@ -720,6 +739,10 @@ export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false)
   }
   throw error || new Error(data?.error || 'Could not verify access to paid question metadata.');
 }
+export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
+  return withPageLoading('Loading question counts', () => loadQuestionCountsByTrackInternal(track, freeOnly))
+}
+
 export function listAvailableCompetences(
   track: TrackId
 ): { id: string; label: string }[] {
@@ -742,7 +765,7 @@ export function listRegisteredSourceCount(): number {
   return SOURCES.length;
 }
 
-export async function getFlashcardQuestions(track: TrackId, competenceId?: string, limit = 20): Promise<Question[]> {
+async function loadFlashcardQuestionsInternal(track: TrackId, competenceId?: string, limit = 20): Promise<Question[]> {
   if (!supabase) throw new Error('Protected question service is not configured.');
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     if (!(await offlineEntitlementExpiry(track))) throw new Error('An active offline license is required for flashcards.')
@@ -765,7 +788,12 @@ export async function getFlashcardQuestions(track: TrackId, competenceId?: strin
 }
 
 
-export async function downloadOfflinePack(
+export async function getFlashcardQuestions(track: TrackId, competenceId?: string, limit = 20): Promise<Question[]> {
+  return withPageLoading('Loading flashcards', () => loadFlashcardQuestionsInternal(track, competenceId, limit))
+}
+
+
+async function downloadOfflinePackInternal(
   track: TrackId,
   freeOnly: boolean,
   onProgress?: (downloaded: number, total: number) => void
@@ -840,8 +868,16 @@ export async function downloadOfflinePack(
   return { questionCount: allQuestions.length, groupCount: writtenGroups.length }
 }
 
+export async function downloadOfflinePack(
+  track: TrackId,
+  freeOnly: boolean,
+  onProgress?: (downloaded: number, total: number) => void
+): Promise<{ questionCount: number; groupCount: number }> {
+  return withPageLoading('Downloading question pack', () => downloadOfflinePackInternal(track, freeOnly, onProgress))
+}
+
 /** Search within a track on the server and return only the limited matching results. */
-export async function searchQuestions(
+async function searchQuestionsInternal(
   track: TrackId,
   query: string,
   limit = 40
@@ -872,4 +908,10 @@ export async function searchQuestions(
     throw error || new Error(data?.error || 'Question search is unavailable.');
   }
   return data.questions as Question[];
+}
+
+
+export async function searchQuestions(track: TrackId, query: string, limit = 40): Promise<Question[]> {
+  if (query.trim().length < 2) return []
+  return withPageLoading('Searching questions', () => searchQuestionsInternal(track, query, limit))
 }
