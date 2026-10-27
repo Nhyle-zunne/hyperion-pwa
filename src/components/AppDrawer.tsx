@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useUIStore } from '../stores/uiStore'
 import GooglePlayBadge from './GooglePlayBadge'
+import DesktopInstallBadge from './DesktopInstallBadge'
 import { useInstallPrompt } from '../hooks/useInstallPrompt'
 
 const FB = 'https://www.facebook.com/hyperionbynhyle/'
@@ -17,6 +18,8 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
   const [installExpanded, setInstallExpanded] = useState(false)
   const [installPlatform, setInstallPlatform] = useState<'android' | 'ios' | 'desktop' | null>(null)
   const [showAndroidInstallHelp, setShowAndroidInstallHelp] = useState(false)
+  const [showDesktopInstallHelp, setShowDesktopInstallHelp] = useState(false)
+  const [desktopInstallBusy, setDesktopInstallBusy] = useState(false)
   const { canNativePrompt, promptInstall } = useInstallPrompt()
 
   useEffect(() => {
@@ -176,13 +179,35 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
                   ) : (
                     <>
                       <strong>Windows, Mac, or Linux</strong>
-                      <ol style={{ paddingLeft: '1.15rem', margin: '.35rem 0 0' }}>
-                        <li>Open this site in <strong>Chrome</strong> or <strong>Edge</strong>.</li>
-                        <li>Click the install icon in the address bar, or open the browser menu (<strong>⋮</strong> / <strong>…</strong>).</li>
-                        <li>Choose <strong>Install Hyperion</strong> or <strong>Install this site as an app</strong>, then confirm.</li>
-                        <li>Launch it from your Start menu or app launcher.</li>
-                      </ol>
-                      <p style={{ margin: '.45rem 0 0' }}>On supported macOS Safari versions, use <strong>File → Add to Dock</strong>.</p>
+                      <div style={{ margin: '.45rem 0 .65rem' }}>
+                        <DesktopInstallBadge
+                          busy={desktopInstallBusy}
+                          onClick={async () => {
+                            if (canNativePrompt) {
+                              setDesktopInstallBusy(true)
+                              try {
+                                const accepted = await promptInstall()
+                                if (!accepted) setShowDesktopInstallHelp(true)
+                              } finally {
+                                setDesktopInstallBusy(false)
+                              }
+                            } else {
+                              setShowDesktopInstallHelp(value => !value)
+                            }
+                          }}
+                        />
+                      </div>
+                      {showDesktopInstallHelp && (
+                        <>
+                          <ol style={{ paddingLeft: '1.15rem', margin: '.35rem 0 0' }}>
+                            <li>Open this site in <strong>Chrome</strong> or <strong>Edge</strong>.</li>
+                            <li>Click the install icon in the address bar, or open the browser menu (<strong>⋮</strong> / <strong>…</strong>).</li>
+                            <li>Choose <strong>Install Hyperion</strong> or <strong>Install this site as an app</strong>, then confirm.</li>
+                            <li>Launch it from your Start menu or app launcher.</li>
+                          </ol>
+                          <p style={{ margin: '.45rem 0 0' }}>On MacBook using Safari, select <strong>File → Add to Dock</strong>. The button opens these steps when Safari cannot show a native install prompt.</p>
+                        </>
+                      )}
                     </>
                   )}
                 </div>}
