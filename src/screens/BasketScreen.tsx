@@ -327,6 +327,7 @@ export default function BasketScreen() {
     const orderId = params.get('order_id')
     if (!session || !paymentState || !orderId) return
     let active = true
+    const verificationStartedAt = Date.now()
     if (paymentState === 'cancelled') {
       setCheckoutUrlFallback(null)
       setMessage('You returned from PayMongo. The checkout may still be open. Use the pending checkout controls below if you want to cancel it or switch payment methods.')
@@ -342,6 +343,11 @@ export default function BasketScreen() {
     void (async () => {
       try {
         const paid = await confirmPaidCheckout(orderId, 6)
+        // Keep the secure-verification animation visibly on screen, even when
+        // PayMongo responds quickly. Never show the approved state before verification.
+        const minimumLoaderMs = 1400
+        const remainingLoaderMs = minimumLoaderMs - (Date.now() - verificationStartedAt)
+        if (remainingLoaderMs > 0) await new Promise(resolve => window.setTimeout(resolve, remainingLoaderMs))
         if (!active) return
         if (paid) {
           const requestedCodes = [
@@ -573,7 +579,7 @@ export default function BasketScreen() {
         {purchaseConfirmation.stage !== 'verifying' && <button type="button" aria-label="Close purchase confirmation"
           onClick={dismissPurchaseConfirmation}
           style={{ float: 'right', border: '1px solid var(--border)', borderRadius: 8, padding: '.3rem .55rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', cursor: 'pointer' }}>✕</button>}
-        <div aria-hidden="true" key={purchaseConfirmation.stage} className={`purchase-status-circle ${purchaseConfirmation.stage === 'success' ? 'is-success' : purchaseConfirmation.stage === 'pending' ? 'is-pending' : ''}`}>
+        <div aria-hidden="true" className={`purchase-status-circle ${purchaseConfirmation.stage === 'success' ? 'is-success' : purchaseConfirmation.stage === 'pending' ? 'is-pending' : ''}`}>
           {purchaseConfirmation.stage === 'success'
             ? <svg className="purchase-checkmark" viewBox="0 0 48 48"><path d="M9 25.5 19.5 36 39 12" /></svg>
             : purchaseConfirmation.stage === 'pending'
