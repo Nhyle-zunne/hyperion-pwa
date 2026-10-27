@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
   pricing, checkout, verify, webhook, questionBank, questionBankMigration,
-  finalizerMigration, functionConfig, app, practiceStore, mockExam, licenseStore
+  finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -12,7 +12,8 @@ const [
   read('../supabase/functions/paymongo-webhook/index.ts'),
   read('../supabase/functions/question-bank/index.ts'),
   read('../supabase/migrations/20261026142927_secure_question_bank_private_storage.sql'),
-  read('../supabase/migrations/20261027102007_harden_paymongo_finalizer_search_path.sql'),
+  read('../supabase/migrations/20261027095847_finalize_paymongo_checkout_atomically.sql'),
+  read('../supabase/migrations/20261027095917_correct_gmdss_monthly_price_in_payment_finalizer.sql'),
   read('../supabase/config.toml'),
   read('../src/App.tsx'),
   read('../src/stores/practiceStore.ts'),
@@ -58,7 +59,8 @@ assert.match(questionBankMigration, /values\s*\('question-banks',\s*'question-ba
 assert.match(questionBank, /\.auth\.getUser\(\)/, 'Question-bank endpoint validates authenticated users');
 assert.match(questionBank, /FREE_FINGERPRINT_CACHE_TTL_MS/, 'Free-question authorization fingerprints expire or invalidate');
 assert.match(finalizerMigration, /search_path|SECURITY DEFINER/i, 'Finalizer migration defines a database function');
-assert.match(finalizerMigration, /service_role/i, 'Finalizer is restricted to service-role execution');
+assert.match(finalizerMigration, /service_role/i, 'Finalizer migration restricts execution to the service role');
+assert.match(priceCorrectionMigration, /month.*then 40/i, 'GMDSS monthly price correction is tracked in a separate migration');
 assert.match(functionConfig, /\[functions\.paymongo-webhook\]\s*verify_jwt = false/, 'Webhook uses provider signature verification, not Supabase user JWT');
 assert.match(functionConfig, /\[functions\.question-bank\]\s*verify_jwt = false/, 'Question bank performs application-level authorization');
 assert.match(functionConfig, /\[functions\.create-checkout\]\s*verify_jwt = true/, 'Checkout requires an authenticated Hyperion session');
