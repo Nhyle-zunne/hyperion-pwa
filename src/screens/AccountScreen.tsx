@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
+import { withPageLoading } from '../lib/pageLoading'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { LICENSE_TERMS, priceForTerm } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -161,7 +162,7 @@ export default function AccountScreen() {
       .catch(() => { if (active) setIsAdmin(false) })
     return () => { active = false }
   }, [session?.user.id])
-  const saveProfile = async () => {
+  const saveProfile = async () => withPageLoading('Saving profile', async () => {
     if (!supabase || !session) return
     if (!fullName.trim()) { setMessage('Please enter your full name.'); return }
     setBusy(true); setMessage('Saving your profile…')
@@ -174,8 +175,8 @@ export default function AccountScreen() {
       setMessage('Your profile has been saved.')
     } catch { setMessage('Unable to save profile details. Please try again.') }
     finally { setBusy(false) }
-  }
-  const refreshAccount = async () => {
+  })
+  const refreshAccount = async () => withPageLoading('Loading account and licenses', async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); return }
     const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note,checkout_batch_id'
     const [entitlements, orderResult] = await Promise.all([
@@ -209,8 +210,7 @@ export default function AccountScreen() {
     combinedOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     setOrders(combinedOrders)
     await refreshCloudEntitlements()
-  }
-
+  })
   useEffect(() => { void refreshAccount() }, [session?.user.id])
 
   // A checkout return triggers direct server-to-PayMongo verification. The return URL
@@ -347,7 +347,7 @@ export default function AccountScreen() {
     return () => { active = false; window.clearInterval(timer) }
   }, [session?.user.id, pendingCheckoutIds])
 
-  const signOut = async () => {
+  const signOut = async () => withPageLoading('Signing out', async () => {
     if (!supabase) {
       setMessage('Sign-out is temporarily unavailable. Please try again.')
       return
@@ -366,8 +366,7 @@ export default function AccountScreen() {
     } finally {
       setBusy(false)
     }
-  }
-
+  })
   const closeSuccessModal = () => {
     setSuccessClosing(true)
     window.setTimeout(() => {
@@ -382,7 +381,7 @@ export default function AccountScreen() {
     }, 220)
   }
 
-  const deleteAccount = async () => {
+  const deleteAccount = async () => withPageLoading('Deleting account', async () => {
     if (!supabase || !session || deleteConfirmation !== 'DELETE') return
     setBusy(true)
     setMessage('Deleting your account and associated account data…')
@@ -404,7 +403,8 @@ export default function AccountScreen() {
     } finally {
       setBusy(false)
     }
-  }
+  })
+
 
 
 
