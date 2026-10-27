@@ -1,4 +1,3 @@
-import { decryptToText } from './assetCrypto';
 import { supabase } from './supabase';
 import { parseCsvText } from './csvParser';
 import type { Question, TrackId, Difficulty } from '../types/question';
@@ -404,21 +403,10 @@ async function loadSource(src: BankSource, freeOnly = false): Promise<LoadedSour
       body: { action: 'get', path: src.path, freeOnly }
     });
     if (response.error || !response.data?.text) {
-      const status = Number((response.error as { context?: { status?: number } } | null)?.context?.status || 0);
-      // Temporary rollout bridge: while the admin copies the 69 assets into private
-      // storage, free reviewer can fall back to the old source and sample it locally.
-      // Paid/full requests never fall back to a public file.
-      if (freeOnly && status === 503) {
-        const legacy = await fetch('/questions/' + src.path, { cache: 'no-store' });
-        if (!legacy.ok) throw new Error('Question bank migration is not ready yet.');
-        text = await decryptToText(await legacy.arrayBuffer());
-      } else {
-        throw response.error || new Error(response.data?.error || 'Protected question delivery failed.');
-      }
-    } else {
-      text = String(response.data.text);
-      sampledByServer = freeOnly && response.data.access === 'free-sample';
+      throw response.error || new Error(response.data?.error || 'Protected question delivery failed.');
     }
+    text = String(response.data.text);
+    sampledByServer = freeOnly && response.data.access === 'free-sample';
     const rows = parseCsvText(text);
     if (rows.length <= 1 && src.format !== 'gmdss') {
       const empty = { questions: [], sampledByServer };
@@ -475,16 +463,6 @@ export async function getQuestionsByCompetence(
       body: { action: 'questions', track, competenceId, part, freeOnly, offset, limit: pageLimit, randomSample: random }
     });
     if (!error && Array.isArray(data?.questions)) return data.questions as Question[];
-    const status = Number((error as { context?: { status?: number } } | null)?.context?.status || 0);
-    if (freeOnly && status === 503) {
-      // Until private storage has all files, free sample can fall back to the
-      // legacy public assets. This path is free-only and removed after migration.
-      const all = await getQuestionsByTrack(track, true);
-      const scoped = all.filter(question => question.competenceId === competenceId &&
-        (part == null || (track === 'GMDSS_GOC' && question.id.includes('-P' + part + '-'))));
-      if (random) return shuffleQuestions(scoped).slice(0, pageLimit);
-      return scoped.slice(offset, offset + pageLimit);
-    }
     throw error || new Error(data?.error || 'Protected question delivery failed.');
   };
 
