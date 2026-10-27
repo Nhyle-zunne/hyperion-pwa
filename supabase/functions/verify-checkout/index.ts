@@ -133,7 +133,9 @@ Deno.serve(async (req) => {
   if (batch) {
     const codes = (batch.product_codes ?? []) as string[]
     const batchTerms = (batch.license_terms ?? codes.map(() => 'year')) as string[]
-    if (batch.payment_method !== 'PayMongo Checkout' || !Array.isArray(batch.product_codes) || !codes.length ||
+    const trackedBatchMethod = batch.payment_method === 'PayMongo Checkout' ||
+      (batch.status === 'paid' && typeof batch.payment_method === 'string' && batch.payment_method.startsWith('PayMongo ·'))
+    if (!trackedBatchMethod || !batch.paymongo_checkout_session_id || !Array.isArray(batch.product_codes) || !codes.length ||
         codes.length > Object.keys(products).length || codes.some(code => !(code in products)) ||
         new Set(codes).size !== codes.length || batchTerms.length !== codes.length ||
         batchTerms.some(term => term !== 'week' && term !== 'month' && term !== 'year')) {
@@ -238,7 +240,9 @@ Deno.serve(async (req) => {
   const { data: order, error: orderError } = await admin.from('orders')
     .select('*').eq('id', body.orderId).eq('user_id', user.id).maybeSingle()
   if (orderError || !order) return json({ error: 'Checkout order not found for your account.' }, 404)
-  if (order.payment_method !== 'PayMongo Checkout' || !order.paymongo_checkout_session_id) {
+  const trackedOrderMethod = order.payment_method === 'PayMongo Checkout' ||
+    (order.status === 'paid' && typeof order.payment_method === 'string' && order.payment_method.startsWith('PayMongo ·'))
+  if (!trackedOrderMethod || !order.paymongo_checkout_session_id) {
     return json({ error: 'This order is not a tracked PayMongo checkout.' }, 409)
   }
   if (order.status === 'paid') {
