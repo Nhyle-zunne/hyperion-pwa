@@ -430,6 +430,7 @@ export default function AccountScreen() {
 
         <main className="account-main">
           <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />
+          {accountTab === 'licenses' ? <section style={card}>
             <div className="account-panel-title">
               <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
               <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
