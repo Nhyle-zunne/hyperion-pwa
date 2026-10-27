@@ -67,23 +67,6 @@ Deno.serve(async req => {
     const { error } = await admin.from('payment_settings').upsert({ id: 1, instructions, updated_at: new Date().toISOString() })
     return error ? json({ error: 'Could not save payment instructions.' }, 500) : json({ ok: true })
   }
-  if (body.action === 'revoke') {
-    if (!body.orderId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.orderId)) return json({ error: 'Invalid order.' }, 400)
-    const { data: order, error: orderError } = await admin.from('orders').select('id,user_id,product_code,status,admin_note').eq('id', body.orderId).maybeSingle()
-    if (orderError || !order) return json({ error: 'Order not found.' }, 404)
-    if (order.status !== 'paid') return json({ error: 'Only a paid order can have access revoked.' }, 409)
-    const { data: entitlement, error: entitlementError } = await admin.from('entitlements').select('id,order_id,status').eq('user_id', order.user_id).eq('product_code', order.product_code).maybeSingle()
-    if (entitlementError) return json({ error: 'Could not check this user’s current license.' }, 500)
-    if (!entitlement || entitlement.order_id !== order.id) return json({ error: 'This order is not the order currently granting access. A newer purchase may have replaced it.' }, 409)
-    if (entitlement.status === 'revoked') return json({ ok: true, alreadyRevoked: true })
-    if (entitlement.status !== 'active') return json({ error: 'This entitlement is not active.' }, 409)
-    const { error: revokeError } = await admin.from('entitlements').update({ status: 'revoked' }).eq('id', entitlement.id).eq('status', 'active')
-    if (revokeError) return json({ error: 'Could not revoke license access.' }, 500)
-    const auditLine = `Access revoked by ${user.email} on ${new Date().toISOString()}.`
-    const combinedNote = [order.admin_note, auditLine, String(body.adminNote || '').trim()].filter(Boolean).join('\n').slice(0, 1000)
-    await admin.from('orders').update({ admin_note: combinedNote, reviewed_by: user.email, reviewed_at: new Date().toISOString() }).eq('id', order.id)
-    return json({ ok: true, status: 'revoked' })
-  }
   if (body.action !== 'review' || !body.orderId || !['approve','reject'].includes(body.decision || '')) return json({ error: 'Invalid review action.' }, 400)
   const { data: order, error: lookupError } = await admin.from('orders').select('*').eq('id', body.orderId).maybeSingle()
   if (lookupError || !order) return json({ error: 'Order not found.' }, 404)

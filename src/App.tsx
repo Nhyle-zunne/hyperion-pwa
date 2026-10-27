@@ -9,6 +9,7 @@ import ManualPaymentScreen from './screens/ManualPaymentScreen'
 import OrdersPaymentHistoryScreen from './screens/OrdersPaymentHistoryScreen'
 import OAuthCallbackScreen from './screens/OAuthCallbackScreen'
 import AdminPaymentsScreen from './screens/AdminPaymentsScreen'
+import AdminLicensesScreen from './screens/AdminLicensesScreen'
 import TrackHubScreen from './screens/TrackHubScreen'
 import AboutScreen from './screens/AboutScreen'
 import TermsScreen from './screens/TermsScreen'
@@ -244,6 +245,7 @@ export default function App() {
           <Route path="/checkout" element={<BasketScreen />} />
           <Route path="/basket" element={<BasketScreen />} />
           <Route path="/auth/callback" element={<OAuthCallbackScreen />} />
+          <Route path="/admin/licenses" element={<AdminLicensesScreen />} />
           <Route path="/admin/payments" element={<AdminPaymentsScreen />} />
           <Route path="/tracks" element={<TrackSelectionScreen />} />
           <Route path="/track" element={<TrackHubScreen />} />

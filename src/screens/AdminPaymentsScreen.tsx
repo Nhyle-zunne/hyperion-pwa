@@ -73,21 +73,17 @@ export default function AdminPaymentsScreen() {
     catch (e) { setMessage(safeAdminError(e, 'Could not complete the payment review. Please try again.')) }
     finally { setBusy(false) }
   }
-  const revoke = async (order: Order) => {
-    if (!window.confirm(`Revoke ${names[order.product_code] || order.product_code} access for ${order.email}? The payment record will remain paid, but the license will no longer grant access.`)) return
-    setBusy(true); setMessage('')
-    try { await call({ action: 'revoke', orderId: order.id, adminNote: note[order.id] || '' }); setMessage('License access revoked. The payment record remains paid.'); await load() }
-    catch (e) { setMessage(safeAdminError(e, 'Could not revoke license access. Please try again.')) }
-    finally { setBusy(false) }
-  }
   const duration = (term: Order['license_term']) => term === 'week' ? 'Weekly' : term === 'month' ? 'Monthly' : 'Yearly'
 
   const card: React.CSSProperties = { background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, padding:'1rem', marginBottom:'1rem' }
   const field: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'.8rem', marginTop:'.4rem', background:'var(--bg-elevated)', color:'var(--text)', border:'1px solid var(--border)', borderRadius:6, font:'inherit' }
   return <div className="screen" style={{ paddingBottom:'2rem' }}>
-    <button type="button" onClick={() => navigate('/account')} style={{ color:'var(--text-muted)', marginBottom:'1rem' }}>← Account</button>
-    <h1 className="page-title">Payment Admin</h1>
-    <p className="subtitle">Only email addresses configured in the server-side ADMIN_EMAILS secret can review payments.</p>
+    <div style={{ display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:'.8rem' }}>
+      <button type="button" onClick={() => navigate('/account')} style={{ color:'var(--text-muted)' }}>← Account</button>
+      <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/licenses')}>MANAGE USER LICENSES »</button>
+    </div>
+    <h1 className="page-title">Payment Submissions</h1>
+    <p className="subtitle">Review manual payment submissions here. License activation, extension, and revocation are managed separately in User Licenses.</p>
     {message && <div role="status" style={card}>{/supabase/i.test(message) ? 'Payment administration is temporarily unavailable. Please try again later.' : message}</div>}
     {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void load()}>Retry</button></section> : <>
       <section style={{ ...card, borderColor: bankStatus === 'complete' ? 'var(--success, #15803d)' : 'var(--border)' }}>
@@ -113,7 +109,6 @@ export default function AdminPaymentsScreen() {
           <label>Admin note<textarea rows={2} value={note[order.id] || ''} onChange={e => setNote(old => ({...old,[order.id]:e.target.value}))} style={field}/></label>
           <div style={{ display:'flex', gap:8, marginTop:'.8rem' }}><button className="btn btn-primary" disabled={busy} onClick={() => void review(order.id,'approve')}>Approve & unlock</button><button className="btn btn-outline" disabled={busy} onClick={() => void review(order.id,'reject')}>Reject</button></div>
         </>}
-        {order.status === 'paid' && order.access_status === 'active' && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void revoke(order)} style={{ marginTop: '.6rem', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>REVOKE ACCESS</button>}
       </section>) : <p>No payment submissions yet.</p>}
     </>}
   </div>
