@@ -65,6 +65,7 @@ function safeMessage(error: unknown) {
 export default function AdminLicensesScreen() {
   const navigate = useNavigate()
   const [users, setUsers] = useState<ManagedUser[]>([])
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [audit, setAudit] = useState<AuditRecord[]>([])
   const [query, setQuery] = useState('')
   const [terms, setTerms] = useState<Record<string, LicenseTerm>>({})
@@ -158,10 +159,17 @@ export default function AdminLicensesScreen() {
   }
   return <div className="screen" style={{ width: 'min(calc(100% - 1rem), 1180px)', maxWidth: 1180, margin: '0 auto', paddingBottom: '2rem' }}>
     <style>{`
+      .admin-user-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
+      .admin-user-card{display:block;width:100%;min-width:0;text-align:left;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;color:var(--text);cursor:pointer}
+      .admin-user-card:hover{border-color:var(--accent);background:var(--bg-elevated)}
       .admin-license-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}
       .admin-license-tile{border:1px solid var(--border);padding:.7rem;min-width:0;background:var(--bg-card)}
       .admin-license-tile button{min-height:38px}
-      @media(max-width:760px){.admin-license-grid{grid-template-columns:1fr}}
+      .admin-license-modal{width:min(100%,900px);max-height:90dvh;overflow:hidden;display:flex;flex-direction:column;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:12px;box-shadow:0 24px 70px rgba(0,0,0,.4)}
+      .admin-license-modal-body{overflow:auto;padding:1rem}
+      @media(max-width:900px){.admin-user-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media(max-width:760px){.admin-license-grid{grid-template-columns:1fr}.admin-license-modal{max-height:92dvh}.admin-license-modal-body{padding:.7rem}}
+      @media(max-width:520px){.admin-user-grid{grid-template-columns:1fr}}
     `}</style>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: '.8rem' }}>
       <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)' }}>← Account</button>
@@ -197,49 +205,86 @@ export default function AdminLicensesScreen() {
         <h2 style={{ margin: 0, fontSize: '1rem' }}>Registered users ({filteredUsers.length})</h2>
         <button type="button" className="btn btn-outline" disabled={loading} onClick={() => void load()}>{loading ? 'Refreshing…' : 'Refresh users'}</button>
       </div>
-      {loading ? <section style={card}>Loading license records…</section> : filteredUsers.length ? filteredUsers.map(user => <section key={user.id} style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap', marginBottom: '.75rem' }}>
-          <div style={{ minWidth: 0 }}>
-            <strong style={{ overflowWrap: 'anywhere' }}>{user.display_name || 'Hyperion user'}</strong>
-            <div style={{ color: 'var(--text-muted)', fontSize: '.84rem', overflowWrap: 'anywhere', marginTop: '.2rem' }}>{user.email || '(email unavailable)'}</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '.72rem', marginTop: '.2rem' }}>Joined {dateLabel(user.created_at)}</div>
-          </div>
-          <details>
-            <summary style={{ cursor: 'pointer', color: 'var(--accent)', fontSize: '.75rem', fontWeight: 800 }}>USER ID</summary>
-            <code style={{ display: 'block', maxWidth: 260, overflowWrap: 'anywhere', fontSize: '.7rem', marginTop: '.3rem' }}>{user.id}</code>
-          </details>
+      {loading ? <section style={card}>Loading license records…</section> : filteredUsers.length ? (
+        <div className="admin-user-grid">
+          {filteredUsers.map(user => <button
+            key={user.id}
+            type="button"
+            className="admin-user-card"
+            onClick={() => setSelectedUserId(user.id)}
+            aria-label={'Manage licenses for ' + (user.display_name || user.email || 'Hyperion user')}
+          >
+            <strong style={{ display: 'block', fontSize: '.9rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{user.display_name || 'Hyperion user'}</strong>
+            <span style={{ display: 'block', marginTop: '.2rem', color: 'var(--text-muted)', fontSize: '.8rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{user.email || '(email unavailable)'}</span>
+          </button>)}
         </div>
-        <div className="admin-license-grid">
-          {TRACKS.map(track => {
-            const license = user.licenses[track.code]
-            const key = user.id + ':' + track.code
-            const term = terms[key] || 'month'
-            const busy = busyKey === key
-            return <div key={track.code} className="admin-license-tile">
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                <strong style={{ fontSize: '.85rem' }}>{track.label}</strong>
-                <span style={statusStyle(license.status)}>{STATUS_LABEL[license.status]}</span>
+      ) : <section style={card}>No registered users match this search.</section>}
+
+      {selectedUserId && (() => {
+        const user = users.find(item => item.id === selectedUserId)
+        if (!user) return null
+        return <div
+          role="presentation"
+          onClick={() => setSelectedUserId(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 6000, display: 'grid', placeItems: 'center', padding: '1rem', background: 'rgba(3,8,18,.72)', boxSizing: 'border-box' }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-license-modal-title"
+            className="admin-license-modal"
+            onClick={event => event.stopPropagation()}
+          >
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, padding: '1rem', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+              <div style={{ minWidth: 0 }}>
+                <h2 id="admin-license-modal-title" style={{ margin: 0, fontSize: '1.15rem', overflowWrap: 'anywhere' }}>{user.display_name || 'Hyperion user'}</h2>
+                <div style={{ marginTop: '.25rem', color: 'var(--text-muted)', fontSize: '.88rem', overflowWrap: 'anywhere' }}>{user.email || '(email unavailable)'}</div>
+                <div style={{ marginTop: '.25rem', color: 'var(--text-muted)', fontSize: '.72rem' }}>Joined {dateLabel(user.created_at)}</div>
               </div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', lineHeight: 1.45, margin: '.45rem 0' }}>
-                {license.license_term ? TERM_LABEL[license.license_term] + ' · ' : ''}
-                {license.exists ? (license.expires_at ? 'Expires ' + dateLabel(license.expires_at) : 'No expiry recorded') : 'No license record'}
+              <button type="button" className="btn btn-outline" onClick={() => setSelectedUserId(null)} aria-label="Close user license details" style={{ flexShrink: 0 }}>CLOSE ✕</button>
+            </header>
+            <div className="admin-license-modal-body">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: '.9rem' }}>
+                <strong>LICENSES &amp; SUBSCRIPTIONS</strong>
+                <details>
+                  <summary style={{ cursor: 'pointer', color: 'var(--accent)', fontSize: '.75rem', fontWeight: 800 }}>USER ID</summary>
+                  <code style={{ display: 'block', maxWidth: 360, overflowWrap: 'anywhere', fontSize: '.7rem', marginTop: '.3rem' }}>{user.id}</code>
+                </details>
               </div>
-              <label style={{ display: 'block', fontSize: '.72rem', fontWeight: 800, color: 'var(--text-muted)' }}>DURATION TO GRANT
-                <select value={term} onChange={event => setTerms(old => ({ ...old, [key]: event.target.value as LicenseTerm }))} style={{ ...field, marginBottom: '.55rem' }}>
-                  {TERM_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-              </label>
-              <label style={{ display: 'block', fontSize: '.72rem', fontWeight: 800, color: 'var(--text-muted)' }}>ADMIN NOTE (OPTIONAL)
-                <input value={notes[key] || ''} onChange={event => setNotes(old => ({ ...old, [key]: event.target.value }))} placeholder="Reason for manual change" style={field} />
-              </label>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: '.65rem' }}>
-                <button type="button" className="btn btn-primary" disabled={!!busyKey} onClick={() => void grant(user, track)} style={{ flex: '1 1 145px', fontSize: '.72rem' }}>{busy ? 'SAVING…' : license.status === 'active' ? 'EXTEND LICENSE' : 'ACTIVATE LICENSE'}</button>
-                {license.exists && license.status !== 'revoked' && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track)} style={{ flex: '1 1 95px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE</button>}
+              <div className="admin-license-grid">
+                {TRACKS.map(track => {
+                  const license = user.licenses[track.code]
+                  const key = user.id + ':' + track.code
+                  const term = terms[key] || 'month'
+                  const busy = busyKey === key
+                  return <div key={track.code} className="admin-license-tile">
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: '.85rem' }}>{track.label}</strong>
+                      <span style={statusStyle(license.status)}>{STATUS_LABEL[license.status]}</span>
+                    </div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', lineHeight: 1.45, margin: '.45rem 0' }}>
+                      {license.license_term ? TERM_LABEL[license.license_term] + ' · ' : ''}
+                      {license.exists ? (license.expires_at ? 'Expires ' + dateLabel(license.expires_at) : 'No expiry recorded') : 'No license record'}
+                    </div>
+                    <label style={{ display: 'block', fontSize: '.72rem', fontWeight: 800, color: 'var(--text-muted)' }}>DURATION TO GRANT
+                      <select value={term} onChange={event => setTerms(old => ({ ...old, [key]: event.target.value as LicenseTerm }))} style={{ ...field, marginBottom: '.55rem' }}>
+                        {TERM_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ display: 'block', fontSize: '.72rem', fontWeight: 800, color: 'var(--text-muted)' }}>ADMIN NOTE (OPTIONAL)
+                      <input value={notes[key] || ''} onChange={event => setNotes(old => ({ ...old, [key]: event.target.value }))} placeholder="Reason for manual change" style={field} />
+                    </label>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: '.65rem' }}>
+                      <button type="button" className="btn btn-primary" disabled={!!busyKey} onClick={() => void grant(user, track)} style={{ flex: '1 1 145px', fontSize: '.72rem' }}>{busy ? 'SAVING…' : license.status === 'active' ? 'EXTEND LICENSE' : 'ACTIVATE LICENSE'}</button>
+                      {license.exists && license.status !== 'revoked' && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track)} style={{ flex: '1 1 95px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE</button>}
+                    </div>
+                  </div>
+                })}
               </div>
             </div>
-          })}
+          </section>
         </div>
-      </section>) : <section style={card}>No registered users match this search.</section>}
+      })()}
       <section style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1rem' }}>Recent admin license activity</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Manual activation, extension, and revocation actions are listed here independently from payment records.</p>
