@@ -6,7 +6,8 @@ const [
   pricing, checkout, verify, webhook, questionBank, questionBankMigration,
   finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen, accountScreen,
   indexCss, manualPayment, ordersHistory, historyScreen, studyTimeScreen, trackSelectionScreen, studyTimeStore, progressSync,
-  aboutScreen, termsScreen, privacyScreen
+  aboutScreen, termsScreen, privacyScreen, topLoadingIndicator, pageLoadingManager,
+  questionBankClient, adminLicenses, adminPayments, adminQuestionBank
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -33,7 +34,13 @@ const [
   read('../src/lib/progressSync.ts'),
   read('../src/screens/AboutScreen.tsx'),
   read('../src/screens/TermsScreen.tsx'),
-  read('../src/screens/PrivacyPolicyScreen.tsx')
+  read('../src/screens/PrivacyPolicyScreen.tsx'),
+  read('../src/components/TopLoadingIndicator.tsx'),
+  read('../src/lib/pageLoading.ts'),
+  read('../src/lib/questionBank.ts'),
+  read('../src/screens/AdminLicensesScreen.tsx'),
+  read('../src/screens/AdminPaymentsScreen.tsx'),
+  read('../src/screens/AdminQuestionBankScreen.tsx')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -126,6 +133,19 @@ assert.ok(privacyScreen.includes('Firebase Analytics') && privacyScreen.includes
 assert.ok(privacyScreen.includes('does not cancel a Google Play subscription') && privacyScreen.includes('A website/PWA license and Google Play subscription are independent'), 'Privacy policy explains separate license and deletion effects');
 assert.ok(privacyScreen.includes('href="/account?tab=delete"') && !privacyScreen.includes('hyperionmaritime.org/delete-account'), 'Privacy policy links to the real in-app website account-deletion route');
 assert.ok(privacyScreen.includes('October 27, 2026'), 'Privacy policy updated date matches the latest substantive revision');
+assert.ok(app.includes("import TopLoadingIndicator from './components/TopLoadingIndicator'") && app.includes('<TopLoadingIndicator />'), 'Global top loader is mounted for every app route');
+assert.ok(topLoadingIndicator.includes('location.pathname') && topLoadingIndicator.includes('location.search') && topLoadingIndicator.includes('ROUTE_TRANSITION_MS = 480'), 'Top loader activates on page and query-string navigation');
+assert.ok(topLoadingIndicator.includes('src="/logo.png?v=2"') && topLoadingIndicator.includes('hyperion-top-loader__logo'), 'Top loader uses the existing Hyperion logo as its animated symbol');
+assert.ok(indexCss.includes('.hyperion-top-loader__progress') && indexCss.includes('@keyframes hyperion-loader-sweep') && indexCss.includes('@keyframes hyperion-loader-spin'), 'Top loader has animated progress and logo styling');
+assert.ok(indexCss.includes('prefers-reduced-motion: reduce') && indexCss.includes('.hyperion-top-loader__logo'), 'Top loader supports reduced-motion preferences');
+assert.ok(pageLoadingManager.includes('window.setTimeout(finish, 45_000)') && pageLoadingManager.includes('finally {\n    finish()'), 'Async loading tasks always release the indicator and have a watchdog');
+assert.ok(questionBankClient.includes("withPageLoading('Loading questions'") && questionBankClient.includes("withPageLoading('Loading question counts'") && questionBankClient.includes("withPageLoading('Loading question bank'"), 'Question fetching and question-count requests keep the global indicator active');
+assert.ok(questionBankClient.includes("withPageLoading('Downloading question pack'") && questionBankClient.includes("withPageLoading('Loading flashcards'"), 'Long content-pack and flashcard loads use the global indicator');
+assert.ok(accountScreen.includes("withPageLoading('Loading account and licenses'") && accountScreen.includes("withPageLoading('Signing out'") && accountScreen.includes("withPageLoading('Deleting account'"), 'Account and account-security operations keep the indicator active while requests complete');
+assert.ok(basketScreen.includes("withPageLoading('Loading checkout and licenses'") && basketScreen.includes("withPageLoading('Preparing secure checkout'") && basketScreen.includes("withPageLoading('Verifying payment status'") || basketScreen.includes("withPageLoading('Refreshing payment status'"), 'Checkout reads and PayMongo operations display the indicator');
+assert.ok(manualPayment.includes("withPageLoading('Loading payment details'") && manualPayment.includes("withPageLoading('Submitting payment for review'"), 'Manual payment lookup and submission display the indicator');
+assert.ok(ordersHistory.includes("withPageLoading('Loading orders and payment history'") && ordersHistory.includes("withPageLoading('Verifying payment status'"), 'Order history and payment reconciliation display the indicator');
+assert.ok(adminLicenses.includes("withPageLoading('Loading license administration'") && adminPayments.includes("withPageLoading('Loading payment submissions'") && adminQuestionBank.includes("withPageLoading('Loading question-bank inventory'"), 'Admin data loading uses the shared indicator');
 
 for (const route of [
   '/account', '/checkout', '/manual-payment', '/orders', '/admin/licenses',
