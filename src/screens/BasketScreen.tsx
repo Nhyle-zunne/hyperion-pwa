@@ -155,6 +155,47 @@ export default function BasketScreen() {
       total: groupOrders.reduce((sum, order) => sum + Number(order.amount_php), 0),
     }))
   }, [pendingPayMongoOrders])
+  const pendingCheckoutIds = pendingCheckoutGroups.map(group => group.id).sort().join(',')
+
+  // If PayMongo's webhook is delayed, keep reconciling while the customer stays in Checkout.
+  useEffect(() => {
+    if (!supabase || !session?.user.id || !pendingCheckoutIds) return
+    let active = true
+    let checking = false
+    const checkPending = async () => {
+      if (checking) return
+      checking = true
+      try {
+        const activated: string[] = []
+        for (const orderId of pendingCheckoutIds.split(',').filter(Boolean)) {
+          const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
+          if (!active) return
+          if (error || data?.status !== 'paid') continue
+          const codes: string[] = Array.isArray(data.productCodes)
+            ? data.productCodes
+            : typeof data.productCode === 'string' ? [data.productCode] : []
+          activated.push(...codes)
+        }
+        if (active && activated.length) {
+          const uniqueCodes = [...new Set(activated)]
+          clearBasketCodes(uniqueCodes)
+          await refreshData()
+          if (active) {
+            setIsError(false)
+            const labels = uniqueCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
+            setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
+          }
+        }
+      } catch {
+        // Retry on the next interval after transient failures.
+      } finally {
+        checking = false
+      }
+    }
+    void checkPending()
+    const timer = window.setInterval(() => { void checkPending() }, 8000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [session?.user.id, pendingCheckoutIds])
 
   const confirmPaidCheckout = async (orderId: string, attemptCount = 1) => {
     if (!supabase) return false
