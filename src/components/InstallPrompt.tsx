@@ -61,7 +61,7 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
             {busy ? 'Opening…' : canNativePrompt ? 'Install app' : isIos ? 'How to install' : 'Install / Add to Home'}
           </button>
         </div>
-        {(showSteps || isIos || (isAndroid && !canNativePrompt)) && <InstallSteps isIos={isIos} isAndroid={isAndroid} />}
+        {(showSteps || isIos) && <InstallSteps isIos={isIos} isAndroid={isAndroid} />}
       </div>
     )
   }
@@ -125,7 +125,7 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
           </div>
         )}
 
-        {!isIos && (showSteps || (isAndroid && !canNativePrompt)) && <InstallSteps isIos={false} isAndroid={isAndroid} />}
+        {!isIos && showSteps && <InstallSteps isIos={false} isAndroid={isAndroid} />}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: '1rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '.75rem' }}>You can find these steps later in the app drawer.</span>
           {!force && <button type="button" onClick={dismiss} style={{ color: 'var(--text-muted)', background: 'transparent', border: 0, cursor: 'pointer', padding: '.45rem' }}>Not now</button>}
