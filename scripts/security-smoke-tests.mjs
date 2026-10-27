@@ -5,7 +5,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
   pricing, checkout, verify, webhook, questionBank, questionBankMigration,
   finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen, accountScreen,
-  indexCss, manualPayment, ordersHistory, historyScreen, studyTimeScreen, trackSelectionScreen
+  indexCss, manualPayment, ordersHistory, historyScreen, studyTimeScreen, trackSelectionScreen, studyTimeStore, progressSync
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -27,7 +27,9 @@ const [
   read('../src/screens/OrdersPaymentHistoryScreen.tsx'),
   read('../src/screens/HistoryScreen.tsx'),
   read('../src/screens/StudyTimeScreen.tsx'),
-  read('../src/screens/TrackSelectionScreen.tsx')
+  read('../src/screens/TrackSelectionScreen.tsx'),
+  read('../src/stores/studyTimeStore.ts'),
+  read('../src/lib/progressSync.ts')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -101,10 +103,15 @@ assert.ok(!ordersHistory.includes('#9a6b07') && !ordersHistory.includes('#e8c875
 assert.ok(historyScreen.includes("borderLeft: '4px solid var(--accent)'") && !historyScreen.includes("#f59e0b"), 'Study streak uses Hyperion green instead of gold');
 assert.ok(studyTimeScreen.includes("'#3b82f6'") && !studyTimeScreen.includes("#f59e0b"), 'Study-time chart palette avoids gold accents');
 assert.ok(indexCss.includes('--warning: #fb923c;') && indexCss.includes('--warning: #c2410c;'), 'Warnings use orange tones, not amber-gold');
-assert.ok(trackSelectionScreen.includes('for (let dayNumber = 1; dayNumber <= 7; dayNumber++)') && trackSelectionScreen.includes('const daysAgo = 7 - dayNumber'), 'Dashboard streak moves forward chronologically from Day 1 through Day 7');
-assert.ok(trackSelectionScreen.includes('const label = `DAY ${dayNumber}`') && trackSelectionScreen.includes('dayNumber === 7 ? `TODAY · ${formattedDate}`'), 'Dashboard labels Day 1 to Day 7 with Today at the end');
+assert.ok(trackSelectionScreen.includes('const firstVisibleDay = displayedStreakCount > 7 ? displayedStreakCount - 6 : 1') && trackSelectionScreen.includes('addDaysToKey(displayStartDate, dayNumber - 1)'), 'Streak days are numbered from the true start date, displaying the current seven-day window after Day 7');
+assert.ok(trackSelectionScreen.includes('DAILY CHECK-IN STREAK') && trackSelectionScreen.includes('TODAY · ${formattedDate}'), 'Dashboard identifies a daily app-open check-in streak and marks today clearly');
 assert.ok(trackSelectionScreen.includes('className="daily-streak-grid"') && trackSelectionScreen.includes('className="daily-streak-status"'), 'Dashboard streak uses dedicated responsive styling for large labels and status indicators');
 assert.ok(indexCss.includes('.daily-streak-status') && indexCss.includes('font-size: clamp(2rem, 3.1vw, 3.1rem)') && indexCss.includes('@media (max-width: 599px)'), 'Streak labels and checkmarks scale up on desktop and remain responsive on mobile');
+assert.ok(studyTimeStore.includes('recordDailyCheckIn') && studyTimeStore.includes('current.dailyCheckInLastDate === previousDayKey(today)'), 'Daily check-ins advance once per day and reset after a missed calendar day');
+assert.ok(studyTimeStore.includes('dailyCheckInStartDate') && studyTimeStore.includes('dailyCheckInLastDate') && studyTimeStore.includes('dailyCheckInCount'), 'Daily check-in start date and consecutive count persist in the study-time store');
+assert.ok(app.includes('hyperion:learning-progress-ready') && app.includes('recordDailyCheckIn()') && app.includes("addEventListener('visibilitychange', handleResume)"), 'App open and resume record daily check-ins after account progress hydration');
+assert.ok(progressSync.includes('mergeDailyCheckIn(ls, rs)') && progressSync.includes("new Event('hyperion:learning-progress-ready')"), 'Daily check-in state merges across devices and initializes when cloud restore is unavailable');
+assert.ok(progressSync.includes("dailyCheckInStartDate: '', dailyCheckInLastDate: '', dailyCheckInCount: 0"), 'Account switching clears the previous account check-in streak');
 
 for (const route of [
   '/account', '/checkout', '/manual-payment', '/orders', '/admin/licenses',
