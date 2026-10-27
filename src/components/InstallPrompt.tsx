@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useInstallPrompt } from '../hooks/useInstallPrompt'
 import GooglePlayBadge from './GooglePlayBadge'
 
-const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.nhyle.hyperionmaritime'
 type InstallPromptProps = { force?: boolean; variant?: 'card' | 'modal' }
 
 export default function InstallPrompt({ force = false, variant = 'card' }: InstallPromptProps) {
