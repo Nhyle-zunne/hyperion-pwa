@@ -47,8 +47,11 @@ Deno.serve(async (req) => {
   if (batchError) return json({ error: 'Could not check your basket checkout.' }, 500)
   if (batch) {
     if (batch.status === 'paid') return json({ status: 'already_paid', orderId: batch.id })
-    if (batch.status === 'cancelled' || batch.status === 'failed') return json({ status: 'cancelled', orderId: batch.id })
-    if (batch.status !== 'pending' || !batch.paymongo_checkout_session_id) {
+    if (batch.status === 'cancelled') return json({ status: 'cancelled', orderId: batch.id })
+    if (batch.status === 'failed' && !batch.paymongo_checkout_session_id) {
+      return json({ status: 'cancelled', orderId: batch.id })
+    }
+    if (!['pending', 'failed'].includes(batch.status) || !batch.paymongo_checkout_session_id) {
       return json({ error: 'This basket checkout cannot be cancelled in its current status.' }, 409)
     }
 
@@ -110,10 +113,10 @@ Deno.serve(async (req) => {
     }
 
     const { error: batchUpdateError } = await admin.from('checkout_batches')
-      .update({ status: 'cancelled' }).eq('id', batch.id).eq('status', 'pending')
+      .update({ status: 'cancelled' }).eq('id', batch.id).in('status', ['pending', 'failed'])
     if (batchUpdateError) return json({ error: 'PayMongo closed the checkout, but Hyperion could not update the basket status.' }, 500)
     const { error: childUpdateError } = await admin.from('orders').update({ status: 'cancelled' })
-      .eq('checkout_batch_id', batch.id).eq('user_id', user.id).eq('status', 'pending')
+      .eq('checkout_batch_id', batch.id).eq('user_id', user.id).in('status', ['pending', 'failed'])
     if (childUpdateError) return json({ error: 'The basket was closed, but its order items could not be updated. Refresh status or contact support.' }, 500)
     return json({ status: 'cancelled', orderId: batch.id })
   }
@@ -125,11 +128,14 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (orderError || !order) return json({ error: 'Checkout order not found.' }, 404)
   if (order.status === 'paid') return json({ status: 'already_paid', orderId: order.id })
+  if (order.status === 'cancelled') return json({ status: 'cancelled', orderId: order.id })
+  if (order.status === 'failed' && !order.paymongo_checkout_session_id) {
+    return json({ status: 'cancelled', orderId: order.id })
+  }
   if (order.payment_method !== 'PayMongo Checkout' || !order.paymongo_checkout_session_id) {
     return json({ error: 'This order is not a tracked PayMongo checkout.' }, 409)
   }
-  if (order.status === 'cancelled' || order.status === 'failed') return json({ status: 'cancelled', orderId: order.id })
-  if (order.status !== 'pending') return json({ error: 'This checkout cannot be cancelled in its current status.' }, 409)
+  if (!['pending', 'failed'].includes(order.status)) return json({ error: 'This checkout cannot be cancelled in its current status.' }, 409)
 
   const sessionUrl = `https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(order.paymongo_checkout_session_id)}`
   const auth = `Basic ${btoa(paymongoKey + ':')}`
@@ -213,7 +219,7 @@ Deno.serve(async (req) => {
     .update({ status: 'cancelled' })
     .eq('id', order.id)
     .eq('user_id', user.id)
-    .eq('status', 'pending')
+    .in('status', ['pending', 'failed'])
     .eq('payment_method', 'PayMongo Checkout')
   if (updateError) return json({ error: 'PayMongo closed the checkout, but Hyperion could not update the order. Refresh your account or contact support.' }, 500)
 
