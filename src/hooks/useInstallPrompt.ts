@@ -32,6 +32,9 @@ export function useInstallPrompt() {
   const [installed, setInstalled] = useState(isStandalone)
   const [dismissed, setDismissed] = useState(() => {
     try {
+      // iOS dismissal is session-scoped so an old desktop/permanent dismissal
+      // does not hide the Safari instructions indefinitely.
+      if (isIos()) return sessionStorage.getItem('hyperion-install-dismissed-ios') === '1'
       return localStorage.getItem('hyperion-install-dismissed') === '1'
     } catch {
       return false
@@ -76,7 +79,8 @@ export function useInstallPrompt() {
   const dismiss = useCallback(() => {
     setDismissed(true)
     try {
-      localStorage.setItem('hyperion-install-dismissed', '1')
+      if (isIos()) sessionStorage.setItem('hyperion-install-dismissed-ios', '1')
+      else localStorage.setItem('hyperion-install-dismissed', '1')
     } catch {
       /* ignore */
     }
@@ -86,6 +90,7 @@ export function useInstallPrompt() {
     setDismissed(false)
     try {
       localStorage.removeItem('hyperion-install-dismissed')
+      sessionStorage.removeItem('hyperion-install-dismissed-ios')
     } catch {
       /* ignore */
     }

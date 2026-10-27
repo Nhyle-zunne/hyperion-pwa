@@ -169,10 +169,13 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
                     <>
                       <strong>iPhone and iPad</strong>
                       <ol style={{ paddingLeft: '1.15rem', margin: '.35rem 0 0' }}>
-                        <li>Open this site in <strong>Safari</strong>.</li>
-                        <li>Tap <strong>Share</strong> (square with upward arrow).</li>
-                        <li>Choose <strong>Add to Home Screen</strong>. If missing, scroll to Edit Actions and add it.</li>
-                        <li>Enable <strong>Open as Web App</strong> if offered, then tap <strong>Add</strong>.</li>
+                        <li>Open the <strong>Safari app</strong> (blue compass icon). If Hyperion opened in Facebook, Instagram, Messenger, or Gmail, choose <strong>Open in Safari</strong> or copy the link and paste it into Safari.</li>
+                        <li>Tap Safari's address bar, type <strong>https://hyperionmaritime.org</strong>, tap <strong>Go</strong>, and wait for the home page to load.</li>
+                        <li>Now tap Safari's <strong>Share</strong> icon (square with an upward arrow). It is usually at the bottom on iPhone and near the top on iPad.</li>
+                        <li>Scroll down in the Share sheet and tap <strong>Add to Home Screen</strong>.</li>
+                        <li>If it is missing, scroll to the bottom, open <strong>Edit Actions</strong> or <strong>Edit</strong>, enable <strong>Add to Home Screen</strong>, then return to the Share sheet.</li>
+                        <li>Keep the app name <strong>Hyperion Maritime</strong>. Turn on <strong>Open as Web App</strong> if offered, then tap <strong>Add</strong> at the top.</li>
+                        <li>Find the new <strong>Hyperion Maritime</strong> icon on your Home Screen and tap it to open.</li>
                       </ol>
                     </>
                   ) : (

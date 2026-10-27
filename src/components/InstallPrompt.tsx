@@ -144,10 +144,13 @@ function InstallSteps({ isIos, isAndroid }: { isIos: boolean; isAndroid: boolean
   if (isIos) {
     return (
       <ol style={{ margin: '.55rem 0 0', paddingLeft: '1.25rem', lineHeight: 1.6, fontSize: '.85rem' }}>
-        <li>Open <strong>Safari</strong> and visit <strong>hyperionmaritime.org</strong>. If you are in Facebook or another in-app browser, open the page in Safari first.</li>
-        <li>Tap the <strong>Share</strong> button (square with an upward arrow).</li>
-        <li>Scroll the share sheet and tap <strong>Add to Home Screen</strong>. If it is missing, use <strong>Edit Actions</strong> to add it.</li>
-        <li>If offered, enable <strong>Open as Web App</strong>, then tap <strong>Add</strong>.</li>
+        <li>First, open the <strong>Safari app</strong> itself (the blue compass icon). If Hyperion opened inside Facebook, Instagram, Messenger, Gmail, or another app, open that page's menu and choose <strong>Open in Safari</strong> (or copy the link and paste it into Safari).</li>
+        <li>In Safari, tap the address bar, enter <strong>https://hyperionmaritime.org</strong>, and tap <strong>Go</strong>. Wait until the Hyperion home page has fully loaded. The Share button appears in Safari's toolbar, not on the earlier screen inside another app.</li>
+        <li>Tap Safari's <strong>Share</strong> icon (a square with an upward arrow). On iPhone it is usually in the bottom toolbar; on iPad it is usually near the top of the screen.</li>
+        <li>In the Share sheet, scroll down through the actions and tap <strong>Add to Home Screen</strong>.</li>
+        <li>If <strong>Add to Home Screen</strong> is not listed, scroll to the bottom of the Share sheet, tap <strong>Edit Actions</strong> (or <strong>Edit</strong>), and enable it, then return to the Share sheet.</li>
+        <li>On the Add to Home Screen screen, leave the name as <strong>Hyperion Maritime</strong>. If <strong>Open as Web App</strong> is offered, turn it on, then tap <strong>Add</strong> in the top corner.</li>
+        <li>Go to your Home Screen and look for the <strong>Hyperion Maritime</strong> icon. Tap it to launch the app-like version.</li>
       </ol>
     )
   }
