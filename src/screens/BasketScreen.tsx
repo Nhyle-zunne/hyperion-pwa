@@ -69,6 +69,7 @@ export default function BasketScreen() {
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
   const [manualFallbackItems, setManualFallbackItems] = useState<BasketItem[]>([])
+  const [checkoutUrlFallback, setCheckoutUrlFallback] = useState<string | null>(null)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
   useEffect(() => {
@@ -128,6 +129,36 @@ export default function BasketScreen() {
     return () => { active = false }
   }, [session?.user.id])
 
+  // Refresh server state even when PayMongo does not return the browser to the
+  // success URL. This discovers orders created after the checkout screen first mounted.
+  useEffect(() => {
+    if (!session?.user.id) return
+    let active = true
+    let refreshing = false
+    const syncOrders = async () => {
+      if (!active || refreshing || document.visibilityState !== 'visible') return
+      refreshing = true
+      try {
+        await refreshData()
+      } catch {
+        // A temporary request failure must not hide checkout status; retry next time.
+      } finally {
+        refreshing = false
+      }
+    }
+    const onFocus = () => { void syncOrders() }
+    const onVisibility = () => { if (document.visibilityState === 'visible') void syncOrders() }
+    const interval = window.setInterval(() => { void syncOrders() }, 5000)
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [session?.user.id])
+
   const clearBasketCodes = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
   const selectedItems = useMemo(() => basket.flatMap(entry => {
     const product = PAID_PRODUCTS.find(item => item.code === entry.code)
@@ -180,6 +211,7 @@ export default function BasketScreen() {
         if (active && activated.length) {
           const uniqueCodes = [...new Set(activated)]
           const labels = uniqueCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
+          setCheckoutUrlFallback(null)
           setIsError(false)
           setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
           clearBasketCodes(uniqueCodes)
@@ -224,11 +256,13 @@ export default function BasketScreen() {
     if (!session || !paymentState || !orderId) return
     let active = true
     if (paymentState === 'cancelled') {
+      setCheckoutUrlFallback(null)
       setMessage('You returned from PayMongo. The checkout may still be open. Use the pending checkout controls below if you want to cancel it or switch payment methods.')
       setIsError(false)
       return () => { active = false }
     }
     if (paymentState !== 'success') return
+    setCheckoutUrlFallback(null)
     setBusy(true)
     setIsError(false)
     setMessage('Checking the completed payment directly with PayMongo…')
@@ -280,6 +314,7 @@ export default function BasketScreen() {
     setBusy(true)
     setIsError(false)
     setManualFallbackItems([])
+    setCheckoutUrlFallback(null)
     setMessage('Preparing secure checkout…')
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout', { body: { items: items.map(item => ({ productCode: item.code, term: item.term })) } })
@@ -294,6 +329,8 @@ export default function BasketScreen() {
       if (!url || url.protocol !== 'https:' || url.hostname !== 'checkout.paymongo.com') {
         throw new Error('PayMongo did not return a valid secure checkout URL. Please retry or contact Hyperion support.')
       }
+      setCheckoutUrlFallback(url.toString())
+      setMessage('Opening PayMongo secure checkout… If this page stays open, use the link below to continue.')
       window.location.assign(url.toString())
     } catch (error) {
       setIsError(true)
@@ -410,6 +447,10 @@ export default function BasketScreen() {
     </section> : <>
       {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>
         {message}
+        {checkoutUrlFallback && <div style={{ marginTop: '.8rem' }}>
+          <a href={checkoutUrlFallback} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, padding: '.7rem 1rem', textDecoration: 'none' }}>CONTINUE TO PAYMONGO SECURE CHECKOUT</a>
+          <p className="basket-muted" style={{ margin: '.5rem 0 0' }}>If payment is already complete, don't pay again. Return to this page or refresh payment status to verify it.</p>
+        </div>}
         {isError && manualFallbackItems.length > 0 && <div style={{ marginTop: '.85rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
           <strong style={{ display: 'block', marginBottom: '.3rem' }}>PayMongo checkout is unavailable</strong>
           <p className="basket-muted" style={{ margin: '0 0 .7rem' }}>You can pay by QR instead. Choose the track below to open its dedicated manual payment page. Manual payments require admin review before your license is activated.</p>
