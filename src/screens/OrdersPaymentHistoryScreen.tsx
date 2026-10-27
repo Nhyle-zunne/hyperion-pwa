@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase } from '../lib/supabase'
+import { withPageLoading } from '../lib/pageLoading'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Order = {
@@ -90,7 +91,7 @@ export default function OrdersPaymentHistoryScreen() {
     if (!session) { setOrders([]); return }
     let active = true
     setLoading(true)
-    void loadOrders().catch(async err => {
+    void withPageLoading('Loading orders and payment history', () => loadOrders()).catch(async err => {
       if (!active) return
       setErrorMessage(true)
       setMessage(await readableError(err, 'Unable to load your orders. Please refresh the page.'))
@@ -98,7 +99,7 @@ export default function OrdersPaymentHistoryScreen() {
     return () => { active = false }
   }, [session?.user.id])
 
-  const refreshStatus = async () => {
+  const refreshStatusInternal = async () => {
     if (!supabase || !session) return
     setLoading(true)
     setErrorMessage(false)
@@ -148,6 +149,8 @@ export default function OrdersPaymentHistoryScreen() {
       setLoading(false)
     }
   }
+
+  const refreshStatus = async () => withPageLoading('Verifying payment status', () => refreshStatusInternal())
 
   const pendingCheckoutIds = [...new Set(orders
     .filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
