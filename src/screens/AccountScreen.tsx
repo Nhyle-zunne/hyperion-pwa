@@ -349,6 +349,7 @@ export default function AccountScreen() {
       const { data, error } = await supabase.functions.invoke('delete-account', { body: { confirmation: 'DELETE' } })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
+      if (data?.success !== true) throw new Error('Account deletion could not be confirmed. Please try again or contact support.')
       await supabase.auth.signOut()
       setSession(null)
       setOwned([])
