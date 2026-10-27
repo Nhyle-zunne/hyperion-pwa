@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
@@ -22,6 +22,7 @@ type Order = {
 }
 
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
+type PurchaseConfirmation = { orderId: string; productCodes: string[] }
 
 function savedBasket(): BasketItem[] {
   try {
@@ -70,6 +71,8 @@ export default function BasketScreen() {
   const [isError, setIsError] = useState(false)
   const [manualFallbackItems, setManualFallbackItems] = useState<BasketItem[]>([])
   const [checkoutUrlFallback, setCheckoutUrlFallback] = useState<string | null>(null)
+  const [purchaseConfirmation, setPurchaseConfirmation] = useState<PurchaseConfirmation | null>(null)
+  const handledSuccessOrderRef = useRef<string | null>(null)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
   useEffect(() => {
@@ -261,7 +264,7 @@ export default function BasketScreen() {
       setIsError(false)
       return () => { active = false }
     }
-    if (paymentState !== 'success') return
+    if (paymentState !== 'success' || handledSuccessOrderRef.current === orderId) return
     setCheckoutUrlFallback(null)
     setBusy(true)
     setIsError(false)
@@ -270,7 +273,23 @@ export default function BasketScreen() {
       try {
         const paid = await confirmPaidCheckout(orderId, 6)
         if (!active) return
-        if (!paid) {
+        if (paid) {
+          const requestedCodes = [
+            ...(params.get('product_code') ? [params.get('product_code')!] : []),
+            ...(params.get('product_codes') ? params.get('product_codes')!.split(',') : [])
+          ]
+          const returnedCodes = [...new Set(requestedCodes)]
+            .filter(code => PAID_PRODUCTS.some(item => item.code === code))
+          const orderCodes = orders
+            .filter(order => order.id === orderId || order.checkout_batch_id === orderId)
+            .map(order => order.product_code)
+            .filter(code => PAID_PRODUCTS.some(item => item.code === code))
+          const productCodes = returnedCodes.length ? returnedCodes : [...new Set(orderCodes)]
+          handledSuccessOrderRef.current = orderId
+          setPurchaseConfirmation({ orderId, productCodes })
+          setMessage('')
+          navigate('/checkout', { replace: true })
+        } else {
           setIsError(true)
           setMessage(current => current || 'PayMongo has not confirmed this checkout as paid yet. Do not pay again; use Refresh payment status shortly.')
         }
@@ -433,7 +452,66 @@ export default function BasketScreen() {
       @media(max-width:820px){.basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.basket-page .basket-summary{position:static}}
       @media(max-width:520px){.basket-page .basket-row{align-items:flex-start}.basket-page .basket-action-row button{flex:1}}
     `}</style>
-    <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
+    {purchaseConfirmation && <div
+      role="presentation"
+      onClick={() => setPurchaseConfirmation(null)}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        display: 'grid', placeItems: 'center',
+        padding: '1rem', background: 'rgba(4, 18, 39, .68)',
+        backdropFilter: 'blur(4px)'
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="purchase-confirmation-title"
+        onClick={event => event.stopPropagation()}
+        style={{
+          width: 'min(100%, 440px)', boxSizing: 'border-box',
+          background: 'var(--bg-card)', color: 'var(--text)',
+          border: '1px solid var(--border)', borderRadius: 18,
+          boxShadow: '0 24px 80px rgba(0,0,0,.28)',
+          padding: 'clamp(1.25rem, 5vw, 2rem)', textAlign: 'center'
+        }}
+      >
+        <button type="button" aria-label="Close purchase confirmation"
+          onClick={() => setPurchaseConfirmation(null)}
+          style={{ float: 'right', border: '1px solid var(--border)', borderRadius: 8, padding: '.3rem .55rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', cursor: 'pointer' }}>✕</button>
+        <div aria-hidden="true" style={{
+          margin: '1rem auto .9rem', width: 66, height: 66,
+          display: 'grid', placeItems: 'center', borderRadius: '50%',
+          background: 'rgba(21,128,61,.12)', color: '#15803d',
+          fontSize: '2.25rem', fontWeight: 950
+        }}>✓</div>
+        <p style={{ margin: 0, color: '#15803d', fontSize: '.75rem', fontWeight: 950, letterSpacing: '.14em' }}>PAYMENT APPROVED</p>
+        <h2 id="purchase-confirmation-title" style={{ fontSize: '1.55rem', lineHeight: 1.2, margin: '.55rem 0 .7rem' }}>Thank you for your purchase!</h2>
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.55, margin: '0 0 1rem' }}>
+          Your payment was verified and your Hyperion license{purchaseConfirmation.productCodes.length === 1 ? ' is' : 's are'} now active. You can start studying right away.
+        </p>
+        {purchaseConfirmation.productCodes.length > 0 && <div style={{
+          border: '1px solid var(--border)', borderRadius: 10,
+          padding: '.8rem .9rem', marginBottom: '1rem',
+          background: 'var(--bg-elevated)', textAlign: 'left'
+        }}>
+          <strong style={{ display: 'block', marginBottom: '.45rem' }}>Activated license{purchaseConfirmation.productCodes.length === 1 ? '' : 's'}</strong>
+          {purchaseConfirmation.productCodes.map(code => <div key={code} style={{ padding: '.25rem 0', fontWeight: 750 }}>
+            <span aria-hidden="true" style={{ color: '#15803d', marginRight: '.45rem' }}>✓</span>
+            {PAID_PRODUCTS.find(item => item.code === code)?.label ?? code}
+          </div>)}
+        </div>}
+        <p style={{ color: 'var(--text-muted)', fontSize: '.76rem', lineHeight: 1.45, overflowWrap: 'anywhere', margin: '0 0 1.1rem' }}>
+          Order reference: {purchaseConfirmation.orderId}
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '.6rem' }}>
+          <button type="button" className="btn btn-primary" onClick={() => { setPurchaseConfirmation(null); navigate('/account?tab=licenses') }}
+            style={{ minHeight: 46, fontWeight: 900 }}>VIEW MY LICENSES</button>
+          <button type="button" className="btn btn-outline" onClick={() => { setPurchaseConfirmation(null); navigate('/orders') }}
+            style={{ minHeight: 44, fontWeight: 850 }}>ORDERS &amp; PAYMENT HISTORY</button>
+        </div>
+      </section>
+    </div>}
+    <button type="button" onClick={() => navigate('/account') style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
     <AccountSectionTabs active={null} />
     <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
       <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
