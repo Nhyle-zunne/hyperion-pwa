@@ -1,3 +1,4 @@
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.nhyle.hyperionmaritime'
 import { useEffect, useState } from 'react'
 import { useInstallPrompt } from '../hooks/useInstallPrompt'
 import GooglePlayBadge from './GooglePlayBadge'
