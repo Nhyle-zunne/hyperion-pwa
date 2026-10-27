@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { withPageLoading } from '../lib/pageLoading'
 
 type Asset = { path: string; label: string; track: string; competenceId: string; part: number | null; format: 'standard' | 'gmdss' }
 type QueueStatus = 'ready' | 'publishing' | 'success' | 'error'
@@ -74,7 +75,7 @@ export default function AdminQuestionBankScreen() {
       setLoading(false)
     }
   }, [call])
-  useEffect(() => { void loadAssets() }, [loadAssets])
+  useEffect(() => { void withPageLoading('Loading question-bank inventory', () => loadAssets()) }, [loadAssets])
 
   const assetByPath = useMemo(() => new Map(assets.map(asset => [asset.path, asset])), [assets])
   const duplicatePaths = useMemo(() => {
@@ -230,7 +231,7 @@ export default function AdminQuestionBankScreen() {
           {!!queue.length && <p style={{ ...secondaryText, margin: '.25rem 0 0' }}>{queue.length} files · {(totalBytes / 1024).toFixed(1)} KB · {successCount} published · {problemCount} need attention</p>}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn-outline" disabled={loading || busy} onClick={() => void loadAssets()}>Refresh question sets</button>
+          <button type="button" className="btn btn-outline" disabled={loading || busy} onClick={() => void withPageLoading('Refreshing question-bank inventory', () => loadAssets())}>Refresh question sets</button>
           <button type="button" className="btn btn-outline" disabled={busy || !queue.length} onClick={() => { setQueue([]); setBatchResult(null); setMessage(''); setIsError(false) }}>Clear queue</button>
         </div>
       </div>
@@ -309,7 +310,7 @@ export default function AdminQuestionBankScreen() {
       {!!queue.length && <div className="admin-qb-footer">
         <p style={{ ...secondaryText, margin: 0 }}>Each file publishes separately. Raw CSV limit: 700 KB; encrypted CSV limit: 1 MiB. One file per destination in each batch.</p>
         <button type="button" className="btn btn-primary" disabled={busy || loading || !queue.some(item => item.status !== 'success')}
-          onClick={() => void publishBatch()}>
+          onClick={() => void withPageLoading('Publishing question updates', () => publishBatch())}>
           {busy ? 'PUBLISHING BATCH…'
             : queue.length > 0 && queue.every(item => item.status === 'success') ? 'ALL FILES UPDATED ✓'
               : queue.some(item => item.status === 'error') && !queue.some(item => item.status === 'ready') ? 'RETRY FAILED FILES'
