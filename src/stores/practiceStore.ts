@@ -50,7 +50,7 @@ interface PracticeState {
   tick: () => void;
   reset: () => void;
   score: () => { correct: number; total: number; percent: number };
-  saveProgress: () => void;
+  saveProgress: () => Promise<void>;
   restoreSavedProgress: (sessionId?: string) => Promise<boolean>;
 }
 
@@ -410,14 +410,44 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     });
   },
 
-  saveProgress: () => {
+  saveProgress: async () => {
     const current = get();
-    if (!current.questions.length || !current.track) return;
     const snapshot = snapshotFromState(current, false);
+    if (!snapshot || !current.track) return;
+
     try {
-      localStorage.setItem('hyperion-saved-practice', JSON.stringify(snapshot ?? current));
-    } catch { /* storage can be unavailable */ }
-    persistActiveSession(current);
+      localStorage.setItem('hyperion-saved-practice', JSON.stringify(snapshot));
+    } catch { /* IndexedDB and the History store remain the primary saved-session records. */ }
+
+    const answered = current.questions.reduce(
+      (count, question) => count + (current.answers[question.id]?.selectedIndex != null ? 1 : 0),
+      0
+    );
+    const correct = current.questions.reduce(
+      (count, question) => count + (current.answers[question.id]?.isCorrect ? 1 : 0),
+      0
+    );
+    // Write the resumable History row explicitly before navigating away.
+    useHistoryStore.getState().saveSession({
+      id: snapshot.sessionId,
+      mode: current.mode,
+      track: current.track,
+      competenceId: current.competenceId,
+      part: current.part,
+      currentIndex: current.currentIndex,
+      total: current.questions.length,
+      answered,
+      correct,
+      startedAt: current.startedAt,
+      savedAt: Date.now(),
+      isFreeSession: current.isFreeSession
+    });
+
+    try {
+      await saveSessionSnapshot(snapshot.sessionId, snapshot);
+    } catch {
+      // Keep the localStorage fallback and History metadata even if IndexedDB is unavailable.
+    }
     window.dispatchEvent(new Event('hyperion:practice-progress-saved'));
   },
 

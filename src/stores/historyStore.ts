@@ -49,6 +49,7 @@ interface HistoryState {
   restoreDeleted: (kind: HistoryItemKind, id: string) => void
   permanentlyDelete: (kind: HistoryItemKind, id: string) => void
   removeSavedSession: (track?: TrackId | null, competenceId?: string | null) => void
+  removePaidSavedSessionsForTrack: (track: TrackId) => void
   removeSavedSessionById: (id: string) => void
   clear: () => void
   purgeExpiredDeleted: () => void
@@ -150,6 +151,11 @@ export const useHistoryStore = create<HistoryState>()(
           if (track == null) return false
           return !(item.track === track && (competenceId === undefined || item.competenceId === competenceId))
         })
+      })),
+
+      // Entitlement cleanup must not delete resumable sessions created from the free reviewer pool.
+      removePaidSavedSessionsForTrack: (track) => set((state) => ({
+        savedSessions: state.savedSessions.filter((item) => item.track !== track || item.isFreeSession === true)
       })),
 
       removeSavedSessionById: (id) => set((state) => ({

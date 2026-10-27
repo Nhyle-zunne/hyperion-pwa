@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
+import type { TrackId } from '../types/question'
+
+const TRACK_PARAM: Record<TrackId, string> = {
+  DECK_OIC_NW: 'oic_nw', GMDSS_GOC: 'gmdss', ENGINE_OIC_EW: 'engine_ew',
+  DECK_MGT: 'deck_mgt', ENGINE_MGT: 'engine_mgt'
+}
 
 export default function PracticeQuizScreen() {
   const navigate = useNavigate()
@@ -155,7 +161,19 @@ export default function PracticeQuizScreen() {
           <section className="exit-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-practice-title">
             <h2 id="exit-practice-title">Save your progress?</h2>
             <p>Your current question and answers will be saved so you can continue reviewing later.</p>
-            <button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => { saveProgress(); setShowExitDialog(false); navigate('/practice') }}>Save Progress &amp; Exit</button>
+            <button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={async () => {
+              await saveProgress()
+              setShowExitDialog(false)
+              const session = usePracticeStore.getState()
+              const configParams = new URLSearchParams({
+                track: session.track ? TRACK_PARAM[session.track] : 'oic_nw'
+              })
+              if (session.competenceId) configParams.set('competence', session.competenceId)
+              if (session.part != null) configParams.set('part', String(session.part))
+              if (session.isFreeSession) configParams.set('free', '1')
+              if (session.mode === 'DRILL') configParams.set('mode', 'drill')
+              navigate('/practice?' + configParams.toString())
+            }}>Save Progress &amp; Exit</button>
             <button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => setShowExitDialog(false)}>Continue Reviewing</button>
           </section>
         </div>

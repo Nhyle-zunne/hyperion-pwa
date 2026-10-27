@@ -142,7 +142,7 @@ export default function App() {
     const unavailable = isAllAccessUnlocked ? [] : tracks.filter(track => !cloudTrackIds.includes(track))
     for (const track of unavailable) {
       useBookmarksStore.getState().purgePaidForTracks([track])
-      useHistoryStore.getState().removeSavedSession(track)
+      useHistoryStore.getState().removePaidSavedSessionsForTrack(track)
       void deletePaidQuestionSnapshotsForTrack(track).catch(() => undefined)
       void deletePaidOfflineQuestionPacksForTrack(track).catch(() => undefined)
       try {
