@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
   }
 
   const timestamp = parts.t
-  const webhookSecret = Deno.env.get('PAYMONGO_WEBHOOK_SECRET')
+  const webhookSecret = Deno.env.get('PAYMONGO_WEBHOOK_SECRET')?.trim()
   if (!webhookSecret || !timestamp || (!parts.te && !parts.li)) {
     console.warn('[paymongo-webhook] Signature header/config missing', JSON.stringify({
       configuredSecret: Boolean(webhookSecret),
