@@ -70,15 +70,28 @@ export default function TrackSelectionScreen() {
     const active = new Set<string>()
     for (const s of segments) active.add(s.day)
     for (const h of history) active.add(dayKey(h.finishedAt))
-    const days: boolean[] = []
-    for (let i = 6; i >= 0; i--) {
-      const key = dayKey(Date.now() - i * 86_400_000)
-      days.push(active.has(key))
+
+    // Show the most recent day first: Day 1 is today, Day 2 is yesterday.
+    // Use local noon + setDate so calendar days stay stable across timezone/DST boundaries.
+    const today = new Date()
+    today.setHours(12, 0, 0, 0)
+    const days: { dayNumber: number; active: boolean; label: string; dateLabel: string }[] = []
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today)
+      date.setDate(today.getDate() - i)
+      const key = dayKey(date.getTime())
+      const label = i === 0
+        ? 'TODAY'
+        : i === 1
+          ? 'YDAY'
+          : new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date).toUpperCase()
+      const dateLabel = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
+      days.push({ dayNumber: i + 1, active: active.has(key), label, dateLabel })
     }
     return days
   }, [segments, history])
 
-  const streakCount = streakDays.filter(Boolean).length
+  const streakCount = streakDays.filter((day) => day.active).length
   const select = (track: (typeof TRACKS)[0]) => navigate(`/track?track=${track.id}`)
   const saveTarget = () => {
     const el = document.getElementById('target-date-input') as HTMLInputElement | null
@@ -123,10 +136,17 @@ export default function TrackSelectionScreen() {
             <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>ROLLING 7-DAY STREAK</span>
             <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>{streakCount} / 7 DAYS</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
-            {streakDays.map((on, i) => (
-              <div key={i} style={{ aspectRatio: '1', borderRadius: 8, border: on ? '2px solid var(--accent)' : '1px solid var(--border)', background: on ? 'var(--accent-soft)' : 'var(--streak-empty)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: on ? 'var(--accent)' : 'var(--text-muted)' }}>
-                <span>D{i + 1}</span><span>{on ? '✓' : '–'}</span>
+          <div className="daily-streak-grid">
+            {streakDays.map((day) => (
+              <div
+                key={day.dayNumber}
+                className={`daily-streak-day${day.active ? ' is-active' : ''}`}
+                aria-label={`Day ${day.dayNumber}, ${day.label}, ${day.dateLabel}: ${day.active ? 'studied' : 'no study recorded'}`}
+                title={`${day.label} · ${day.dateLabel}`}
+              >
+                <span className="daily-streak-label">{day.label}</span>
+                <span className="daily-streak-date">{day.dateLabel}</span>
+                <span className="daily-streak-status" aria-hidden="true">{day.active ? '✓' : '—'}</span>
               </div>
             ))}
           </div>
