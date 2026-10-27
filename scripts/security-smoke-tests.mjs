@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
   pricing, checkout, verify, webhook, questionBank, questionBankMigration,
-  finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen
+  finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen, accountScreen
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -19,7 +19,8 @@ const [
   read('../src/stores/practiceStore.ts'),
   read('../src/screens/MockExamScreen.tsx'),
   read('../src/stores/licenseStore.ts'),
-  read('../src/screens/BasketScreen.tsx')
+  read('../src/screens/BasketScreen.tsx'),
+  read('../src/screens/AccountScreen.tsx')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -72,6 +73,11 @@ assert.ok(basketScreen.includes("body: { action: 'status' }"), 'Basket loads che
 assert.ok(basketScreen.includes('paymongoCheckoutEnabled !== true'), 'Checkout handler fails closed until server availability is confirmed');
 assert.ok(basketScreen.includes('paymongoCheckoutEnabled === true ? <button'), 'PayMongo button is only rendered when the server says checkout is enabled');
 assert.ok(basketScreen.includes('showManualPaymentFallback'), 'Basket exposes manual payment fallback when checkout is disabled');
+
+assert.match(accountScreen, /queryParams:\s*\{\s*prompt:\s*'select_account'/, 'Google OAuth always prompts the user to choose an account');
+assert.ok(accountScreen.includes('setDeletionSuccess(true)'), 'Successful account deletion opens a visible success dialog');
+assert.ok(accountScreen.includes('Account deletion successful') && accountScreen.includes('aria-modal="true"'), 'Account deletion success is announced in an accessible modal');
+assert.ok(accountScreen.includes('You can now sign in again and choose any Google account.'), 'Deletion confirmation tells users they can choose a different Google account');
 
 for (const route of [
   '/account', '/checkout', '/manual-payment', '/orders', '/admin/licenses',
