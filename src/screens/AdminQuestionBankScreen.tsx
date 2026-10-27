@@ -195,7 +195,6 @@ export default function AdminQuestionBankScreen() {
 
   const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '1rem', marginBottom: '1rem', minWidth: 0 }
   const secondaryText: React.CSSProperties = { color: 'var(--text-muted)', fontSize: '.84rem', lineHeight: 1.5 }
-  const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '.65rem', marginTop: '.3rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 7, font: 'inherit', minWidth: 0 }
   const statusLabel: Record<QueueStatus, string> = { ready: 'READY', publishing: 'PUBLISHING…', success: 'PUBLISHED', error: 'FAILED' }
 
   return <div className="screen" style={{ width: 'min(calc(100% - 1rem), 1180px)', maxWidth: 1180, margin: '0 auto', paddingBottom: '2rem' }}>
