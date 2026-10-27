@@ -1613,3 +1613,93 @@ a:focus-visible,
 @media (prefers-reduced-motion: reduce) {
   .daily-streak-day { transition: none; }
 }
+
+
+/* Global top loading indicator: brand-led, subtle, and shared by every route. */
+.hyperion-top-loader {
+  position: fixed;
+  inset: 0 0 auto;
+  height: 36px;
+  z-index: 9500;
+  opacity: 0;
+  transform: translateY(-5px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 180ms ease;
+}
+.hyperion-top-loader.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.hyperion-top-loader__track {
+  position: absolute;
+  inset: 0 0 auto;
+  display: block;
+  height: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+.hyperion-top-loader__progress {
+  display: block;
+  width: 34%;
+  height: 100%;
+  border-radius: 0 99px 99px 0;
+  background: linear-gradient(90deg, #042353 0%, var(--accent) 72%, #4ade80 100%);
+  box-shadow: 0 0 10px rgba(34, 197, 94, .34);
+  animation: hyperion-loader-sweep 1.15s cubic-bezier(.45, 0, .55, 1) infinite;
+}
+.hyperion-top-loader__logo-wrap {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  display: grid;
+  width: 29px;
+  height: 29px;
+  box-sizing: border-box;
+  place-items: center;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-card);
+  box-shadow: 0 3px 12px rgba(4, 35, 83, .16), 0 0 0 3px color-mix(in srgb, var(--bg-card) 80%, transparent);
+  transform: translateX(-50%);
+}
+.hyperion-top-loader__logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform-origin: center;
+  animation: hyperion-loader-spin 1.25s linear infinite;
+}
+.hyperion-top-loader__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+@keyframes hyperion-loader-sweep {
+  0% { transform: translateX(-120%); }
+  55% { transform: translateX(190%); }
+  100% { transform: translateX(295%); }
+}
+@keyframes hyperion-loader-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hyperion-top-loader,
+  .hyperion-top-loader.is-visible {
+    transition: none;
+    transform: none;
+  }
+  .hyperion-top-loader__progress {
+    width: 100%;
+    animation: none;
+  }
+  .hyperion-top-loader__logo {
+    animation: none;
+  }
+}
