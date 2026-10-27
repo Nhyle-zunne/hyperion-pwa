@@ -112,13 +112,15 @@ Deno.serve(async (req) => {
       return json({ error: 'PayMongo returned an unexpected checkout status. Your order remains pending.' }, 409)
     }
 
-    const { error: batchUpdateError } = await admin.from('checkout_batches')
-      .update({ status: 'cancelled' }).eq('id', batch.id).in('status', ['pending', 'failed'])
-    if (batchUpdateError) return json({ error: 'PayMongo closed the checkout, but Hyperion could not update the basket status.' }, 500)
-    const { error: childUpdateError } = await admin.from('orders').update({ status: 'cancelled' })
-      .eq('checkout_batch_id', batch.id).eq('user_id', user.id).in('status', ['pending', 'failed'])
-    if (childUpdateError) return json({ error: 'The basket was closed, but its order items could not be updated. Refresh status or contact support.' }, 500)
-    return json({ status: 'cancelled', orderId: batch.id })
+    const { data: cancellation, error: cancellationError } = await admin.rpc('cancel_paymongo_checkout', {
+      p_checkout_reference: batch.id,
+      p_checkout_session_id: batch.paymongo_checkout_session_id
+    })
+    if (cancellationError || !cancellation) {
+      console.error('[cancel-checkout] Atomic basket cancellation failed', JSON.stringify({ orderId: batch.id, code: cancellationError?.code || 'unknown' }))
+      return json({ error: 'PayMongo closed the checkout, but Hyperion could not finalize cancellation. Refresh status before starting another payment.' }, 500)
+    }
+    return json(cancellation)
   }
 
   const { data: order, error: orderError } = await admin.from('orders')
@@ -215,13 +217,13 @@ Deno.serve(async (req) => {
     }
   }
 
-  const { error: updateError } = await admin.from('orders')
-    .update({ status: 'cancelled' })
-    .eq('id', order.id)
-    .eq('user_id', user.id)
-    .in('status', ['pending', 'failed'])
-    .eq('payment_method', 'PayMongo Checkout')
-  if (updateError) return json({ error: 'PayMongo closed the checkout, but Hyperion could not update the order. Refresh your account or contact support.' }, 500)
-
-  return json({ status: 'cancelled', orderId: order.id })
+  const { data: cancellation, error: cancellationError } = await admin.rpc('cancel_paymongo_checkout', {
+    p_checkout_reference: order.id,
+    p_checkout_session_id: order.paymongo_checkout_session_id
+  })
+  if (cancellationError || !cancellation) {
+    console.error('[cancel-checkout] Atomic order cancellation failed', JSON.stringify({ orderId: order.id, code: cancellationError?.code || 'unknown' }))
+    return json({ error: 'PayMongo closed the checkout, but Hyperion could not finalize cancellation. Refresh status before starting another payment.' }, 500)
+  }
+  return json(cancellation)
 })
