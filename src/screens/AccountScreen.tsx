@@ -302,7 +302,8 @@ export default function AccountScreen() {
   // Keep checking pending PayMongo sessions while the user is in their account.
   // The signed webhook remains primary; this server-side verification is the automatic fallback.
   useEffect(() => {
-    if (!supabase || !session?.user.id || !pendingCheckoutIds) return
+    const client = supabase
+    if (!client || !session?.user.id || !pendingCheckoutIds) return
     let active = true
     let checking = false
     const checkPending = async () => {
@@ -311,7 +312,7 @@ export default function AccountScreen() {
       try {
         const activated: string[] = []
         for (const orderId of pendingCheckoutIds.split(',').filter(Boolean)) {
-          const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
+          const { data, error } = await client.functions.invoke('verify-checkout', { body: { orderId } })
           if (!active) return
           if (error || data?.status !== 'paid') continue
           const codes: string[] = Array.isArray(data.productCodes)
