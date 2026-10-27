@@ -1,48 +1,63 @@
-# Hyperion – Maritime Licensure Reviewer (PWA)
+# Hyperion Maritime — PWA
 
-Progressive Web App rebuild of the Hyperion Android app.
+Hyperion Maritime is a maritime licensure-review Progressive Web App built with React, TypeScript, Vite, and Supabase. The product includes account-based track licenses, protected question banks, practice/drill flows, timed mock exams, progress history, and offline study support.
 
-## Features (current status)
+## Reviewer tracks
 
-- Offline signed-key activation (HYPE2- ECDSA P-256, device-bound)
-- License management (tiers: ALL / OIC / GOC / EW / DM / EM)
-- Paywall that routes only to Activate Key
-- No Google Play Billing / no Bond Store
-- Home, Track Selection, Activation, License, How-to-Avail, About, Terms
-- Bottom navigation
-- PWA-ready (installable, offline shell via service worker)
+- Deck OIC-NW
+- GMDSS GOC
+- Engine OIC-EW
+- Deck Management
+- Engine Management
 
-## Remaining work
+## Core app features
 
-- Full question banks (encrypted CSV decryption already ported)
-- Practice / Quiz / Drill / Flashcard / Mock Exam flows
-- History, Streaks, Study Time, Bookmarks, Mistakes Vault
-- IndexedDB persistence for sessions & progress
+- Quick Scan / drill, competence-based practice, and practice-all-question flows
+- Timed mock exams with submit-to-finish behavior
+- Session history, saved/resumable progress, bookmarks, mistakes, streaks, and study-time tracking
+- Account-based track licensing with fixed 7-day, one-calendar-month, and one-calendar-year terms
+- Responsive PWA installation and offline shell
+- Offline question-pack caching using encrypted IndexedDB storage; server-side authorization remains authoritative while online
 
-## Deploy to Cloudflare Pages
+## Stack and source layout
 
-1. Push this folder to a Git repository.
-2. In Cloudflare Pages: connect the repo.
-3. Build settings:
-   - Framework preset: Vite
-   - Build command: `npm run build`
-   - Build output directory: `dist`
-4. Deploy.
+- `src/` — React UI, routing, licensing state, checkout/account UI, question-bank client, and practice/session state
+- `supabase/functions/` — server-side payment, checkout, licensing, account, and question-bank endpoints
+- `supabase/migrations/` — ordered database schema, RLS, and transaction-function changes
+- `SUPABASE_PAYMENTS_SETUP.md` — PayMongo test/live setup and release checklist
+- `.github/workflows/pwa-build.yml` — automated TypeScript/Vite build check on pushes and pull requests
 
-Or locally:
-
-```bash
-npm install
-npm run build
-# then upload the `dist` folder / use wrangler pages deploy dist
-```
+The question-bank Edge Function reads encrypted CSV assets from the private `question-banks` Storage bucket. Do not move these files to public hosting or expose Supabase service-role or PayMongo secret keys in frontend code.
 
 ## Local development
 
-```bash
+Requirements: Node.js 24 or a compatible current Node.js release.
+
+```sh
 npm install
 npm run dev
 ```
+
+Build the production bundle:
+
+```sh
+npm run build
+npm run preview
+```
+
+The current CI workflow verifies dependency installation and the production TypeScript/Vite build. It does not replace browser-based acceptance tests or a successful PayMongo test-mode transaction.
+
+## Deployment
+
+Connect the repository to Cloudflare Pages with:
+
+- Framework preset: Vite
+- Build command: `npm run build`
+- Build output directory: `dist`
+
+Use the Supabase CLI to apply the ordered migrations to a fresh/recovery environment. Do not use `supabase/schema.sql` alone as a full bootstrap; it is a legacy consolidated schema snapshot and does not replace the current migration chain.
+
+Before accepting live payments, complete the payment and webhook checks documented in [SUPABASE_PAYMENTS_SETUP.md](./SUPABASE_PAYMENTS_SETUP.md).
 
 ## Support
 
