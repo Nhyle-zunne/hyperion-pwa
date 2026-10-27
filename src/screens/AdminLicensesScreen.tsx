@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { withPageLoading } from '../lib/pageLoading'
 
 type ProductCode = 'oic_nw' | 'gmdss' | 'engine_ew' | 'deck_mgt' | 'engine_mgt'
 type LicenseTerm = 'week' | 'month' | 'year'
@@ -98,7 +99,7 @@ export default function AdminLicensesScreen() {
       setLoading(false)
     }
   }, [call])
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void withPageLoading('Loading license administration', () => load()) }, [load])
   const filteredUsers = useMemo(() => {
     const value = query.trim().toLowerCase()
     if (!value) return users
@@ -125,7 +126,7 @@ export default function AdminLicensesScreen() {
     setBusyKey(key)
     setMessage('')
     try {
-      const result = await call({ action: 'grant', userId: user.id, productCode: track.code, term, note: notes[key] || '' })
+      const result = await withPageLoading('Updating license', () => call({ action: 'grant', userId: user.id, productCode: track.code, term, note: notes[key] || '' }))
       setMessage(track.label + ' license updated for ' + user.email + '. Expires ' + dateLabel(result.expiresAt) + (result.warning ? ' Warning: ' + result.warning : ''))
       await load()
     } catch (error) {
@@ -140,7 +141,7 @@ export default function AdminLicensesScreen() {
     setBusyKey(key)
     setMessage('')
     try {
-      const result = await call({ action: 'revoke', userId: user.id, productCode: track.code, note: notes[key] || '' })
+      const result = await withPageLoading('Revoking license', () => call({ action: 'revoke', userId: user.id, productCode: track.code, note: notes[key] || '' }))
       setMessage(track.label + ' access revoked for ' + user.email + (result.warning ? ' Warning: ' + result.warning : ''))
       await load()
     } catch (error) {
@@ -226,7 +227,7 @@ export default function AdminLicensesScreen() {
       </label>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: '.7rem' }}>
         <h2 style={{ margin: 0, fontSize: '1rem' }}>Registered users ({filteredUsers.length})</h2>
-        <button type="button" className="btn btn-outline" disabled={loading} onClick={() => void load()}>{loading ? 'Refreshing…' : 'Refresh users'}</button>
+        <button type="button" className="btn btn-outline" disabled={loading} onClick={() => void withPageLoading('Refreshing users and licenses', () => load())}>{loading ? 'Refreshing…' : 'Refresh users'}</button>
       </div>
       {loading ? <section style={card}>Loading license records…</section> : filteredUsers.length ? (
         <div className="admin-user-grid">
