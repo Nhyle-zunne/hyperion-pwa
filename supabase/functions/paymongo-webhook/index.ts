@@ -179,6 +179,23 @@ Deno.serve(async (req) => {
     return new Response('Paid session is missing order or payment details', { status: 400 })
   }
 
+  // PayMongo's dashboard test fixture uses a sample reference such as "1024".
+  // Hyperion order and checkout-batch IDs are UUIDs. Avoid querying UUID columns
+  // with a sample/non-Hyperion reference (which Postgres rejects with HTTP 500).
+  // This event has already passed signature and mode checks, but it cannot fulfill
+  // a Hyperion order, so acknowledge it without touching licenses or orders.
+  const isHyperionUuid = typeof orderId === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)
+  if (!isHyperionUuid) {
+    console.info('[paymongo-webhook] Acknowledging verified event not linked to a Hyperion order', JSON.stringify({
+      eventType,
+      referenceLooksLikeHyperionId: false,
+      hasSessionId: Boolean(checkoutSession.id),
+      hasPaidPayment: Boolean(payment)
+    }))
+    return Response.json({ received: true, ignored: true, reason: 'not_a_hyperion_order_reference' })
+  }
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!supabaseUrl || !serviceKey) return new Response('Payment service is not configured', { status: 503 })
