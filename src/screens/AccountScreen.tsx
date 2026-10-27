@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import type { Session } from '@supabase/supabase-js'
@@ -82,6 +82,7 @@ export default function AccountScreen() {
   const [deletionSuccess, setDeletionSuccess] = useState(false)
   const [signedOutSuccess, setSignedOutSuccess] = useState(false)
   const [successClosing, setSuccessClosing] = useState(false)
+  const keepSuccessBackdropRef = useRef(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
@@ -112,7 +113,10 @@ export default function AccountScreen() {
   useEffect(() => {
     if (!supabase) return
     void supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      // Keep the page the user acted on mounted behind the success dialog until Continue is pressed.
+      if (nextSession || !keepSuccessBackdropRef.current) setSession(nextSession)
+    })
     return () => listener.subscription.unsubscribe()
   }, [])
 
@@ -350,12 +354,14 @@ export default function AccountScreen() {
     }
     setBusy(true)
     try {
+      keepSuccessBackdropRef.current = true
       const { error } = await supabase.auth.signOut()
       if (error) throw error
       setMessage('')
       setSuccessClosing(false)
       setSignedOutSuccess(true)
     } catch {
+      keepSuccessBackdropRef.current = false
       setMessage('Unable to sign out. Please check your connection and try again.')
     } finally {
       setBusy(false)
@@ -365,9 +371,14 @@ export default function AccountScreen() {
   const closeSuccessModal = () => {
     setSuccessClosing(true)
     window.setTimeout(() => {
+      keepSuccessBackdropRef.current = false
+      setSession(null)
+      setOwned([])
+      setOrders([])
       setSignedOutSuccess(false)
       setDeletionSuccess(false)
       setSuccessClosing(false)
+      navigate('/account', { replace: true })
     }, 220)
   }
 
@@ -376,20 +387,19 @@ export default function AccountScreen() {
     setBusy(true)
     setMessage('Deleting your account and associated account data…')
     try {
+      keepSuccessBackdropRef.current = true
       const { data, error } = await supabase.functions.invoke('delete-account', { body: { confirmation: 'DELETE' } })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
       if (data?.success !== true) throw new Error('Account deletion could not be confirmed. Please try again or contact support.')
       await supabase.auth.signOut()
-      setSession(null)
-      setOwned([])
-      setOrders([])
       setDeleteConfirmOpen(false)
       setDeleteConfirmation('')
       setMessage('')
       setSuccessClosing(false)
       setDeletionSuccess(true)
     } catch (error) {
+      keepSuccessBackdropRef.current = false
       setMessage(safeAccountError(error, 'Unable to delete your account. Please try again or contact support.'))
     } finally {
       setBusy(false)
