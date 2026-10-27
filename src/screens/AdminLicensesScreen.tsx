@@ -66,6 +66,7 @@ export default function AdminLicensesScreen() {
   const navigate = useNavigate()
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'users' | 'activity'>('users')
   const [audit, setAudit] = useState<AuditRecord[]>([])
   const [query, setQuery] = useState('')
   const [terms, setTerms] = useState<Record<string, LicenseTerm>>({})
@@ -198,6 +199,27 @@ export default function AdminLicensesScreen() {
           </div>)}
         </div>
       </section>
+      <div role="tablist" aria-label="License administration sections" style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', marginBottom: '1rem', overflowX: 'auto' }}>
+        <button
+          type="button"
+          role="tab"
+          id="admin-license-users-tab"
+          aria-selected={activeTab === 'users'}
+          aria-controls="admin-license-users-panel"
+          onClick={() => { setActiveTab('users'); setSelectedUserId(null) }}
+          style={{ flex: '1 0 160px', padding: '.8rem .9rem', border: '1px solid var(--border)', borderBottom: activeTab === 'users' ? '3px solid var(--accent)' : '1px solid var(--border)', background: activeTab === 'users' ? 'var(--bg-card)' : 'var(--bg-elevated)', color: 'var(--text)', fontWeight: 900, cursor: 'pointer', textAlign: 'center' }}
+        >REGISTERED USERS ({users.length})</button>
+        <button
+          type="button"
+          role="tab"
+          id="admin-license-activity-tab"
+          aria-selected={activeTab === 'activity'}
+          aria-controls="admin-license-activity-panel"
+          onClick={() => { setActiveTab('activity'); setSelectedUserId(null) }}
+          style={{ flex: '1 0 190px', padding: '.8rem .9rem', border: '1px solid var(--border)', borderBottom: activeTab === 'activity' ? '3px solid var(--accent)' : '1px solid var(--border)', background: activeTab === 'activity' ? 'var(--bg-card)' : 'var(--bg-elevated)', color: 'var(--text)', fontWeight: 900, cursor: 'pointer', textAlign: 'center' }}
+        >ADMIN LICENSE ACTIVITY ({audit.length})</button>
+      </div>
+      {activeTab === 'users' && <div id="admin-license-users-panel" role="tabpanel" aria-labelledby="admin-license-users-tab">
       <label style={{ display: 'block', marginBottom: '1rem', color: 'var(--text-muted)', fontWeight: 800 }}>SEARCH USERS BY NAME, EMAIL, OR USER ID
         <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Type an email, name, or user ID…" style={field} />
       </label>
@@ -285,7 +307,8 @@ export default function AdminLicensesScreen() {
           </section>
         </div>
       })()}
-      <section style={card}>
+      </div>}
+      {activeTab === 'activity' && <section id="admin-license-activity-panel" role="tabpanel" aria-labelledby="admin-license-activity-tab" style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1rem' }}>Recent admin license activity</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Manual activation, extension, and revocation actions are listed here independently from payment records.</p>
         {auditWarning && <p role="status" style={{ color: 'var(--warning, #d97706)' }}>{auditWarning}</p>}
@@ -297,7 +320,7 @@ export default function AdminLicensesScreen() {
             {item.note && <div style={{ fontSize: '.75rem', marginTop: '.25rem' }}>Note: {item.note}</div>}
           </div>)}
         </div> : <p style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>No manual license changes have been recorded yet.</p>}
-      </section>
+      </section>}
     </>}
   </div>
 }
