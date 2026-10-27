@@ -81,6 +81,7 @@ export default function AccountScreen() {
   const [message, setMessage] = useState('')
   const [deletionSuccess, setDeletionSuccess] = useState(false)
   const [signedOutSuccess, setSignedOutSuccess] = useState(false)
+  const [successClosing, setSuccessClosing] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
@@ -352,12 +353,22 @@ export default function AccountScreen() {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
       setMessage('')
+      setSuccessClosing(false)
       setSignedOutSuccess(true)
     } catch {
       setMessage('Unable to sign out. Please check your connection and try again.')
     } finally {
       setBusy(false)
     }
+  }
+
+  const closeSuccessModal = () => {
+    setSuccessClosing(true)
+    window.setTimeout(() => {
+      setSignedOutSuccess(false)
+      setDeletionSuccess(false)
+      setSuccessClosing(false)
+    }, 220)
   }
 
   const deleteAccount = async () => {
@@ -376,6 +387,7 @@ export default function AccountScreen() {
       setDeleteConfirmOpen(false)
       setDeleteConfirmation('')
       setMessage('')
+      setSuccessClosing(false)
       setDeletionSuccess(true)
     } catch (error) {
       setMessage(safeAccountError(error, 'Unable to delete your account. Please try again or contact support.'))
@@ -422,40 +434,55 @@ export default function AccountScreen() {
       @media(max-width:1100px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
       @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar-actions{display:flex;justify-content:flex-end}.account-page .profile-mobile-toggle{display:inline-flex}.account-page .account-profile-content{display:none}.account-page .account-profile-content.is-expanded{display:block}.account-page .account-section-tabs{display:grid;grid-template-columns:1fr;gap:.45rem}.account-page .account-section-tabs button{text-align:left}}
       @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
+
+      .account-page .account-success-backdrop{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:1rem;box-sizing:border-box;background:radial-gradient(ellipse at 50% 36%,rgba(34,197,94,.13),transparent 48%),linear-gradient(135deg,rgba(4,15,35,.94),rgba(8,20,39,.92));backdrop-filter:blur(12px) saturate(125%);-webkit-backdrop-filter:blur(12px) saturate(125%);animation:hyperion-backdrop-enter 260ms ease-out both}
+      .account-page .account-success-card{position:relative;overflow:hidden;border-radius:20px!important;border-color:rgba(148,163,184,.28)!important;box-shadow:0 30px 90px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.035)!important;animation:hyperion-success-card-enter 380ms cubic-bezier(.18,.89,.32,1.12) both}
+      .account-page .account-success-card:before{content:"";position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#15803d,#4ade80,#15803d)}
+      .account-page .account-success-check{animation:hyperion-success-check-enter 440ms cubic-bezier(.18,.89,.32,1.28) 80ms both}
+      .account-page .account-success-backdrop--closing{animation:hyperion-backdrop-exit 220ms ease-in both}
+      .account-page .account-success-backdrop--closing .account-success-card{animation:hyperion-success-card-exit 190ms ease-in both}
+      @keyframes hyperion-backdrop-enter{from{opacity:0}to{opacity:1}}
+      @keyframes hyperion-backdrop-exit{from{opacity:1}to{opacity:0}}
+      @keyframes hyperion-success-card-enter{from{opacity:0;transform:translateY(16px) scale(.955);filter:blur(3px)}to{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
+      @keyframes hyperion-success-card-exit{from{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}to{opacity:0;transform:translateY(8px) scale(.98);filter:blur(2px)}}
+      @keyframes hyperion-success-check-enter{from{opacity:0;transform:scale(.55)}to{opacity:1;transform:scale(1)}}
+      @media(prefers-reduced-motion:reduce){.account-page .account-success-backdrop,.account-page .account-success-card,.account-page .account-success-check{animation-duration:.01ms!important;animation-delay:0ms!important}.account-page .account-success-backdrop--closing{animation-duration:.01ms!important}.account-page .account-success-backdrop--closing .account-success-card{animation-duration:.01ms!important}}
     `}</style>
 
     {signedOutSuccess && <div
       role="presentation"
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'grid', placeItems: 'center', padding: '1rem', background: 'rgba(3, 8, 18, .72)', boxSizing: 'border-box' }}
+      className={`account-success-backdrop${successClosing ? ' account-success-backdrop--closing' : ''}`}
     >
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="sign-out-success-title"
-        style={{ width: 'min(100%, 440px)', boxSizing: 'border-box', padding: '1.5rem', borderRadius: 16, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 24px 70px rgba(0,0,0,.4)', textAlign: 'center' }}
+        className="account-success-card"
+        style={{ width: 'min(100%, 440px)', boxSizing: 'border-box', padding: '1.65rem', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', textAlign: 'center' }}
       >
-        <div aria-hidden="true" style={{ display: 'grid', placeItems: 'center', width: 54, height: 54, margin: '0 auto .9rem', borderRadius: '50%', background: 'rgba(20,125,67,.14)', color: '#16834a', fontSize: '2rem', fontWeight: 900 }}>✓</div>
+        <div className="account-success-check" aria-hidden="true" style={{ display: 'grid', placeItems: 'center', width: 58, height: 58, margin: '0 auto .9rem', borderRadius: '50%', background: 'rgba(20,125,67,.14)', color: '#16834a', fontSize: '2rem', fontWeight: 900 }}>✓</div>
         <h2 id="sign-out-success-title" style={{ margin: '0 0 .6rem' }}>Signed out successfully</h2>
         <p style={{ color: 'var(--text-muted)', lineHeight: 1.6, margin: '0 0 1.25rem' }}>You have been signed out of your Hyperion account.</p>
-        <button type="button" className="btn btn-primary" autoFocus onClick={() => setSignedOutSuccess(false)} style={{ width: '100%', minHeight: 46 }}>Continue</button>
+        <button type="button" className="btn btn-primary" autoFocus onClick={closeSuccessModal} style={{ width: '100%', minHeight: 46 }}>Continue</button>
       </section>
     </div>}
 
     {deletionSuccess && <div
       role="presentation"
-      style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'grid', placeItems: 'center', padding: '1rem', background: 'rgba(3, 8, 18, .72)', boxSizing: 'border-box' }}
+      className={`account-success-backdrop${successClosing ? ' account-success-backdrop--closing' : ''}`}
     >
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="account-deletion-success-title"
-        style={{ width: 'min(100%, 440px)', boxSizing: 'border-box', padding: '1.5rem', borderRadius: 16, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 24px 70px rgba(0,0,0,.4)', textAlign: 'center' }}
+        className="account-success-card"
+        style={{ width: 'min(100%, 440px)', boxSizing: 'border-box', padding: '1.65rem', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', textAlign: 'center' }}
       >
-        <div aria-hidden="true" style={{ display: 'grid', placeItems: 'center', width: 54, height: 54, margin: '0 auto .9rem', borderRadius: '50%', background: 'rgba(20,125,67,.14)', color: '#16834a', fontSize: '2rem', fontWeight: 900 }}>✓</div>
+        <div className="account-success-check" aria-hidden="true" style={{ display: 'grid', placeItems: 'center', width: 58, height: 58, margin: '0 auto .9rem', borderRadius: '50%', background: 'rgba(20,125,67,.14)', color: '#16834a', fontSize: '2rem', fontWeight: 900 }}>✓</div>
         <h2 id="account-deletion-success-title" style={{ margin: '0 0 .6rem' }}>Account deletion successful</h2>
         <p style={{ color: 'var(--text-muted)', lineHeight: 1.6, margin: '0 0 1rem' }}>Your Hyperion account has been deleted successfully.</p>
         <p style={{ color: 'var(--text-muted)', lineHeight: 1.6, margin: '0 0 1.25rem' }}>You can now sign in again and choose any Google account.</p>
-        <button type="button" className="btn btn-primary" autoFocus onClick={() => setDeletionSuccess(false)} style={{ width: '100%', minHeight: 46 }}>Continue</button>
+        <button type="button" className="btn btn-primary" autoFocus onClick={closeSuccessModal} style={{ width: '100%', minHeight: 46 }}>Continue</button>
       </section>
     </div>}
 
