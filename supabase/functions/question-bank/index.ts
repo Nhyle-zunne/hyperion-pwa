@@ -417,7 +417,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceKey) return json(req, { error: "Question service is not configured." }, 503);
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let body: { action?: string; path?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown };
+  let body: { action?: string; path?: string; csvText?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown };
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
   let user: any = null, isAdmin = false;
   const authHeader = req.headers.get("Authorization");
@@ -426,6 +426,67 @@ Deno.serve(async (req: Request) => {
     const result = await authClient.auth.getUser();
     if (!result.error && result.data.user) { user = result.data.user; isAdmin = isAdminEmail(user.email); }
   }
+
+  if (body.action === "list-update-assets") {
+    if (!user || !isAdmin) return json(req, { error: "Forbidden." }, 403);
+    const labels: Record<string, string> = {
+      DECK_OIC_NW: "Deck OIC-NW", GMDSS_GOC: "GMDSS GOC",
+      ENGINE_OIC_EW: "Engine OIC-EW", DECK_MGT: "Deck Management", ENGINE_MGT: "Engine Management"
+    };
+    const assets = SOURCE_ASSETS.map(path => {
+      const info = sourceInfo(path);
+      return info ? { path, track: info.track, competenceId: info.competenceId, part: info.part, format: info.format,
+        label: labels[info.track] + " · " + info.competenceId + (info.part == null ? "" : " · Part " + info.part) } : null;
+    }).filter(Boolean);
+    return json(req, { assets });
+  }
+
+  if (body.action === "update-csv") {
+    if (!user || !isAdmin) return json(req, { error: "Forbidden." }, 403);
+    const path = body.path;
+    if (typeof path !== "string" || !SOURCE_ASSETS.includes(path)) return json(req, { error: "Choose a supported question-bank file." }, 400);
+    if (typeof body.csvText !== "string") return json(req, { error: "Paste CSV text before publishing." }, 400);
+    const csvText = body.csvText.charCodeAt(0) === 0xFEFF ? body.csvText.slice(1) : body.csvText;
+    const raw = new TextEncoder().encode(csvText);
+    if (raw.length < 20 || raw.length > 700000) return json(req, { error: "CSV must be between 20 bytes and 700 KB." }, 413);
+    if (!csvText.trim() || !csvText.includes(",")) return json(req, { error: "The pasted content does not look like CSV." }, 400);
+    let count = 0;
+    try {
+      if (path.startsWith("gmdss/")) count = validGmdssRows(csvText).length;
+      else {
+        const rows = parseCsv(csvText);
+        count = rows.slice(headerIndex(rows, "standard") + 1).filter(validStandard).length;
+      }
+    } catch {
+      return json(req, { error: "Could not parse CSV. Check quotes, commas, and columns." }, 400);
+    }
+    if (!count) return json(req, { error: "No valid question rows were found." }, 400);
+    let state: any;
+    try { state = await migrationState(admin); } catch { return json(req, { error: "Could not verify the private question bank." }, 503); }
+    if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Private question bank is not marked complete; no file was changed." }, 503);
+    const bucket = admin.storage.from("question-banks");
+    const previous = await bucket.download(path);
+    if (previous.error || !previous.data) return json(req, { error: "Could not read the existing private file. No replacement was made." }, 500);
+    const stamp = new Date().toISOString().replace(/[^0-9TZ-]/g, "-");
+    const backupPath = "_backups/" + path.replaceAll("/", "__") + "." + stamp + ".bak.enc";
+    const backupBytes = new Uint8Array(await previous.data.arrayBuffer());
+    const backup = await bucket.upload(backupPath, backupBytes, { contentType: "application/octet-stream", cacheControl: "0", upsert: false });
+    if (backup.error) return json(req, { error: "Could not save a private backup. No file was changed." }, 500);
+    try {
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const key = await crypto.subtle.importKey("raw", deriveKeyBytes(), { name: "AES-GCM" }, false, ["encrypt"]);
+      const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, tagLength: 128 }, key, raw));
+      const encrypted = new Uint8Array(iv.length + ciphertext.length);
+      encrypted.set(iv); encrypted.set(ciphertext, iv.length);
+      const upload = await bucket.upload(path, encrypted, { contentType: "application/octet-stream", cacheControl: "0", upsert: true });
+      if (upload.error) return json(req, { error: "Replacement failed. The previous file is backed up at " + backupPath + "." }, 500);
+      privateTextCache.delete(path);
+      return json(req, { ok: true, path, questionCount: count, backupPath, updatedAt: new Date().toISOString() });
+    } catch {
+      return json(req, { error: "Could not encrypt or publish this CSV. Previous file is backed up at " + backupPath + "." }, 500);
+    }
+  }
+
   if (body.action === "status" || body.action === "migrate") {
     if (!user || !isAdmin) return json(req, { error: "Forbidden." }, 403);
     let state: any;
