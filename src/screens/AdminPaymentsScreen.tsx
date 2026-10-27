@@ -30,7 +30,13 @@ export default function AdminPaymentsScreen() {
       setAuthorized(true)
     } catch (e) { setAuthorized(false); setMessage(safeAdminError(e, 'Unable to load payment submissions. Please retry.')) }
   }, [call])
-  useEffect(() => { void load() }, [load])
+  // Keep the admin view current when webhook delivery or customer-side verification
+  // updates a PayMongo order, without requiring manual refreshes.
+  useEffect(() => {
+    void load()
+    const timer = window.setInterval(() => { void load() }, 10000)
+    return () => window.clearInterval(timer)
+  }, [load])
   const review = async (orderId: string, decision: 'approve'|'reject') => {
     setBusy(true); setMessage('')
     try { await call({ action:'review', orderId, decision, adminNote: note[orderId] || '' }); setMessage(decision === 'approve' ? 'Payment approved and access granted.' : 'Payment rejected.'); await load() }
