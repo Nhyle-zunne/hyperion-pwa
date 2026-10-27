@@ -49,20 +49,11 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // Include encrypted question banks for offline use
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest,enc}'],
+        // Question banks are delivered by the protected Supabase Edge Function.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}'],
         // Large question banks – raise limit (default 2 MiB)
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         runtimeCaching: [
-          {
-            urlPattern: /\/questions\/.*\.enc$/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'hyperion-question-banks',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 365
-              },
               cacheableResponse: { statuses: [0, 200] }
             }
           },

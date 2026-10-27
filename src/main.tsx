@@ -16,6 +16,13 @@ initTheme()
 // Ensure installed iOS/Android PWAs activate new deployed UI automatically.
 registerSW({ immediate: true })
 
+// Remove the legacy offline cache of publicly served encrypted question banks.
+// New question delivery uses the protected Supabase endpoint and must not reuse that cache.
+if ('caches' in window) {
+  void window.caches.delete('hyperion-question-banks')
+}
+
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

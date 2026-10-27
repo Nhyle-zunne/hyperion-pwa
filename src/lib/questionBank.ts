@@ -598,8 +598,9 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
     const status = Number((error as { context?: { status?: number } } | null)?.context?.status || 0);
     if (status !== 503) return null;
   }
-  // During the one-time migration, temporarily allow only sets that exactly
-  // match the free sample. Never treat a cached paid session as free.
+  // If the service cannot validate a saved set, accept it only if every
+  // question matches the current server-defined free sample. Never treat paid
+  // cached content as free.
   try {
     const freeQuestions = await getQuestionsByTrack(track, true);
     const freeFingerprints = new Set(await Promise.all(freeQuestions.map(fingerprintQuestion)));
@@ -627,8 +628,8 @@ export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false)
     }));
   }
   if (freeOnly) {
-    // Preserve free practice during the one-time private-storage migration; once
-    // private storage is ready this counts only the server-filtered sample.
+    // If the count endpoint fails, derive free counts from server-filtered
+    // sample payloads returned by the protected question service.
     const questions = await getQuestionsByTrack(track, true);
     const counts = new Map<string, QuestionBankCount>();
     for (const question of questions) {
