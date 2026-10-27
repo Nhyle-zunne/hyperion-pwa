@@ -275,7 +275,8 @@ Deno.serve(async (req) => {
         method: 'POST',
         headers: {
           Authorization: `Basic ${btoa(paymongoKey + ':')}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Idempotency-Key': order.id
         },
         body: JSON.stringify(payload)
       })
@@ -409,7 +410,8 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         Authorization: `Basic ${btoa(paymongoKey + ':')}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Idempotency-Key': batch.id
       },
       body: JSON.stringify(payload)
     })
