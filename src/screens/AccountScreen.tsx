@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import AccountSectionTabs from '../components/AccountSectionTabs'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
@@ -73,6 +74,7 @@ export default function AccountScreen() {
   const [company, setCompany] = useState('')
   const [school, setSchool] = useState('')
   const [profileEditing, setProfileEditing] = useState(false)
+  const [profileExpanded, setProfileExpanded] = useState(false)
   const [savedProfile, setSavedProfile] = useState({ fullName: '', company: '', school: '' })
   const [isAdmin, setIsAdmin] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -345,11 +347,15 @@ export default function AccountScreen() {
       .account-page .account-cart-row:last-child{border-bottom:0}
       .account-page .account-total-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-top:1rem;margin-top:.4rem;border-top:1px solid var(--border)}
       .account-page .profile-avatar{width:58px;height:58px;flex-shrink:0;display:grid;place-items:center;border-radius:16px;background:#042353;color:#f5c75e;font-weight:950;font-size:1.1rem;letter-spacing:.03em}
+      .account-page .profile-mobile-toggle{display:none;border:1px solid var(--border);border-radius:9px;background:var(--bg-elevated);color:var(--text);padding:.5rem .65rem;font-size:.8rem;font-weight:850;align-items:center;gap:.35rem;cursor:pointer}
+      .account-page .account-profile-content{display:block}
+      .account-page .account-section-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
+      .account-page .account-section-tabs button{min-height:44px;padding:.7rem .85rem;font-weight:850;border-radius:9px}
       .account-page .profile-side-links{font-size:.82rem;color:var(--text-muted);line-height:1.45}
       .account-page .payment-method-pills{display:flex;flex-wrap:wrap;gap:.4rem}
       .account-page .payment-method-pills span{padding:.3rem .5rem;border:1px solid var(--border);background:var(--bg-elevated);border-radius:6px;font-size:.7rem;font-weight:750}
       @media(max-width:1100px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar-actions{display:flex;justify-content:flex-end}}
+      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar-actions{display:flex;justify-content:flex-end}.account-page .profile-mobile-toggle{display:inline-flex}.account-page .account-profile-content{display:none}.account-page .account-profile-content.is-expanded{display:block}.account-page .account-section-tabs{display:grid;grid-template-columns:1fr;gap:.45rem}.account-page .account-section-tabs button{text-align:left}}
       @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
     `}</style>
 
@@ -384,12 +390,14 @@ export default function AccountScreen() {
           <section style={{ ...card, marginBottom: 0 }}>
             <div style={{ display: 'flex', gap: '.8rem', alignItems: 'center', marginBottom: '.8rem' }}>
               <div className="profile-avatar">{(fullName || 'H').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase()}</div>
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <h2 style={{ margin: 0, fontSize: '1rem', overflowWrap: 'anywhere' }}>{fullName || 'Hyperion Member'}</h2>
                 <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', overflowWrap: 'anywhere', marginTop: '.2rem' }}>{session.user.email}</div>
                 {isAdmin && <button type="button" title="Open admin dashboard" aria-label="Admin" onClick={() => navigate('/admin/licenses')} style={{ display: 'inline-flex', alignItems: 'center', marginTop: '.35rem', border: '1px solid #86cba0', borderRadius: 999, background: '#dcfce7', color: '#166534', padding: '.15rem .5rem', fontWeight: 800, fontSize: '.68rem', lineHeight: 1.2, cursor: 'pointer' }}>Admin</button>}
               </div>
+              <button type="button" className="profile-mobile-toggle" aria-expanded={profileExpanded} onClick={() => setProfileExpanded(value => !value)}>{profileExpanded ? 'Hide profile' : 'Edit profile'} <span aria-hidden="true">{profileExpanded ? '⌃' : '⌄'}</span></button>
             </div>
+            <div className={`account-profile-content${profileExpanded ? ' is-expanded' : ''}`}>
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '.85rem' }}>
               <h3 style={{ margin: '0 0 .25rem', fontSize: '.98rem' }}>Your profile</h3>
               <p className="profile-side-links" style={{ margin: '0 0 .6rem' }}>Your saved details are reused for PayMongo checkout and your purchase records.</p>
@@ -416,11 +424,12 @@ export default function AccountScreen() {
                 </div>}
               </section>}
             </div>
+            </div>
           </section>
         </aside>
 
         <main className="account-main">
-          {accountTab === 'licenses' ? <section style={card}>
+          <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />
             <div className="account-panel-title">
               <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
               <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
