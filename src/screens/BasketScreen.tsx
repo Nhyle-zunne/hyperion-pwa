@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
+import { withPageLoading } from '../lib/pageLoading'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { priceForTerm, termLabel } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -134,7 +135,7 @@ export default function BasketScreen() {
         setMessage('PayMongo checkout availability could not be verified. For your safety, checkout is disabled here for now. Please use manual payment.')
       }
     }
-    void refreshCheckoutAvailability()
+    void withPageLoading('Checking checkout availability', refreshCheckoutAvailability)
     const onFocus = () => { void refreshCheckoutAvailability() }
     window.addEventListener('focus', onFocus)
     return () => {
@@ -173,7 +174,7 @@ export default function BasketScreen() {
   useEffect(() => {
     let active = true
     if (session) {
-      void refreshData().catch(async error => {
+      void withPageLoading('Loading checkout and licenses', () => refreshData()).catch(async error => {
         if (active) {
           setIsError(true)
           setMessage(await edgeError(error))
@@ -385,7 +386,7 @@ export default function BasketScreen() {
     return () => { active = false }
   }, [session?.user.id, params])
 
-  const checkout = async (requestedItems: BasketItem[] = basket) => {
+  const checkoutInternal = async (requestedItems: BasketItem[] = basket) => {
     if (!supabase || !session) {
       navigate('/account')
       setMessage('Sign in to Hyperion first. Your selected tracks are saved in this browser.')
@@ -449,7 +450,7 @@ export default function BasketScreen() {
     }
   }
 
-  const cancelCheckout = async (groupId: string, groupItems: BasketItem[]) => {
+  const cancelCheckoutInternal = async (groupId: string, groupItems: BasketItem[]) => {
     if (!supabase || !session) return
     setBusy(true)
     setBusyCheckoutId(groupId)
@@ -482,7 +483,7 @@ export default function BasketScreen() {
     }
   }
 
-  const refreshStatus = async () => {
+  const refreshStatusInternal = async () => {
     if (!supabase || !session) return
     setBusy(true)
     setIsError(false)
@@ -517,6 +518,8 @@ export default function BasketScreen() {
       setBusy(false)
     }
   }
+
+  const refreshStatus = async () => withPageLoading('Refreshing payment status', () => refreshStatusInternal())
 
   const style = {
     card: { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', borderRadius: 12 } as const,
