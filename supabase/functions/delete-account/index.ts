@@ -47,6 +47,18 @@ Deno.serve(async req => {
     return json({ error: 'Please resolve or cancel all pending payment submissions and PayMongo checkouts before deleting your account. This prevents a payment in progress from being lost.' }, 409)
   }
 
+  const { data: failedProviderSessions, error: failedProviderSessionsError } = await admin.from('orders')
+    .select('id,status')
+    .eq('user_id', user.id)
+    .eq('payment_method', 'PayMongo Checkout')
+    .eq('status', 'failed')
+    .not('paymongo_checkout_session_id', 'is', null)
+    .limit(1)
+  if (failedProviderSessionsError) return json({ error: 'Could not verify old PayMongo sessions. No account deletion was performed.' }, 500)
+  if (failedProviderSessions?.length) {
+    return json({ error: 'This account has an unresolved PayMongo session linked to a failed order. Contact support to reconcile it before deleting your account.' }, 409)
+  }
+
   const { data: openBatches, error: openBatchesError } = await admin.from('checkout_batches')
     .select('id')
     .eq('user_id', user.id)
