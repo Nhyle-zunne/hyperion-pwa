@@ -47,10 +47,16 @@ let dbPromise: Promise<IDBPDatabase<OfflineBankDatabase>> | null = null
 function database() {
   if (!dbPromise) {
     dbPromise = openDB<OfflineBankDatabase>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion, _newVersion, transaction) {
         if (!db.objectStoreNames.contains('packs')) db.createObjectStore('packs', { keyPath: 'id' })
         if (!db.objectStoreNames.contains('manifests')) db.createObjectStore('manifests', { keyPath: 'id' })
         if (!db.objectStoreNames.contains('keys')) db.createObjectStore('keys', { keyPath: 'id' })
+        // Version 1 stored question objects in plaintext. Clear those early test
+        // records before enabling the encrypted-at-rest format in version 2.
+        if (oldVersion > 0 && oldVersion < 2) {
+          transaction.objectStore('packs').clear()
+          transaction.objectStore('manifests').clear()
+        }
       }
     })
   }
