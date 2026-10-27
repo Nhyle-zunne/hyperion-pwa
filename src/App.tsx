@@ -36,6 +36,7 @@ import { startLearningProgressSync } from './lib/progressSync'
 import { useRef, useState } from 'react'
 import { clearPaidQuestionCache } from './lib/questionBank'
 import { deletePaidQuestionSnapshotsForTrack } from './lib/sessionArchive'
+import { deletePaidOfflineQuestionPacksForTrack } from './lib/offlineQuestionCache'
 
 export default function App() {
   const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
@@ -143,6 +144,7 @@ export default function App() {
       useBookmarksStore.getState().purgePaidForTracks([track])
       useHistoryStore.getState().removeSavedSession(track)
       void deletePaidQuestionSnapshotsForTrack(track).catch(() => undefined)
+      void deletePaidOfflineQuestionPacksForTrack(track).catch(() => undefined)
       try {
         const raw = localStorage.getItem('hyperion-saved-practice')
         if (raw) {

@@ -1,10 +1,10 @@
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'\nimport { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
 import { useHistoryStore } from '../stores/historyStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useVaultStore } from '../stores/vaultStore'
-import type { TrackId } from '../types/question'
+import type { TrackId } from '../types/question'\nimport { downloadOfflinePack } from '../lib/questionBank'\nimport { getOfflinePackStatus } from '../lib/offlineQuestionCache'
 import './TrackHubScreen.css'
 
 interface TrackInfo {
@@ -75,6 +75,11 @@ export default function TrackHubScreen() {
   const requestedKey = params.get('track')
   const key = requestedKey && TRACKS[requestedKey] ? requestedKey : 'oic_nw'
   const info = TRACKS[key]
+  const [offlineDownloading, setOfflineDownloading] = useState(false)
+  const [offlineProgress, setOfflineProgress] = useState({ downloaded: 0, total: 0 })
+  const [offlineStatus, setOfflineStatus] = useState<{ questionCount: number; groupCount: number; savedAt: number } | null>(null)
+  const [offlineError, setOfflineError] = useState('')
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
 
   const unlocked = useLicenseStore((s) => s.isTrackUnlocked(info.trackId) || s.isAllAccessUnlocked)
   const remaining = useLicenseStore((s) => s.getRemainingLabel)
@@ -82,6 +87,42 @@ export default function TrackHubScreen() {
   const history = useHistoryStore((s) => s.entries)
   const bookmarks = useBookmarksStore((s) => s.items)
   const mistakes = useVaultStore((s) => s.items)
+
+  useEffect(() => {
+    const updateOnline = () => setOnline(navigator.onLine)
+    window.addEventListener('online', updateOnline)
+    window.addEventListener('offline', updateOnline)
+    return () => {
+      window.removeEventListener('online', updateOnline)
+      window.removeEventListener('offline', updateOnline)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    void getOfflinePackStatus(info.trackId, !unlocked).then(status => {
+      if (active && status?.complete) setOfflineStatus(status)
+      else if (active) setOfflineStatus(null)
+    }).catch(() => { if (active) setOfflineStatus(null) })
+    return () => { active = false }
+  }, [info.trackId, unlocked])
+
+  const startOfflineDownload = async () => {
+    setOfflineDownloading(true)
+    setOfflineError('')
+    setOfflineProgress({ downloaded: 0, total: 0 })
+    try {
+      const result = await downloadOfflinePack(info.trackId, !unlocked, (downloaded, total) => {
+        setOfflineProgress({ downloaded, total })
+      })
+      const status = await getOfflinePackStatus(info.trackId, !unlocked)
+      setOfflineStatus(status?.complete ? status : { ...result, savedAt: Date.now() })
+    } catch (error) {
+      setOfflineError(error instanceof Error ? error.message : 'Offline download failed. Please try again while online.')
+    } finally {
+      setOfflineDownloading(false)
+    }
+  }
 
   const trackHistory = history.filter((entry) => entry.track === info.trackId)
   const trackMistakes = mistakes.filter((item) => item.track === info.trackId)
@@ -191,6 +232,47 @@ export default function TrackHubScreen() {
           {!info.totalQuestions && <span>{info.level}</span>}
           {unlocked && <span>PASS: {remaining()}</span>}
         </div>
+      </section>
+
+      <section
+        aria-label="Offline question pack"
+        style={{ margin: '1rem 0', padding: '1rem', border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-card)' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          <span aria-hidden="true" style={{ fontSize: '1.4rem' }}>⇩</span>
+          <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--text)' }}>OFFLINE ACCESS</h2>
+          {offlineStatus && <span style={{ marginLeft: 'auto', color: 'var(--success, #16803d)', fontSize: '0.75rem', fontWeight: 800 }}>DOWNLOADED</span>}
+        </div>
+        <p style={{ margin: '0 0 0.8rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          {offlineStatus
+            ? `${offlineStatus.questionCount.toLocaleString()} questions saved on this device. Practice can continue without internet while the saved access is valid.`
+            : unlocked
+              ? 'Download the full question bank for this track to practice without internet.'
+              : 'Download the free reviewer questions for use without internet.'}
+        </p>
+        {offlineDownloading && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 5 }}>
+              <span>Downloading questions…</span>
+              <span>{offlineProgress.downloaded.toLocaleString()} / {offlineProgress.total.toLocaleString()}</span>
+            </div>
+            <progress value={offlineProgress.downloaded} max={Math.max(1, offlineProgress.total)} style={{ width: '100%', height: 8 }} />
+          </div>
+        )}
+        {offlineError && <p role="alert" style={{ color: 'var(--danger, #b42318)', fontSize: '0.85rem' }}>{offlineError}</p>}
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => void startOfflineDownload()}
+          disabled={!online || offlineDownloading}
+          style={{ width: '100%', minHeight: 44 }}
+        >
+          {offlineDownloading ? 'DOWNLOADING…' : offlineStatus ? 'UPDATE OFFLINE QUESTION PACK' : unlocked ? 'DOWNLOAD FULL BANK FOR OFFLINE' : 'DOWNLOAD FREE QUESTIONS FOR OFFLINE'}
+        </button>
+        {!online && !offlineStatus && <p style={{ margin: '0.65rem 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Connect to the internet to download this pack first.</p>}
+        <p style={{ margin: '0.65rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+          Offline packs are stored on this device. Paid access is checked online when possible and locally against the last verified license expiry while disconnected.
+        </p>
       </section>
 
       <section className="hub-performance" aria-labelledby="hub-performance-title">

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { getOfflineEntitledTracks, saveOfflineEntitlements } from '../lib/offlineQuestionCache';
 
 interface LicenseState {
   isOicNwUnlocked: boolean;
@@ -63,6 +64,8 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
     try {
       const { data, error } = await supabase.functions.invoke('admin-payment-review', { body: { action: 'check-admin' } });
       if (!error && data?.isAdmin === true) {
+        const adminOfflineUntil = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        saveOfflineEntitlements(session.user.id, Object.fromEntries(TRACK_IDS.map(track => [track, adminOfflineUntil])));
         set({ cloudTrackIds: [...TRACK_IDS], ...accessFlags(TRACK_IDS), entitlementsVerified: true });
         return;
       }
@@ -73,12 +76,27 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
     try {
       const { data, error } = await supabase
         .from('entitlements')
-        .select('track_id')
+        .select('track_id, expires_at')
         .eq('user_id', session.user.id)
         .eq('status', 'active')
         .gt('expires_at', new Date().toISOString());
-      if (error) { set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false }); return; }
-      const ids = Array.from(new Set((data ?? []).map((row) => row.track_id as string)));
+      if (error) {
+        // Only use a previously verified, unexpired local entitlement when the server is unreachable.
+        const offlineIds = getOfflineEntitledTracks(session.user.id);
+        if (offlineIds.length) set({ cloudTrackIds: offlineIds, ...accessFlags(offlineIds), entitlementsVerified: true });
+        else set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+        return;
+      }
+      const rows = data ?? [];
+      const ids = Array.from(new Set(rows.map((row) => row.track_id as string)));
+      const expiresByTrack: Record<string, number> = {};
+      for (const row of rows) {
+        const expiresAt = Date.parse(row.expires_at as string);
+        if (Number.isFinite(expiresAt) && expiresAt > Date.now()) {
+          expiresByTrack[row.track_id as string] = Math.max(expiresByTrack[row.track_id as string] ?? 0, expiresAt);
+        }
+      }
+      saveOfflineEntitlements(session.user.id, expiresByTrack);
       set({ cloudTrackIds: ids, ...accessFlags(ids), entitlementsVerified: true });
     } catch {
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });

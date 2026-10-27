@@ -1,4 +1,13 @@
 import { supabase } from './supabase';
+import {
+  deletePaidOfflineQuestionPacksForTrack,
+  getOfflineEntitlementExpiry,
+  getOfflineQuestionCounts,
+  getOfflineQuestionsByCompetence,
+  getOfflineQuestionsByTrack,
+  saveOfflinePackManifest,
+  saveOfflineQuestionPack
+} from './offlineQuestionCache';
 import { parseCsvText } from './csvParser';
 import type { Question, TrackId, Difficulty } from '../types/question';
 
@@ -222,6 +231,55 @@ const SOURCES: BankSource[] = [
 type LoadedSource = { questions: Question[]; sampledByServer: boolean };
 const cache = new Map<string, LoadedSource>();
 
+async function offlineEntitlementExpiry(track: TrackId): Promise<number | null> {
+  if (!supabase) return null
+  try {
+    const { data } = await supabase.auth.getSession()
+    const userId = data.session?.user?.id
+    return userId ? getOfflineEntitlementExpiry(userId, track) : null
+  } catch {
+    return null
+  }
+}
+
+async function mayUseOfflineTrack(track: TrackId, freeOnly: boolean): Promise<boolean> {
+  return freeOnly || (await offlineEntitlementExpiry(track)) !== null
+}
+
+function canFallbackToOffline(error: unknown): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true
+  const status = Number((error as { context?: { status?: number } } | null)?.context?.status || 0)
+  return status === 0 || status >= 500
+}
+
+async function getCachedCompetenceRange(
+  track: TrackId,
+  competenceId: string,
+  part: number | undefined,
+  freeOnly: boolean,
+  startItem: number,
+  limit: number | undefined,
+  randomSample: boolean
+): Promise<Question[]> {
+  if (!(await mayUseOfflineTrack(track, freeOnly))) {
+    throw new Error('Offline access to this paid track is unavailable or the saved license has expired. Reconnect to verify your subscription.')
+  }
+  const cached = await getOfflineQuestionsByCompetence(track, competenceId, part, freeOnly)
+  if (!cached) throw new Error('This question bank is not downloaded for offline use yet. Connect to the internet and download the offline pack from the track page.')
+  const offset = Math.max(0, Math.floor(startItem || 1) - 1)
+  if (randomSample) return shuffleQuestions(cached).slice(0, limit ?? cached.length)
+  return cached.slice(offset, limit == null ? undefined : offset + Math.max(0, Math.floor(limit)))
+}
+
+function shuffleQuestions<T>(items: T[]): T[] {
+  const values = items.slice()
+  for (let i = values.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[values[i - 1], values[j]] = [values[j], values[i - 1]]
+  }
+  return values
+}
+
 export function clearPaidQuestionCache() {
   for (const key of cache.keys()) if (key.endsWith(':full')) cache.delete(key);
 }
@@ -436,36 +494,46 @@ export async function getQuestionsByCompetence(
   limit?: number,
   randomSample = false
 ): Promise<Question[]> {
-  if (!supabase) throw new Error('Protected question service is not configured.');
-  const firstOffset = Math.max(0, Math.floor(startItem || 1) - 1);
-  let totalWanted = limit == null ? 0 : Math.max(0, Math.floor(limit));
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
+  }
+  if (!supabase) return getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
+  const firstOffset = Math.max(0, Math.floor(startItem || 1) - 1)
+  let totalWanted = limit == null ? 0 : Math.max(0, Math.floor(limit))
   if (limit == null) {
-    const counts = await getQuestionCountsByTrack(track, freeOnly);
+    const counts = await getQuestionCountsByTrack(track, freeOnly)
     const totalAvailable = counts
       .filter(item => item.competenceId === competenceId && (part == null || item.part === part))
-      .reduce((sum, item) => sum + item.count, 0);
-    totalWanted = Math.max(0, totalAvailable - firstOffset);
+      .reduce((sum, item) => sum + item.count, 0)
+    totalWanted = Math.max(0, totalAvailable - firstOffset)
   }
-  if (totalWanted === 0) return [];
-  if (randomSample && totalWanted > 200) throw new Error('Random exam samples are limited to 200 questions.');
+  if (totalWanted === 0) return []
+  if (randomSample && totalWanted > 200) throw new Error('Random exam samples are limited to 200 questions.')
 
   const requestPage = async (offset: number, pageLimit: number, random: boolean) => {
     const { data, error } = await supabase!.functions.invoke('question-bank', {
       body: { action: 'questions', track, competenceId, part, freeOnly, offset, limit: pageLimit, randomSample: random }
-    });
-    if (!error && Array.isArray(data?.questions)) return data.questions as Question[];
-    throw error || new Error(data?.error || 'Protected question delivery failed.');
-  };
-
-  const result: Question[] = [];
-  if (randomSample) return requestPage(0, totalWanted, true);
-  for (let retrieved = 0; retrieved < totalWanted; retrieved += 200) {
-    const pageLimit = Math.min(200, totalWanted - retrieved);
-    const page = await requestPage(firstOffset + retrieved, pageLimit, false);
-    result.push(...page);
-    if (page.length < pageLimit) break;
+    })
+    if (!error && Array.isArray(data?.questions)) return data.questions as Question[]
+    if (error && canFallbackToOffline(error)) {
+      try {
+        return await getCachedCompetenceRange(track, competenceId, part, freeOnly, random ? 1 : offset + 1, pageLimit, random)
+      } catch {
+        // Preserve the authoritative online service error if there is no valid offline pack.
+      }
+    }
+    throw error || new Error(data?.error || 'Protected question delivery failed.')
   }
-  return result;
+
+  if (randomSample) return requestPage(0, totalWanted, true)
+  const result: Question[] = []
+  for (let retrieved = 0; retrieved < totalWanted; retrieved += 200) {
+    const pageLimit = Math.min(200, totalWanted - retrieved)
+    const page = await requestPage(firstOffset + retrieved, pageLimit, false)
+    result.push(...page)
+    if (page.length < pageLimit) break
+  }
+  return result
 }
 
 /** Minimal java.util.Random so the free OIC-NW sample matches the Android app exactly. */
@@ -546,7 +614,20 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
 }
 
 export async function getQuestionsByTrack(track: TrackId, freeOnly = false): Promise<Question[]> {
-  if (!freeOnly) throw new Error('Full-track question preloading is disabled. Select a competence to access paid questions.');
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (!(await mayUseOfflineTrack(track, freeOnly))) {
+      throw new Error('Offline access to this paid track is unavailable or the saved license has expired.')
+    }
+    const cached = await getOfflineQuestionsByTrack(track, freeOnly)
+    if (cached) return cached
+    throw new Error('Download this question bank for offline use while connected to the internet.')
+  }
+  if (!freeOnly) {
+    if (!(await mayUseOfflineTrack(track, false))) throw new Error('Full-track question preloading is disabled. Select a competence to access paid questions.')
+    const cached = await getOfflineQuestionsByTrack(track, false)
+    if (cached) return cached
+    throw new Error('Full-track question preloading is disabled. Select a competence or download an offline pack.')
+  }
   const sources = SOURCES.filter((s) => s.track === track);
   const results = await Promise.all(sources.map(src => loadSource(src, true)));
   const allQuestions = results.flatMap(item => item.questions);
@@ -578,6 +659,19 @@ export type QuestionSetAccess = 'admin' | 'licensed' | 'free-sample';
 export async function authorizeQuestionSetAccess(track: TrackId, questions: Question[]): Promise<QuestionSetAccess | null> {
   if (!questions.length || questions.length > 3000 || questions.some(q => q.track !== track)) return null;
   const fingerprints = await Promise.all(questions.map(fingerprintQuestion));
+  const matchesCachedPack = async (freeOnly: boolean) => {
+    const cached = await getOfflineQuestionsByTrack(track, freeOnly)
+    if (!cached) return false
+    const allowedFingerprints = new Set(await Promise.all(cached.map(fingerprintQuestion)))
+    return fingerprints.every(fingerprint => allowedFingerprints.has(fingerprint))
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (await matchesCachedPack(true)) return 'free-sample'
+    if ((await offlineEntitlementExpiry(track)) && await matchesCachedPack(false)) return 'licensed'
+    return null
+  }
+
   if (supabase) {
     const { data, error } = await supabase.functions.invoke('question-bank', {
       body: { action: 'authorize-session', track, questionIds: questions.map(q => q.id), fingerprints }
@@ -587,26 +681,30 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
       return null;
     }
     const status = Number((error as { context?: { status?: number } } | null)?.context?.status || 0);
-    if (status !== 503) return null;
+    if (!(error && canFallbackToOffline(error))) return null;
   }
-  // If the service cannot validate a saved set, accept it only if every
-  // question matches the current server-defined free sample. Never treat paid
-  // cached content as free.
   try {
     const freeQuestions = await getQuestionsByTrack(track, true);
     const freeFingerprints = new Set(await Promise.all(freeQuestions.map(fingerprintQuestion)));
-    return fingerprints.every(fingerprint => freeFingerprints.has(fingerprint)) ? 'free-sample' : null;
+    if (fingerprints.every(fingerprint => freeFingerprints.has(fingerprint))) return 'free-sample'
+    if (await offlineEntitlementExpiry(track) && await matchesCachedPack(false)) return 'licensed'
+    return null
   } catch {
     return null;
   }
 }
-
 export async function authorizeQuestionSet(track: TrackId, questions: Question[]): Promise<boolean> {
   return (await authorizeQuestionSetAccess(track, questions)) !== null;
 }
 
 /** Returns question counts only; paid question text stays on the protected question endpoint. */
 export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (!(await mayUseOfflineTrack(track, freeOnly))) throw new Error('Offline access to this paid track is unavailable or the saved license has expired.')
+    const cached = await getOfflineQuestionCounts(track, freeOnly)
+    if (cached) return cached
+    throw new Error('Download this question bank for offline use while connected to the internet.')
+  }
   if (!supabase) throw new Error('Protected question service is not configured.');
   const { data, error } = await supabase.functions.invoke('question-bank', {
     body: { action: 'counts', track, freeOnly }
@@ -618,26 +716,12 @@ export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false)
       count: Math.max(0, Number(item.count) || 0)
     }));
   }
-  if (freeOnly) {
-    // If the count endpoint fails, derive free counts from server-filtered
-    // sample payloads returned by the protected question service.
-    const questions = await getQuestionsByTrack(track, true);
-    const counts = new Map<string, QuestionBankCount>();
-    for (const question of questions) {
-      const key = question.competenceId + ':' + (question.id.match(/-P(\d+)-/)?.[1] || '');
-      const current = counts.get(key);
-      if (current) current.count++;
-      else counts.set(key, {
-        competenceId: question.competenceId,
-        part: question.id.match(/-P(\d+)-/)?.[1] ? Number(question.id.match(/-P(\d+)-/)![1]) : null,
-        count: 1
-      });
-    }
-    return [...counts.values()];
+  if (error && canFallbackToOffline(error) && await mayUseOfflineTrack(track, freeOnly)) {
+    const cached = await getOfflineQuestionCounts(track, freeOnly)
+    if (cached) return cached
   }
   throw error || new Error(data?.error || 'Could not verify access to paid question metadata.');
 }
-
 export function listAvailableCompetences(
   track: TrackId
 ): { id: string; label: string }[] {
@@ -662,11 +746,90 @@ export function listRegisteredSourceCount(): number {
 
 export async function getFlashcardQuestions(track: TrackId, competenceId?: string, limit = 20): Promise<Question[]> {
   if (!supabase) throw new Error('Protected question service is not configured.');
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (!(await offlineEntitlementExpiry(track))) throw new Error('An active offline license is required for flashcards.')
+    const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
+    const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
+    return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
+  }
   const { data, error } = await supabase.functions.invoke('question-bank', {
     body: { action: 'flashcards', track, competenceId, limit: Math.max(1, Math.min(30, limit)) }
   });
-  if (error || !Array.isArray(data?.questions)) throw error || new Error(data?.error || 'Flashcards are unavailable.');
+  if (error || !Array.isArray(data?.questions)) {
+    if (error && canFallbackToOffline(error) && await offlineEntitlementExpiry(track)) {
+      const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
+      const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
+      if (local.length) return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
+    }
+    throw error || new Error(data?.error || 'Flashcards are unavailable.');
+  }
   return data.questions as Question[];
+}
+
+
+export async function downloadOfflinePack(
+  track: TrackId,
+  freeOnly: boolean,
+  onProgress?: (downloaded: number, total: number) => void
+): Promise<{ questionCount: number; groupCount: number }> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect to the internet before downloading an offline pack.')
+  if (!supabase) throw new Error('Protected question service is not configured.')
+
+  // Asking the protected counts endpoint is also the authorization gate for paid packs.
+  const counts = await getQuestionCountsByTrack(track, freeOnly)
+  const totalExpected = counts.reduce((sum, item) => sum + item.count, 0)
+  let downloaded = 0
+  const allQuestions: Question[] = []
+  const writtenGroups: { competenceId: string; part: number | null; questions: Question[] }[] = []
+
+  for (const group of counts) {
+    const questions: Question[] = []
+    for (let offset = 0; offset < group.count; offset += 200) {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connection lost. Reconnect and retry the offline download.')
+      const pageLimit = Math.min(200, group.count - offset)
+      const { data, error } = await supabase.functions.invoke('question-bank', {
+        body: {
+          action: 'questions', track, competenceId: group.competenceId, part: group.part,
+          freeOnly, offset, limit: pageLimit, randomSample: false
+        }
+      })
+      if (error || !Array.isArray(data?.questions)) throw error || new Error(data?.error || 'The offline question download failed.')
+      const page = data.questions as Question[]
+      if (!page.length) throw new Error('The server returned an incomplete question pack. Retry while online.')
+      questions.push(...page)
+      downloaded += page.length
+      onProgress?.(Math.min(downloaded, totalExpected), totalExpected)
+      if (page.length < pageLimit && offset + page.length < group.count) {
+        throw new Error('The server returned fewer questions than expected. No complete offline pack was marked ready.')
+      }
+    }
+    await saveOfflineQuestionPack({ track, competenceId: group.competenceId, part: group.part, freeOnly, questions })
+    writtenGroups.push({ competenceId: group.competenceId, part: group.part, questions })
+    allQuestions.push(...questions)
+  }
+
+  if (downloaded !== totalExpected) throw new Error(`Downloaded ${downloaded} of ${totalExpected} expected questions. Retry while online.`)
+  if (!freeOnly) {
+    // Keep the free reviewer available if this subscription expires while the device is offline.
+    const samples = freeSample(allQuestions, track)
+    const sampleGroups = new Map<string, { competenceId: string; part: number | null; questions: Question[] }>()
+    for (const question of samples) {
+      const part = question.id.match(/-P(\d+)-/)?.[1]
+      const key = `${question.competenceId}:${part ?? ''}`
+      const existing = sampleGroups.get(key) ?? { competenceId: question.competenceId, part: part ? Number(part) : null, questions: [] }
+      existing.questions.push(question)
+      sampleGroups.set(key, existing)
+    }
+    for (const sample of sampleGroups.values()) {
+      await saveOfflineQuestionPack({ track, competenceId: sample.competenceId, part: sample.part, freeOnly: true, questions: sample.questions })
+    }
+    await saveOfflinePackManifest({ track, freeOnly: true, questionCount: samples.length, groupCount: sampleGroups.size, complete: true })
+  }
+
+  await saveOfflinePackManifest({
+    track, freeOnly, questionCount: allQuestions.length, groupCount: writtenGroups.length, complete: true
+  })
+  return { questionCount: allQuestions.length, groupCount: writtenGroups.length }
 }
 
 /** Search within a track on the server and return only the limited matching results. */
@@ -678,9 +841,27 @@ export async function searchQuestions(
   const q = query.trim();
   if (q.length < 2) return [];
   if (!supabase) throw new Error('Protected question service is not configured.');
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (!(await offlineEntitlementExpiry(track))) throw new Error('An active offline license is required for question search.')
+    const cached = (await getOfflineQuestionsByTrack(track, false)) ?? []
+    return cached.filter(question =>
+      (question.questionText + ' ' + question.topic + ' ' + question.competenceId + ' ' + question.options.join(' '))
+        .toLowerCase().includes(q.toLowerCase())
+    ).slice(0, Math.max(1, Math.min(40, limit)))
+  }
   const { data, error } = await supabase.functions.invoke('question-bank', {
     body: { action: 'search', track, query: q, limit: Math.max(1, Math.min(40, limit)) }
   });
-  if (error || !Array.isArray(data?.questions)) throw error || new Error(data?.error || 'Question search is unavailable.');
+  if (error || !Array.isArray(data?.questions)) {
+    if (error && canFallbackToOffline(error) && await offlineEntitlementExpiry(track)) {
+      const cached = (await getOfflineQuestionsByTrack(track, false)) ?? []
+      const hits = cached.filter(question =>
+        (question.questionText + ' ' + question.topic + ' ' + question.competenceId + ' ' + question.options.join(' '))
+          .toLowerCase().includes(q.toLowerCase())
+      )
+      if (cached.length) return hits.slice(0, Math.max(1, Math.min(40, limit)))
+    }
+    throw error || new Error(data?.error || 'Question search is unavailable.');
+  }
   return data.questions as Question[];
 }
