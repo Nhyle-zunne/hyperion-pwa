@@ -21,5 +21,7 @@ jobs:
           node-version: 24
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Release-safety smoke checks
+        run: npm run test:security
       - name: Type-check and build
         run: npm run build
