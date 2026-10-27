@@ -90,10 +90,10 @@ Deno.serve(async (req) => {
     }))
     return new Response('Webhook signature missing', { status: 401 })
   }
-  if (!/^\\d+$/.test(timestamp) || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) {
+  if (!/^\d+$/.test(timestamp) || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) {
     console.warn('[paymongo-webhook] Rejected stale or invalid signature timestamp', JSON.stringify({
-      timestampIsNumeric: /^\\d+$/.test(timestamp),
-      ageSeconds: /^\\d+$/.test(timestamp) ? Math.round(Date.now() / 1000 - Number(timestamp)) : null
+      timestampIsNumeric: /^\d+$/.test(timestamp),
+      ageSeconds: /^\d+$/.test(timestamp) ? Math.round(Date.now() / 1000 - Number(timestamp)) : null
     }))
     return new Response('Stale webhook', { status: 401 })
   }
