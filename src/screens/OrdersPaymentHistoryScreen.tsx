@@ -149,6 +149,49 @@ export default function OrdersPaymentHistoryScreen() {
     }
   }
 
+  const pendingCheckoutIds = [...new Set(orders
+    .filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
+    .map(order => order.checkout_batch_id || order.id))].sort().join(',')
+
+  // Automatically reconcile open PayMongo checkouts while the customer views their history.
+  useEffect(() => {
+    if (!supabase || !session?.user.id || !pendingCheckoutIds) return
+    let active = true
+    let checking = false
+    const checkPending = async () => {
+      if (checking) return
+      checking = true
+      try {
+        const activated: string[] = []
+        for (const orderId of pendingCheckoutIds.split(',').filter(Boolean)) {
+          const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
+          if (!active) return
+          if (error || data?.status !== 'paid') continue
+          const codes: string[] = Array.isArray(data.productCodes)
+            ? data.productCodes
+            : typeof data.productCode === 'string' ? [data.productCode] : []
+          activated.push(...codes)
+        }
+        if (active && activated.length) {
+          await loadOrders()
+          await refreshCloudEntitlements()
+          if (active) {
+            const labels = [...new Set(activated)].map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
+            setErrorMessage(false)
+            setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
+          }
+        }
+      } catch {
+        // A transient failure is retried on the next interval.
+      } finally {
+        checking = false
+      }
+    }
+    void checkPending()
+    const timer = window.setInterval(() => { void checkPending() }, 8000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [session?.user.id, pendingCheckoutIds, refreshCloudEntitlements])
+
   const card: React.CSSProperties = {
     background: 'var(--bg-card)',
     color: 'var(--text)',
