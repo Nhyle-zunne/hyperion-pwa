@@ -15,6 +15,7 @@ type Order = {
   payment_method: string | null
   payment_reference: string | null
   checkout_batch_id: string | null
+  paymongo_checkout_session_id: string | null
 }
 
 type Entitlement = { product_code: string; expires_at: string | null }
@@ -108,7 +109,7 @@ export default function ManualPaymentScreen() {
       supabase.from('entitlements').select('product_code,expires_at')
         .eq('user_id', session.user.id).eq('status', 'active').gt('expires_at', new Date().toISOString())
         .eq('product_code', productCode),
-      supabase.from('orders').select('id,product_code,amount_php,status,payment_method,payment_reference,checkout_batch_id')
+      supabase.from('orders').select('id,product_code,amount_php,status,payment_method,payment_reference,checkout_batch_id,paymongo_checkout_session_id')
         .eq('user_id', session.user.id).eq('product_code', productCode)
         .order('created_at', { ascending: false }).limit(30)
     ])
@@ -131,7 +132,10 @@ export default function ManualPaymentScreen() {
 
   const activeLicense = owned.find(item => item.product_code === productCode && (!item.expires_at || new Date(item.expires_at).getTime() > Date.now()))
   const pendingManualOrder = orders.find(order => ['submitted', 'pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
-  const pendingPayMongoOrder = orders.find(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
+  const preparingPayMongoOrder = orders.find(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout' && !order.paymongo_checkout_session_id)
+  const pendingPayMongoOrder = orders.find(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout' && !!order.paymongo_checkout_session_id)
+  const failedPayMongoOrder = orders.find(order => order.status === 'failed' && order.payment_method === 'PayMongo Checkout' && !!order.paymongo_checkout_session_id)
+  const unresolvedPayMongoOrder = preparingPayMongoOrder || pendingPayMongoOrder || failedPayMongoOrder
 
   const submitPayment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -146,7 +150,7 @@ export default function ManualPaymentScreen() {
       setMessage('This license is already active for your account. You do not need to purchase this track again.')
       return
     }
-    if (pendingManualOrder || pendingPayMongoOrder) {
+    if (pendingManualOrder || unresolvedPayMongoOrder) {
       setIsError(true)
       setMessage('There is already a pending payment for this track. Resolve it before submitting another payment.')
       return
@@ -198,14 +202,14 @@ export default function ManualPaymentScreen() {
     }
   }
 
-  const cancelPayMongo = async () => {
-    if (!supabase || !pendingPayMongoOrder) return
+  const cancelPayMongo = async (order: Order) => {
+    if (!supabase) return
     setBusy(true)
     setIsError(false)
     setMessage('Checking the existing PayMongo checkout before switching payment methods…')
     try {
       const { data, error } = await supabase.functions.invoke('cancel-checkout', {
-        body: { orderId: pendingPayMongoOrder.checkout_batch_id || pendingPayMongoOrder.id }
+        body: { orderId: order.checkout_batch_id || order.id }
       })
       if (error) throw new Error(await edgeMessage(error, 'Unable to check the existing checkout. Please try again.'))
       if (data?.error) throw new Error(data.error)
@@ -250,7 +254,8 @@ export default function ManualPaymentScreen() {
         {message && <div role="status" style={{ ...card, borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', marginBottom: '1rem', lineHeight: 1.5 }}>{message}</div>}
         {activeLicense ? <section style={{ ...card, borderColor: 'var(--success, #15803d)' }}><h2 style={{ marginTop: 0 }}>License already active</h2><p className="manual-muted">Your {product.label} license is already active{activeLicense.expires_at ? ` until ${new Date(activeLicense.expires_at).toLocaleDateString()}` : ''}.</p><button type="button" className="btn btn-outline" onClick={() => navigate('/account?tab=licenses')}>VIEW MY LICENSES</button></section>
           : pendingManualOrder ? <section style={{ ...card, borderColor: '#d6a33a' }}><h2 style={{ marginTop: 0 }}>Manual payment already submitted</h2><p className="manual-muted">There is already a {pendingManualOrder.status === 'submitted' ? 'payment awaiting review' : 'pending payment'} for {product.label}. Cancel that request before submitting another one.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelManualRequest()} style={{ width: '100%' }}>CANCEL MANUAL PAYMENT REQUEST</button></section>
-          : pendingPayMongoOrder ? <section style={{ ...card, borderColor: '#d6a33a' }}><h2 style={{ marginTop: 0 }}>PayMongo checkout already open</h2><p className="manual-muted">You have an existing PayMongo checkout for this track. Close it safely before switching to manual payment.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongo()} style={{ width: '100%', color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>CANCEL PAYMONGO CHECKOUT</button></section>
+           : preparingPayMongoOrder ? <section style={{ ...card, borderColor: '#d6a33a' }}><h2 style={{ marginTop: 0 }}>PayMongo checkout is being prepared</h2><p className="manual-muted">Hyperion is still saving the secure checkout session. Wait a moment and refresh before switching to manual payment, so you don't accidentally pay twice.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshData()} style={{ width: '100%' }}>REFRESH CHECKOUT STATUS</button></section>
+           : pendingPayMongoOrder || failedPayMongoOrder ? <section style={{ ...card, borderColor: '#d6a33a' }}><h2 style={{ marginTop: 0 }}>{failedPayMongoOrder ? 'Unresolved PayMongo checkout' : 'PayMongo checkout already open'}</h2><p className="manual-muted">{failedPayMongoOrder ? 'A previous attempt was marked failed, but its provider session is still recorded. Hyperion must verify and close that session before allowing a manual payment.' : 'You have an existing PayMongo checkout for this track. Close it safely before switching to manual payment.'}</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongo(failedPayMongoOrder || pendingPayMongoOrder!)} style={{ width: '100%', color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>VERIFY &amp; CANCEL PAYMONGO CHECKOUT</button></section>
           : <div className="manual-grid">
             <section style={card}>
               <div className="manual-section-title"><div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>{product.label}</h2><p className="manual-muted" style={{ margin: '.25rem 0 0' }}>{licenseTerm === 'week' ? '7-day' : licenseTerm === 'month' ? '1-month' : '12-month'} reviewer license</p></div><strong style={{ fontSize: '1.25rem' }}>₱{licensePrice}</strong></div>
