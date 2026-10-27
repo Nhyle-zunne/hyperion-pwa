@@ -182,7 +182,7 @@ export default function AdminLicensesScreen() {
     </div>
     <h1 className="page-title" style={{ textAlign: 'left' }}>User License Management</h1>
     <p className="subtitle">Manage every registered Hyperion account and its track access. Manual changes apply immediately and are recorded separately from payment submissions.</p>
-    {message && <div role="status" aria-live="polite" style={{ ...card, borderColor: /Warning:/i.test(message) ? 'var(--warning, #d97706)' : 'var(--border)' }}>{message}</div>}
+    {message && <div role="status" aria-live="polite" style={{ ...card, borderColor: /Warning:/i.test(message) ? 'var(--warning, #c2410c)' : 'var(--border)' }}>{message}</div>}
     {!authorized ? <section style={card}>
       <p>{loading ? 'Loading accounts and license statuses…' : 'The user-license dashboard could not load. Confirm that you are signed in with an email listed in the server-side ADMIN_EMAILS secret.'}</p>
       <button type="button" className="btn btn-outline" disabled={loading} onClick={() => { setMessage(''); void load() }}>Retry</button>
@@ -312,7 +312,7 @@ export default function AdminLicensesScreen() {
       {activeTab === 'activity' && <section id="admin-license-activity-panel" role="tabpanel" aria-labelledby="admin-license-activity-tab" style={card}>
         <h2 style={{ marginTop: 0, fontSize: '1rem' }}>Recent admin license activity</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Manual activation, extension, and revocation actions are listed here independently from payment records.</p>
-        {auditWarning && <p role="status" style={{ color: 'var(--warning, #d97706)' }}>{auditWarning}</p>}
+        {auditWarning && <p role="status" style={{ color: 'var(--warning, #c2410c)' }}>{auditWarning}</p>}
         {audit.length ? <div style={{ display: 'grid', gap: '.5rem' }}>
           {audit.map(item => <div key={item.id} style={{ padding: '.65rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
             <strong style={{ fontSize: '.8rem' }}>{item.action.toUpperCase()} · {TRACKS.find(track => track.code === item.product_code)?.label || item.product_code}</strong>
