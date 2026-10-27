@@ -35,6 +35,38 @@ Deno.serve(async req => {
 
   const admin = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } })
 
+  // Don't destroy order/session linkage while a provider payment or manual review
+  // may still need reconciliation. The customer must safely cancel PayMongo first.
+  const { data: unresolvedOrders, error: unresolvedOrdersError } = await admin.from('orders')
+    .select('id,status,payment_method,paymongo_checkout_session_id')
+    .eq('user_id', user.id)
+    .in('status', ['pending', 'submitted'])
+    .limit(50)
+  if (unresolvedOrdersError) return json({ error: 'Could not verify pending payments. No account deletion was performed.' }, 500)
+  if (unresolvedOrders?.length) {
+    return json({ error: 'Please resolve or cancel all pending payment submissions and PayMongo checkouts before deleting your account. This prevents a payment in progress from being lost.' }, 409)
+  }
+
+  const { data: openBatches, error: openBatchesError } = await admin.from('checkout_batches')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('status', 'pending')
+    .limit(1)
+  if (openBatchesError) return json({ error: 'Could not verify pending basket checkouts. No account deletion was performed.' }, 500)
+  if (openBatches?.length) {
+    return json({ error: 'Please safely cancel your pending PayMongo basket checkout before deleting your account.' }, 409)
+  }
+
+  // An admin's ID is retained in the license audit trail. Refuse before deleting
+  // any user rows so a foreign-key restriction cannot leave a half-deleted account.
+  const { count: adminAuditCount, error: adminAuditError } = await admin.from('license_admin_audit')
+    .select('id', { count: 'exact', head: true })
+    .eq('admin_user_id', user.id)
+  if (adminAuditError) return json({ error: 'Could not verify account audit dependencies. No account deletion was performed.' }, 500)
+  if ((adminAuditCount ?? 0) > 0) {
+    return json({ error: 'This account is referenced by administrative license audit records. Contact support to process account deletion while preserving the audit trail.' }, 409)
+  }
+
   // Remove user-owned entitlements first because they reference orders with RESTRICT.
   const { error: entitlementsError } = await admin.from('entitlements').delete().eq('user_id', user.id)
   if (entitlementsError) return json({ error: 'Could not remove your linked licenses. No account deletion was completed. Please contact support.' }, 500)
