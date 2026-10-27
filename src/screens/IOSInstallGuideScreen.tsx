@@ -67,7 +67,7 @@ export default function IOSInstallGuideScreen() {
         <p style={{ color: 'var(--text-muted)', fontSize: '.8rem', margin: '.35rem 0 0' }}>Swipe horizontally from left to right to view all six screenshots.</p>
       </section>
       <section style={{ border: '1px solid var(--border)', borderRadius: 14, padding: 'clamp(1rem, 3vw, 1.5rem)', background: 'var(--bg-card)' }}>
-        <h2 style={{ marginTop: 0, fontSize: '1.25rem' }}>Text-only instructions</h2>
+        <h2 style={{ marginTop: 0, fontSize: '1.25rem' }}>Instructions</h2>
         <ol style={{ paddingLeft: '1.35rem', marginBottom: 0, lineHeight: 1.75 }}>
           <li><strong>Open Safari.</strong> Visit <a href="https://hyperionmaritime.org" style={{ color: 'var(--accent)' }}>hyperionmaritime.org</a> in Safari itself. If the link opened inside another app, use that app's Share menu to open it in Safari first.</li>
           <li><strong>Open the page menu.</strong> Tap the menu icon beside Safari's address bar.</li>
