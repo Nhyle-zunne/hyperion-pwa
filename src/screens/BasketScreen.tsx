@@ -450,6 +450,9 @@ export default function BasketScreen() {
     }
   }
 
+  const checkout = async (requestedItems: BasketItem[] = basket) =>
+    withPageLoading('Preparing secure checkout', () => checkoutInternal(requestedItems))
+
   const cancelCheckoutInternal = async (groupId: string, groupItems: BasketItem[]) => {
     if (!supabase || !session) return
     setBusy(true)
@@ -482,6 +485,9 @@ export default function BasketScreen() {
       setBusyCheckoutId(null)
     }
   }
+
+  const cancelCheckout = async (groupId: string, groupItems: BasketItem[]) =>
+    withPageLoading('Checking checkout cancellation', () => cancelCheckoutInternal(groupId, groupItems))
 
   const refreshStatusInternal = async () => {
     if (!supabase || !session) return
