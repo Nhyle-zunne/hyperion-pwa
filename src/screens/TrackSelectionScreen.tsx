@@ -31,6 +31,12 @@ function dayKey(ts = Date.now()) {
   const d = new Date(ts)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+function addDaysToKey(dateKey: string, offset: number) {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0)
+  date.setDate(date.getDate() + offset)
+  return dayKey(date.getTime())
+}
 
 export default function TrackSelectionScreen() {
   const navigate = useNavigate()
@@ -53,6 +59,9 @@ export default function TrackSelectionScreen() {
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked || s.cloudTrackIds.includes('ALL'))
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
   const segments = useStudyTimeStore((s) => s.segments)
+  const dailyCheckInStartDate = useStudyTimeStore((s) => s.dailyCheckInStartDate)
+  const dailyCheckInLastDate = useStudyTimeStore((s) => s.dailyCheckInLastDate)
+  const dailyCheckInCount = useStudyTimeStore((s) => s.dailyCheckInCount)
   const history = useHistoryStore((s) => s.entries)
 
   const todayMs = useMemo(() => {
@@ -66,30 +75,33 @@ export default function TrackSelectionScreen() {
     return Math.round(sum / history.length)
   }, [history])
 
+  const todayKey = dayKey()
+  const yesterdayKey = addDaysToKey(todayKey, -1)
+  // Predict today's increment for display while account progress is being restored.
+  // The persisted store records the actual check-in once per local calendar day.
+  const displayedStreakCount = dailyCheckInLastDate === todayKey
+    ? dailyCheckInCount
+    : dailyCheckInLastDate === yesterdayKey && dailyCheckInCount > 0
+      ? dailyCheckInCount + 1
+      : 0
+  const displayStartDate = displayedStreakCount > 0 && dailyCheckInStartDate ? dailyCheckInStartDate : todayKey
+  const firstVisibleDay = displayedStreakCount > 7 ? displayedStreakCount - 6 : 1
   const streakDays = useMemo(() => {
-    const active = new Set<string>()
-    for (const s of segments) active.add(s.day)
-    for (const h of history) active.add(dayKey(h.finishedAt))
-
-    // Display the rolling week in chronological order: Day 1 is six days ago,
-    // and Day 7 is today. Local noon + setDate keeps dates stable across DST changes.
-    const today = new Date()
-    today.setHours(12, 0, 0, 0)
     const days: { dayNumber: number; active: boolean; label: string; dateLabel: string }[] = []
-    for (let dayNumber = 1; dayNumber <= 7; dayNumber++) {
-      const daysAgo = 7 - dayNumber
-      const date = new Date(today)
-      date.setDate(today.getDate() - daysAgo)
-      const key = dayKey(date.getTime())
-      const label = `DAY ${dayNumber}`
+    for (let offset = 0; offset < 7; offset++) {
+      const dayNumber = firstVisibleDay + offset
+      const dateKey = addDaysToKey(displayStartDate, dayNumber - 1)
+      const date = new Date(`${dateKey}T12:00:00`)
       const formattedDate = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
-      const dateLabel = dayNumber === 7 ? `TODAY · ${formattedDate}` : formattedDate
-      days.push({ dayNumber, active: active.has(key), label, dateLabel })
+      const dateLabel = dateKey === todayKey ? `TODAY · ${formattedDate}` : formattedDate
+      days.push({ dayNumber, active: dayNumber <= displayedStreakCount, label: `DAY ${dayNumber}`, dateLabel })
     }
     return days
-  }, [segments, history])
+  }, [displayStartDate, displayedStreakCount, firstVisibleDay, todayKey])
 
-  const streakCount = streakDays.filter((day) => day.active).length
+  const streakStatus = displayedStreakCount <= 7
+    ? `${displayedStreakCount} / 7 DAYS`
+    : `${displayedStreakCount} DAY STREAK`
   const select = (track: (typeof TRACKS)[0]) => navigate(`/track?track=${track.id}`)
   const saveTarget = () => {
     const el = document.getElementById('target-date-input') as HTMLInputElement | null
@@ -131,8 +143,8 @@ export default function TrackSelectionScreen() {
 
         <div style={{ marginTop: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>ROLLING 7-DAY STREAK</span>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>{streakCount} / 7 DAYS</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>DAILY CHECK-IN STREAK</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>{streakStatus}</span>
           </div>
           <div className="daily-streak-grid">
             {streakDays.map((day) => (
