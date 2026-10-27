@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useHistoryStore } from '../stores/historyStore'
 import { useStudyTimeStore, formatDurationMs } from '../stores/studyTimeStore'
@@ -34,6 +34,7 @@ function dayKey(ts = Date.now()) {
 
 export default function TrackSelectionScreen() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const targetDate = useStudyTimeStore((s) => s.targetDate)
   const setTargetDate = useStudyTimeStore((s) => s.setTargetDate)
@@ -88,7 +89,7 @@ export default function TrackSelectionScreen() {
   return (
     <div className="screen dashboard-screen" style={{ paddingTop: 0 }}>
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
-      <InstallPrompt variant="modal" />
+      {location.pathname === '/' && <InstallPrompt variant="modal" />}
 
       <div className="dash-header">
         <div>
