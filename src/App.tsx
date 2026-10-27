@@ -30,6 +30,7 @@ import StudyTimeScreen from './screens/StudyTimeScreen'
 import IOSInstallGuideScreen from './screens/IOSInstallGuideScreen'
 import PaywallDialog from './components/PaywallDialog'
 import BottomNav from './components/BottomNav'
+import TopLoadingIndicator from './components/TopLoadingIndicator'
 import { useUIStore } from './stores/uiStore'
 import { usePracticeStore } from './stores/practiceStore'
 import { useBookmarksStore } from './stores/bookmarksStore'
@@ -269,6 +270,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <TopLoadingIndicator />
       {isQuestionRunner && (
         <header
           aria-label="Question navigation"
