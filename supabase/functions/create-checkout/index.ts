@@ -204,7 +204,8 @@ Deno.serve(async (req) => {
     const { data: entitlement, error } = await admin.from('entitlements')
       .select('status,expires_at').eq('user_id', user.id).eq('product_code', code).maybeSingle()
     if (error) return json({ error: 'Could not check your current licenses. Please retry.' }, 500)
-    if (entitlement?.status === 'active' && entitlement.expires_at && new Date(entitlement.expires_at).getTime() > Date.now()) {
+    if (entitlement?.status === 'active' &&
+        (!entitlement.expires_at || new Date(entitlement.expires_at).getTime() > Date.now())) {
       return json({ error: `${products[code].name} is already active for your account. Remove it from the basket before checkout.` }, 409)
     }
   }
