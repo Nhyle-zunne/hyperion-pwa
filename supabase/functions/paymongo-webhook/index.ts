@@ -72,8 +72,11 @@ Deno.serve(async (req) => {
   }
 
   const timestamp = parts.t
-  const webhookSecret = Deno.env.get('PAYMONGO_WEBHOOK_SECRET')?.trim()
   const expectedMode = Deno.env.get('PAYMONGO_EXPECT_LIVEMODE')
+  // Dedicated mode-specific secrets allow test verification without replacing the live signing secret.
+  const webhookSecret = (expectedMode === 'true'
+    ? Deno.env.get('PAYMONGO_LIVE_WEBHOOK_SECRET') || Deno.env.get('PAYMONGO_WEBHOOK_SECRET')
+    : Deno.env.get('PAYMONGO_TEST_WEBHOOK_SECRET') || Deno.env.get('PAYMONGO_WEBHOOK_SECRET'))?.trim()
   if (expectedMode !== 'true' && expectedMode !== 'false') {
     console.error('[paymongo-webhook] Expected PayMongo mode is not configured')
     return new Response('Expected PayMongo live/test mode is not configured', { status: 503 })
