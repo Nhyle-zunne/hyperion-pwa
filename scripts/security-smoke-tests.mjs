@@ -5,7 +5,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
   pricing, checkout, verify, webhook, questionBank, questionBankMigration,
   finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen, accountScreen,
-  indexCss, manualPayment, ordersHistory, historyScreen, studyTimeScreen
+  indexCss, manualPayment, ordersHistory, historyScreen, studyTimeScreen, trackSelectionScreen
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -26,7 +26,8 @@ const [
   read('../src/screens/ManualPaymentScreen.tsx'),
   read('../src/screens/OrdersPaymentHistoryScreen.tsx'),
   read('../src/screens/HistoryScreen.tsx'),
-  read('../src/screens/StudyTimeScreen.tsx')
+  read('../src/screens/StudyTimeScreen.tsx'),
+  read('../src/screens/TrackSelectionScreen.tsx')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -100,6 +101,10 @@ assert.ok(!ordersHistory.includes('#9a6b07') && !ordersHistory.includes('#e8c875
 assert.ok(historyScreen.includes("borderLeft: '4px solid var(--accent)'") && !historyScreen.includes("#f59e0b"), 'Study streak uses Hyperion green instead of gold');
 assert.ok(studyTimeScreen.includes("'#3b82f6'") && !studyTimeScreen.includes("#f59e0b"), 'Study-time chart palette avoids gold accents');
 assert.ok(indexCss.includes('--warning: #fb923c;') && indexCss.includes('--warning: #c2410c;'), 'Warnings use orange tones, not amber-gold');
+assert.ok(trackSelectionScreen.includes('for (let i = 0; i < 7; i++)') && trackSelectionScreen.includes('date.setDate(today.getDate() - i)'), 'Dashboard streak is ordered from today backwards through the prior six dates');
+assert.ok(trackSelectionScreen.includes("i === 0") && trackSelectionScreen.includes("'TODAY'") && trackSelectionScreen.includes("'YDAY'"), 'Dashboard identifies today and yesterday rather than using ambiguous D1-D7 labels');
+assert.ok(trackSelectionScreen.includes('className="daily-streak-grid"') && trackSelectionScreen.includes('className="daily-streak-status"'), 'Dashboard streak uses dedicated responsive styling for large labels and status indicators');
+assert.ok(indexCss.includes('.daily-streak-status') && indexCss.includes('font-size: clamp(2rem, 3.1vw, 3.1rem)') && indexCss.includes('@media (max-width: 599px)'), 'Streak labels and checkmarks scale up on desktop and remain responsive on mobile');
 
 for (const route of [
   '/account', '/checkout', '/manual-payment', '/orders', '/admin/licenses',
