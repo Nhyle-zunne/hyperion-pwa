@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; license_term: 'week'|'month'|'year'; amount_php: number; status: string; access_status: string; access_expires_at: string | null; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; customer_name: string | null; customer_company: string | null; customer_school: string | null; admin_note: string | null; created_at: string }
+type ReconciliationAlert = { id: string; checkout_reference: string; checkout_session_id: string; paymongo_payment_id: string; expected_amount_php: number; observed_amount_minor: number; observed_currency: string; reason: string; created_at: string }
 function safeAdminError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : ''
   if (!message || /supabase|postgrest|postgres|sqlstate|provider credentials|redirect settings|edge function|row[- ]level security|\bpgrst\b|\bjwt\b|database schema|relation .* does not exist|violates .* constraint/i.test(message)) return fallback
@@ -12,6 +13,8 @@ const names: Record<string,string> = { oic_nw:'Deck OIC-NW', gmdss:'GMDSS GOC', 
 export default function AdminPaymentsScreen() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState<Order[]>([])
+  const [reconciliationAlerts, setReconciliationAlerts] = useState<ReconciliationAlert[]>([])
+  const [alertLoadWarning, setAlertLoadWarning] = useState('')
   const [note, setNote] = useState<Record<string,string>>({})
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -28,6 +31,13 @@ export default function AdminPaymentsScreen() {
       const result = await call({ action: 'list' })
       setOrders(result.orders || [])
       setAuthorized(true)
+      try {
+        const reconciliation = await call({ action: 'reconciliation-alerts' })
+        setReconciliationAlerts(reconciliation.alerts || [])
+        setAlertLoadWarning('')
+      } catch {
+        setAlertLoadWarning('Could not load PayMongo reconciliation alerts. Check the function logs before marking any duplicate payment resolved.')
+      }
     } catch (e) { setAuthorized(false); setMessage(safeAdminError(e, 'Unable to load payment submissions. Please retry.')) }
   }, [call])
   // Keep the admin view current when webhook delivery or customer-side verification
@@ -69,6 +79,24 @@ export default function AdminPaymentsScreen() {
     <p className="subtitle">Review manual payment submissions here. License activation, extension, and revocation are managed separately in User Licenses.</p>
     {message && <div role="status" style={card}>{/supabase/i.test(message) ? 'Payment administration is temporarily unavailable. Please try again later.' : message}</div>}
     {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void load()}>Retry</button></section> : <>
+      {alertLoadWarning && <div role="alert" style={{ ...card, borderColor: 'var(--danger, #dc2626)' }}>{alertLoadWarning}</div>}
+      {reconciliationAlerts.length > 0 && <section style={{ ...card, borderColor: 'var(--danger, #dc2626)', borderWidth: 2 }}>
+        <h2 style={{ marginTop: 0, color: 'var(--danger, #dc2626)' }}>PayMongo reconciliation required ({reconciliationAlerts.length})</h2>
+        <p style={{ lineHeight: 1.5 }}>PayMongo reported a distinct paid transaction for a checkout that was already fulfilled, or the payment ID was associated with another checkout. Hyperion deliberately did not grant a second license term. Compare these records with PayMongo and resolve or refund any duplicate charge there before clearing your operations queue.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,320px),1fr))', gap: '.75rem' }}>
+          {reconciliationAlerts.map(alert => <section key={alert.id} style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.85rem', minWidth: 0 }}>
+            <strong style={{ display: 'block', marginBottom: '.4rem' }}>Observed payment · {alert.observed_currency} {(Number(alert.observed_amount_minor) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            <div style={{ fontSize: '.84rem', lineHeight: 1.55, overflowWrap: 'anywhere' }}>
+              Expected checkout total: ₱{alert.expected_amount_php}<br/>
+              Payment ID: {alert.paymongo_payment_id}<br/>
+              Checkout reference: {alert.checkout_reference}<br/>
+              Session ID: {alert.checkout_session_id}<br/>
+              Detected: {new Date(alert.created_at).toLocaleString()}
+            </div>
+            <p style={{ margin: '.6rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.45 }}>{alert.reason}</p>
+          </section>)}
+        </div>
+      </section>}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap', marginBottom:'.65rem' }}>
         <h2 style={{ margin:0 }}>Payment submissions ({orders.length})</h2>
         <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void load()} style={{ padding:'.55rem .8rem' }}>Refresh submissions</button>
