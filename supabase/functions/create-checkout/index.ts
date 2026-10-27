@@ -59,13 +59,11 @@ Deno.serve(async (req) => {
   const paymongoKey = Deno.env.get('PAYMONGO_SECRET_KEY')
   const checkoutEnabled = Deno.env.get('PAYMONGO_CHECKOUT_ENABLED') === 'true'
   const expectedLiveMode = Deno.env.get('PAYMONGO_EXPECT_LIVEMODE')
-  if (!supabaseUrl || !anonKey || !serviceKey) return json({ error: 'Payment service is not configured. Contact Hyperion support.' }, 503)
-  if (!checkoutEnabled) return json({ error: 'PayMongo checkout is not enabled yet. Please use manual payment for now.' }, 503)
-  if (!paymongoKey || (expectedLiveMode !== 'true' && expectedLiveMode !== 'false')) return json({ error: 'PayMongo checkout is not fully configured yet. Please use manual payment for now.' }, 503)
-  if ((expectedLiveMode === 'true' && !paymongoKey.startsWith('sk_live_')) || (expectedLiveMode === 'false' && !paymongoKey.startsWith('sk_test_'))) {
-    return json({ error: 'The PayMongo key does not match the configured payment mode. Please contact Hyperion support.' }, 503)
-  }
+  if (!supabaseUrl || !anonKey) return json({ error: 'Payment service is not configured. Contact Hyperion support.' }, 503)
 
+  // Authenticate first, then expose only a non-secret availability result to the
+  // signed-in checkout page. This lets the UI hide live checkout when disabled
+  // instead of displaying a PayMongo button that can only fail after a click.
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) return json({ error: 'Please sign in first.' }, 401)
   const authClient = createClient(supabaseUrl, anonKey, {
@@ -75,8 +73,36 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userError } = await authClient.auth.getUser()
   if (userError || !user) return json({ error: 'Your session is invalid. Please sign in again.' }, 401)
 
-  let body: { productCode?: string; productCodes?: unknown; items?: unknown }
+  let body: { action?: string; productCode?: string; productCodes?: unknown; items?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid request body.' }, 400) }
+
+  const modeIsValid = expectedLiveMode === 'true' || expectedLiveMode === 'false'
+  const keyMatchesMode = Boolean(paymongoKey && modeIsValid && (
+    (expectedLiveMode === 'true' && paymongoKey.startsWith('sk_live_')) ||
+    (expectedLiveMode === 'false' && paymongoKey.startsWith('sk_test_'))
+  ))
+  if (body.action === 'status') {
+    const enabled = checkoutEnabled && Boolean(serviceKey) && keyMatchesMode
+    const reason = enabled ? null
+      : !checkoutEnabled ? 'disabled'
+      : !serviceKey ? 'service_unavailable'
+      : !paymongoKey || !modeIsValid ? 'not_configured'
+      : !keyMatchesMode ? 'mode_mismatch'
+      : 'unavailable'
+    return json({
+      action: 'status',
+      enabled,
+      mode: modeIsValid ? (expectedLiveMode === 'true' ? 'live' : 'test') : null,
+      reason
+    })
+  }
+
+  if (!serviceKey) return json({ error: 'Payment service is not configured. Contact Hyperion support.' }, 503)
+  if (!checkoutEnabled) return json({ error: 'PayMongo checkout is not enabled yet. Please use manual payment for now.' }, 503)
+  if (!paymongoKey || !modeIsValid) return json({ error: 'PayMongo checkout is not fully configured yet. Please use manual payment for now.' }, 503)
+  if (!keyMatchesMode) {
+    return json({ error: 'The PayMongo key does not match the configured payment mode. Please contact Hyperion support.' }, 503)
+  }
   const rawItems: unknown[] = Array.isArray(body.items)
     ? body.items
     : (Array.isArray(body.productCodes) ? body.productCodes : body.productCode ? [body.productCode] : [])
