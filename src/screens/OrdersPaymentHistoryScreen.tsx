@@ -213,7 +213,7 @@ export default function OrdersPaymentHistoryScreen() {
     <AccountSectionTabs active="orders" />
     <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
       <div>
-        <div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.7rem', letterSpacing: '.14em' }}>ACCOUNT & SUBSCRIPTIONS</div>
+        <div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.7rem', letterSpacing: '.14em' }}>ACCOUNT & SUBSCRIPTIONS</div>
         <h1 className="page-title" style={{ textAlign: 'left', margin: '.2rem 0 .3rem' }}>Orders & payment history</h1>
         <p style={{ color: 'var(--text-muted)', margin: 0 }}>Review your manual submissions, PayMongo purchases, and payment status.</p>
       </div>
