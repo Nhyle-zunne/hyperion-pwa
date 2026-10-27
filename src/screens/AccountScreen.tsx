@@ -421,9 +421,9 @@ export default function AccountScreen() {
       .account-page .account-toolbar-actions button{min-height:42px}
       .account-page .account-products-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
       .account-page .account-product-card{min-width:0;display:flex;flex-direction:column;padding:1rem;border:1px solid var(--border);border-radius:12px;background:var(--bg-card);transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}
-      .account-page .account-product-card:hover{border-color:#c9a44c;box-shadow:0 7px 20px rgba(4,35,83,.08);transform:translateY(-2px)}
-      .account-page .account-product-card .product-art{display:grid;place-items:center;min-height:105px;border-radius:9px;background:linear-gradient(135deg,#042353,#0d376b);color:#f5c75e;font-size:2rem;margin-bottom:.9rem;position:relative;overflow:hidden}
-      .account-page .account-product-card .product-art:after{content:"";position:absolute;width:130px;height:130px;border:1px solid rgba(245,199,94,.28);border-radius:50%;right:-36px;top:-62px}
+      .account-page .account-product-card:hover{border-color:var(--accent);box-shadow:0 7px 20px rgba(4,35,83,.08);transform:translateY(-2px)}
+      .account-page .account-product-card .product-art{display:grid;place-items:center;min-height:105px;border-radius:9px;background:linear-gradient(135deg,#042353,#0d376b);color:#4ade80;font-size:2rem;margin-bottom:.9rem;position:relative;overflow:hidden}
+      .account-page .account-product-card .product-art:after{content:"";position:absolute;width:130px;height:130px;border:1px solid rgba(34,197,94,.28);border-radius:50%;right:-36px;top:-62px}
       .account-page .account-product-card .product-art span{font-size:.66rem;letter-spacing:.13em;font-weight:900;color:#fff;position:absolute;bottom:.55rem;left:.7rem}
       .account-page .product-price{font-size:1.55rem;font-weight:900;line-height:1.1;color:var(--text);margin:.75rem 0 .25rem}
       .account-page .product-meta{font-size:.78rem;color:var(--text-muted);line-height:1.45}
@@ -433,7 +433,7 @@ export default function AccountScreen() {
       .account-page .account-cart-row{display:flex;align-items:center;justify-content:space-between;gap:.8rem;border-bottom:1px solid var(--border);padding:.75rem 0}
       .account-page .account-cart-row:last-child{border-bottom:0}
       .account-page .account-total-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-top:1rem;margin-top:.4rem;border-top:1px solid var(--border)}
-      .account-page .profile-avatar{width:58px;height:58px;flex-shrink:0;display:grid;place-items:center;border-radius:16px;background:#042353;color:#f5c75e;font-weight:950;font-size:1.1rem;letter-spacing:.03em}
+      .account-page .profile-avatar{width:58px;height:58px;flex-shrink:0;display:grid;place-items:center;border-radius:16px;background:#042353;color:#4ade80;font-weight:950;font-size:1.1rem;letter-spacing:.03em}
       .account-page .profile-mobile-toggle{display:none;border:1px solid var(--border);border-radius:9px;background:var(--bg-elevated);color:var(--text);padding:.5rem .65rem;font-size:.8rem;font-weight:850;align-items:center;gap:.35rem;cursor:pointer}
       .account-page .account-profile-content{display:block}
       .account-page .account-section-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
@@ -568,7 +568,7 @@ export default function AccountScreen() {
           <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />
           {accountTab === 'licenses' ? <section style={card}>
             <div className="account-panel-title">
-              <div><div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
+              <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
               <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
             </div>
             {owned.length ? owned.map(item => {
@@ -629,7 +629,7 @@ export default function AccountScreen() {
                     </div>
                     <div className="product-meta">{description}</div>
                     <div className="product-card-spacer" />
-                    <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: '#946c12', borderColor: '#dfc277', background: 'rgba(245,199,94,.12)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
+                    <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
                     <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)} style={{ width: '100%', marginTop: '.8rem', minHeight: 43, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff' }}>
                       {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'BUY NOW'}
                     </button>
