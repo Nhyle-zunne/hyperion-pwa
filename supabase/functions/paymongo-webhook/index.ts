@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
         sessionAttrs?.metadata?.user_id !== batch.user_id ||
         metadataCodes.join(',') !== [...codes].sort().join(',') ||
         (metadataProductTerms ? metadataProductTerms !== expectedProductTerms : batchTerms.some(term => term !== 'year')) ||
-        sessionAttrs?.livemode !== isLive) {
+        (typeof sessionAttrs?.livemode === 'boolean' && sessionAttrs.livemode !== isLive)) {
       return new Response('Basket order metadata mismatch', { status: 400 })
     }
 
