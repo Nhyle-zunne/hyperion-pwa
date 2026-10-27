@@ -11,7 +11,7 @@ export default function AccountSectionTabs({ active }: AccountSectionTabsProps) 
     { id: 'licenses' as const, label: 'My licenses', path: '/account?tab=licenses' },
     { id: 'orders' as const, label: 'Orders & payment history', path: '/orders' },
   ]
-  return <nav className="account-section-tabs" aria-label="Account and subscriptions">
+  return <nav className="account-section-tabs" aria-label="Account and subscriptions" style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
     {items.map(item => <button
       key={item.id}
       type="button"
