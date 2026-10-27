@@ -589,7 +589,7 @@ Deno.serve(async (req: Request) => {
     const randomSample = body.randomSample === true;
     const freeOnly = body.freeOnly === true;
     if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track) ||
-        !/^C\\d{1,2}$/.test(competenceId)) return json(req, { error: "Choose a valid track and competence." }, 400);
+        !/^C\d{1,2}$/.test(competenceId)) return json(req, { error: "Choose a valid track and competence." }, 400);
     if (limit < 1 || limit > 200 || offset > 100000 || (randomSample && offset !== 0)) {
       return json(req, { error: "Question requests must use a valid range of at most 200 items." }, 400);
     }
@@ -654,7 +654,7 @@ Deno.serve(async (req: Request) => {
     const competenceId = typeof body.competenceId === "string" ? body.competenceId : "";
     const limit = Math.max(1, Math.min(30, Math.floor(body.limit || 20)));
     if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) return json(req, { error: "Invalid track." }, 400);
-    if (competenceId && !/^C\\d{1,2}$/.test(competenceId)) return json(req, { error: "Invalid competence." }, 400);
+    if (competenceId && !/^C\d{1,2}$/.test(competenceId)) return json(req, { error: "Invalid competence." }, 400);
     try {
       if (!await authorizeTrack(admin, user, isAdmin, track)) return json(req, { error: "An active license is required to open flashcards." }, user ? 403 : 401);
     } catch { return json(req, { error: "Could not verify your license. Please refresh and try again." }, 503); }
