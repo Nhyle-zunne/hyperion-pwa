@@ -297,6 +297,48 @@ export default function AccountScreen() {
   const profileField = (editable: boolean): React.CSSProperties => ({ ...field, background: editable ? 'var(--bg-elevated)' : 'var(--bg)', color: editable ? 'var(--text)' : 'var(--text-muted)', border: editable ? '1px solid var(--border)' : '1px solid #cbd5e1', boxShadow: 'none', outline: 'none', cursor: editable ? 'text' : 'default', userSelect: editable ? 'text' : 'none', WebkitUserSelect: editable ? 'text' : 'none', pointerEvents: editable ? 'auto' : 'none', caretColor: editable ? 'auto' : 'transparent' })
   const label: React.CSSProperties = { display: 'block', marginTop: '.8rem' }
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
+  const pendingCheckoutIds = [...new Set(pendingPayMongoOrders.map(order => order.checkout_batch_id || order.id))].sort().join(',')
+
+  // Keep checking pending PayMongo sessions while the user is in their account.
+  // The signed webhook remains primary; this server-side verification is the automatic fallback.
+  useEffect(() => {
+    if (!supabase || !session?.user.id || !pendingCheckoutIds) return
+    let active = true
+    let checking = false
+    const checkPending = async () => {
+      if (checking) return
+      checking = true
+      try {
+        const activated: string[] = []
+        for (const orderId of pendingCheckoutIds.split(',').filter(Boolean)) {
+          const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
+          if (!active) return
+          if (error || data?.status !== 'paid') continue
+          const codes: string[] = Array.isArray(data.productCodes)
+            ? data.productCodes
+            : typeof data.productCode === 'string' ? [data.productCode] : []
+          activated.push(...codes)
+        }
+        if (active && activated.length) {
+          const uniqueCodes = [...new Set(activated)]
+          clearBasketItems(uniqueCodes)
+          await refreshAccount()
+          if (active) {
+            const labels = uniqueCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
+            setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
+          }
+        }
+      } catch {
+        // A transient network or provider issue is retried by the next interval.
+      } finally {
+        checking = false
+      }
+    }
+    void checkPending()
+    const timer = window.setInterval(() => { void checkPending() }, 8000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [session?.user.id, pendingCheckoutIds])
+
   const deleteAccount = async () => {
     if (!supabase || !session || deleteConfirmation !== 'DELETE') return
     setBusy(true)
