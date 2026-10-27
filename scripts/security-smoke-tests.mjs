@@ -123,7 +123,7 @@ assert.ok(termsScreen.includes('does not automatically unlock a website/PWA lice
 assert.ok(termsScreen.includes('play.google.com/store/account/subscriptions') && termsScreen.includes('does not cancel a Google Play subscription'), 'Terms provide the correct Play subscription management path and cancellation separation');
 assert.ok(termsScreen.includes('October 27, 2026'), 'Terms updated date matches the latest substantive revision');
 assert.ok(privacyScreen.includes('Firebase Analytics') && privacyScreen.includes('PayMongo') && privacyScreen.includes('daily app-open check-in streak'), 'Privacy policy describes current analytics, payment, and synced progress handling');
-assert.ok(privacyScreen.includes('does not cancel a Google Play subscription') && privacyScreen.includes('website/PWA licenses are independent'), 'Privacy policy explains separate license and deletion effects');
+assert.ok(privacyScreen.includes('does not cancel a Google Play subscription') && privacyScreen.includes('A website/PWA license and Google Play subscription are independent'), 'Privacy policy explains separate license and deletion effects');
 assert.ok(privacyScreen.includes('href="/account?tab=delete"') && !privacyScreen.includes('hyperionmaritime.org/delete-account'), 'Privacy policy links to the real in-app website account-deletion route');
 assert.ok(privacyScreen.includes('October 27, 2026'), 'Privacy policy updated date matches the latest substantive revision');
 
