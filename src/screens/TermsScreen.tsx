@@ -14,11 +14,12 @@ export default function TermsScreen() {
       <p className="subtitle">Hyperion Maritime Reviewer</p>
 
       <div className="card" style={{ marginBottom: '1rem', lineHeight: 1.6 }}>
-        <p style={paragraphStyle}><strong>Effective Date:</strong> October 26, 2026 · <strong>Last Updated:</strong> October 26, 2026</p>
+        <p style={paragraphStyle}><strong>Effective Date:</strong> October 27, 2026 · <strong>Last Updated:</strong> October 27, 2026</p>
         <p style={paragraphStyle}><strong>Developer:</strong> Hyperion Maritime</p>
         <p style={paragraphStyle}><strong>Website:</strong> <a href="https://hyperionmaritime.org">hyperionmaritime.org</a></p>
         <p style={paragraphStyle}><strong>Contact:</strong> <a href="mailto:hyperionmaritimex@gmail.com">hyperionmaritimex@gmail.com</a></p>
         <p style={paragraphStyle}>These Terms of Use ("Terms") apply to Hyperion Maritime Reviewer, including our Android application, website, and Progressive Web Application ("Hyperion," "we," "our," or "us"). By accessing or using Hyperion, you agree to these Terms. If you do not agree, do not use the service.</p>
+        <p style={{ ...paragraphStyle, marginBottom: 0 }}><strong>Important before you buy:</strong> Google Play subscriptions for the Android app and licenses purchased on hyperionmaritime.org are separate products with separate billing, access records, cancellation/refund processes, and platform-specific conditions. They are not automatically transferable or interchangeable, even if the same email address is used.</p>
         <p style={{ ...paragraphStyle, marginBottom: 0 }}>Our <a href="/privacy-policy">Privacy Policy</a> explains how personal information is handled and forms part of the information you should review before using the website or app.</p>
       </div>
 
@@ -35,10 +36,21 @@ export default function TermsScreen() {
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={headingStyle}>3. Free Access, Licenses, and Paid Features</h2>
-        <p style={paragraphStyle}>Some features or question sets may be available without payment; other tracks, features, or content may require an eligible license, subscription, or other authorization. The access shown for your account is subject to the applicable offer and license conditions.</p>
-        <p style={paragraphStyle}>Do not share, resell, duplicate, manipulate, or attempt to bypass a license, activation code, subscription check, or other access control. We may investigate suspected misuse and, where reasonably necessary and permitted by law, restrict or suspend access to protect the service, users, and content.</p>
-        <p style={paragraphStyle}>Purchases made through Google Play are processed under Google Play's applicable terms and billing procedures. Subscription management and cancellation are handled through Google Play. Any price, duration, renewal, eligibility, or refund conditions presented at the point of purchase also apply, subject to applicable law. We do not promise refunds outside the rights and procedures that apply to your purchase.</p>
+        <h2 style={headingStyle}>3. Free Access, Licenses, and Platform-Specific Purchases</h2>
+        <p style={paragraphStyle}>Some features or question sets may be available without payment; other tracks, features, or content may require a license, subscription, or other authorization. Always read the exact product, platform, price, access duration, renewal terms, and conditions displayed before confirming a purchase. Offers, features, availability, and prices may differ between Google Play and hyperionmaritime.org.</p>
+
+        <h3 style={{ ...headingStyle, fontSize: '0.95rem' }}>3.1 Google Play subscriptions (Android app)</h3>
+        <p style={paragraphStyle}>A subscription purchased inside the Android app through Google Play is billed and managed by Google Play and is associated with the Google Play account and purchase entitlement recognized by the app. It is an auto-renewing subscription unless the applicable offer states otherwise. Google Play may charge for each renewal unless you cancel in accordance with its current instructions and deadline. Uninstalling the Android app does not cancel the subscription. Cancellation generally stops future renewals; access for the already-paid period is determined by the subscription's status and Google Play's rules.</p>
+        <p style={paragraphStyle}>Manage or cancel an Android subscription in <a href="https://play.google.com/store/account/subscriptions" target="_blank" rel="noopener noreferrer">Google Play subscriptions</a>, using the Google account that made the purchase. For Play billing and refund requests, use Google Play's current help and refund process. A website account deletion, website purchase, or support request to Hyperion does not cancel a Google Play subscription.</p>
+
+        <h3 style={{ ...headingStyle, fontSize: '0.95rem' }}>3.2 Website/PWA licenses (hyperionmaritime.org)</h3>
+        <p style={paragraphStyle}>A license purchased through the Bond Store or Checkout on hyperionmaritime.org is linked to the Hyperion website account signed in at the time of purchase. Website checkout is processed through PayMongo and may offer payment methods such as GCash, Maya, QR Ph, or card, subject to current availability. A manual QR payment is a payment submission for review; the website license is not activated until Hyperion verifies the payment and grants the entitlement. A submitted transaction reference or screenshot is not, by itself, proof of approval.</p>
+        <p style={paragraphStyle}>Website access is purchased for the fixed duration shown for the selected track (for example, one week, one month, or one year) and is governed by the expiry shown in your account. Website/PWA plans do not automatically renew unless the specific checkout offer expressly states otherwise. When the fixed term expires, access to that paid track may end until you make a new purchase or are granted another valid license. Website cancellation, payment verification, and any refund inquiry must be handled through the website account/support process and applicable law, not through Google Play.</p>
+
+        <h3 style={{ ...headingStyle, fontSize: '0.95rem' }}>3.3 These licenses are separate and cannot be transferred</h3>
+        <p style={paragraphStyle}>A Google Play subscription does not automatically unlock a website/PWA license. A license purchased on hyperionmaritime.org does not activate a Google Play subscription or grant the Android app's subscription entitlement. Android device-bound offline activation passes, where offered, are also separate and remain subject to their own in-app terms. Using the same Google email on both platforms does not merge the purchases, move their expiry dates, or transfer the benefits. Website and Google Play purchases cannot be automatically combined, exchanged, or credited against each other.</p>
+        <p style={paragraphStyle}>Before paying, confirm that the product is offered for the platform where you intend to use it. If you believe you purchased on the wrong platform, contact <a href="mailto:hyperionmaritimex@gmail.com">hyperionmaritimex@gmail.com</a> with the relevant receipt or website order reference before making another purchase. We cannot promise that a purchase, refund, or entitlement can be moved between platforms.</p>
+        <p style={{ ...paragraphStyle, marginBottom: 0 }}>Do not share, resell, duplicate, manipulate, or attempt to bypass a license, activation code, subscription check, or other access control. We may investigate suspected misuse and, where reasonably necessary and permitted by law, restrict or suspend access to protect the service, users, and content.</p>
       </section>
 
       <section style={sectionStyle}>
@@ -61,7 +73,7 @@ export default function TermsScreen() {
 
       <section style={sectionStyle}>
         <h2 style={headingStyle}>6. Study Data and Device Storage</h2>
-        <p style={paragraphStyle}>The Android application stores study progress and preferences locally on your device as described in the Privacy Policy. Uninstalling the app or clearing its data may permanently remove locally stored progress. Website features may use browser storage or account-linked services for sign-in, settings, or study features. Do not assume that progress is backed up or recoverable unless the relevant feature clearly says it is synchronized.</p>
+        <p style={paragraphStyle}>The Android application stores study progress and preferences locally on your device as described in the Privacy Policy. Uninstalling the app or clearing its data may permanently remove local progress. The website/PWA also uses browser storage for offline operation and local state; when you are signed in and connectivity is available, supported study data is synchronized to your website account. Not every device-local item or cached asset is necessarily synchronized or recoverable. Clearing browser/app storage may remove local-only data.</p>
       </section>
 
       <section style={sectionStyle}>
@@ -76,7 +88,8 @@ export default function TermsScreen() {
 
       <section style={sectionStyle}>
         <h2 style={headingStyle}>9. Suspension and Termination</h2>
-        <p style={paragraphStyle}>You may stop using Hyperion at any time. You may request deletion of your website account using the method described in the Privacy Policy. Account deletion does not automatically cancel a subscription purchased through Google Play; manage that subscription separately through Google Play.</p>
+        <p style={paragraphStyle}>You may stop using Hyperion at any time. You may request deletion of your website account through Account → Delete account (or by contacting support as described in the Privacy Policy). Website account deletion is permanent and removes website account-linked access and data when the deletion process completes; it is not a way to cancel or refund a Google Play subscription. A deletion request may be blocked until pending website payment submissions or unresolved PayMongo sessions have been safely cancelled or reconciled, or where support must preserve an administrative audit trail.</p>
+        <p style={paragraphStyle}>You must cancel any Google Play subscription separately through <a href="https://play.google.com/store/account/subscriptions" target="_blank" rel="noopener noreferrer">Google Play subscriptions</a>. Deleting a website account does not cancel or refund Play billing, delete Google Play's transaction record, or clear study data stored locally inside the Android app. Uninstalling the Android app also does not cancel a Google Play subscription.</p>
         <p style={paragraphStyle}>We may suspend or terminate access where we reasonably believe you have violated these Terms, attempted fraud or unauthorized access, created a security risk, or where necessary to comply with law or protect the service and its users. Where appropriate and legally permitted, we will take reasonable steps to explain the reason for a restriction.</p>
       </section>
 
@@ -88,7 +101,7 @@ export default function TermsScreen() {
 
       <section style={sectionStyle}>
         <h2 style={headingStyle}>11. Third-Party Services</h2>
-        <p style={paragraphStyle}>Hyperion may rely on third-party services such as Google, Meta, Supabase, hosting providers, and app stores. Those services are governed by their own terms and privacy policies. We are not responsible for third-party services that we do not control, except where applicable law provides otherwise.</p>
+        <p style={paragraphStyle}>Hyperion may rely on third-party services, including Google and Google Play (sign-in and Android billing), Firebase (Android app configuration/analytics components), Supabase (website authentication and backend), PayMongo (website hosted checkout and payment processing), Meta/Facebook (support messages you choose to send), and Cloudflare (website hosting, delivery, and security). Their services are governed by their own terms and privacy policies. We do not control their independent systems or retention rules, except that our own use of their services remains subject to applicable law.</p>
       </section>
 
       <section style={sectionStyle}>
