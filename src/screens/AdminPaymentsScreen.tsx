@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { withPageLoading } from '../lib/pageLoading'
 
 type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; license_term: 'week'|'month'|'year'; amount_php: number; status: string; access_status: string; access_expires_at: string | null; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; customer_name: string | null; customer_company: string | null; customer_school: string | null; admin_note: string | null; created_at: string }
 type ReconciliationAlert = { id: string; checkout_reference: string; checkout_session_id: string; paymongo_payment_id: string; expected_amount_php: number; observed_amount_minor: number; observed_currency: string; reason: string; created_at: string }
@@ -43,13 +44,13 @@ export default function AdminPaymentsScreen() {
   // Keep the admin view current when webhook delivery or customer-side verification
   // updates a PayMongo order, without requiring manual refreshes.
   useEffect(() => {
-    void load()
+    void withPageLoading('Loading payment submissions', () => load())
     const timer = window.setInterval(() => { void load() }, 10000)
     return () => window.clearInterval(timer)
   }, [load])
   const review = async (orderId: string, decision: 'approve'|'reject') => {
     setBusy(true); setMessage('')
-    try { await call({ action:'review', orderId, decision, adminNote: note[orderId] || '' }); setMessage(decision === 'approve' ? 'Payment approved and access granted.' : 'Payment rejected.'); await load() }
+    try { await withPageLoading(decision === 'approve' ? 'Approving payment' : 'Reviewing payment', async () => { await call({ action:'review', orderId, decision, adminNote: note[orderId] || '' }); setMessage(decision === 'approve' ? 'Payment approved and access granted.' : 'Payment rejected.'); await load() }) }
     catch (e) { setMessage(safeAdminError(e, 'Could not complete the payment review. Please try again.')) }
     finally { setBusy(false) }
   }
@@ -78,7 +79,7 @@ export default function AdminPaymentsScreen() {
     <h1 className="page-title">Payment Submissions</h1>
     <p className="subtitle">Review manual payment submissions here. License activation, extension, and revocation are managed separately in User Licenses.</p>
     {message && <div role="status" style={card}>{/supabase/i.test(message) ? 'Payment administration is temporarily unavailable. Please try again later.' : message}</div>}
-    {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void load()}>Retry</button></section> : <>
+    {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void withPageLoading('Refreshing payment submissions', () => load())}>Retry</button></section> : <>
       {alertLoadWarning && <div role="alert" style={{ ...card, borderColor: 'var(--danger, #dc2626)' }}>{alertLoadWarning}</div>}
       {reconciliationAlerts.length > 0 && <section style={{ ...card, borderColor: 'var(--danger, #dc2626)', borderWidth: 2 }}>
         <h2 style={{ marginTop: 0, color: 'var(--danger, #dc2626)' }}>PayMongo reconciliation required ({reconciliationAlerts.length})</h2>
@@ -99,7 +100,7 @@ export default function AdminPaymentsScreen() {
       </section>}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap', marginBottom:'.65rem' }}>
         <h2 style={{ margin:0 }}>Payment submissions ({orders.length})</h2>
-        <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void load()} style={{ padding:'.55rem .8rem' }}>Refresh submissions</button>
+        <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void withPageLoading('Refreshing payment submissions', () => load())} style={{ padding:'.55rem .8rem' }}>Refresh submissions</button>
       </div>
       {orders.length ? <div className="admin-payment-orders-grid">{orders.map(order => <section key={order.id} style={card}>
         <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'space-between', gap:8 }}><strong>{names[order.product_code] || order.product_code} · {duration(order.license_term || 'year')} · ₱{order.amount_php}</strong><strong>{order.status.toUpperCase()}</strong></div>
