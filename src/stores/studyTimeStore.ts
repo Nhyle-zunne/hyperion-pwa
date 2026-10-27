@@ -16,6 +16,12 @@ const dayKey = (ts = Date.now()) => {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+const previousDayKey = (dateKey: string) => {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  date.setDate(date.getDate() - 1);
+  return dayKey(date.getTime());
+};
 
 export interface StudySegment {
   id: string;
@@ -29,6 +35,12 @@ export interface StudySegment {
 
 interface StudyTimeState {
   segments: StudySegment[];
+  /** Consecutive app-open check-in streak; dates are local calendar dates and sync with account progress. */
+  dailyCheckInStartDate: string;
+  dailyCheckInLastDate: string;
+  dailyCheckInCount: number;
+  dailyCheckInUpdatedAt: number;
+  recordDailyCheckIn: () => void;
   /** Calendar date selected in Study Time, synced through the signed-in account. */
   selectedDate: string;
   selectedDateUpdatedAt: number;
@@ -49,6 +61,35 @@ export const useStudyTimeStore = create<StudyTimeState>()(
   persist(
     (set, get) => ({
       segments: [],
+      dailyCheckInStartDate: '',
+      dailyCheckInLastDate: '',
+      dailyCheckInCount: 0,
+      dailyCheckInUpdatedAt: 0,
+      recordDailyCheckIn: () => {
+        const today = dayKey();
+        const current = get();
+        // Reopening the app multiple times in one calendar day is one check-in.
+        if (current.dailyCheckInLastDate === today && current.dailyCheckInCount > 0) return;
+
+        const continuesStreak = current.dailyCheckInLastDate === previousDayKey(today)
+          && current.dailyCheckInStartDate !== ''
+          && current.dailyCheckInCount > 0;
+        if (continuesStreak) {
+          set({
+            dailyCheckInLastDate: today,
+            dailyCheckInCount: current.dailyCheckInCount + 1,
+            dailyCheckInUpdatedAt: Date.now()
+          });
+        } else {
+          // A first visit, or a visit after at least one missed calendar day, starts over at Day 1.
+          set({
+            dailyCheckInStartDate: today,
+            dailyCheckInLastDate: today,
+            dailyCheckInCount: 1,
+            dailyCheckInUpdatedAt: Date.now()
+          });
+        }
+      },
       selectedDate: dayKey(),
       selectedDateUpdatedAt: 0,
       setSelectedDate: (date) => {
