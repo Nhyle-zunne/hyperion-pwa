@@ -36,6 +36,7 @@ import { useBookmarksStore } from './stores/bookmarksStore'
 import { useHistoryStore } from './stores/historyStore'
 import { supabase } from './lib/supabase'
 import { startLearningProgressSync } from './lib/progressSync'
+import { useStudyTimeStore } from './stores/studyTimeStore'
 import { useRef, useState } from 'react'
 import { clearPaidQuestionCache } from './lib/questionBank'
 import { deletePaidQuestionSnapshotsForTrack } from './lib/sessionArchive'
@@ -104,6 +105,93 @@ export default function App() {
   }, [refreshCloudEntitlements])
 
   useEffect(() => startLearningProgressSync(), [])
+
+  useEffect(() => {
+    let alive = true
+    let sessionKnown = false
+    let hasSession = false
+    let progressReady = false
+    let initialCheckInRecorded = false
+    let fallbackTimer: number | undefined
+
+    const recordInitialCheckIn = () => {
+      if (!alive || initialCheckInRecorded) return
+      initialCheckInRecorded = true
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer)
+      useStudyTimeStore.getState().recordDailyCheckIn()
+    }
+
+    const reconcileInitialCheckIn = () => {
+      if (!sessionKnown) return
+      if (!hasSession || progressReady) {
+        recordInitialCheckIn()
+        return
+      }
+      if (fallbackTimer === undefined) {
+        // Keep the app usable offline, but allow cloud progress to hydrate first when possible.
+        fallbackTimer = window.setTimeout(recordInitialCheckIn, 12_000)
+      }
+    }
+
+    const handleProgressReady = () => {
+      progressReady = true
+      reconcileInitialCheckIn()
+      // A newly signed-in account may have been hydrated after an anonymous/local check-in.
+      if (initialCheckInRecorded) useStudyTimeStore.getState().recordDailyCheckIn()
+    }
+
+    const handleAuthChange = (_event: string, session: { user?: { id: string } } | null) => {
+      sessionKnown = true
+      hasSession = Boolean(session?.user)
+      if (!hasSession) {
+        progressReady = true
+        if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer)
+        fallbackTimer = undefined
+      }
+      reconcileInitialCheckIn()
+    }
+
+    const handleResume = () => {
+      if (initialCheckInRecorded && document.visibilityState === 'visible') {
+        useStudyTimeStore.getState().recordDailyCheckIn()
+      }
+    }
+
+    window.addEventListener('hyperion:learning-progress-ready', handleProgressReady)
+    window.addEventListener('focus', handleResume)
+    document.addEventListener('visibilitychange', handleResume)
+    const authListener = supabase?.auth.onAuthStateChange(handleAuthChange)
+
+    if (!supabase) {
+      sessionKnown = true
+      progressReady = true
+      reconcileInitialCheckIn()
+    } else {
+      void supabase.auth.getSession().then(({ data }) => {
+        if (!alive) return
+        sessionKnown = true
+        hasSession = Boolean(data.session?.user)
+        if (!hasSession) progressReady = true
+        reconcileInitialCheckIn()
+      }).catch(() => {
+        if (!alive) return
+        sessionKnown = true
+        hasSession = false
+        progressReady = true
+        reconcileInitialCheckIn()
+      })
+    }
+
+    return () => {
+      alive = false
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer)
+      authListener?.data.subscription.unsubscribe()
+      window.removeEventListener('hyperion:learning-progress-ready', handleProgressReady)
+      window.removeEventListener('focus', handleResume)
+      document.removeEventListener('visibilitychange', handleResume)
+    }
+  }, [])
+
 
   useEffect(() => {
     const handleProgressRestored = (event: Event) => {
