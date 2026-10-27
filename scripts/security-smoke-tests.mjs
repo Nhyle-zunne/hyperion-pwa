@@ -120,7 +120,7 @@ assert.ok(aboutScreen.includes('Google Play subscriptions:') && aboutScreen.incl
 assert.ok(aboutScreen.includes('same email address') && aboutScreen.includes('cannot be transferred or combined automatically'), 'About page warns that licenses are not merged by email');
 assert.ok(termsScreen.includes('3.1 Google Play subscriptions (Android app)') && termsScreen.includes('3.2 Website/PWA licenses (hyperionmaritime.org)'), 'Terms distinguish Play subscriptions from website fixed-term licenses');
 assert.ok(termsScreen.includes('does not automatically unlock a website/PWA license') && termsScreen.includes('do not automatically renew'), 'Terms explain cross-platform separation and website non-renewal');
-assert.ok(termsScreen.includes('play.google.com/store/account/subscriptions') && termsScreen.includes('website account deletion does not automatically cancel'), 'Terms provide the correct Play subscription management path and cancellation separation');
+assert.ok(termsScreen.includes('play.google.com/store/account/subscriptions') && termsScreen.includes('does not cancel a Google Play subscription'), 'Terms provide the correct Play subscription management path and cancellation separation');
 assert.ok(termsScreen.includes('October 27, 2026'), 'Terms updated date matches the latest substantive revision');
 assert.ok(privacyScreen.includes('Firebase Analytics') && privacyScreen.includes('PayMongo') && privacyScreen.includes('daily app-open check-in streak'), 'Privacy policy describes current analytics, payment, and synced progress handling');
 assert.ok(privacyScreen.includes('does not cancel a Google Play subscription') && privacyScreen.includes('website/PWA licenses are independent'), 'Privacy policy explains separate license and deletion effects');
