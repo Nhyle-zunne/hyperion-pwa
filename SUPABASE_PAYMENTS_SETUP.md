@@ -83,6 +83,18 @@ If a student cancels the hosted checkout, PayMongo does not automatically close 
 
 The existing QR/manual process remains available as a fallback. Manual payments still require an admin to verify the actual incoming transaction and approve the order.
 
+## 5. Payment confirmation troubleshooting
+
+For a successful PayMongo payment that remains pending in Hyperion:
+
+1. Do not manually approve a PayMongo Checkout order, and do not ask the customer to pay again.
+2. In PayMongo Dashboard → Developers → Webhooks, inspect the endpoint for the same mode used by the payment (test or live). It must be enabled and subscribe to `checkout_session.payment.paid`.
+3. Confirm the URL is exactly `https://evnjoezffghtrzqacwcj.supabase.co/functions/v1/paymongo-webhook`.
+4. Open the webhook delivery history and send a test event. The delivery must receive a 2xx response. If the endpoint is disabled, inspect its disabled reason and re-enable it after correcting the issue.
+5. If the event was missed, use Hyperion's Orders & Payment History → Refresh status to run authenticated server-to-PayMongo verification. Hyperion must verify payment status, amount, currency, checkout reference, and metadata before granting access.
+
+PayMongo documents that webhook delivery can be retried and that an endpoint may be automatically disabled after repeated failures. It also warns that missed events may not be redelivered after an outage, which is why the server-side verification fallback matters. See https://docs.paymongo.com/reference/webhook-resource and https://docs.paymongo.com/docs/developer-tools-webhook-setup-management.
+
 ## 5. Test before switching to live payments
 
 - Use test keys and the PayMongo webhook test-event tool first.
@@ -93,7 +105,7 @@ The existing QR/manual process remains available as a fallback. Manual payments 
 - Verify that an arbitrary `?payment=success` URL does not grant access.
 - After testing, switch the checkout API key, webhook signing secret, and expected live-mode setting together before accepting real payments. Only then set `PAYMONGO_CHECKOUT_ENABLED=true`.
 
-## 6. Manual admin workflow
+## 7. Manual admin workflow
 
 Manual QR orders continue to use the private Admin dashboard. Set `ADMIN_EMAILS` to the comma-separated exact email addresses allowed to review manual payments:
 
@@ -105,7 +117,7 @@ supabase functions deploy submit-manual-payment
 
 Admins must verify the actual transaction received before approving a manual order. A screenshot alone is not sufficient proof.
 
-## 7. Security notes
+## 8. Security notes
 
 - Never trust a browser redirect, client-provided price, or a payment screenshot as confirmation of a PayMongo payment.
 - Never expose `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET`, or `SUPABASE_SERVICE_ROLE_KEY`.
