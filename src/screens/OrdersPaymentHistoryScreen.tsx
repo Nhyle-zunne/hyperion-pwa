@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import AccountSectionTabs from '../components/AccountSectionTabs'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -167,6 +168,7 @@ export default function OrdersPaymentHistoryScreen() {
       @media(max-width:520px){.orders-history-page .orders-heading-actions{width:100%}.orders-history-page .orders-heading-actions button{width:100%}}
     `}</style>
     <button type="button" onClick={() => navigate('/account?tab=payments')} style={{ color: 'var(--text-muted)', marginBottom: '.65rem' }}>← Back to Bond Store</button>
+    <AccountSectionTabs active="orders" />
     <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
       <div>
         <div style={{ color: '#a47e2e', fontWeight: 900, fontSize: '.7rem', letterSpacing: '.14em' }}>ACCOUNT & SUBSCRIPTIONS</div>
