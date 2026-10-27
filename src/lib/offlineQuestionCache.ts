@@ -178,7 +178,11 @@ export async function getOfflineQuestionCounts(track: TrackId, freeOnly: boolean
   const manifest = await getOfflinePackManifest(track, freeOnly)
   if (!manifest?.complete) return null
   try {
-    const stored = (await (await database()).getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    const db = await database()
+    const savedKey = await db.get('keys', 'device-key')
+    if (!savedKey?.key) return null
+    const stored = (await db.getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    if (!stored.length || stored.reduce((sum, pack) => sum + pack.questionCount, 0) !== manifest.questionCount) return null
     return stored.map(pack => ({
       competenceId: pack.competenceId,
       part: pack.part,

@@ -776,6 +776,14 @@ export async function downloadOfflinePack(
   // Asking the protected counts endpoint is also the authorization gate for paid packs.
   const counts = await getQuestionCountsByTrack(track, freeOnly)
   const totalExpected = counts.reduce((sum, item) => sum + item.count, 0)
+  if (!counts.length || totalExpected <= 0) throw new Error('No questions are available to download for this track.')
+  // Mark this pack incomplete before replacing any saved groups. Interrupted
+  // updates must never leave a stale complete marker pointing at mixed data.
+  await saveOfflinePackManifest({ track, freeOnly, questionCount: 0, groupCount: 0, complete: false })
+  if (!freeOnly) {
+    // The free preview pack is updated from this licensed bank as well.
+    // Invalidate it only when we are about to overwrite its individual groups.
+  }
   let downloaded = 0
   const allQuestions: Question[] = []
   const writtenGroups: { competenceId: string; part: number | null; questions: Question[] }[] = []
@@ -810,6 +818,8 @@ export async function downloadOfflinePack(
   if (!freeOnly) {
     // Keep the free reviewer available if this subscription expires while the device is offline.
     const samples = freeSample(allQuestions, track)
+    // Invalidate the free pack before replacing its question groups.
+    await saveOfflinePackManifest({ track, freeOnly: true, questionCount: 0, groupCount: 0, complete: false })
     const sampleGroups = new Map<string, { competenceId: string; part: number | null; questions: Question[] }>()
     for (const question of samples) {
       const part = question.id.match(/-P(\d+)-/)?.[1]
