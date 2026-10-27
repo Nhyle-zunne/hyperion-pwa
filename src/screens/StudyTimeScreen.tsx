@@ -5,7 +5,7 @@ import { useStudyTimeStore, formatDurationMs, type StudySegment } from '../store
 type Tab = 'PERIOD' | 'DAY' | 'WEEK' | 'MONTH' | 'TREND'
 const TABS: Tab[] = ['PERIOD', 'DAY', 'WEEK', 'MONTH', 'TREND']
 const DAY_MS = 86_400_000
-const TRACK_COLORS = ['#22c55e', '#06b6d4', '#f59e0b', '#a78bfa', '#f97316', '#e879f9']
+const TRACK_COLORS = ['#22c55e', '#06b6d4', '#3b82f6', '#a78bfa', '#f97316', '#e879f9']
 const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 const dateFromKey = (key: string) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key)
