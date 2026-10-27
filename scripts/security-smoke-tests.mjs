@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
   pricing, checkout, verify, webhook, questionBank, questionBankMigration,
-  finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen, accountScreen
+  finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen, accountScreen,
+  indexCss, manualPayment, ordersHistory, historyScreen, studyTimeScreen
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -20,7 +21,12 @@ const [
   read('../src/screens/MockExamScreen.tsx'),
   read('../src/stores/licenseStore.ts'),
   read('../src/screens/BasketScreen.tsx'),
-  read('../src/screens/AccountScreen.tsx')
+  read('../src/screens/AccountScreen.tsx'),
+  read('../src/index.css'),
+  read('../src/screens/ManualPaymentScreen.tsx'),
+  read('../src/screens/OrdersPaymentHistoryScreen.tsx'),
+  read('../src/screens/HistoryScreen.tsx'),
+  read('../src/screens/StudyTimeScreen.tsx')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -88,6 +94,12 @@ assert.ok(accountScreen.includes("navigate('/account', { replace: true })"), 'Di
 assert.ok(accountScreen.includes('backdrop-filter:blur(12px)') && accountScreen.includes('radial-gradient(ellipse at 50% 36%'), 'Success dialogs use the polished blurred navy backdrop');
 assert.ok(accountScreen.includes('prefers-reduced-motion:reduce'), 'Success dialog animations respect reduced-motion preferences');
 assert.ok(accountScreen.includes('Unable to sign out. Please check your connection and try again.'), 'Sign-out errors are not reported as successful');
+assert.ok(!['#c9a44c', '#f5c75e', 'rgba(245,199,94,.28)', '#a47e2e', '#946c12', '#dfc277'].some(color => accountScreen.toLowerCase().includes(color)), 'Account UI does not reintroduce gold brand accents');
+assert.ok(!manualPayment.includes('#a47e2e') && !manualPayment.includes('#d6a33a'), 'Manual-payment UI does not use gold accents');
+assert.ok(!ordersHistory.includes('#9a6b07') && !ordersHistory.includes('#e8c875'), 'Pending payment status uses neutral styling instead of gold');
+assert.ok(historyScreen.includes("borderLeft: '4px solid var(--accent)'") && !historyScreen.includes("#f59e0b"), 'Study streak uses Hyperion green instead of gold');
+assert.ok(studyTimeScreen.includes("'#3b82f6'") && !studyTimeScreen.includes("#f59e0b"), 'Study-time chart palette avoids gold accents');
+assert.ok(indexCss.includes('--warning: #fb923c;') && indexCss.includes('--warning: #c2410c;'), 'Warnings use orange tones, not amber-gold');
 
 for (const route of [
   '/account', '/checkout', '/manual-payment', '/orders', '/admin/licenses',
