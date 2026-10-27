@@ -1615,16 +1615,17 @@ a:focus-visible,
 }
 
 
-/* Global top loading indicator: brand-led, subtle, and shared by every route. */
+
+/* Global top loading indicator: enlarged brand logo with MARINA-inspired expanding pulses. */
 .hyperion-top-loader {
   position: fixed;
   inset: 0 0 auto;
-  height: 36px;
+  height: 116px;
   z-index: 9500;
   opacity: 0;
-  transform: translateY(-5px);
+  transform: translateY(-7px);
   pointer-events: none;
-  transition: opacity 160ms ease, transform 180ms ease;
+  transition: opacity 190ms ease, transform 220ms cubic-bezier(.2,.8,.2,1);
 }
 .hyperion-top-loader.is-visible {
   opacity: 1;
@@ -1634,42 +1635,71 @@ a:focus-visible,
   position: absolute;
   inset: 0 0 auto;
   display: block;
-  height: 3px;
+  height: 4px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .hyperion-top-loader__progress {
   display: block;
-  width: 34%;
+  width: 30%;
   height: 100%;
   border-radius: 0 99px 99px 0;
-  background: linear-gradient(90deg, #042353 0%, var(--accent) 72%, #4ade80 100%);
-  box-shadow: 0 0 10px rgba(34, 197, 94, .34);
-  animation: hyperion-loader-sweep 1.15s cubic-bezier(.45, 0, .55, 1) infinite;
+  background: linear-gradient(90deg, #042353 0%, var(--accent) 68%, #4ade80 100%);
+  box-shadow: 0 0 12px rgba(34, 197, 94, .4);
+  animation: hyperion-loader-sweep 1.08s cubic-bezier(.45, 0, .55, 1) infinite;
 }
 .hyperion-top-loader__logo-wrap {
   position: absolute;
-  top: 4px;
+  top: 13px;
   left: 50%;
   display: grid;
-  width: 29px;
-  height: 29px;
+  width: 86px;
+  height: 86px;
   box-sizing: border-box;
   place-items: center;
-  padding: 4px;
-  border: 1px solid var(--border);
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
   border-radius: 50%;
   background: var(--bg-card);
-  box-shadow: 0 3px 12px rgba(4, 35, 83, .16), 0 0 0 3px color-mix(in srgb, var(--bg-card) 80%, transparent);
+  box-shadow: 0 5px 20px rgba(4, 35, 83, .22), 0 0 0 5px color-mix(in srgb, var(--bg-card) 76%, transparent);
+  isolation: isolate;
   transform: translateX(-50%);
 }
 .hyperion-top-loader__logo {
+  position: relative;
+  z-index: 4;
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
   transform-origin: center;
-  animation: hyperion-loader-spin 1.25s linear infinite;
+  animation: hyperion-loader-logo-breathe 1.35s ease-in-out infinite;
+}
+.hyperion-top-loader__pulse {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  animation: hyperion-loader-ripple 1.8s cubic-bezier(.16,.72,.28,1) infinite;
+}
+.hyperion-top-loader__pulse--one {
+  border-color: color-mix(in srgb, var(--accent) 94%, #042353);
+  animation-delay: 0s;
+}
+.hyperion-top-loader__pulse--two {
+  border-color: #0f9c70;
+  animation-delay: .42s;
+}
+.hyperion-top-loader__pulse--three {
+  border-color: #0785c7;
+  animation-delay: .84s;
 }
 .hyperion-top-loader__sr-only {
   position: absolute;
@@ -1682,12 +1712,31 @@ a:focus-visible,
 }
 @keyframes hyperion-loader-sweep {
   0% { transform: translateX(-120%); }
-  55% { transform: translateX(190%); }
-  100% { transform: translateX(295%); }
+  55% { transform: translateX(220%); }
+  100% { transform: translateX(340%); }
 }
-@keyframes hyperion-loader-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+@keyframes hyperion-loader-ripple {
+  0% { transform: translate(-50%, -50%) scale(.36); opacity: .78; }
+  68% { opacity: .22; }
+  100% { transform: translate(-50%, -50%) scale(1.95); opacity: 0; }
+}
+@keyframes hyperion-loader-logo-breathe {
+  0%, 100% { transform: scale(.94); }
+  50% { transform: scale(1.04); }
+}
+@media (max-width: 599px) {
+  .hyperion-top-loader {
+    height: 100px;
+  }
+  .hyperion-top-loader__logo-wrap {
+    top: 12px;
+    width: 72px;
+    height: 72px;
+    padding: 7px;
+  }
+  .hyperion-top-loader__pulse {
+    border-width: 1.5px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .hyperion-top-loader,
@@ -1698,6 +1747,9 @@ a:focus-visible,
   .hyperion-top-loader__progress {
     width: 100%;
     animation: none;
+  }
+  .hyperion-top-loader__pulse {
+    display: none;
   }
   .hyperion-top-loader__logo {
     animation: none;
