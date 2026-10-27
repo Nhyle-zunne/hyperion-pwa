@@ -75,6 +75,7 @@ Deno.serve(async req => {
 
   const amount = prices[code][term]
   const { data: order, error } = await admin.from('orders').insert({ user_id: user.id, product_code: code, track_id: product.track, license_term: term, amount_php: amount, status: 'submitted', payment_method: paymentMethod, payment_reference: paymentReference, proof_url: proofUrl || null, customer_note: customerNote || null, customer_name: customerName, customer_company: customerCompany || null, customer_school: customerSchool || null }).select('id,amount_php,status,license_term').single()
+  if (error?.code === '23505') return json({ error: 'A payment request for this track was just opened in another session. Refresh your orders before submitting again.' }, 409)
   if (error || !order) return json({ error: 'Could not submit payment for review. Please try again.' }, 500)
   return json({ order })
 })
