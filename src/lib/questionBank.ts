@@ -1,6 +1,5 @@
 import { supabase } from './supabase';
 import {
-  deletePaidOfflineQuestionPacksForTrack,
   getOfflineEntitlementExpiry,
   getOfflineQuestionCounts,
   getOfflineQuestionsByCompetence,
@@ -680,7 +679,6 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
       if (data.access === 'admin' || data.access === 'licensed' || data.access === 'free-sample') return data.access;
       return null;
     }
-    const status = Number((error as { context?: { status?: number } } | null)?.context?.status || 0);
     if (!(error && canFallbackToOffline(error))) return null;
   }
   try {

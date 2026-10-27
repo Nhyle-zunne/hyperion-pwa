@@ -34,7 +34,7 @@ const TRACKS: Record<string, TrackInfo> = {
     title: 'GMDSS GOC REVIEWER',
     level: 'GMDSS GOC LEVEL',
     freeTitle: 'GMDSS FREE REVIEWER',
-    freeDesc: '1,150 free questions (C1: 1,000 · C2: 150).'
+    freeDesc: '1,030 free questions (C1: 900 · C2: 130).'
   },
   engine_ew: {
     trackId: 'ENGINE_OIC_EW',
