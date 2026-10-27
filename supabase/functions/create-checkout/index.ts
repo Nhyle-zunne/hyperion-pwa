@@ -363,6 +363,7 @@ Deno.serve(async (req) => {
   const { error: childInsertError } = await admin.from('orders').insert(childOrders)
   if (childInsertError) {
     await admin.from('checkout_batches').update({ status: 'failed' }).eq('id', batch.id)
+    if (childInsertError.code === '23505') return json({ error: 'One of these tracks already has an open order from another session. Refresh Checkout and resolve the existing order before retrying.' }, 409)
     return json({ error: 'Could not add the basket items to your order. Please try again.' }, 500)
   }
 
