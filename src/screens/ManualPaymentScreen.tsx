@@ -3,6 +3,7 @@ import type { CSSProperties, FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
+import { withPageLoading } from '../lib/pageLoading'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { priceForTerm } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -122,7 +123,7 @@ export default function ManualPaymentScreen() {
   useEffect(() => {
     if (!session || !productCode) return
     let active = true
-    void refreshData().catch(error => {
+    void withPageLoading('Loading payment details', () => refreshData()).catch(error => {
       if (!active) return
       setIsError(true)
       void edgeMessage(error, 'Unable to load the payment status. Please refresh the page.').then(setMessage)
@@ -137,7 +138,7 @@ export default function ManualPaymentScreen() {
   const failedPayMongoOrder = orders.find(order => order.status === 'failed' && order.payment_method === 'PayMongo Checkout' && !!order.paymongo_checkout_session_id)
   const unresolvedPayMongoOrder = preparingPayMongoOrder || pendingPayMongoOrder || failedPayMongoOrder
 
-  const submitPayment = async (event: FormEvent<HTMLFormElement>) => {
+  const submitPaymentInternal = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!supabase || !session || !product) return
     if (!fullName.trim()) {
@@ -183,7 +184,10 @@ export default function ManualPaymentScreen() {
     }
   }
 
-  const cancelManualRequest = async () => {
+  const submitPayment = (event: FormEvent<HTMLFormElement>) =>
+    withPageLoading('Submitting payment for review', () => submitPaymentInternal(event))
+
+  const cancelManualRequestInternal = async () => {
     if (!supabase || !pendingManualOrder) return
     setBusy(true)
     setIsError(false)
@@ -202,7 +206,10 @@ export default function ManualPaymentScreen() {
     }
   }
 
-  const cancelPayMongo = async (order: Order) => {
+  const cancelManualRequest = async () =>
+    withPageLoading('Cancelling payment review', () => cancelManualRequestInternal())
+
+  const cancelPayMongoInternal = async (order: Order) => {
     if (!supabase) return
     setBusy(true)
     setIsError(false)
@@ -226,6 +233,9 @@ export default function ManualPaymentScreen() {
       setBusy(false)
     }
   }
+
+  const cancelPayMongo = (order: Order) =>
+    withPageLoading('Cancelling checkout', () => cancelPayMongoInternal(order))
 
   const card: CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', borderRadius: 12 }
   const field: CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '.8rem', marginTop: '.35rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 7, font: 'inherit' }
