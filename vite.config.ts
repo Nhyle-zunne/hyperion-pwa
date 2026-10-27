@@ -15,8 +15,8 @@ export default defineConfig({
         'pwa-512x512.png'
       ],
       manifest: {
-        name: 'Hyperion Maritime',
-        short_name: 'Hyperion Maritime',
+        name: 'Hyperion',
+        short_name: 'Hyperion',
         description:
           'Maritime Licensure Reviewer for OIC-NW, GMDSS, Engine and Management tracks',
         theme_color: '#002060',
