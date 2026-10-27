@@ -79,6 +79,7 @@ export default function AccountScreen() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [deletionSuccess, setDeletionSuccess] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
@@ -282,6 +283,8 @@ export default function AccountScreen() {
         provider: 'google',
         options: {
           redirectTo: 'https://hyperionmaritime.org/auth/callback',
+          // Always show Google's account chooser instead of silently reusing the last account.
+          queryParams: { prompt: 'select_account' },
         },
       })
       if (error) throw error
@@ -352,7 +355,8 @@ export default function AccountScreen() {
       setOrders([])
       setDeleteConfirmOpen(false)
       setDeleteConfirmation('')
-      setMessage('Your Hyperion account has been deleted.')
+      setMessage('')
+      setDeletionSuccess(true)
     } catch (error) {
       setMessage(safeAccountError(error, 'Unable to delete your account. Please try again or contact support.'))
     } finally {
@@ -400,6 +404,23 @@ export default function AccountScreen() {
       @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
     `}</style>
 
+    {deletionSuccess && <div
+      role="presentation"
+      style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'grid', placeItems: 'center', padding: '1rem', background: 'rgba(3, 8, 18, .72)', boxSizing: 'border-box' }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="account-deletion-success-title"
+        style={{ width: 'min(100%, 440px)', boxSizing: 'border-box', padding: '1.5rem', borderRadius: 16, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 24px 70px rgba(0,0,0,.4)', textAlign: 'center' }}
+      >
+        <div aria-hidden="true" style={{ display: 'grid', placeItems: 'center', width: 54, height: 54, margin: '0 auto .9rem', borderRadius: '50%', background: 'rgba(20,125,67,.14)', color: '#16834a', fontSize: '2rem', fontWeight: 900 }}>✓</div>
+        <h2 id="account-deletion-success-title" style={{ margin: '0 0 .6rem' }}>Account deletion successful</h2>
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.6, margin: '0 0 1rem' }}>Your Hyperion account has been deleted successfully.</p>
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.6, margin: '0 0 1.25rem' }}>You can now sign in again and choose any Google account.</p>
+        <button type="button" className="btn btn-primary" autoFocus onClick={() => setDeletionSuccess(false)} style={{ width: '100%', minHeight: 46 }}>Continue</button>
+      </section>
+    </div>}
 
     {!session ? <section style={{ ...card, maxWidth: 460, margin: '1.5rem auto' }}>
       <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>Sign in to manage your profile, purchase reviewer tracks, and view your licenses.</p>
