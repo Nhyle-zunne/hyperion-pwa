@@ -21,13 +21,26 @@ export interface OfflinePackManifest {
   complete: boolean
 }
 
+interface StoredOfflineQuestionPack {
+  id: string
+  track: TrackId
+  competenceId: string
+  part: number | null
+  freeOnly: boolean
+  questionCount: number
+  savedAt: number
+  iv: Uint8Array
+  ciphertext: Uint8Array
+}
+
 interface OfflineBankDatabase extends DBSchema {
-  packs: { key: string; value: OfflineQuestionPack }
+  packs: { key: string; value: StoredOfflineQuestionPack }
   manifests: { key: string; value: OfflinePackManifest }
+  keys: { key: string; value: { id: string; key: CryptoKey } }
 }
 
 const DB_NAME = 'hyperion-offline-question-bank'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const ENTITLEMENTS_KEY = 'hyperion-offline-entitlements'
 let dbPromise: Promise<IDBPDatabase<OfflineBankDatabase>> | null = null
 
@@ -37,6 +50,7 @@ function database() {
       upgrade(db) {
         if (!db.objectStoreNames.contains('packs')) db.createObjectStore('packs', { keyPath: 'id' })
         if (!db.objectStoreNames.contains('manifests')) db.createObjectStore('manifests', { keyPath: 'id' })
+        if (!db.objectStoreNames.contains('keys')) db.createObjectStore('keys', { keyPath: 'id' })
       }
     })
   }
@@ -51,14 +65,45 @@ export function offlineManifestId(track: TrackId, freeOnly: boolean) {
   return `${track}:${freeOnly ? 'free' : 'licensed'}`
 }
 
+async function deviceStorageKey(db: IDBPDatabase<OfflineBankDatabase>): Promise<CryptoKey> {
+  const saved = await db.get('keys', 'device-key')
+  if (saved?.key) return saved.key
+  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+  await db.put('keys', { id: 'device-key', key })
+  return key
+}
+
 export async function saveOfflineQuestionPack(pack: Omit<OfflineQuestionPack, 'id' | 'savedAt'>) {
   const db = await database()
-  const record: OfflineQuestionPack = {
-    ...pack,
-    id: offlinePackId(pack.track, pack.competenceId, pack.part, pack.freeOnly),
-    savedAt: Date.now()
+  const id = offlinePackId(pack.track, pack.competenceId, pack.part, pack.freeOnly)
+  const key = await deviceStorageKey(db)
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const plaintext = new TextEncoder().encode(JSON.stringify(pack.questions))
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
+  const record: StoredOfflineQuestionPack = {
+    id,
+    track: pack.track,
+    competenceId: pack.competenceId,
+    part: pack.part,
+    freeOnly: pack.freeOnly,
+    questionCount: pack.questions.length,
+    savedAt: Date.now(),
+    iv,
+    ciphertext: new Uint8Array(encrypted)
   }
   await db.put('packs', record)
+}
+
+async function decryptOfflineQuestionPack(
+  key: CryptoKey,
+  pack: StoredOfflineQuestionPack
+): Promise<OfflineQuestionPack> {
+  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: pack.iv }, key, pack.ciphertext)
+  const questions = JSON.parse(new TextDecoder().decode(plaintext)) as Question[]
+  return {
+    id: pack.id, track: pack.track, competenceId: pack.competenceId,
+    part: pack.part, freeOnly: pack.freeOnly, questions, savedAt: pack.savedAt
+  }
 }
 
 export async function saveOfflinePackManifest(manifest: Omit<OfflinePackManifest, 'id' | 'savedAt'>) {
@@ -87,8 +132,14 @@ export async function getOfflineQuestionPacks(track: TrackId, freeOnly: boolean)
     const db = await database()
     const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
     if (!manifest?.complete) return null
-    return (await db.getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    const stored = (await db.getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    const savedKey = await db.get('keys', 'device-key')
+    if (!savedKey?.key) return null
+    const decrypted: OfflineQuestionPack[] = []
+    for (const pack of stored) decrypted.push(await decryptOfflineQuestionPack(savedKey.key, pack))
+    return decrypted
   } catch {
+    // A missing device key or damaged ciphertext requires a fresh online download.
     return null
   }
 }
@@ -118,13 +169,18 @@ export async function getOfflineQuestionsByTrack(track: TrackId, freeOnly: boole
 }
 
 export async function getOfflineQuestionCounts(track: TrackId, freeOnly: boolean) {
-  const packs = await getOfflineQuestionPacks(track, freeOnly)
-  if (!packs) return null
-  return packs.map(pack => ({
-    competenceId: pack.competenceId,
-    part: pack.part,
-    count: pack.questions.length
-  }))
+  const manifest = await getOfflinePackManifest(track, freeOnly)
+  if (!manifest?.complete) return null
+  try {
+    const stored = (await (await database()).getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    return stored.map(pack => ({
+      competenceId: pack.competenceId,
+      part: pack.part,
+      count: pack.questionCount
+    }))
+  } catch {
+    return null
+  }
 }
 
 interface OfflineEntitlements {
@@ -146,7 +202,7 @@ export function getOfflineEntitlementExpiry(userId: string, track: TrackId): num
   try {
     const value = JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY) || 'null') as OfflineEntitlements | null
     if (!value || value.userId !== userId) return null
-    const expiresAt = Number(value.tracks[track])
+    const expiresAt = Number(value.tracks[track] ?? value.tracks.ALL)
     return Number.isFinite(expiresAt) && expiresAt > Date.now() ? expiresAt : null
   } catch {
     return null
