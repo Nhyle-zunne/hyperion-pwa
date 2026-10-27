@@ -237,6 +237,7 @@ Deno.serve(async (req) => {
       customer_company: profile.customerCompany,
       customer_school: profile.customerSchool
     }).select('id').single()
+    if (insertError?.code === '23505') return json({ error: 'A checkout for this track was just created in another session. Refresh Checkout and resume the existing order to avoid a duplicate charge.' }, 409)
     if (insertError || !order) return json({ error: 'Could not create your order. Please try again.' }, 500)
 
     const configuredBase = (Deno.env.get('APP_BASE_URL') || 'https://hyperionmaritime.org').replace(/\/+$/, '')
