@@ -61,6 +61,15 @@ Deno.serve(async req => {
       access_expires_at: accessByOrder[row.id]?.expires_at || null
     })) })
   }
+  if (body.action === 'reconciliation-alerts') {
+    const { data, error } = await admin.from('paymongo_reconciliation_alerts')
+      .select('id,checkout_reference,checkout_session_id,paymongo_payment_id,expected_amount_php,observed_amount_minor,observed_currency,reason,created_at')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (error) return json({ error: 'Could not load PayMongo reconciliation alerts.' }, 500)
+    return json({ alerts: data || [] })
+  }
+
   if (body.action === 'instructions') {
     const instructions = String(body.instructions || '').trim().slice(0, 5000)
     if (!instructions) return json({ error: 'Payment instructions cannot be empty.' }, 400)
