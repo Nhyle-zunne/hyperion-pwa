@@ -248,7 +248,7 @@ export default function OrdersPaymentHistoryScreen() {
                     <strong style={{ display: 'block', fontSize: '1rem' }}>{product?.label ?? order.product_code} · {order.license_term === 'week' ? 'Weekly' : order.license_term === 'month' ? 'Monthly' : 'Yearly'} · ₱{order.amount_php}</strong>
                     <div className="orders-meta" style={{ marginTop: '.3rem' }}>{new Date(order.paid_at || order.created_at).toLocaleString()} · {order.payment_method || 'Payment method not recorded'}</div>
                   </div>
-                  <span className="orders-status" style={paid ? { color: 'var(--success, #15803d)', borderColor: '#86cba0', background: 'rgba(34,197,94,.08)' } : rejected ? { color: 'var(--text-muted)' } : { color: '#9a6b07', borderColor: '#e8c875', background: 'rgba(245,199,94,.09)' }}>{status}</span>
+                  <span className="orders-status" style={paid ? { color: 'var(--success, #15803d)', borderColor: '#86cba0', background: 'rgba(34,197,94,.08)' } : rejected ? { color: 'var(--text-muted)' } : { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'var(--bg-elevated)' }}>{status}</span>
                 </div>
                 {order.customer_name && <div style={{ marginTop: '.45rem', fontSize: '.85rem' }}>Customer name: {order.customer_name}</div>}
                 {order.customer_company && <div className="orders-meta" style={{ marginTop: '.2rem' }}>Company: {order.customer_company}</div>}
