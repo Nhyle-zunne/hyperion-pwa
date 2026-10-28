@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
-import { encryptSessionSnapshot, decryptSessionSnapshot } from '../src/lib/sessionSnapshotCrypto.mjs';
+import { encryptJsonPayload, decryptJsonPayload } from '../src/lib/jsonPayloadCrypto.mjs';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
@@ -69,6 +69,9 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.ts');
+const bookmarksStore = await read('../src/stores/bookmarksStore.ts');
+const vaultStore = await read('../src/stores/vaultStore.ts');
 const questionBankAccessModule = await read('../supabase/functions/question-bank/access.mjs');
 const { canAccessPaidTrack } = await import('../supabase/functions/question-bank/access.mjs');
 const learningProgressTriggerMigration = await read('../supabase/migrations/20261028181820_revoke_client_execute_on_learning_progress_trigger.sql');
@@ -451,13 +454,13 @@ const syntheticSnapshot = {
   answers: {}, currentIndex: 0, track: 'DECK_OIC_NW', competenceId: 'C1', part: null,
   mode: 'PRACTICE', isFreeSession: false, startedAt: 1, timeLimitSec: 0, timeLeftSec: 0, streak: 0, bestStreak: 0, finished: false
 };
-const encryptedSnapshot = await encryptSessionSnapshot(syntheticSnapshot, snapshotCryptoKey, new Uint8Array(12).fill(7));
-assert.equal((await decryptSessionSnapshot(encryptedSnapshot.iv, encryptedSnapshot.ciphertext, snapshotCryptoKey)).questions[0].questionText, 'confidential synthetic question', 'Encrypted session snapshots round-trip');
+const encryptedSnapshot = await encryptJsonPayload(syntheticSnapshot, snapshotCryptoKey, new Uint8Array(12).fill(7));
+assert.equal((await decryptJsonPayload(encryptedSnapshot.iv, encryptedSnapshot.ciphertext, snapshotCryptoKey)).questions[0].questionText, 'confidential synthetic question', 'Encrypted session snapshots round-trip');
 assert.equal(new TextDecoder().decode(encryptedSnapshot.ciphertext).includes('confidential synthetic question'), false, 'Ciphertext does not expose the synthetic question text');
 const tamperedSnapshotCiphertext = encryptedSnapshot.ciphertext.slice();
 tamperedSnapshotCiphertext[0] ^= 1;
-await assert.rejects(() => decryptSessionSnapshot(encryptedSnapshot.iv, tamperedSnapshotCiphertext, snapshotCryptoKey), { name: 'OperationError' }, 'Tampered session snapshots fail authenticated decryption');
-assert.ok(sessionArchive.includes('DATABASE_VERSION = 2') && sessionArchive.includes('encryptSessionSnapshot') && sessionArchive.includes('decryptSessionSnapshot') && sessionArchive.includes('migrateLegacySnapshots'), 'Session archive encrypts records and migrates legacy plaintext snapshots');
+await assert.rejects(() => decryptJsonPayload(encryptedSnapshot.iv, tamperedSnapshotCiphertext, snapshotCryptoKey), { name: 'OperationError' }, 'Tampered session snapshots fail authenticated decryption');
+assert.ok(sessionArchive.includes('DATABASE_VERSION = 2') && sessionArchive.includes('encryptJsonPayload') && sessionArchive.includes('decryptJsonPayload') && sessionArchive.includes('migrateLegacySnapshots'), 'Session archive encrypts records and migrates legacy plaintext snapshots');
 assert.ok(!sessionArchive.includes("db.put('snapshots', { id, snapshot })"), 'Session archive never directly writes plaintext question snapshots');
 assert.ok(!practiceStore.includes("localStorage.setItem('hyperion-saved-practice'") && practiceStore.includes('migrateLegacyLocalStorageSavedPractice') && practiceStore.includes('never load it directly'), 'Question-containing session snapshots are removed from new localStorage writes and legacy copies are migrated before restore');
 assert.ok(practiceStore.includes('The saved question snapshot is unavailable'), 'Resume fails clearly when no encrypted session snapshot is available instead of loading raw question text');
@@ -471,5 +474,16 @@ assert.equal((app.match(/^import .* from '\.\/screens\//gm) || []).length, 0, 'R
 
 assert.ok(workflow.includes('uses: actions/checkout@v7') && workflow.includes('uses: actions/setup-node@v7'), 'CI uses GitHub Actions maintained for the current runner runtime');
 assert.ok(workflow.includes('package-manager-cache: false') && workflow.includes('bun install --frozen-lockfile'), 'CI disables implicit npm caching and installs only from the frozen Bun lockfile');
+
+
+const serializedBookmarks = JSON.stringify({ state: { items: [{ questionText: 'bookmark only synthetic question', options: ['A', 'B'], correctAnswerIndex: 1 }] }, version: 0 });
+const encryptedStoreValue = await encryptJsonPayload(serializedBookmarks, snapshotCryptoKey);
+const decryptedStoreValue = await decryptJsonPayload(encryptedStoreValue.iv, encryptedStoreValue.ciphertext, snapshotCryptoKey);
+assert.equal(JSON.parse(decryptedStoreValue).state.items[0].questionText, 'bookmark only synthetic question', 'Encrypted Zustand storage payload round-trips');
+assert.equal(new TextDecoder().decode(encryptedStoreValue.ciphertext).includes('bookmark only synthetic question'), false, 'Encrypted store values do not expose bookmarked question text');
+assert.ok(bookmarksStore.includes("storage: createJSONStorage(() => encryptedPersistStorage)") && bookmarksStore.includes("name: 'hyperion-bookmarks'"), 'Bookmarks preserve their existing persisted key while switching to encrypted storage');
+assert.ok(vaultStore.includes("storage: createJSONStorage(() => encryptedPersistStorage)") && vaultStore.includes("name: 'hyperion-vault'"), 'Mistakes vault preserves its existing persisted key while switching to encrypted storage');
+assert.ok(encryptedPersistStorage.includes("await db.put('entries', { id: name, ...encrypted })") && encryptedPersistStorage.includes('Remove the cleartext copy only after the encrypted record is safely committed'), 'Legacy localStorage is migrated to encrypted IndexedDB before being removed');
+assert.ok(encryptedPersistStorage.includes('Do not write an unencrypted fallback'), 'Encrypted storage never introduces a new plaintext fallback');
 
 console.log('Release-safety smoke checks passed.');
