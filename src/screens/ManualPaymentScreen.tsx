@@ -256,7 +256,7 @@ export default function ManualPaymentScreen() {
       .manual-payment-page .manual-qr{background:#fff;color:#172033;border:1px solid #d7e0ea;border-radius:10px;padding:1rem;text-align:center}
       @media(max-width:760px){.manual-payment-page .manual-grid{grid-template-columns:minmax(0,1fr)}.manual-payment-page .manual-summary{position:static}}
     `}</style>
-    <button type="button" onClick={() => navigate('/account?tab=payments')} style={{ color: 'var(--text-muted)', marginBottom: '.65rem' }}>← Back to Bond Store</button>
+    <button type="button" onClick={() => navigate('/checkout')} style={{ color: 'var(--text-muted)', marginBottom: '.65rem' }}>← Back to Checkout</button>
     <div style={{ marginBottom: '1.1rem' }}>
       <div style={{ color: 'var(--accent)', fontSize: '.7rem', fontWeight: 900, letterSpacing: '.14em' }}>MANUAL PAYMENT</div>
       <h1 className="page-title" style={{ textAlign: 'left', margin: '.15rem 0 .3rem' }}>Pay manually with QR</h1>
@@ -265,7 +265,7 @@ export default function ManualPaymentScreen() {
 
     {!authLoaded ? <section style={card}>Checking your Hyperion account…</section>
       : !session ? <section style={card}><h2 style={{ marginTop: 0 }}>Sign in required</h2><p className="manual-muted">Sign in to your Hyperion account before submitting a manual payment.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/account')} style={{ width: '100%' }}>OPEN ACCOUNT / SIGN IN</button></section>
-      : !product ? <section style={card}><h2 style={{ marginTop: 0 }}>Choose a reviewer track</h2><p className="manual-muted">The requested track could not be found. Return to Bond Store and choose “Pay manually with QR” on a product.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/account?tab=payments')}>BACK TO BOND STORE</button></section>
+      : !product ? <section style={card}><h2 style={{ marginTop: 0 }}>Choose a reviewer track</h2><p className="manual-muted">The requested track could not be found. Return to Checkout and select the manual QR option when PayMongo checkout is unavailable.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/checkout')}>BACK TO CHECKOUT</button></section>
       : <>
         {message && <div role="status" style={{ ...card, borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', marginBottom: '1rem', lineHeight: 1.5 }}>{message}</div>}
         {activeLicense ? <section style={{ ...card, borderColor: 'var(--success, #15803d)' }}><h2 style={{ marginTop: 0 }}>License already active</h2><p className="manual-muted">Your {product.label} license is already active{activeLicense.expires_at ? ` until ${new Date(activeLicense.expires_at).toLocaleDateString()}` : ''}.</p><button type="button" className="btn btn-outline" onClick={() => navigate('/account?tab=licenses')}>VIEW MY LICENSES</button></section>
