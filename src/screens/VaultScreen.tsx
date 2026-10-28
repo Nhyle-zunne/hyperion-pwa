@@ -27,6 +27,7 @@ export default function VaultScreen() {
   const cloudTrackIds = useLicenseStore((s) => s.cloudTrackIds)
   const [verifiedFreeItems, setVerifiedFreeItems] = useState<string[]>([])
   const [validatingVault, setValidatingVault] = useState(true)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -93,10 +94,15 @@ export default function VaultScreen() {
     const competenceId = questions.every(question => question.competenceId === questions[0].competenceId)
       ? questions[0].competenceId
       : null
+    setSaveError(null)
     const started = await usePracticeStore.getState().startCustomSession({ questions, track, competenceId })
     if (!started) return
     usePracticeStore.setState({ mode: 'DRILL', startedAt: Date.now(), finished: false, loading: false, error: null })
-    await usePracticeStore.getState().saveProgress()
+    const saved = await usePracticeStore.getState().saveProgress()
+    if (!saved) {
+      setSaveError('Could not save this drill on the device. Check storage and try again before starting it.')
+      return
+    }
     navigate('/practice/quiz')
   }
 
@@ -106,6 +112,7 @@ export default function VaultScreen() {
       <p className="subtitle">
         {visibleItems.length} available question{visibleItems.length === 1 ? '' : 's'} you missed · auto-saved from Practice, Drill, Mock
       </p>
+      {saveError && <p role="alert" style={{ color: 'var(--danger)' }}>{saveError}</p>}
 
       {sortedGroups.map(([track, group]) => (
         <button
