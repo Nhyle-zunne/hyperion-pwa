@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { StateStorage } from 'zustand/middleware'
 import { decryptJsonPayload, encryptJsonPayload } from './jsonPayloadCrypto.mjs'
+import { createSerialAsyncQueue } from './serializedAsyncQueue.mjs'
 
 interface StoredEncryptedState {
   id: string
@@ -17,6 +18,9 @@ const DATABASE_NAME = 'hyperion-encrypted-browser-state'
 const DATABASE_VERSION = 1
 const ENCRYPTION_KEY_ID = 'encrypted-persist-state-key'
 let databasePromise: Promise<IDBPDatabase<EncryptedStateDatabase>> | null = null
+// Zustand can queue multiple state writes rapidly (for example, purging several tracks).
+// Keep all IDB operations ordered so an older async encryption cannot overwrite newer state.
+const queueStorageOperation = createSerialAsyncQueue()
 
 function database() {
   if (!databasePromise) {
@@ -63,7 +67,7 @@ function removeLegacyValue(name: string) {
 }
 
 export const encryptedPersistStorage: StateStorage = {
-  getItem: async (name) => {
+  getItem: (name) => queueStorageOperation(async () => {
     let db: IDBPDatabase<EncryptedStateDatabase>
     try {
       db = await database()
@@ -71,7 +75,12 @@ export const encryptedPersistStorage: StateStorage = {
       // Preserve access to existing local data if IndexedDB is blocked by the browser.
       return getLegacyValue(name)
     }
-    const saved = await db.get('entries', name)
+    let saved: StoredEncryptedState | undefined
+    try {
+      saved = await db.get('entries', name)
+    } catch {
+      return getLegacyValue(name)
+    }
     if (saved) {
       try {
         const key = await getOrCreateKey(db)
@@ -88,6 +97,18 @@ export const encryptedPersistStorage: StateStorage = {
     try {
       const key = await getOrCreateKey(db)
       const encrypted = await encryptJsonPayload(legacy, key)
+      // Re-check under the serialized operation queue before committing legacy content.
+      // No other write in this tab can replace this entry until the current operation finishes.
+      const concurrent = await db.get('entries', name)
+      if (concurrent) {
+        try {
+          const existingKey = await getOrCreateKey(db)
+          const value = await decryptJsonPayload<unknown>(concurrent.iv, concurrent.ciphertext, existingKey)
+          return typeof value === 'string' ? value : null
+        } catch {
+          return null
+        }
+      }
       await db.put('entries', { id: name, ...encrypted })
       // Remove the cleartext copy only after the encrypted record is safely committed.
       removeLegacyValue(name)
@@ -96,9 +117,9 @@ export const encryptedPersistStorage: StateStorage = {
       // Preserve legacy user data if migration is impossible; no new plaintext writes are made.
       return legacy
     }
-  },
+  }),
 
-  setItem: async (name, value) => {
+  setItem: (name, value) => queueStorageOperation(async () => {
     try {
       const db = await database()
       const key = await getOrCreateKey(db)
@@ -108,15 +129,16 @@ export const encryptedPersistStorage: StateStorage = {
       // Do not write an unencrypted fallback. A subsequent page visit can retry storage.
       console.warn('[Hyperion] Could not persist encrypted browser state.', error instanceof Error ? error.name : 'StorageError')
     }
-  },
+  }),
 
-  removeItem: async (name) => {
+  removeItem: (name) => queueStorageOperation(async () => {
     try {
       const db = await database()
       await db.delete('entries', name)
     } catch {
       // Continue with legacy-key cleanup even if IndexedDB is unavailable.
+    } finally {
+      removeLegacyValue(name)
     }
-    removeLegacyValue(name)
-  }
+  })
 }
