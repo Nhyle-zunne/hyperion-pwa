@@ -221,6 +221,7 @@ export default function App() {
   const isPracticeQuiz = location.pathname === '/practice/quiz'
   const isMockRunner = location.pathname === '/mock/exam'
   const isQuestionRunner = isPracticeQuiz || isMockRunner
+  const currentMode = usePracticeStore((s) => s.mode)
   const isQuickScanViewer = location.pathname === '/quick-scan/view'
   const isFlashcards = location.pathname === '/flashcards'
   const quickScanKeys: Record<string, string> = { oic_nw: 'DECK_OIC_NW', gmdss: 'GMDSS_GOC', engine_ew: 'ENGINE_OIC_EW', deck_mgt: 'DECK_MGT', engine_mgt: 'ENGINE_MGT' }
@@ -254,9 +255,14 @@ export default function App() {
 
   useEffect(() => {
     if (!entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer && !isFlashcards) || !guardedTrack) return
-    if (isQuestionRunner && (isFreeSession || sessionLoading || sessionQuestionCount === 0)) return
+    if (isQuestionRunner && (sessionLoading || sessionQuestionCount === 0)) return
     const allowed = entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
     if (allowed) return
+    const isPermittedFreeRunner = isFreeSession && (
+      (isMockRunner && currentMode === 'MOCK') ||
+      (isPracticeQuiz && currentMode === 'PRACTICE')
+    )
+    if (isQuestionRunner && isPermittedFreeRunner) return
     const trackParam: Record<string, string> = {
       DECK_OIC_NW: 'oic_nw', GMDSS_GOC: 'gmdss', ENGINE_OIC_EW: 'engine_ew',
       DECK_MGT: 'deck_mgt', ENGINE_MGT: 'engine_mgt'
@@ -265,7 +271,7 @@ export default function App() {
     if (isQuestionRunner) usePracticeStore.getState().reset()
     navigate('/track?track=' + (trackParam[guardedTrack] || 'oic_nw'), { replace: true })
     useUIStore.getState().openPaywall('This paid question view needs a current, verified license. Renew access or reconnect to check your subscription.')
-  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, isFlashcards, guardedTrack, isFreeSession, sessionLoading, sessionQuestionCount, navigate])
+  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, isFlashcards, guardedTrack, isFreeSession, currentMode, sessionLoading, sessionQuestionCount, navigate])
 
   // Free Reviewer is the only non-mock practice setup available without a license.
   // Direct URLs must obey the same access rule as the track-hub buttons.
