@@ -66,6 +66,8 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const questionBankAccessModule = await read('../supabase/functions/question-bank/access.mjs');
+const { canAccessPaidTrack } = await import('../supabase/functions/question-bank/access.mjs');
 const learningProgressTriggerMigration = await read('../supabase/migrations/20261028182500_revoke_client_execute_on_learning_progress_trigger.sql');
 const offlineEntitlementSigningMigration = await read('../supabase/migrations/20261028182000_add_signed_offline_entitlements.sql');
 const viteConfig = await read('../vite.config.ts');
@@ -388,6 +390,31 @@ assert.ok(accountScreen.includes("status,granted_at,expires_at,renewed_at") && a
 assert.ok(accountScreen.includes('Expired and revoked licenses') && accountScreen.includes("const revoked = item.status === 'revoked'"), 'Account page lists expired and revoked licenses transparently');
 assert.ok(accountScreen.includes('EXPIRING SOON') && accountScreen.includes('purchase access again after this license expires'), 'Account page warns users before a license is about to expire without implying early renewal is available');
 assert.ok(accountScreen.includes('This is an account-retention safeguard, not extra paid access.'), 'The retention grace period is not presented as extra paid-track access');
+
+
+assert.ok(questionBank.includes('import { canAccessPaidTrack } from "./access.mjs";') && questionBank.includes('loadEntitlement(admin, user.id, track)'), 'Question-bank endpoint uses the shared tested access decision with an account-and-track-scoped entitlement lookup');
+assert.ok(questionBankAccessModule.includes("entitlement.status !== 'active'") && questionBankAccessModule.includes("expiresAt > now") && questionBankAccessModule.includes("entitlement.user_id !== expectedUserId") && questionBankAccessModule.includes("entitlement.track_id !== expectedTrack"), 'Access helper requires an active, unexpired entitlement matching both account and track');
+const accessNow = Date.UTC(2026, 0, 1);
+const validEntitlement = {
+  user_id: 'test-user-active',
+  track_id: 'DECK_OIC_NW',
+  status: 'active',
+  expires_at: new Date(accessNow + 60_000).toISOString()
+};
+assert.equal(canAccessPaidTrack({ userId: null, isAdmin: false, entitlement: validEntitlement, track: 'DECK_OIC_NW', now: accessNow }), false, 'Signed-out requests are denied even if an entitlement-shaped object is supplied');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-free', isAdmin: false, entitlement: null, track: 'DECK_OIC_NW', now: accessNow }), false, 'Signed-in users without a license are denied paid-track access');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-active', isAdmin: false, entitlement: validEntitlement, track: 'DECK_OIC_NW', now: accessNow }), true, 'A matching active unexpired license grants access to its own track');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-active', isAdmin: false, entitlement: { ...validEntitlement, expires_at: new Date(accessNow).toISOString() }, track: 'DECK_OIC_NW', now: accessNow }), false, 'A license expiring at the current instant is not active');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-active', isAdmin: false, entitlement: { ...validEntitlement, expires_at: new Date(accessNow - 1).toISOString() }, track: 'DECK_OIC_NW', now: accessNow }), false, 'Expired licenses are denied');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-active', isAdmin: false, entitlement: { ...validEntitlement, status: 'revoked' }, track: 'DECK_OIC_NW', now: accessNow }), false, 'Revoked licenses are denied even when their recorded expiry is in the future');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-active', isAdmin: false, entitlement: { ...validEntitlement, status: 'expired' }, track: 'DECK_OIC_NW', now: accessNow }), false, 'Entitlements marked expired are denied even with a future timestamp');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-active', isAdmin: false, entitlement: { ...validEntitlement, expires_at: null }, track: 'DECK_OIC_NW', now: accessNow }), false, 'Licenses with a missing expiry fail closed');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-active', isAdmin: false, entitlement: { ...validEntitlement, expires_at: 'not-a-date' }, track: 'DECK_OIC_NW', now: accessNow }), false, 'Licenses with an invalid expiry fail closed');
+assert.equal(canAccessPaidTrack({ userId: 'someone-else', isAdmin: false, entitlement: validEntitlement, track: 'DECK_OIC_NW', now: accessNow }), false, 'Entitlements cannot be replayed across user IDs');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-active', isAdmin: false, entitlement: validEntitlement, track: 'GMDSS_GOC', now: accessNow }), false, 'A license for one track cannot unlock another track');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-admin', isAdmin: true, entitlement: null, track: 'DECK_OIC_NW', now: accessNow }), true, 'Server-recognized admin access bypasses per-track entitlements');
+assert.equal(canAccessPaidTrack({ userId: null, isAdmin: true, entitlement: null, track: 'DECK_OIC_NW', now: accessNow }), false, 'Admin-shaped client inputs cannot grant access without an authenticated user');
+assert.equal(canAccessPaidTrack({ userId: 'test-user-free', isAdmin: 'true', entitlement: null, track: 'DECK_OIC_NW', now: accessNow }), false, 'A non-boolean admin flag cannot grant access');
 
 
 console.log('Release-safety smoke checks passed.');

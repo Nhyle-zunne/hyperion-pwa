@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { canAccessPaidTrack } from "./access.mjs";
 
 const SOURCE_ASSETS: string[] = ["deck/oic_nw_c1.csv.enc","deck/oic_nw_c10.csv.enc","deck/oic_nw_c11.csv.enc","deck/oic_nw_c12.csv.enc","deck/oic_nw_c13.csv.enc","deck/oic_nw_c17.csv.enc","deck/oic_nw_c2.csv.enc","deck/oic_nw_c3.csv.enc","deck/oic_nw_c4.csv.enc","deck/oic_nw_c5.csv.enc","deck/oic_nw_c7.csv.enc","deck/oic_nw_c9.csv.enc","deck_mgt/dm_c1.csv.enc","deck_mgt/dm_c10.csv.enc","deck_mgt/dm_c11.csv.enc","deck_mgt/dm_c12.csv.enc","deck_mgt/dm_c13.csv.enc","deck_mgt/dm_c14.csv.enc","deck_mgt/dm_c15.csv.enc","deck_mgt/dm_c16.csv.enc","deck_mgt/dm_c17.csv.enc","deck_mgt/dm_c18.csv.enc","deck_mgt/dm_c2.csv.enc","deck_mgt/dm_c20.csv.enc","deck_mgt/dm_c3.csv.enc","deck_mgt/dm_c4.csv.enc","deck_mgt/dm_c5.csv.enc","deck_mgt/dm_c6.csv.enc","deck_mgt/dm_c8.csv.enc","deck_mgt/dm_c9.csv.enc","engine_ew/ew_c1.csv.enc","engine_ew/ew_c10.csv.enc","engine_ew/ew_c11.csv.enc","engine_ew/ew_c15.csv.enc","engine_ew/ew_c16.csv.enc","engine_ew/ew_c2.csv.enc","engine_ew/ew_c3.csv.enc","engine_ew/ew_c4.csv.enc","engine_ew/ew_c5.csv.enc","engine_ew/ew_c6.csv.enc","engine_ew/ew_c7.csv.enc","engine_ew/ew_c8.csv.enc","engine_ew/ew_c9.csv.enc","engine_mgt/em_c1.csv.enc","engine_mgt/em_c10.csv.enc","engine_mgt/em_c11.csv.enc","engine_mgt/em_c12.csv.enc","engine_mgt/em_c13.csv.enc","engine_mgt/em_c14.csv.enc","engine_mgt/em_c2.csv.enc","engine_mgt/em_c3.csv.enc","engine_mgt/em_c4.csv.enc","engine_mgt/em_c5.csv.enc","engine_mgt/em_c6.csv.enc","engine_mgt/em_c7.csv.enc","engine_mgt/em_c8.csv.enc","engine_mgt/em_c9.csv.enc","gmdss/c1_part1.csv.enc","gmdss/c1_part10.csv.enc","gmdss/c1_part2.csv.enc","gmdss/c1_part3.csv.enc","gmdss/c1_part4.csv.enc","gmdss/c1_part5.csv.enc","gmdss/c1_part6.csv.enc","gmdss/c1_part7.csv.enc","gmdss/c1_part8.csv.enc","gmdss/c1_part9.csv.enc","gmdss/c2_part1.csv.enc","gmdss/c2_part2.csv.enc"];
 const corsHeaders = {
@@ -152,12 +153,14 @@ function isAdminEmail(email: string | undefined) {
   const configured = (Deno.env.get("ADMIN_EMAILS") || "").split(/[;,\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
   return !!email && configured.includes(email.toLowerCase());
 }
-async function checkEntitlement(admin: any, userId: string, track: string) {
-  const result = await admin.from("entitlements").select("id")
-    .eq("user_id", userId).eq("track_id", track).eq("status", "active")
-    .gt("expires_at", new Date().toISOString()).maybeSingle();
+async function loadEntitlement(admin: any, userId: string, track: string) {
+  const result = await admin.from("entitlements")
+    .select("user_id,track_id,status,expires_at")
+    .eq("user_id", userId)
+    .eq("track_id", track)
+    .maybeSingle();
   if (result.error) throw new Error("Could not verify the license.");
-  return !!result.data;
+  return result.data;
 }
 async function migrationState(admin: any) {
   const result = await admin.from("question_bank_migration_state").select("status,asset_count,error_summary,updated_at").eq("id", 1).single();
@@ -364,9 +367,10 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
   }));
 }
 async function authorizeTrack(admin: any, user: any, isAdmin: boolean, track: string): Promise<boolean> {
-  if (!user) return false;
-  if (isAdmin) return true;
-  return await checkEntitlement(admin, user.id, track);
+  if (!user) return canAccessPaidTrack({ userId: null, isAdmin, entitlement: null, track });
+  if (isAdmin) return canAccessPaidTrack({ userId: user.id, isAdmin: true, entitlement: null, track });
+  const entitlement = await loadEntitlement(admin, user.id, track);
+  return canAccessPaidTrack({ userId: user.id, isAdmin: false, entitlement, track });
 }
 const FREE_FINGERPRINT_CACHE_TTL_MS = 30_000;
 const freeQuestionFingerprintCache = new Map<string, { fingerprints: Set<string>; cachedAt: number }>();
