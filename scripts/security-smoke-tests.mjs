@@ -149,6 +149,12 @@ assert.ok(basketScreen.includes("withPageLoading('Loading checkout and licenses'
 assert.ok(manualPayment.includes("withPageLoading('Loading payment details'") && manualPayment.includes("withPageLoading('Submitting payment for review'"), 'Manual payment lookup and submission display the indicator');
 assert.ok(ordersHistory.includes("withPageLoading('Loading orders and payment history'") && ordersHistory.includes("withPageLoading('Verifying payment status'"), 'Order history and payment reconciliation display the indicator');
 assert.ok(adminLicenses.includes("withPageLoading('Loading license administration'") && adminPayments.includes("withPageLoading('Loading payment submissions'") && adminQuestionBank.includes("withPageLoading('Loading question-bank inventory'"), 'Admin data loading uses the shared indicator');
+assert.ok(trackSelectionScreen.includes('const [examPanelExpanded, setExamPanelExpanded] = useState(false)'), 'Dashboard exam and streak dropdown starts collapsed to save space');
+assert.ok(trackSelectionScreen.includes('aria-expanded={examPanelExpanded}') && trackSelectionScreen.includes('aria-controls="dashboard-exam-details"'), 'Dashboard dropdown exposes its expanded state accessibly');
+assert.ok(trackSelectionScreen.includes('hidden={!examPanelExpanded}') && trackSelectionScreen.includes('className="dashboard-exam-panel__details"'), 'Target date controls and daily streak are hidden until the dropdown is expanded');
+assert.ok(trackSelectionScreen.includes('className="dashboard-exam-panel__streak">{streakStatus}</span>') && trackSelectionScreen.includes('MARINA LICENSURE EXAM'), 'Collapsed dropdown keeps exam target and streak summary visible');
+assert.ok(trackSelectionScreen.includes('dashboard-exam-panel__date-input') && trackSelectionScreen.includes('onClick={saveTarget}'), 'Target date picker remains accessible within expanded dropdown');
+assert.ok(indexCss.includes('.dashboard-exam-panel__toggle') && indexCss.includes('.dashboard-exam-panel__streak') && indexCss.includes('@media (max-width: 599px)'), 'Dropdown summary uses compact responsive styling');
 
 for (const route of [
   '/account', '/checkout', '/manual-payment', '/orders', '/admin/licenses',
