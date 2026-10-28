@@ -25,11 +25,6 @@ function parseDate(value: unknown): number {
   const result = Date.parse(value)
   return Number.isFinite(result) ? result : 0
 }
-function pages<T>(items: T[], size = PAGE_SIZE): T[][] {
-  const result: T[][] = []
-  for (let i = 0; i < items.length; i += size) result.push(items.slice(i, i + size))
-  return result
-}
 function profileIsAdmin(user: AuthUser, adminEmails: Set<string>): boolean {
   const email = (user.email || '').toLowerCase()
   const metadata = user.app_metadata || {}
@@ -109,16 +104,16 @@ Deno.serve(async req => {
     }
 
     const paymentMap = new Map<string, PaymentRow[]>()
-    const paymentQueries = [
-      admin.from('orders').select('user_id,status,payment_method,paymongo_checkout_session_id')
-        .in('user_id', userIds).in('status', ['pending', 'submitted']),
-      admin.from('orders').select('user_id,status,payment_method,paymongo_checkout_session_id')
+    const paymentQueryFactories = [
+      (offset: number) => admin.from('orders').select('user_id,status,payment_method,paymongo_checkout_session_id')
+        .in('user_id', userIds).in('status', ['pending', 'submitted']).range(offset, offset + PAGE_SIZE - 1),
+      (offset: number) => admin.from('orders').select('user_id,status,payment_method,paymongo_checkout_session_id')
         .in('user_id', userIds).eq('status', 'failed').eq('payment_method', 'PayMongo Checkout')
-        .not('paymongo_checkout_session_id', 'is', null)
+        .not('paymongo_checkout_session_id', 'is', null).range(offset, offset + PAGE_SIZE - 1)
     ]
-    for (const query of paymentQueries) {
+    for (const makeQuery of paymentQueryFactories) {
       for (let offset = 0; ; offset += PAGE_SIZE) {
-        const result = await query.range(offset, offset + PAGE_SIZE - 1)
+        const result = await makeQuery(offset)
         if (result.error) return json({ error: 'Could not verify pending payment dependencies; no accounts were deleted in this batch.', processed: totalUsers - users.length }, 500)
         const rows = (result.data || []) as PaymentRow[]
         rows.forEach(row => {
@@ -187,12 +182,66 @@ Deno.serve(async req => {
       const hasPendingPayment = payments.length > 0 || pendingBatchUsers.has(user.id)
       if (hasPendingPayment) { skippedPendingPayment++; continue }
 
-      eligible++
       if (dryRun) {
+        eligible++
         dryRunCandidates.push({ userId: user.id, reason, dueAt: new Date(dueAt).toISOString() })
         continue
       }
 
+      // Recheck mutable conditions just before deletion, so a renewal, new payment,
+      // or fresh website visit racing the daily job cannot cause an account to be deleted.
+      const [freshEntitlements, freshActivity, freshPendingOrders, freshFailedCheckout, freshPendingBatch, freshAdminAudit] = await Promise.all([
+        admin.from('entitlements').select('status,expires_at').eq('user_id', user.id),
+        admin.from('user_activity').select('last_accessed_at').eq('user_id', user.id).maybeSingle(),
+        admin.from('orders').select('id').eq('user_id', user.id).in('status', ['pending', 'submitted']).limit(1),
+        admin.from('orders').select('id').eq('user_id', user.id).eq('status', 'failed').eq('payment_method', 'PayMongo Checkout').not('paymongo_checkout_session_id', 'is', null).limit(1),
+        admin.from('checkout_batches').select('id').eq('user_id', user.id).eq('status', 'pending').limit(1),
+        admin.from('license_admin_audit').select('id').eq('admin_user_id', user.id).limit(1)
+      ])
+      if (freshEntitlements.error || freshActivity.error || freshPendingOrders.error || freshFailedCheckout.error || freshPendingBatch.error || freshAdminAudit.error) {
+        failed++
+        continue
+      }
+      if ((freshPendingOrders.data?.length || 0) > 0 || (freshFailedCheckout.data?.length || 0) > 0 || (freshPendingBatch.data?.length || 0) > 0) {
+        skippedPendingPayment++
+        continue
+      }
+      if ((freshAdminAudit.data?.length || 0) > 0) {
+        skippedAuditDependency++
+        continue
+      }
+
+      const currentTime = Date.now()
+      const currentEntitlements = (freshEntitlements.data || []) as Entitlement[]
+      if (currentEntitlements.some(row => row.status === 'active' && parseDate(row.expires_at) > currentTime)) {
+        skippedActiveLicense++
+        continue
+      }
+      const currentLatestExpiry = currentEntitlements.reduce((latest, row) => {
+        if (row.status !== 'active') return latest
+        const expiry = parseDate(row.expires_at)
+        return expiry > latest && expiry <= currentTime ? expiry : latest
+      }, 0)
+      if (currentLatestExpiry > 0) {
+        dueAt = currentLatestExpiry + RETENTION_DAYS * DAY_MS
+        if (dueAt > currentTime) {
+          skippedGracePeriod++
+          continue
+        }
+        reason = 'license_expired_grace_period_ended'
+      } else {
+        const currentLastAccess = parseDate(freshActivity.data?.last_accessed_at)
+          || parseDate(user.last_sign_in_at)
+          || parseDate(user.created_at)
+        dueAt = currentLastAccess + RETENTION_DAYS * DAY_MS
+        if (!currentLastAccess || dueAt > currentTime) {
+          skippedRecentlyActive++
+          continue
+        }
+        reason = 'free_account_inactive_30_days'
+      }
+
+      eligible++
       const auditInsert = await admin.from('account_retention_audit').insert({
         user_id: user.id,
         action: 'deletion_attempted',
