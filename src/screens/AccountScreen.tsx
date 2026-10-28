@@ -108,6 +108,7 @@ export default function AccountScreen() {
   const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>(() => Object.fromEntries(PAID_PRODUCTS.map(item => [item.code, basket.find(entry => entry.code === item.code)?.term ?? 'year'])) as Record<PaidTrack, LicenseTerm>)
   const [orders, setOrders] = useState<Order[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
+  const entitlementExpiryRevision = useLicenseStore(s => s.entitlementExpiryRevision)
 
   useEffect(() => {
     try {
@@ -194,7 +195,8 @@ export default function AccountScreen() {
     } catch { setMessage('Unable to save profile details. Please try again.') }
     finally { setBusy(false) }
   })
-  const refreshAccount = async () => withPageLoading('Loading account and licenses', async () => {
+  const refreshAccount = async (quiet = false, refreshEntitlements = true) => {
+    const loadAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setInactiveLicenses([]); setOrders([]); setRenewalGraceUntil(null); return }
     const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note,checkout_batch_id'
     const [entitlements, orderResult] = await Promise.all([
@@ -208,7 +210,10 @@ export default function AccountScreen() {
         .limit(50),
     ])
 
-    const entitlementRows = !entitlements.error ? (entitlements.data ?? []) as OwnedTrack[] : []
+    // Preserve the last known license display during network outages, then re-evaluate expiry locally.
+    const entitlementRows = !entitlements.error
+      ? (entitlements.data ?? []) as OwnedTrack[]
+      : [...owned, ...inactiveLicenses]
     const now = Date.now()
     const activeLicenses = entitlementRows.filter(item => isCurrentLicense(item, now))
     const pastLicenses = entitlementRows
@@ -224,7 +229,6 @@ export default function AccountScreen() {
     setOwned(activeLicenses)
     setInactiveLicenses(pastLicenses)
     if (entitlements.error) {
-      setRenewalGraceUntil(null)
       setMessage('Unable to refresh account details. Please try again.')
     }
 
@@ -241,9 +245,14 @@ export default function AccountScreen() {
     const combinedOrders = [...recentOrders, ...linkedOrders.filter(linked => !recentOrders.some(recent => recent.id === linked.id))]
     combinedOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     setOrders(combinedOrders)
-    await refreshCloudEntitlements()
-  })
+    if (refreshEntitlements) await refreshCloudEntitlements()
+    }
+    return quiet ? loadAccount() : withPageLoading('Loading account and licenses', loadAccount)
+  }
   useEffect(() => { void refreshAccount() }, [session?.user.id])
+  useEffect(() => {
+    if (entitlementExpiryRevision > 0) void refreshAccount(true, false)
+  }, [entitlementExpiryRevision])
 
   // A checkout return triggers direct server-to-PayMongo verification. The return URL
   // itself grants nothing; only a paid session checked by the server or signed webhook can activate a license.
