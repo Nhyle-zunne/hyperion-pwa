@@ -400,6 +400,90 @@ async function freeQuestionFingerprints(admin: any, track: string): Promise<Set<
   freeQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now() });
   return fingerprints;
 }
+
+type OfflineSigningKeys = { private_jwk: JsonWebKey; public_jwk: JsonWebKey };
+const OFFLINE_TRACK_IDS = ["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"];
+
+function encodeBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function loadOrCreateOfflineSigningKeys(admin: any): Promise<OfflineSigningKeys> {
+  const table = "offline_entitlement_signing_keys";
+  const readExisting = () => admin.from(table)
+    .select("private_jwk,public_jwk").eq("id", 1).maybeSingle();
+  const current = await readExisting();
+  if (current.error) throw new Error("Could not read offline signing keys.");
+  if (current.data?.private_jwk && current.data?.public_jwk) return current.data as OfflineSigningKeys;
+
+  // Create a single ECDSA P-256 keypair. Concurrent first calls race through
+  // INSERT ... ON CONFLICT DO NOTHING, then all callers read the winning row.
+  const pair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"]
+  );
+  const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  const inserted = await admin.from(table).upsert(
+    { id: 1, private_jwk: privateJwk, public_jwk: publicJwk },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
+  if (inserted.error) throw new Error("Could not initialize offline signing keys.");
+
+  const saved = await readExisting();
+  if (saved.error || !saved.data?.private_jwk || !saved.data?.public_jwk) {
+    throw new Error("Offline signing keys are unavailable.");
+  }
+  return saved.data as OfflineSigningKeys;
+}
+
+async function issueOfflineEntitlement(admin: any, user: any, isAdmin: boolean) {
+  const now = Date.now();
+  const tracks: Record<string, number> = {};
+  if (isAdmin) {
+    const offlineAdminExpiry = now + 7 * 24 * 60 * 60 * 1000;
+    for (const track of OFFLINE_TRACK_IDS) tracks[track] = offlineAdminExpiry;
+  } else {
+    const entitlements = await admin.from("entitlements")
+      .select("track_id,expires_at")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .gt("expires_at", new Date(now).toISOString());
+    if (entitlements.error) throw new Error("Could not verify current offline licenses.");
+    for (const row of entitlements.data ?? []) {
+      if (!OFFLINE_TRACK_IDS.includes(row.track_id)) continue;
+      const expiry = Date.parse(row.expires_at);
+      if (Number.isFinite(expiry) && expiry > now) {
+        tracks[row.track_id] = Math.max(tracks[row.track_id] ?? 0, expiry);
+      }
+    }
+  }
+
+  const claims = { v: 1, userId: user.id, issuedAt: now, tracks };
+  const payload = encodeBase64Url(new TextEncoder().encode(JSON.stringify(claims)));
+  const keys = await loadOrCreateOfflineSigningKeys(admin);
+  const privateKey = await crypto.subtle.importKey(
+    "jwk",
+    keys.private_jwk,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"]
+  );
+  const signed = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    privateKey,
+    new TextEncoder().encode(payload)
+  );
+  return {
+    token: payload + "." + encodeBase64Url(new Uint8Array(signed)),
+    issuedAt: now,
+    trackIds: Object.keys(tracks)
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: headers(req) });
   if (req.method !== "POST") return json(req, { error: "Method not allowed." }, 405);
@@ -549,6 +633,33 @@ Deno.serve(async (req: Request) => {
   let state: any;
   try { state = await migrationState(admin); } catch { return json(req, { error: "Question service is not ready." }, 503); }
   if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Protected question bank is not ready yet." }, 503);
+
+  if (body.action === "offline-license-public-key") {
+    try {
+      const keys = await loadOrCreateOfflineSigningKeys(admin);
+      // Only the verification key is public. Never return private_jwk from this endpoint.
+      return json(req, { publicKey: {
+        kty: keys.public_jwk.kty,
+        crv: keys.public_jwk.crv,
+        x: keys.public_jwk.x,
+        y: keys.public_jwk.y,
+        ext: true,
+        key_ops: ["verify"]
+      }});
+    } catch {
+      return json(req, { error: "Offline license verification is not configured." }, 503);
+    }
+  }
+
+  if (body.action === "offline-license") {
+    if (!user) return json(req, { error: "Sign in to refresh offline access." }, 401);
+    try {
+      const license = await issueOfflineEntitlement(admin, user, isAdmin);
+      return json(req, { token: license.token, issuedAt: license.issuedAt, trackIds: license.trackIds });
+    } catch {
+      return json(req, { error: "Could not issue a verified offline license. Reconnect and try again." }, 503);
+    }
+  }
 
   if (body.action === "authorize-session") {
     const track = body.track || "";
