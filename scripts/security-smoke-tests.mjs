@@ -66,6 +66,7 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const adminPaymentReviewFunction = await read('../supabase/functions/admin-payment-review/index.ts');
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
 const timestampMatch = webhook.match(/if \(!\/(.+?)\/\.test\(timestamp\)/);
@@ -298,7 +299,7 @@ assert.ok(questionBank.includes('body.freeOnly !== true') && questionBank.includ
 
 
 assert.ok(adminLicenseManagement.includes("client.auth.getUser()") && adminLicenseManagement.includes("ADMIN_EMAILS") && adminLicenseManagement.includes("Admin access denied."), 'Admin license management rejects non-admin sessions');
-assert.ok(adminPayments.includes("client.auth.getUser()") && adminPayments.includes("ADMIN_EMAILS") && adminPayments.includes("Admin access denied."), 'Admin payment review rejects non-admin sessions');
+assert.ok(adminPaymentReviewFunction.includes("client.auth.getUser()") && adminPaymentReviewFunction.includes("ADMIN_EMAILS") && adminPaymentReviewFunction.includes("Admin access denied."), 'Admin payment review rejects non-admin sessions');
 assert.ok(abandonedCheckoutCleanup.includes("const providedToken = req.headers.get('x-hyperion-cron-token')") && abandonedCheckoutCleanup.includes("tokenCheck.data !== true) return json({ error: 'Unauthorized scheduled job.' }, 401)"), 'Abandoned-checkout cleanup rejects requests without a verified cron token');
 assert.ok(accountRetentionFunction.includes("const cronToken = req.headers.get('x-hyperion-account-retention-token')") && accountRetentionFunction.includes("if (!url || !service || !cronToken) return json({ error: 'Not authorized.' }, 401)") && accountRetentionFunction.includes('verify_account_retention_cron_token'), 'Account-retention cleanup requires and verifies its private cron token');
 assert.ok(deleteAccount.includes("userClient.auth.getUser()") && deleteAccount.includes(".eq('user_id', user.id)"), 'Account deletion authenticates the caller and scopes payment dependencies to their own account');
