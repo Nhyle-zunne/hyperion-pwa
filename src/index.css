@@ -1975,3 +1975,119 @@ a:focus-visible,
     transform: none;
   }
 }
+
+
+/* Merge the exam target toggle into the Hyperion brand header to save dashboard height. */
+.dash-header.dashboard-header-with-exam {
+  width: auto;
+  box-sizing: border-box;
+  display: block;
+  padding: .8rem 1rem .75rem;
+  margin-bottom: .85rem;
+  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-header);
+}
+.dashboard-header-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-width: 0;
+}
+.dashboard-header-brand {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dashboard-header-brand h1 {
+  margin: 0;
+}
+.dashboard-header-brand .sub {
+  margin-top: 3px;
+}
+.dashboard-header-main .dashboard-exam-panel__toggle {
+  flex: 0 1 500px;
+  width: min(48%, 500px);
+  min-width: 380px;
+  box-sizing: border-box;
+  grid-template-columns: 34px minmax(0, 1fr) auto 28px;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+.dashboard-header-main .dashboard-exam-panel__toggle:hover {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: color-mix(in srgb, var(--bg-card) 96%, var(--accent));
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.dashboard-header-main .dashboard-exam-panel__icon {
+  width: 32px;
+  height: 32px;
+  font-size: 1.05rem;
+}
+.dashboard-header-main .dashboard-exam-panel__eyebrow {
+  font-size: .66rem;
+}
+.dashboard-header-main .dashboard-exam-panel__target {
+  font-size: .85rem;
+}
+.dashboard-header-main .dashboard-exam-panel__streak {
+  font-size: .64rem;
+  padding: .34rem .48rem;
+}
+.dashboard-header-main .dashboard-exam-panel__chevron {
+  width: 27px;
+  height: 27px;
+}
+.dashboard-header-with-exam .dashboard-exam-panel__details {
+  width: 100%;
+  box-sizing: border-box;
+}
+@media (max-width: 760px) {
+  .dash-header.dashboard-header-with-exam {
+    padding: .75rem .65rem .65rem;
+  }
+  .dashboard-header-main {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .dashboard-header-main .dashboard-exam-panel__toggle {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    grid-template-columns: 32px minmax(0, 1fr) auto 27px;
+    padding: 9px 9px;
+  }
+  .dashboard-header-main .dashboard-exam-panel__icon {
+    width: 29px;
+    height: 29px;
+    font-size: 1rem;
+  }
+  .dashboard-header-main .dashboard-exam-panel__eyebrow {
+    font-size: .62rem;
+  }
+  .dashboard-header-main .dashboard-exam-panel__target {
+    font-size: .8rem;
+  }
+  .dashboard-header-main .dashboard-exam-panel__streak {
+    padding: .31rem .4rem;
+    font-size: .61rem;
+  }
+  .dashboard-header-with-exam .dashboard-exam-panel__details {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .dashboard-header-with-exam .dashboard-exam-panel__details.is-expanded {
+    padding: 10px 8px 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-header-main .dashboard-exam-panel__toggle {
+    transition: none;
+  }
+}
