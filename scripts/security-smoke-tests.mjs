@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
+import { encryptSessionSnapshot, decryptSessionSnapshot } from '../src/lib/sessionSnapshotCrypto.mjs';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
@@ -79,6 +80,7 @@ const adminPaymentReviewFunction = await read('../supabase/functions/admin-payme
 const deleteAccount = await read('../supabase/functions/delete-account/index.ts');
 const cancelCheckout = await read('../supabase/functions/cancel-checkout/index.ts');
 const offlineEntitlementCrypto = await read('../src/lib/offlineEntitlementCrypto.mjs');
+const sessionArchive = await read('../src/lib/sessionArchive.ts');
 const { verifyOfflineEntitlementToken } = await import('../src/lib/offlineEntitlementCrypto.mjs');
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -440,6 +442,27 @@ assert.equal(nextExpiryRefreshDelay([schedulerNow + 5_000_000_000], schedulerNow
 assert.equal(nextExpiryRefreshDelay([schedulerNow + 10_000], schedulerNow, 0), null, 'Invalid timeout bounds fail closed');
 assert.ok(licenseStore.includes('scheduleEntitlementExpiryRefresh') && licenseStore.includes('entitlementExpiryRevision'), 'License store schedules expiry refresh and exposes a revision for dependent account UI');
 assert.ok(accountScreen.includes('refreshAccount(true, false)') && accountScreen.includes('Preserve the last known license display during network outages'), 'Account expiry refresh is quiet and does not erase known license details on a temporary network failure');
+
+
+const snapshotCryptoKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+const syntheticSnapshot = {
+  sessionId: 'test-session',
+  questions: [{ id: 'Q-1', track: 'DECK_OIC_NW', competenceId: 'C1', questionText: 'confidential synthetic question', options: ['Option A', 'Option B'], correctAnswerIndex: 1, topic: 'test', functionId: 'F1' }],
+  answers: {}, currentIndex: 0, track: 'DECK_OIC_NW', competenceId: 'C1', part: null,
+  mode: 'PRACTICE', isFreeSession: false, startedAt: 1, timeLimitSec: 0, timeLeftSec: 0, streak: 0, bestStreak: 0, finished: false
+};
+const encryptedSnapshot = await encryptSessionSnapshot(syntheticSnapshot, snapshotCryptoKey, new Uint8Array(12).fill(7));
+assert.equal((await decryptSessionSnapshot(encryptedSnapshot.iv, encryptedSnapshot.ciphertext, snapshotCryptoKey)).questions[0].questionText, 'confidential synthetic question', 'Encrypted session snapshots round-trip');
+assert.equal(new TextDecoder().decode(encryptedSnapshot.ciphertext).includes('confidential synthetic question'), false, 'Ciphertext does not expose the synthetic question text');
+const tamperedSnapshotCiphertext = encryptedSnapshot.ciphertext.slice();
+tamperedSnapshotCiphertext[0] ^= 1;
+await assert.rejects(() => decryptSessionSnapshot(encryptedSnapshot.iv, tamperedSnapshotCiphertext, snapshotCryptoKey), { name: 'OperationError' }, 'Tampered session snapshots fail authenticated decryption');
+assert.ok(sessionArchive.includes('DATABASE_VERSION = 2') && sessionArchive.includes('encryptSessionSnapshot') && sessionArchive.includes('decryptSessionSnapshot') && sessionArchive.includes('migrateLegacySnapshots'), 'Session archive encrypts records and migrates legacy plaintext snapshots');
+assert.ok(!sessionArchive.includes("db.put('snapshots', { id, snapshot })"), 'Session archive never directly writes plaintext question snapshots');
+assert.ok(!practiceStore.includes("localStorage.setItem('hyperion-saved-practice'") && practiceStore.includes('migrateLegacyLocalStorageSavedPractice') && practiceStore.includes('never load it directly'), 'Question-containing session snapshots are removed from new localStorage writes and legacy copies are migrated before restore');
+assert.ok(practiceStore.includes('The saved question snapshot is unavailable'), 'Resume fails clearly when no encrypted session snapshot is available instead of loading raw question text');
+assert.ok(!practiceStore.includes("localStorage.setItem('hyperion-saved-practice'") && practiceStore.includes('migrateLegacyLocalStorageSavedPractice') && practiceStore.includes('never load it directly'), 'Question-containing session snapshots are removed from new localStorage writes and legacy copies are migrated before restore');
+assert.ok(practiceStore.includes('The saved question snapshot is unavailable'), 'Resume fails clearly when no encrypted session snapshot is available instead of loading raw question text');
 
 assert.ok(app.includes("const PracticeQuizScreen = lazy(() => import('./screens/PracticeQuizScreen'))") && app.includes("const AdminQuestionBankScreen = lazy(() => import('./screens/AdminQuestionBankScreen'))"), 'Heavy learning and admin screens load as separate route chunks');
 assert.ok(app.includes('<Suspense fallback=') && app.includes('Loading Hyperion…'), 'Lazy routes present an accessible loading fallback while a screen chunk loads');
