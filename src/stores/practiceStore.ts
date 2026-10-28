@@ -537,20 +537,25 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       (count, question) => count + (current.answers[question.id]?.isCorrect ? 1 : 0),
       0
     );
-    useHistoryStore.getState().saveSession({
-      id: snapshot.sessionId,
-      mode: current.mode,
-      track: current.track,
-      competenceId: current.competenceId,
-      part: current.part,
-      currentIndex: current.currentIndex,
-      total: current.questions.length,
-      answered,
-      correct,
-      startedAt: current.startedAt,
-      savedAt: Date.now(),
-      isFreeSession: current.isFreeSession
-    });
+    try {
+      useHistoryStore.getState().saveSession({
+        id: snapshot.sessionId,
+        mode: current.mode,
+        track: current.track,
+        competenceId: current.competenceId,
+        part: current.part,
+        currentIndex: current.currentIndex,
+        total: current.questions.length,
+        answered,
+        correct,
+        startedAt: current.startedAt,
+        savedAt: Date.now(),
+        isFreeSession: current.isFreeSession
+      });
+    } catch {
+      await deleteSessionSnapshot(snapshot.sessionId).catch(() => undefined);
+      return false;
+    }
 
     window.dispatchEvent(new Event('hyperion:practice-progress-saved'));
     return true;
