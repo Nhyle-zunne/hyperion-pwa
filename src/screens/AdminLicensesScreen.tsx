@@ -71,7 +71,7 @@ function retentionLabel(user: ManagedUser) {
     case 'active_license_protected': return 'ACTIVE LICENSE · PROTECTED'
     case 'renewal_grace': return `RENEWAL GRACE · ${dateLabel(user.retention_due_at)}`
     case 'free_account_grace': return `FREE ACCOUNT · GRACE UNTIL ${dateLabel(user.retention_due_at)}`
-    case 'free_account_active': return `FREE ACCOUNT · INACTIVITY PERIOD UNTIL ${dateLabel(user.retention_due_at)}`
+    case 'free_account_active': return `FREE ACCOUNT · RECENT ACTIVITY · RETENTION DATE ${dateLabel(user.retention_due_at)}`
     case 'deletion_due': return 'DELETION ELIGIBLE'
     case 'pending_payment_hold': return 'PENDING PAYMENT · ON HOLD'
     case 'admin_protected': return 'ADMIN · PROTECTED'
