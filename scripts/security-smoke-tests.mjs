@@ -72,6 +72,7 @@ const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.ts');
 const bookmarksStore = await read('../src/stores/bookmarksStore.ts');
 const vaultStore = await read('../src/stores/vaultStore.ts');
+const vaultScreen = await read('../src/screens/VaultScreen.tsx');
 const questionBankAccessModule = await read('../supabase/functions/question-bank/access.mjs');
 const { canAccessPaidTrack } = await import('../supabase/functions/question-bank/access.mjs');
 const learningProgressTriggerMigration = await read('../supabase/migrations/20261028181820_revoke_client_execute_on_learning_progress_trigger.sql');
@@ -483,6 +484,9 @@ assert.equal(JSON.parse(decryptedStoreValue).state.items[0].questionText, 'bookm
 assert.equal(new TextDecoder().decode(encryptedStoreValue.ciphertext).includes('bookmark only synthetic question'), false, 'Encrypted store values do not expose bookmarked question text');
 assert.ok(bookmarksStore.includes("storage: createJSONStorage(() => encryptedPersistStorage)") && bookmarksStore.includes("name: 'hyperion-bookmarks'"), 'Bookmarks preserve their existing persisted key while switching to encrypted storage');
 assert.ok(vaultStore.includes("storage: createJSONStorage(() => encryptedPersistStorage)") && vaultStore.includes("name: 'hyperion-vault'"), 'Mistakes vault preserves its existing persisted key while switching to encrypted storage');
+assert.ok(vaultStore.includes('purgePaidForTracks') && vaultStore.includes('isFreeSession === true') && app.includes('useVaultStore.getState().purgePaidForTracks([track])'), 'Paid mistake-vault entries are removed when their track entitlement expires');
+assert.ok(vaultScreen.includes('authorizeQuestionSet') && vaultScreen.includes('entitlementsVerified') && vaultScreen.includes('isFreeSession === true'), 'Vault hides paid cached question text without an active entitlement and validates free-sample candidates');
+assert.ok(practiceStore.includes('addMistake(q, answer.selectedIndex, s.isFreeSession)') && practiceStore.includes('addMistake(q, index, isFreeSession)'), 'Mistake vault records whether a mistake came from a permitted free session');
 assert.ok(encryptedPersistStorage.includes("await db.put('entries', { id: name, ...encrypted })") && encryptedPersistStorage.includes('Remove the cleartext copy only after the encrypted record is safely committed'), 'Legacy localStorage is migrated to encrypted IndexedDB before being removed');
 assert.ok(encryptedPersistStorage.includes('Do not write an unencrypted fallback'), 'Encrypted storage never introduces a new plaintext fallback');
 
