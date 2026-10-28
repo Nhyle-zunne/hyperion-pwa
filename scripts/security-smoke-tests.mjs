@@ -9,7 +9,8 @@ const [
   aboutScreen, termsScreen, privacyScreen, topLoadingIndicator, pageLoadingManager,
   questionBankClient, adminLicenses, adminPayments, adminQuestionBank,
   practiceConfigScreen, practiceCompetenceScreen, trackHubScreen, drillScreen,
-  quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen
+  quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen,
+  abandonedCheckoutCleanup, abandonedCheckoutMigration
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -50,7 +51,9 @@ const [
   read('../src/screens/QuickScanCompetenceScreen.tsx'),
   read('../src/screens/QuickScanViewerScreen.tsx'),
   read('../src/screens/FlashcardsScreen.tsx'),
-  read('../src/screens/SearchScreen.tsx')
+  read('../src/screens/SearchScreen.tsx'),
+  read('../supabase/functions/expire-abandoned-checkouts/index.ts'),
+  read('../supabase/migrations/20261028030000_schedule_12_hour_abandoned_paymongo_checkout_cleanup.sql')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -215,5 +218,14 @@ assert.ok(searchScreen.includes('className="search-results-protected"') && searc
 assert.ok(indexCss.includes('.search-results-protected,') && indexCss.includes('-webkit-user-select: none;') && indexCss.includes('user-select: none;') && indexCss.includes('-webkit-touch-callout: none;'), 'Search question result text cannot be selected through normal desktop or mobile text selection');
 assert.ok(questionBank.includes('if (!freeOnly)') && questionBank.includes('An active license is required to retrieve these questions') && questionBank.includes('An active license is required to access paid question counts'), 'Backend rejects unauthenticated or unlicensed full-bank question and count requests');
 assert.ok(questionBank.includes('if (freeOnly) text = sampleFreeCsv(assetPath, text)') && questionBank.includes('if (body.action === "flashcards")') && questionBank.includes('if (body.action === "search")'), 'Backend free requests are limited to the designated sample while paid-content actions remain separately guarded');
+assert.ok(abandonedCheckoutCleanup.includes('12 * 60 * 60 * 1000') && abandonedCheckoutCleanup.includes('.lt(\'created_at\', cutoff)'), 'Abandoned PayMongo cleanup only considers checkouts older than 12 hours');
+assert.ok(abandonedCheckoutCleanup.includes('x-hyperion-cron-token') && abandonedCheckoutCleanup.includes('verify_abandoned_checkout_cron_token'), 'Scheduled payment cleanup authenticates with a server-side secret');
+assert.ok(abandonedCheckoutCleanup.includes('metadataMatches(record, session, isBatch)') && abandonedCheckoutCleanup.includes('status') && abandonedCheckoutCleanup.includes('/expire'), 'Cleanup verifies checkout metadata and provider state before expiring sessions');
+assert.ok(abandonedCheckoutCleanup.includes('hasInFlightOrUnknownPayment(session)') && abandonedCheckoutCleanup.includes('summary.processing += 1'), 'Cleanup leaves processing or uncertain payments pending');
+assert.ok(abandonedCheckoutCleanup.includes('finalize_paymongo_checkout') && abandonedCheckoutCleanup.includes('paidFinalized'), 'Cleanup recovers verified paid payments through the existing atomic finalizer');
+assert.ok(abandonedCheckoutCleanup.includes('mark_abandoned_paymongo_checkout_failed') && abandonedCheckoutCleanup.includes('status') && abandonedCheckoutCleanup.includes('expired'), 'Cleanup marks an order failed only after PayMongo confirms expiry');
+assert.ok(abandonedCheckoutMigration.includes('interval \'12 hours\'') && abandonedCheckoutMigration.includes('created_at <= now() - interval \'12 hours\''), 'Database transition has its own atomic 12-hour cutoff guard');
+assert.ok(abandonedCheckoutMigration.includes('grant execute on function public.verify_abandoned_checkout_cron_token(text) to service_role') && abandonedCheckoutMigration.includes('revoke all on function public.verify_abandoned_checkout_cron_token(text) from public, anon, authenticated'), 'Cron token validation is service-role only');
+assert.ok(abandonedCheckoutMigration.includes('hyperion-expire-abandoned-paymongo-checkouts') && abandonedCheckoutMigration.includes('*/5 * * * *') && abandonedCheckoutMigration.includes('vault.decrypted_secrets'), 'Supabase schedules cleanup every five minutes using secrets stored in Vault');
 
 console.log('Release-safety smoke checks passed.');
