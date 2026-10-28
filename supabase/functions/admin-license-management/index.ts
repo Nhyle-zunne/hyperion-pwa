@@ -105,6 +105,35 @@ Deno.serve(async req => {
       if (rows.length < 1000) break
     }
 
+    // Load last real website activity and payment/admin dependencies in bounded account batches.
+    const activityByUser = new Map<string, string>()
+    const pendingPaymentUsers = new Set<string>()
+    const adminAuditUsers = new Set<string>()
+    for (let start = 0; start < users.length; start += 1000) {
+      const ids = users.slice(start, start + 1000).map(account => account.id)
+      const [activityResult, pendingOrdersResult, failedCheckoutResult, pendingBatchesResult, adminAuditResult] = await Promise.all([
+        admin.from('user_activity').select('user_id,last_accessed_at').in('user_id', ids),
+        admin.from('orders').select('user_id').in('user_id', ids).in('status', ['pending', 'submitted']).limit(10000),
+        admin.from('orders').select('user_id').in('user_id', ids).eq('status', 'failed').eq('payment_method', 'PayMongo Checkout').not('paymongo_checkout_session_id', 'is', null).limit(10000),
+        admin.from('checkout_batches').select('user_id').in('user_id', ids).eq('status', 'pending').limit(10000),
+        admin.from('license_admin_audit').select('admin_user_id').in('admin_user_id', ids).limit(10000)
+      ])
+      if (activityResult.error) return json(req, { error: 'Could not load last website activity.' }, 500)
+      if (pendingOrdersResult.error || failedCheckoutResult.error || pendingBatchesResult.error) {
+        return json(req, { error: 'Could not verify pending payment dependencies.' }, 500)
+      }
+      if (adminAuditResult.error) return json(req, { error: 'Could not verify admin audit dependencies.' }, 500)
+      for (const row of activityResult.data || []) activityByUser.set(row.user_id, row.last_accessed_at)
+      for (const row of pendingOrdersResult.data || []) pendingPaymentUsers.add(row.user_id)
+      for (const row of failedCheckoutResult.data || []) pendingPaymentUsers.add(row.user_id)
+      for (const row of pendingBatchesResult.data || []) pendingPaymentUsers.add(row.user_id)
+      for (const row of adminAuditResult.data || []) adminAuditUsers.add(row.admin_user_id)
+    }
+
+    const retentionNow = Date.now()
+    const retentionMs = 30 * 24 * 60 * 60 * 1000
+    const allowedAdmins = new Set((Deno.env.get('ADMIN_EMAILS') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean))
+
     const byUser = new Map<string, Map<string, any>>()
     for (const row of entitlements) {
       if (!byUser.has(row.user_id)) byUser.set(row.user_id, new Map())
@@ -127,11 +156,47 @@ Deno.serve(async req => {
           granted_at: row.granted_at, expires_at: row.expires_at, order_id: row.order_id
         }]
       }))
+
+      const trackedAccess = activityByUser.get(account.id) || null
+      const lastAccessedAt = trackedAccess || account.last_sign_in_at || account.created_at
+      const lastAccessSource = trackedAccess ? 'website_activity' : account.last_sign_in_at ? 'last_sign_in_baseline' : 'created_at_baseline'
+      const relevantLicenses = Array.from(recordMap.values())
+      const hasActiveLicense = relevantLicenses.some(row => effectiveStatus(row, retentionNow) === 'active')
+      const latestExpiredAt = relevantLicenses.reduce((latest, row) => {
+        if (row.status !== 'active') return latest
+        const expiry = Date.parse(row.expires_at || '')
+        return Number.isFinite(expiry) && expiry > 0 && expiry <= retentionNow ? Math.max(latest, expiry) : latest
+      }, 0)
+      const isAdmin = allowedAdmins.has((account.email || '').toLowerCase())
+        || account.app_metadata?.role === 'admin'
+        || account.app_metadata?.is_admin === true
+        || adminAuditUsers.has(account.id)
+      let retentionStatus: string
+      let retentionDueAt: string | null = null
+      if (isAdmin) {
+        retentionStatus = adminAuditUsers.has(account.id) && !allowedAdmins.has((account.email || '').toLowerCase()) ? 'admin_audit_hold' : 'admin_protected'
+      } else if (hasActiveLicense) {
+        retentionStatus = 'active_license_protected'
+      } else if (pendingPaymentUsers.has(account.id)) {
+        retentionStatus = 'pending_payment_hold'
+      } else if (latestExpiredAt > 0) {
+        retentionDueAt = new Date(latestExpiredAt + retentionMs).toISOString()
+        retentionStatus = Date.parse(retentionDueAt) > retentionNow ? 'renewal_grace' : 'deletion_due'
+      } else {
+        const lastAccessTime = Date.parse(lastAccessedAt) || Date.parse(account.created_at) || retentionNow
+        retentionDueAt = new Date(lastAccessTime + retentionMs).toISOString()
+        retentionStatus = Date.parse(retentionDueAt) > retentionNow ? 'free_account_active' : 'deletion_due'
+      }
+
       return {
         id: account.id,
         email: account.email || '',
         display_name: profileName(account),
         created_at: account.created_at,
+        last_accessed_at: lastAccessedAt,
+        last_access_source: lastAccessSource,
+        retention_status: retentionStatus,
+        retention_due_at: retentionDueAt,
         licenses
       }
     }).sort((a, b) => (a.email || '').localeCompare(b.email || ''))
