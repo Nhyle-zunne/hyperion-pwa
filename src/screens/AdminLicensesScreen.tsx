@@ -70,6 +70,8 @@ export default function AdminLicensesScreen() {
   const [activeTab, setActiveTab] = useState<'users' | 'activity'>('users')
   const [audit, setAudit] = useState<AuditRecord[]>([])
   const [query, setQuery] = useState('')
+  const [userSort, setUserSort] = useState<'name-asc' | 'joined-desc' | 'joined-asc'>('name-asc')
+  const [activeLicenseOnly, setActiveLicenseOnly] = useState(false)
   const [terms, setTerms] = useState<Record<string, LicenseTerm>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [busyKey, setBusyKey] = useState('')
@@ -102,9 +104,24 @@ export default function AdminLicensesScreen() {
   useEffect(() => { void withPageLoading('Loading license administration', () => load()) }, [load])
   const filteredUsers = useMemo(() => {
     const value = query.trim().toLowerCase()
-    if (!value) return users
-    return users.filter(user => (user.email + ' ' + (user.display_name || '') + ' ' + user.id).toLowerCase().includes(value))
-  }, [users, query])
+    const matching = users.filter(user => {
+      const matchesSearch = !value || (user.email + ' ' + (user.display_name || '') + ' ' + user.id).toLowerCase().includes(value)
+      const hasActiveLicense = Object.values(user.licenses || {}).some(license => license?.status === 'active')
+      return matchesSearch && (!activeLicenseOnly || hasActiveLicense)
+    })
+
+    return matching.sort((a, b) => {
+      if (userSort === 'joined-desc' || userSort === 'joined-asc') {
+        const aDate = Date.parse(a.created_at) || 0
+        const bDate = Date.parse(b.created_at) || 0
+        const delta = userSort === 'joined-desc' ? bDate - aDate : aDate - bDate
+        if (delta !== 0) return delta
+      }
+
+      const nameOrder = (a.display_name || '').localeCompare(b.display_name || '', undefined, { sensitivity: 'base' })
+      return nameOrder || (a.email || '').localeCompare(b.email || '', undefined, { sensitivity: 'base' })
+    })
+  }, [users, query, userSort, activeLicenseOnly])
   const totals = useMemo(() => {
     const counts = { active: 0, expired: 0, revoked: 0, none: 0 }
     for (const user of users) for (const track of TRACKS) counts[user.licenses[track.code]?.status || 'none']++
@@ -225,9 +242,28 @@ export default function AdminLicensesScreen() {
       <label style={{ display: 'block', marginBottom: '1rem', color: 'var(--text-muted)', fontWeight: 800 }}>SEARCH USERS BY NAME, EMAIL, OR USER ID
         <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Type an email, name, or user ID…" style={field} />
       </label>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: '.7rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1rem' }}>Registered users ({filteredUsers.length})</h2>
-        <button type="button" className="btn btn-outline" disabled={loading} onClick={() => void withPageLoading('Refreshing users and licenses', () => load())}>{loading ? 'Refreshing…' : 'Refresh users'}</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: '.7rem' }}>
+        <h2 style={{ margin: 0, fontSize: '1rem' }}>{activeLicenseOnly ? 'Users with active licenses' : 'Registered users'} ({filteredUsers.length})</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', flex: '1 1 560px' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text-muted)', fontSize: '.8rem', fontWeight: 800 }}>
+            SORT
+            <select aria-label="Sort users" value={userSort} onChange={event => setUserSort(event.target.value as typeof userSort)} style={{ ...field, width: 'auto', minWidth: 180, margin: 0, padding: '.55rem .65rem', fontSize: '.82rem' }}>
+              <option value="name-asc">Alphabetical (A–Z)</option>
+              <option value="joined-desc">Date joined (newest first)</option>
+              <option value="joined-asc">Date joined (oldest first)</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className={activeLicenseOnly ? 'btn btn-primary' : 'btn btn-outline'}
+            aria-pressed={activeLicenseOnly}
+            onClick={() => { setActiveLicenseOnly(value => !value); setSelectedUserId(null) }}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            {activeLicenseOnly ? '✓ Active licenses only' : 'Active licenses only'}
+          </button>
+          <button type="button" className="btn btn-outline" disabled={loading} onClick={() => void withPageLoading('Refreshing users and licenses', () => load())}>{loading ? 'Refreshing…' : 'Refresh users'}</button>
+        </div>
       </div>
       {loading ? <section style={card}>Loading license records…</section> : filteredUsers.length ? (
         <div className="admin-user-grid">
