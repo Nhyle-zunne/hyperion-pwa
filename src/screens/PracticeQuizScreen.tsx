@@ -32,6 +32,8 @@ export default function PracticeQuizScreen() {
   } = usePracticeStore()
 
   const [showExitDialog, setShowExitDialog] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [savingProgress, setSavingProgress] = useState(false)
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
   const [pendingAnswer, setPendingAnswer] = useState<number | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -161,8 +163,21 @@ export default function PracticeQuizScreen() {
           <section className="exit-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-practice-title">
             <h2 id="exit-practice-title">Save your progress?</h2>
             <p>Your current question and answers will be saved so you can continue reviewing later.</p>
-            <button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={async () => {
-              await saveProgress()
+            {saveError && <p role="alert" style={{ color: 'var(--danger)', marginTop: 8 }}>{saveError}</p>}
+            <button className="btn btn-primary" disabled={savingProgress} style={{ width: '100%', marginTop: 12 }} onClick={async () => {
+              if (savingProgress) return
+              setSaveError(null)
+              setSavingProgress(true)
+              let saved = false
+              try {
+                saved = await saveProgress()
+              } finally {
+                setSavingProgress(false)
+              }
+              if (!saved) {
+                setSaveError('Hyperion could not save this session on this device. Your session is still open; check device storage and try again.')
+                return
+              }
               setShowExitDialog(false)
               const session = usePracticeStore.getState()
               const configParams = new URLSearchParams({
@@ -173,13 +188,13 @@ export default function PracticeQuizScreen() {
               if (session.isFreeSession) configParams.set('free', '1')
               if (session.mode === 'DRILL') configParams.set('mode', 'drill')
               navigate('/practice?' + configParams.toString())
-            }}>Save Progress &amp; Exit</button>
+            }}>{savingProgress ? 'Saving…' : 'Save Progress &amp; Exit'}</button>
             <button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => setShowExitDialog(false)}>Continue Reviewing</button>
           </section>
         </div>
       )}
       <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,margin:'-0.5rem -0.25rem 1rem',padding:'0.4rem 0',borderBottom:'3px solid var(--accent)'}}>
-        <button className="btn btn-outline" onClick={() => setShowExitDialog(true)} aria-label="Back">← Back</button>
+        <button className="btn btn-outline" onClick={() => { setSaveError(null); setShowExitDialog(true) }} aria-label="Back">← Back</button>
         <div style={{minWidth:0,flex:1,textAlign:'center'}}>
           <div style={{fontWeight:800,lineHeight:1.2}}>Question {currentIndex + 1} of {questions.length}</div>
           <div style={{fontSize:'0.82rem',color:'var(--accent)',fontWeight:700}}>{q.track} · {q.competenceId}</div>
