@@ -104,6 +104,7 @@ export default function AdminLicensesScreen() {
   const [query, setQuery] = useState('')
   const [userSort, setUserSort] = useState<'name-asc' | 'joined-desc' | 'joined-asc'>('joined-desc')
   const [activeLicenseOnly, setActiveLicenseOnly] = useState(false)
+  const [retentionFilter, setRetentionFilter] = useState<'all' | ManagedUser['retention_status']>('all')
   const [terms, setTerms] = useState<Record<string, LicenseTerm>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [busyKey, setBusyKey] = useState('')
@@ -139,7 +140,8 @@ export default function AdminLicensesScreen() {
     const matching = users.filter(user => {
       const matchesSearch = !value || (user.email + ' ' + (user.display_name || '') + ' ' + user.id).toLowerCase().includes(value)
       const hasActiveLicense = Object.values(user.licenses || {}).some(license => license?.status === 'active')
-      return matchesSearch && (!activeLicenseOnly || hasActiveLicense)
+      const matchesRetention = retentionFilter === 'all' || user.retention_status === retentionFilter
+      return matchesSearch && (!activeLicenseOnly || hasActiveLicense) && matchesRetention
     })
 
     return matching.sort((a, b) => {
@@ -153,7 +155,7 @@ export default function AdminLicensesScreen() {
       const nameOrder = (a.display_name || '').localeCompare(b.display_name || '', undefined, { sensitivity: 'base' })
       return nameOrder || (a.email || '').localeCompare(b.email || '', undefined, { sensitivity: 'base' })
     })
-  }, [users, query, userSort, activeLicenseOnly])
+  }, [users, query, userSort, activeLicenseOnly, retentionFilter])
   const totals = useMemo(() => {
     const counts = { active: 0, expired: 0, revoked: 0, none: 0 }
     for (const user of users) for (const track of TRACKS) counts[user.licenses[track.code]?.status || 'none']++
@@ -275,8 +277,22 @@ export default function AdminLicensesScreen() {
         <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Type an email, name, or user ID…" style={field} />
       </label>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: '.7rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1rem' }}>{activeLicenseOnly ? 'Users with active licenses' : 'Registered users'} ({filteredUsers.length})</h2>
+        <h2 style={{ margin: 0, fontSize: '1rem' }}>{retentionFilter === 'deletion_due' ? 'Deletion-eligible users' : retentionFilter === 'all' ? (activeLicenseOnly ? 'Users with active licenses' : 'Registered users') : retentionFilter === 'renewal_grace' || retentionFilter === 'free_account_grace' ? 'Users in grace period' : 'Filtered registered users'} ({filteredUsers.length})</h2>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', flex: '1 1 560px' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text-muted)', fontSize: '.8rem', fontWeight: 800 }}>
+            RETENTION
+            <select aria-label="Filter by account retention status" value={retentionFilter} onChange={event => { setRetentionFilter(event.target.value as typeof retentionFilter); setSelectedUserId(null) }} style={{ ...field, width: 'auto', minWidth: 190, maxWidth: '100%', margin: 0, padding: '.55rem .65rem', fontSize: '.82rem' }}>
+              <option value="all">All retention statuses</option>
+              <option value="deletion_due">Deletion eligible</option>
+              <option value="free_account_grace">Free-account grace period</option>
+              <option value="renewal_grace">License renewal grace</option>
+              <option value="free_account_active">Within inactivity period</option>
+              <option value="active_license_protected">Active license protected</option>
+              <option value="pending_payment_hold">Pending payment hold</option>
+              <option value="admin_protected">Admin protected</option>
+              <option value="admin_audit_hold">Admin audit hold</option>
+            </select>
+          </label>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text-muted)', fontSize: '.8rem', fontWeight: 800 }}>
             SORT
             <select aria-label="Sort users" value={userSort} onChange={event => setUserSort(event.target.value as typeof userSort)} style={{ ...field, width: 'auto', minWidth: 180, margin: 0, padding: '.55rem .65rem', fontSize: '.82rem' }}>
