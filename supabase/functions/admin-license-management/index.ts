@@ -131,7 +131,10 @@ Deno.serve(async req => {
     }
 
     const retentionNow = Date.now()
-    const retentionMs = 30 * 24 * 60 * 60 * 1000
+    const dayMs = 24 * 60 * 60 * 1000
+    const inactivityMs = 30 * dayMs
+    const graceMs = 30 * dayMs
+    const freeRetentionMs = inactivityMs + graceMs
     const allowedAdmins = new Set((Deno.env.get('ADMIN_EMAILS') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean))
 
     const byUser = new Map<string, Map<string, any>>()
@@ -179,13 +182,23 @@ Deno.serve(async req => {
         retentionStatus = 'active_license_protected'
       } else if (pendingPaymentUsers.has(account.id)) {
         retentionStatus = 'pending_payment_hold'
-      } else if (latestExpiredAt > 0) {
-        retentionDueAt = new Date(latestExpiredAt + retentionMs).toISOString()
-        retentionStatus = Date.parse(retentionDueAt) > retentionNow ? 'renewal_grace' : 'deletion_due'
       } else {
         const lastAccessTime = Date.parse(lastAccessedAt) || Date.parse(account.created_at) || retentionNow
-        retentionDueAt = new Date(lastAccessTime + retentionMs).toISOString()
-        retentionStatus = Date.parse(retentionDueAt) > retentionNow ? 'free_account_active' : 'deletion_due'
+        const inactivityEndsAt = lastAccessTime + inactivityMs
+        const freeRetentionDueAt = lastAccessTime + freeRetentionMs
+        const renewalGraceDueAt = latestExpiredAt > 0 ? latestExpiredAt + graceMs : 0
+        const finalDueAt = Math.max(freeRetentionDueAt, renewalGraceDueAt)
+        retentionDueAt = new Date(finalDueAt).toISOString()
+
+        if (finalDueAt <= retentionNow) {
+          retentionStatus = 'deletion_due'
+        } else if (inactivityEndsAt > retentionNow) {
+          retentionStatus = 'free_account_active'
+        } else if (renewalGraceDueAt > retentionNow && renewalGraceDueAt >= freeRetentionDueAt) {
+          retentionStatus = 'renewal_grace'
+        } else {
+          retentionStatus = 'free_account_grace'
+        }
       }
 
       return {
