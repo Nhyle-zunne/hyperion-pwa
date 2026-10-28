@@ -66,6 +66,7 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const learningProgressTriggerMigration = await read('../supabase/migrations/20261028182500_revoke_client_execute_on_learning_progress_trigger.sql');
 const offlineEntitlementSigningMigration = await read('../supabase/migrations/20261028182000_add_signed_offline_entitlements.sql');
 const viteConfig = await read('../vite.config.ts');
 const mainEntry = await read('../src/main.tsx');
@@ -327,6 +328,8 @@ assert.ok(offlineQuestionCache.includes('OFFLINE_ENTITLEMENT_PUBLIC_KEY') && off
 assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes("typeof value.token !== 'string'"), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
 assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(session.user.id, offlineLicense.token)'), 'Online license refresh stores only a server-signed offline token');
 assert.ok(licenseStore.includes('clearOfflineEntitlements(session.user.id)') && licenseStore.includes('await getOfflineEntitledTracks(session.user.id)'), 'Offline fallback verifies signed leases and clears stale leases on online authorization errors');
+
+assert.ok(learningProgressTriggerMigration.includes('REVOKE ALL ON FUNCTION public.set_user_learning_progress_updated_at() FROM PUBLIC, anon, authenticated'), 'Trigger-only progress helper cannot be called directly by client roles');
 
 
 console.log('Release-safety smoke checks passed.');
