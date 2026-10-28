@@ -324,7 +324,7 @@ assert.ok(offlineEntitlementSigningMigration.includes('REVOKE ALL ON TABLE publi
 
 
 assert.ok(offlineQuestionCache.includes('OFFLINE_ENTITLEMENT_PUBLIC_KEY') && offlineQuestionCache.includes('claims.userId !== expectedUserId') && offlineQuestionCache.includes('signature.length !== 64'), 'Offline entitlement verifier pins the public key, account identity, and ECDSA signature size');
-assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes('typeof value.token !== \'string\''), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
+assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes("typeof value.token !== 'string'"), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
 assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(session.user.id, offlineLicense.token)'), 'Online license refresh stores only a server-signed offline token');
 assert.ok(licenseStore.includes('clearOfflineEntitlements(session.user.id)') && licenseStore.includes('await getOfflineEntitledTracks(session.user.id)'), 'Offline fallback verifies signed leases and clears stale leases on online authorization errors');
 
