@@ -6,7 +6,7 @@ import { useHistoryStore } from '../stores/historyStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useVaultStore } from '../stores/vaultStore'
 import type { TrackId } from '../types/question'
-import { downloadOfflinePack } from '../lib/questionBank'
+import { downloadOfflinePack, getQuestionCountsByTrack } from '../lib/questionBank'
 import { getOfflinePackStatus } from '../lib/offlineQuestionCache'
 import './TrackHubScreen.css'
 
@@ -82,7 +82,27 @@ export default function TrackHubScreen() {
   const [offlineProgress, setOfflineProgress] = useState({ downloaded: 0, total: 0 })
   const [offlineStatus, setOfflineStatus] = useState<{ questionCount: number; groupCount: number; savedAt: number } | null>(null)
   const [offlineError, setOfflineError] = useState('')
+  const [freeQuestionCount, setFreeQuestionCount] = useState<number | null>(null)
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+
+  useEffect(() => {
+    let active = true
+    if (key === 'oic_nw' || key === 'gmdss') {
+      setFreeQuestionCount(null)
+      return () => { active = false }
+    }
+
+    setFreeQuestionCount(null)
+    void getQuestionCountsByTrack(info.trackId, true)
+      .then(counts => {
+        if (active) setFreeQuestionCount(counts.reduce((total, item) => total + item.count, 0))
+      })
+      .catch(() => {
+        if (active) setFreeQuestionCount(null)
+      })
+
+    return () => { active = false }
+  }, [key, info.trackId])
 
   const unlocked = useLicenseStore((s) => s.isTrackUnlocked(info.trackId) || s.isAllAccessUnlocked)
   const remaining = useLicenseStore((s) => s.getRemainingLabel)
@@ -145,7 +165,11 @@ export default function TrackHubScreen() {
   const modes: Mode[] = [
     {
       title: info.freeTitle,
-      desc: info.freeDesc,
+      desc: key === 'oic_nw' || key === 'gmdss'
+        ? info.freeDesc
+        : freeQuestionCount === null
+          ? 'Free sample: 40% of every competence.'
+          : `${freeQuestionCount.toLocaleString()} free questions (40% of every competence).`,
       badge: 'FREE ACCESS',
       icon: '▰',
       locked: false,
