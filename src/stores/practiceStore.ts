@@ -50,7 +50,7 @@ interface PracticeState {
   tick: () => void;
   reset: () => void;
   score: () => { correct: number; total: number; percent: number };
-  saveProgress: () => Promise<void>;
+  saveProgress: () => Promise<boolean>;
   restoreSavedProgress: (sessionId?: string) => Promise<boolean>;
 }
 
@@ -520,7 +520,14 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   saveProgress: async () => {
     const current = get();
     const snapshot = snapshotFromState(current, false);
-    if (!snapshot || !current.track) return;
+    if (!snapshot || !current.track) return false;
+
+    try {
+      // Save and confirm the question-bearing snapshot before advertising a resumable History entry.
+      await saveSessionSnapshot(snapshot.sessionId, snapshot);
+    } catch {
+      return false;
+    }
 
     const answered = current.questions.reduce(
       (count, question) => count + (current.answers[question.id]?.selectedIndex != null ? 1 : 0),
@@ -530,7 +537,6 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       (count, question) => count + (current.answers[question.id]?.isCorrect ? 1 : 0),
       0
     );
-    // Write the resumable History row explicitly before navigating away.
     useHistoryStore.getState().saveSession({
       id: snapshot.sessionId,
       mode: current.mode,
@@ -546,12 +552,8 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       isFreeSession: current.isFreeSession
     });
 
-    try {
-      await saveSessionSnapshot(snapshot.sessionId, snapshot);
-    } catch {
-      // Keep the localStorage fallback and History metadata even if IndexedDB is unavailable.
-    }
     window.dispatchEvent(new Event('hyperion:practice-progress-saved'));
+    return true;
   },
 
   restoreSavedProgress: async (requestedSessionId) => {
