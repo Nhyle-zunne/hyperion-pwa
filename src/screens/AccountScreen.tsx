@@ -633,7 +633,7 @@ export default function AccountScreen() {
                     <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)} style={{ width: '100%', marginTop: '.8rem', minHeight: 43, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff' }}>
                       {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'BUY NOW'}
                     </button>
-                    {!isOwned && !manualPending && <button type="button" disabled={busy} onClick={() => navigate(`/manual-payment?product=${encodeURIComponent(item.code)}&term=${selectedTerm}`)} style={{ background: 'transparent', color: 'var(--text-muted)', width: '100%', padding: '.55rem .25rem .1rem', fontSize: '.78rem', textDecoration: 'underline', textUnderlineOffset: 3 }}>Pay manually with QR</button>}
+
                   </article>
                 })}
               </div>
