@@ -193,7 +193,7 @@ function recordHistory(get: () => PracticeState) {
     const answer = s.answers[q.id];
     if (answer?.isCorrect) correct++;
     else if (s.mode === 'MOCK' && answer && answer.selectedIndex != null && !answer.isCorrect) {
-      useVaultStore.getState().addMistake(q, answer.selectedIndex);
+      useVaultStore.getState().addMistake(q, answer.selectedIndex, s.isFreeSession);
     }
   }
   const total = s.questions.length;
@@ -371,7 +371,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   },
 
   selectAnswer: (index) => {
-    const { questions, currentIndex, answers, mode, streak, bestStreak } = get();
+    const { questions, currentIndex, answers, mode, streak, bestStreak, isFreeSession } = get();
     const q = questions[currentIndex];
     if (!q) return;
     if (mode !== 'MOCK' && answers[q.id]?.selectedIndex != null) return;
@@ -382,7 +382,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     if (mode === 'DRILL' || mode === 'PRACTICE') {
       nextStreak = isCorrect ? streak + 1 : 0;
       nextBest = Math.max(bestStreak, nextStreak);
-      if (!isCorrect) useVaultStore.getState().addMistake(q, index);
+      if (!isCorrect) useVaultStore.getState().addMistake(q, index, isFreeSession);
     }
 
     set({
