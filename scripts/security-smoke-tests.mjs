@@ -149,11 +149,11 @@ assert.ok(aboutScreen.includes('same email address') && aboutScreen.includes('ca
 assert.ok(termsScreen.includes('3.1 Google Play subscriptions (Android app)') && termsScreen.includes('3.2 Website/PWA licenses (hyperionmaritime.org)'), 'Terms distinguish Play subscriptions from website fixed-term licenses');
 assert.ok(termsScreen.includes('does not automatically unlock a website/PWA license') && termsScreen.includes('do not automatically renew'), 'Terms explain cross-platform separation and website non-renewal');
 assert.ok(termsScreen.includes('play.google.com/store/account/subscriptions') && termsScreen.includes('does not cancel a Google Play subscription'), 'Terms provide the correct Play subscription management path and cancellation separation');
-assert.ok(termsScreen.includes('October 28, 2026'), 'Terms updated date matches the latest substantive revision');
+assert.ok(termsScreen.includes('October 29, 2026'), 'Terms updated date matches the latest substantive revision');
 assert.ok(privacyScreen.includes('Firebase Analytics') && privacyScreen.includes('PayMongo') && privacyScreen.includes('daily app-open check-in streak'), 'Privacy policy describes current analytics, payment, and synced progress handling');
 assert.ok(privacyScreen.includes('does not cancel a Google Play subscription') && privacyScreen.includes('A website/PWA license and Google Play subscription are independent'), 'Privacy policy explains separate license and deletion effects');
 assert.ok(privacyScreen.includes('href="/account?tab=delete"') && !privacyScreen.includes('hyperionmaritime.org/delete-account'), 'Privacy policy links to the real in-app website account-deletion route');
-assert.ok(privacyScreen.includes('October 28, 2026'), 'Privacy policy updated date matches the latest substantive revision');
+assert.ok(privacyScreen.includes('October 29, 2026'), 'Privacy policy updated date matches the latest substantive revision');
 assert.ok(app.includes("import TopLoadingIndicator from './components/TopLoadingIndicator'") && app.includes('<TopLoadingIndicator />'), 'Global top loader is mounted for every app route');
 assert.ok(app.includes("withPageLoading('Checking licenses and access'") && app.includes('void refresh(true)'), 'Initial entitlement checks keep the top loader active until access state is hydrated');
 assert.ok(topLoadingIndicator.includes('location.pathname') && topLoadingIndicator.includes('location.search') && topLoadingIndicator.includes('ROUTE_TRANSITION_MS = 480'), 'Top loader activates on page and query-string navigation');
