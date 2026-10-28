@@ -23,7 +23,7 @@ type ManagedUser = {
   created_at: string
   last_accessed_at: string
   last_access_source: 'website_activity' | 'last_sign_in_baseline' | 'created_at_baseline'
-  retention_status: 'active_license_protected' | 'renewal_grace' | 'deletion_due' | 'free_account_active' | 'pending_payment_hold' | 'admin_protected' | 'admin_audit_hold'
+  retention_status: 'active_license_protected' | 'renewal_grace' | 'deletion_due' | 'free_account_active' | 'free_account_grace' | 'pending_payment_hold' | 'admin_protected' | 'admin_audit_hold'
   retention_due_at: string | null
   licenses: Record<ProductCode, LicenseRecord>
 }
@@ -70,6 +70,8 @@ function retentionLabel(user: ManagedUser) {
   switch (user.retention_status) {
     case 'active_license_protected': return 'ACTIVE LICENSE · PROTECTED'
     case 'renewal_grace': return `RENEWAL GRACE · ${dateLabel(user.retention_due_at)}`
+    case 'free_account_grace': return `FREE ACCOUNT · GRACE UNTIL ${dateLabel(user.retention_due_at)}`
+    case 'free_account_active': return `FREE ACCOUNT · INACTIVITY PERIOD UNTIL ${dateLabel(user.retention_due_at)}`
     case 'deletion_due': return 'DELETION ELIGIBLE'
     case 'pending_payment_hold': return 'PENDING PAYMENT · ON HOLD'
     case 'admin_protected': return 'ADMIN · PROTECTED'
