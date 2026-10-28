@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useHistoryStore } from '../stores/historyStore'
@@ -43,6 +43,11 @@ export default function TrackSelectionScreen() {
   const location = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [examPanelExpanded, setExamPanelExpanded] = useState(false)
+  const examDetailsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    // React 18's typings do not expose inert as a JSX prop, but the native DOM property is supported.
+    if (examDetailsRef.current) examDetailsRef.current.inert = !examPanelExpanded
+  }, [examPanelExpanded])
   const targetDate = useStudyTimeStore((s) => s.targetDate)
   const setTargetDate = useStudyTimeStore((s) => s.setTargetDate)
 
@@ -147,9 +152,9 @@ export default function TrackSelectionScreen() {
 
         <div
           id="dashboard-exam-details"
+          ref={examDetailsRef}
           className={`dashboard-exam-panel__details${examPanelExpanded ? ' is-expanded' : ''}`}
           aria-hidden={!examPanelExpanded}
-          inert={!examPanelExpanded}
         >
           <div className="dashboard-exam-panel__detail-actions">
             <span className="dashboard-exam-panel__detail-caption">YOUR PREPARATION</span>
