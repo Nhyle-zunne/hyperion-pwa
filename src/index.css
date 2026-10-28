@@ -2091,3 +2091,15 @@ a:focus-visible,
     transition: none;
   }
 }
+
+
+/* Prevent casual copying of protected question-bank text from Search results only. */
+.search-results-protected,
+.search-results-protected * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.search-results-protected {
+  -webkit-tap-highlight-color: transparent;
+}
