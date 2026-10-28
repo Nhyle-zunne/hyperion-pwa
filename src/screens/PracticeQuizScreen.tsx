@@ -188,7 +188,7 @@ export default function PracticeQuizScreen() {
               if (session.isFreeSession) configParams.set('free', '1')
               if (session.mode === 'DRILL') configParams.set('mode', 'drill')
               navigate('/practice?' + configParams.toString())
-            }}>{savingProgress ? 'Saving…' : 'Save Progress &amp; Exit'}</button>
+            }}>{savingProgress ? 'Saving…' : 'Save Progress & Exit'}</button>
             <button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => setShowExitDialog(false)}>Continue Reviewing</button>
           </section>
         </div>
