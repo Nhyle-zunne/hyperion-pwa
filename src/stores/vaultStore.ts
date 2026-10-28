@@ -17,11 +17,14 @@ export interface VaultItem {
   wrongCount: number;
   lastWrongAt: number;
   lastSelectedIndex: number | null;
+  /** True only when this mistake was saved from a permitted free reviewer/mock pool. */
+  isFreeSession?: boolean;
 }
 
 interface VaultState {
   items: VaultItem[];
-  addMistake: (q: Question, selectedIndex: number | null) => void;
+  addMistake: (q: Question, selectedIndex: number | null, isFreeSession?: boolean) => void;
+  purgePaidForTracks: (tracks: TrackId[]) => void;
   remove: (id: string) => void;
   clear: () => void;
   asQuestions: () => Question[];
@@ -32,7 +35,7 @@ export const useVaultStore = create<VaultState>()(
     (set, get) => ({
       items: [],
 
-      addMistake: (q, selectedIndex) => {
+      addMistake: (q, selectedIndex, isFreeSession = false) => {
         const existing = get().items.find((i) => i.id === q.id);
         if (existing) {
           set({
@@ -42,7 +45,8 @@ export const useVaultStore = create<VaultState>()(
                     ...i,
                     wrongCount: i.wrongCount + 1,
                     lastWrongAt: Date.now(),
-                    lastSelectedIndex: selectedIndex
+                    lastSelectedIndex: selectedIndex,
+                    isFreeSession: i.isFreeSession === true || isFreeSession === true
                   }
                 : i
             )
@@ -62,9 +66,16 @@ export const useVaultStore = create<VaultState>()(
           difficulty: q.difficulty,
           wrongCount: 1,
           lastWrongAt: Date.now(),
-          lastSelectedIndex: selectedIndex
+          lastSelectedIndex: selectedIndex,
+          isFreeSession: isFreeSession === true
         };
         set({ items: [entry, ...get().items].slice(0, 500) });
+      },
+
+      purgePaidForTracks: (tracks) => {
+        const denied = new Set(tracks);
+        // Legacy entries without explicit free-session provenance are treated as paid.
+        set((state) => ({ items: state.items.filter(item => !denied.has(item.track) || item.isFreeSession === true) }));
       },
 
       remove: (id) => set({ items: get().items.filter((i) => i.id !== id) }),
