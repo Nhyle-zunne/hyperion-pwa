@@ -42,6 +42,7 @@ export default function TrackSelectionScreen() {
   const navigate = useNavigate()
   const location = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [examPanelExpanded, setExamPanelExpanded] = useState(false)
   const targetDate = useStudyTimeStore((s) => s.targetDate)
   const setTargetDate = useStudyTimeStore((s) => s.setTargetDate)
 
@@ -121,47 +122,59 @@ export default function TrackSelectionScreen() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: '0.85rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ fontSize: '1.2rem' }}>📅</span>
-            <div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>MARINA LICENSURE EXAM</div>
-              <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                {targetDate ? `Target · ${new Date(targetDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : 'SET TARGET DATE'}
-              </div>
+      <section className={`card dashboard-exam-panel${examPanelExpanded ? ' is-expanded' : ''}`} style={{ marginBottom: '0.85rem', padding: 0 }}>
+        <button
+          type="button"
+          className="dashboard-exam-panel__toggle"
+          aria-expanded={examPanelExpanded}
+          aria-controls="dashboard-exam-details"
+          onClick={() => setExamPanelExpanded((open) => !open)}
+        >
+          <span className="dashboard-exam-panel__icon" aria-hidden="true">📅</span>
+          <span className="dashboard-exam-panel__summary">
+            <span className="dashboard-exam-panel__eyebrow">MARINA LICENSURE EXAM</span>
+            <span className="dashboard-exam-panel__target">
+              {targetDate ? `Target · ${new Date(targetDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Set your target date'}
+            </span>
+          </span>
+          <span className="dashboard-exam-panel__streak">{streakStatus}</span>
+          <span className={`dashboard-exam-panel__chevron${examPanelExpanded ? ' is-open' : ''}`} aria-hidden="true">⌄</span>
+        </button>
+
+        <div id="dashboard-exam-details" className="dashboard-exam-panel__details" hidden={!examPanelExpanded}>
+          <div className="dashboard-exam-panel__detail-actions">
+            <span className="dashboard-exam-panel__detail-caption">YOUR PREPARATION</span>
+            <button type="button" className="btn btn-primary" onClick={saveTarget}>SET DATE →</button>
+            <input id="target-date-input" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} aria-label="MARINA licensure exam target date" />
+          </div>
+
+          <div className="dashboard-exam-panel__stats">
+            <div><div className="dashboard-exam-panel__stat-label">TODAY</div><div className="dashboard-exam-panel__stat-value">{formatDurationMs(todayMs)}</div></div>
+            <div><div className="dashboard-exam-panel__stat-label">OVERALL ACCURACY</div><div className="dashboard-exam-panel__stat-value">{avgPercent}%</div></div>
+          </div>
+
+          <div className="dashboard-exam-panel__streak-area">
+            <div className="dashboard-exam-panel__streak-heading">
+              <span>DAILY CHECK-IN STREAK</span>
+              <span>{streakStatus}</span>
+            </div>
+            <div className="daily-streak-grid">
+              {streakDays.map((day) => (
+                <div
+                  key={day.dayNumber}
+                  className={`daily-streak-day${day.active ? ' is-active' : ''}`}
+                  aria-label={`Day ${day.dayNumber}, ${day.label}, ${day.dateLabel}: ${day.active ? 'checked in' : 'no check-in'}`}
+                  title={`${day.label} · ${day.dateLabel}`}
+                >
+                  <span className="daily-streak-label">{day.label}</span>
+                  <span className="daily-streak-date">{day.dateLabel}</span>
+                  <span className="daily-streak-status" aria-hidden="true">{day.active ? '✓' : '—'}</span>
+                </div>
+              ))}
             </div>
           </div>
-          <button className="btn btn-primary" style={{ padding: '0.5rem 0.85rem', fontSize: '0.8rem' }} onClick={saveTarget}>SET DATE →</button>
-          <input id="target-date-input" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} />
         </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-          <div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>TODAY</div><div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{formatDurationMs(todayMs)}</div></div>
-          <div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>OVERALL ACCURACY</div><div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{avgPercent}%</div></div>
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>DAILY CHECK-IN STREAK</span>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>{streakStatus}</span>
-          </div>
-          <div className="daily-streak-grid">
-            {streakDays.map((day) => (
-              <div
-                key={day.dayNumber}
-                className={`daily-streak-day${day.active ? ' is-active' : ''}`}
-                aria-label={`Day ${day.dayNumber}, ${day.label}, ${day.dateLabel}: ${day.active ? 'studied' : 'no study recorded'}`}
-                title={`${day.label} · ${day.dateLabel}`}
-              >
-                <span className="daily-streak-label">{day.label}</span>
-                <span className="daily-streak-date">{day.dateLabel}</span>
-                <span className="daily-streak-status" aria-hidden="true">{day.active ? '✓' : '—'}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      </section>
 
       <div className="track-grid">
         {TRACKS.map((t) => {
