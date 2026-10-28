@@ -60,7 +60,6 @@ Deno.serve(async req => {
     .split(',').map(value => value.trim().toLowerCase()).filter(Boolean))
   const now = Date.now()
   const inactivityCutoff = now - RETENTION_DAYS * DAY_MS
-  const licenseGraceCutoff = now - RETENTION_DAYS * DAY_MS
 
   let totalUsers = 0
   let deleted = 0
@@ -200,7 +199,7 @@ Deno.serve(async req => {
         reason,
         last_accessed_at: activityMap.get(user.id) || user.last_sign_in_at || user.created_at,
         retention_due_at: new Date(dueAt).toISOString(),
-        details: { emailDomain: (user.email || '').split('@')[1] || null }
+        details: {}
       }).select('id').single()
       if (auditInsert.error || !auditInsert.data?.id) { failed++; continue }
 
