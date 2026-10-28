@@ -29,13 +29,13 @@ const steps = [
     title: 'Step 5 · Tap Add',
     image: '/install/ios/step-5.jpeg',
     alt: 'Add to Home Screen confirmation screen',
-    text: 'Keep the name Hyperion Maritime. Leave Open as Web App enabled if it is offered, then tap Add.'
+    text: 'Keep the name Hyperion. Leave Open as Web App enabled if it is offered, then tap Add.'
   },
   {
     title: 'Step 6 · Launch Hyperion',
     image: '/install/ios/step-6.jpeg',
     alt: 'Hyperion Maritime icon on the iPhone Home Screen',
-    text: 'Find the Hyperion Maritime icon on your Home Screen and tap it to open the app.'
+    text: 'Find the Hyperion icon on your Home Screen and tap it to open the app.'
   }
 ]
 
@@ -73,8 +73,8 @@ export default function IOSInstallGuideScreen() {
           <li><strong>Open the page menu.</strong> Tap the menu icon beside Safari's address bar.</li>
           <li><strong>Choose Share.</strong> In the browser menu, tap Share.</li>
           <li><strong>Find Add to Home Screen.</strong> If the action is hidden, tap View More or the down arrow, then scroll until Add to Home Screen appears.</li>
-          <li><strong>Confirm the name.</strong> Keep the app name as Hyperion Maritime. If the Open as Web App switch appears, leave it on.</li>
-          <li><strong>Tap Add and launch.</strong> Tap Add in the top corner, return to your Home Screen, and open the new Hyperion Maritime icon.</li>
+          <li><strong>Confirm the name.</strong> Keep the app name as Hyperion. If the Open as Web App switch appears, leave it on.</li>
+          <li><strong>Tap Add and launch.</strong> Tap Add in the top corner, return to your Home Screen, and open the new Hyperion icon.</li>
         </ol>
       </section>
     </main>
