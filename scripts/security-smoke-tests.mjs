@@ -151,10 +151,14 @@ assert.ok(ordersHistory.includes("withPageLoading('Loading orders and payment hi
 assert.ok(adminLicenses.includes("withPageLoading('Loading license administration'") && adminPayments.includes("withPageLoading('Loading payment submissions'") && adminQuestionBank.includes("withPageLoading('Loading question-bank inventory'"), 'Admin data loading uses the shared indicator');
 assert.ok(trackSelectionScreen.includes('const [examPanelExpanded, setExamPanelExpanded] = useState(false)'), 'Dashboard exam and streak dropdown starts collapsed to save space');
 assert.ok(trackSelectionScreen.includes('aria-expanded={examPanelExpanded}') && trackSelectionScreen.includes('aria-controls="dashboard-exam-details"'), 'Dashboard dropdown exposes its expanded state accessibly');
-assert.ok(trackSelectionScreen.includes('hidden={!examPanelExpanded}') && trackSelectionScreen.includes('className="dashboard-exam-panel__details"'), 'Target date controls and daily streak are hidden until the dropdown is expanded');
+assert.ok(trackSelectionScreen.includes('aria-hidden={!examPanelExpanded}') && trackSelectionScreen.includes('inert={!examPanelExpanded}') && trackSelectionScreen.includes("' is-expanded'"), 'Dropdown details transition smoothly while remaining inaccessible when collapsed');
 assert.ok(trackSelectionScreen.includes('className="dashboard-exam-panel__streak">{streakStatus}</span>') && trackSelectionScreen.includes('MARINA LICENSURE EXAM'), 'Collapsed dropdown keeps exam target and streak summary visible');
 assert.ok(trackSelectionScreen.includes('dashboard-exam-panel__date-input') && trackSelectionScreen.includes('onClick={saveTarget}'), 'Target date picker remains accessible within expanded dropdown');
 assert.ok(indexCss.includes('.dashboard-exam-panel__toggle') && indexCss.includes('.dashboard-exam-panel__streak') && indexCss.includes('@media (max-width: 599px)'), 'Dropdown summary uses compact responsive styling');
+assert.ok(indexCss.includes('max-height 420ms cubic-bezier(.2,.75,.25,1)') && indexCss.includes('opacity 260ms ease 35ms') && indexCss.includes('transform 300ms cubic-bezier(.2,.75,.25,1)'), 'Dropdown opening and closing animate height, opacity, and vertical movement');
+assert.ok(trackSelectionScreen.includes('<svg viewBox="0 0 24 24"') && trackSelectionScreen.includes('strokeLinecap="round"') && trackSelectionScreen.includes('strokeLinejoin="round"'), 'Dashboard dropdown uses a polished round-capped SVG chevron');
+assert.ok(indexCss.includes('.dashboard-exam-panel__chevron.is-open') && indexCss.includes('transform: rotate(180deg)'), 'Chevron rotates smoothly to reflect expanded state');
+assert.ok(indexCss.includes('visibility 0s linear 380ms') && indexCss.includes('pointer-events: none') && indexCss.includes('prefers-reduced-motion: reduce'), 'Closing animation hides details accessibly and respects reduced-motion settings');
 
 for (const route of [
   '/account', '/checkout', '/manual-payment', '/orders', '/admin/licenses',
