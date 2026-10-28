@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { encryptedPersistStorage } from '../lib/encryptedPersistStorage';
 import type { Question, TrackId } from '../types/question';
 
 export interface BookmarkedQuestion {
@@ -81,6 +82,6 @@ export const useBookmarksStore = create<BookmarksState>()(
           difficulty: i.difficulty as Question['difficulty']
         }))
     }),
-    { name: 'hyperion-bookmarks' }
+    { name: 'hyperion-bookmarks', storage: createJSONStorage(() => encryptedPersistStorage) }
   )
 );

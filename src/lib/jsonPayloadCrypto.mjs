@@ -1,7 +1,7 @@
 const encoder = new TextEncoder()
 const decoder = new TextDecoder('utf-8', { fatal: true })
 
-export async function encryptSessionSnapshot(value, key, iv) {
+export async function encryptJsonPayload(value, key, iv) {
   const nonce = iv ? new Uint8Array(iv) : crypto.getRandomValues(new Uint8Array(12))
   if (nonce.byteLength !== 12) throw new Error('AES-GCM requires a 12-byte nonce.')
   const plaintext = encoder.encode(JSON.stringify(value))
@@ -9,9 +9,9 @@ export async function encryptSessionSnapshot(value, key, iv) {
   return { iv: nonce, ciphertext: new Uint8Array(encrypted) }
 }
 
-export async function decryptSessionSnapshot(iv, ciphertext, key) {
+export async function decryptJsonPayload(iv, ciphertext, key) {
   if (!(iv instanceof Uint8Array) || iv.byteLength !== 12 || !(ciphertext instanceof Uint8Array) || ciphertext.byteLength < 16) {
-    throw new Error('Invalid encrypted session snapshot.')
+    throw new Error('Invalid encrypted payload.')
   }
   const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, ciphertext)
   return JSON.parse(decoder.decode(plaintext))

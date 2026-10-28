@@ -1,6 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Question, TrackId, UserAnswer } from '../types/question'
-import { decryptSessionSnapshot, encryptSessionSnapshot } from './sessionSnapshotCrypto.mjs'
+import { decryptJsonPayload, encryptJsonPayload } from './jsonPayloadCrypto.mjs'
 
 export type ArchivedSessionMode = 'PRACTICE' | 'DRILL' | 'MOCK'
 
@@ -94,7 +94,7 @@ async function makeEncryptedRecord(
   snapshot: SessionSnapshot
 ): Promise<StoredSessionSnapshot> {
   const key = await getOrCreateEncryptionKey(db)
-  const encrypted = await encryptSessionSnapshot(snapshot, key)
+  const encrypted = await encryptJsonPayload(snapshot, key)
   return {
     id,
     track: snapshot.track,
@@ -148,7 +148,7 @@ export function getSessionSnapshot(id: string): Promise<SessionSnapshot | null> 
       if (!record) return null
       if (record.ciphertext && record.iv) {
         const key = await getOrCreateEncryptionKey(db)
-        const snapshot = await decryptSessionSnapshot<unknown>(record.iv, record.ciphertext, key)
+        const snapshot = await decryptJsonPayload<unknown>(record.iv, record.ciphertext, key)
         return isSessionSnapshot(snapshot) ? snapshot : null
       }
       // A migration failure should never return an unencrypted legacy record to
