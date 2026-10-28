@@ -57,20 +57,20 @@ const [
   read('../src/components/InstallPrompt.tsx'),
   read('../src/screens/IOSInstallGuideScreen.tsx'),
   read('../supabase/functions/expire-abandoned-checkouts/index.ts'),
-  read('../supabase/migrations/20261028030000_schedule_12_hour_abandoned_paymongo_checkout_cleanup.sql'),
+  read('../supabase/migrations/20261028093640_schedule_12_hour_abandoned_paymongo_checkout_cleanup.sql'),
   read('../supabase/functions/admin-license-management/index.ts'),
   read('../supabase/functions/record-user-activity/index.ts'),
   read('../supabase/functions/expire-inactive-accounts/index.ts'),
-  read('../supabase/migrations/20261028154000_add_user_activity_and_retention_tables.sql'),
-  read('../supabase/migrations/20261028154500_schedule_inactive_account_cleanup.sql'),
+  read('../supabase/migrations/20261028154702_add_user_activity_and_retention_tables.sql'),
+  read('../supabase/migrations/20261028155349_schedule_inactive_account_cleanup.sql'),
   read('../supabase/migrations/20261028172256_expand_account_retention_audit_reason_check.sql')
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const questionBankAccessModule = await read('../supabase/functions/question-bank/access.mjs');
 const { canAccessPaidTrack } = await import('../supabase/functions/question-bank/access.mjs');
-const learningProgressTriggerMigration = await read('../supabase/migrations/20261028182500_revoke_client_execute_on_learning_progress_trigger.sql');
-const offlineEntitlementSigningMigration = await read('../supabase/migrations/20261028182000_add_signed_offline_entitlements.sql');
+const learningProgressTriggerMigration = await read('../supabase/migrations/20261028181820_revoke_client_execute_on_learning_progress_trigger.sql');
+const offlineEntitlementSigningMigration = await read('../supabase/migrations/20261028181300_add_signed_offline_entitlements.sql');
 const viteConfig = await read('../vite.config.ts');
 const mainEntry = await read('../src/main.tsx');
 const adminPaymentReviewFunction = await read('../supabase/functions/admin-payment-review/index.ts');
