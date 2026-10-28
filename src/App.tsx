@@ -114,6 +114,50 @@ export default function App() {
   useEffect(() => startLearningProgressSync(), [])
 
   useEffect(() => {
+    if (!supabase) return
+    let active = true
+    let inFlight = false
+
+    const recordActivity = async () => {
+      if (!active || inFlight || document.visibilityState !== 'visible') return
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const userId = session?.user?.id
+        if (!userId || !active) return
+        const storageKey = `hyperion:last-website-activity:${userId}`
+        const lastAttempt = Number(sessionStorage.getItem(storageKey) || 0)
+        if (Date.now() - lastAttempt < 15 * 60 * 1000) return
+
+        inFlight = true
+        const { error } = await supabase.functions.invoke('record-user-activity')
+        if (!error && active) sessionStorage.setItem(storageKey, String(Date.now()))
+      } catch {
+        // Tracking is best effort and must never prevent a page from loading.
+      } finally {
+        inFlight = false
+      }
+    }
+
+    void recordActivity()
+    const onResume = () => { void recordActivity() }
+    window.addEventListener('focus', onResume)
+    document.addEventListener('visibilitychange', onResume)
+    const authListener = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
+        window.setTimeout(() => { void recordActivity() }, 0)
+      }
+    })
+
+    return () => {
+      active = false
+      window.removeEventListener('focus', onResume)
+      document.removeEventListener('visibilitychange', onResume)
+      authListener.data.subscription.unsubscribe()
+    }
+  }, [location.pathname, location.search])
+
+
+  useEffect(() => {
     let alive = true
     let sessionKnown = false
     let hasSession = false
