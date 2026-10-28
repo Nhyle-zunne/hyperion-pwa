@@ -7,7 +7,8 @@ import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useVaultStore } from '../stores/vaultStore'
 import type { TrackId } from '../types/question'
 import { downloadOfflinePack, getQuestionCountsByTrack } from '../lib/questionBank'
-import { getOfflinePackStatus } from '../lib/offlineQuestionCache'
+import { getOfflineEntitlementExpiry, getOfflinePackStatus } from '../lib/offlineQuestionCache'
+import { supabase } from '../lib/supabase'
 import './TrackHubScreen.css'
 
 interface TrackInfo {
@@ -84,6 +85,9 @@ export default function TrackHubScreen() {
   const [offlineError, setOfflineError] = useState('')
   const [freeQuestionCount, setFreeQuestionCount] = useState<number | null>(null)
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  const [offlineLicenseExpiry, setOfflineLicenseExpiry] = useState<number | null>(null)
+  const [offlineLicenseChecked, setOfflineLicenseChecked] = useState(false)
+  const [offlineRefreshKey, setOfflineRefreshKey] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -112,23 +116,60 @@ export default function TrackHubScreen() {
   const mistakes = useVaultStore((s) => s.items)
 
   useEffect(() => {
-    const updateOnline = () => setOnline(navigator.onLine)
+    const refreshOfflineState = () => setOfflineRefreshKey(current => current + 1)
+    const updateOnline = () => {
+      setOnline(navigator.onLine)
+      refreshOfflineState()
+    }
     window.addEventListener('online', updateOnline)
     window.addEventListener('offline', updateOnline)
+    window.addEventListener('focus', refreshOfflineState)
+    document.addEventListener('visibilitychange', refreshOfflineState)
     return () => {
       window.removeEventListener('online', updateOnline)
       window.removeEventListener('offline', updateOnline)
+      window.removeEventListener('focus', refreshOfflineState)
+      document.removeEventListener('visibilitychange', refreshOfflineState)
     }
   }, [])
 
   useEffect(() => {
     let active = true
-    void getOfflinePackStatus(info.trackId, !unlocked).then(status => {
-      if (active && status?.complete) setOfflineStatus(status)
-      else if (active) setOfflineStatus(null)
-    }).catch(() => { if (active) setOfflineStatus(null) })
+    const loadOfflineState = async () => {
+      setOfflineLicenseChecked(false)
+      try {
+        const status = await getOfflinePackStatus(info.trackId, !unlocked)
+        if (active) setOfflineStatus(status?.complete ? status : null)
+      } catch {
+        if (active) setOfflineStatus(null)
+      }
+
+      if (!unlocked || !supabase) {
+        if (active) {
+          setOfflineLicenseExpiry(null)
+          setOfflineLicenseChecked(true)
+        }
+        return
+      }
+
+      try {
+        const { data, error } = await supabase.auth.getSession()
+        const userId = !error ? data.session?.user?.id : undefined
+        const expiry = userId ? await getOfflineEntitlementExpiry(userId, info.trackId) : null
+        if (active) {
+          setOfflineLicenseExpiry(expiry)
+          setOfflineLicenseChecked(true)
+        }
+      } catch {
+        if (active) {
+          setOfflineLicenseExpiry(null)
+          setOfflineLicenseChecked(true)
+        }
+      }
+    }
+    void loadOfflineState()
     return () => { active = false }
-  }, [info.trackId, unlocked])
+  }, [info.trackId, unlocked, online, offlineRefreshKey])
 
   const startOfflineDownload = async () => {
     setOfflineDownloading(true)
@@ -268,15 +309,28 @@ export default function TrackHubScreen() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <span aria-hidden="true" style={{ fontSize: '1.4rem' }}>⇩</span>
           <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--text)' }}>OFFLINE ACCESS</h2>
-          {offlineStatus && <span style={{ marginLeft: 'auto', color: 'var(--success, #16803d)', fontSize: '0.75rem', fontWeight: 800 }}>DOWNLOADED</span>}
+          {offlineStatus && <span style={{ color: 'var(--success, #16803d)', fontSize: '0.75rem', fontWeight: 800 }}>DOWNLOADED</span>}
+          <span style={{ marginLeft: 'auto', padding: '.25rem .45rem', borderRadius: 999, border: '1px solid var(--border)', color: online ? 'var(--success, #16803d)' : 'var(--warning, #c2410c)', fontSize: '0.7rem', fontWeight: 850 }}>{online ? 'DEVICE ONLINE' : 'DEVICE OFFLINE'}</span>
         </div>
         <p style={{ margin: '0 0 0.8rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
           {offlineStatus
-            ? `${offlineStatus.questionCount.toLocaleString()} questions saved on this device. Practice can continue without internet while the saved access is valid.`
+            ? unlocked
+              ? `${offlineStatus.questionCount.toLocaleString()} paid questions are saved on this device.`
+              : `${offlineStatus.questionCount.toLocaleString()} free reviewer questions are saved on this device.`
             : unlocked
               ? 'Download the full question bank for this track to practice without internet.'
               : 'Download the free reviewer questions for use without internet.'}
         </p>
+        {offlineStatus && unlocked && <p role="status" style={{ margin: '0 0 .8rem', padding: '.65rem .75rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: offlineLicenseExpiry && offlineLicenseExpiry > Date.now() ? 'var(--success, #16803d)' : 'var(--warning, #c2410c)', fontSize: '.84rem', lineHeight: 1.5 }}>
+          {!offlineLicenseChecked
+            ? 'Checking this device’s offline license…'
+            : offlineLicenseExpiry && offlineLicenseExpiry > Date.now()
+              ? `Offline access is verified until ${new Date(offlineLicenseExpiry).toLocaleString()}. Reconnect before expiry to refresh your license.`
+              : 'Your paid question pack is saved, but a valid offline license could not be verified on this device. Reconnect to refresh access before going offline.'}
+        </p>}
+        {offlineStatus && <p style={{ margin: '0 0 .8rem', color: 'var(--text-muted)', fontSize: '.78rem' }}>
+          Last saved on this device: {new Date(offlineStatus.savedAt).toLocaleString()}.
+        </p>}
         {offlineDownloading && (
           <div style={{ marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 5 }}>
@@ -298,7 +352,7 @@ export default function TrackHubScreen() {
         </button>
         {!online && !offlineStatus && <p style={{ margin: '0.65rem 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Connect to the internet to download this pack first.</p>}
         <p style={{ margin: '0.65rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-          Offline packs are stored on this device. Paid access is checked online when possible and locally against the last verified license expiry while disconnected.
+          Packs are stored on this device. Paid offline access requires a valid server-signed license; reconnect periodically to refresh it. Revocation cannot reach a device while it remains fully offline.
         </p>
       </section>
 
