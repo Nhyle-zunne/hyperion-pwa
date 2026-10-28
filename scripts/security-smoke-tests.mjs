@@ -74,6 +74,7 @@ const learningProgressTriggerMigration = await read('../supabase/migrations/2026
 const offlineEntitlementSigningMigration = await read('../supabase/migrations/20261028181300_add_signed_offline_entitlements.sql');
 const viteConfig = await read('../vite.config.ts');
 const mainEntry = await read('../src/main.tsx');
+const routeErrorBoundary = await read('../src/components/RouteErrorBoundary.tsx');
 const adminPaymentReviewFunction = await read('../supabase/functions/admin-payment-review/index.ts');
 const deleteAccount = await read('../supabase/functions/delete-account/index.ts');
 const cancelCheckout = await read('../supabase/functions/cancel-checkout/index.ts');
@@ -442,6 +443,7 @@ assert.ok(accountScreen.includes('refreshAccount(true, false)') && accountScreen
 
 assert.ok(app.includes("const PracticeQuizScreen = lazy(() => import('./screens/PracticeQuizScreen'))") && app.includes("const AdminQuestionBankScreen = lazy(() => import('./screens/AdminQuestionBankScreen'))"), 'Heavy learning and admin screens load as separate route chunks');
 assert.ok(app.includes('<Suspense fallback=') && app.includes('Loading Hyperion…'), 'Lazy routes present an accessible loading fallback while a screen chunk loads');
+assert.ok(app.includes('<RouteErrorBoundary>') && routeErrorBoundary.includes('role="alert"') && routeErrorBoundary.includes('window.location.reload()') && routeErrorBoundary.includes('Reload Hyperion'), 'Failed lazy routes show an accessible recovery screen with a reload action');
 assert.equal((app.match(/^import .* from '\.\/screens\//gm) || []).length, 0, 'Route screen components are not eagerly imported into the main application entry');
 
 assert.ok(workflow.includes('uses: actions/checkout@v7') && workflow.includes('uses: actions/setup-node@v7'), 'CI uses GitHub Actions maintained for the current runner runtime');
