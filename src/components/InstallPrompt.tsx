@@ -1,12 +1,13 @@
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.nhyle.hyperionmaritime'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useInstallPrompt } from '../hooks/useInstallPrompt'
 import GooglePlayBadge from './GooglePlayBadge'
 import DesktopInstallBadge from './DesktopInstallBadge'
 
-type InstallPromptProps = { force?: boolean; variant?: 'card' | 'modal' }
+type InstallPromptProps = { force?: boolean; variant?: 'card' | 'modal'; iosOnly?: boolean }
 
-export default function InstallPrompt({ force = false, variant = 'card' }: InstallPromptProps) {
+export default function InstallPrompt({ force = false, variant = 'card', iosOnly = false }: InstallPromptProps) {
   const { canNativePrompt, installed, isIos, isAndroid, dismissed, promptInstall, dismiss, showInstallUi } = useInstallPrompt()
   const [busy, setBusy] = useState(false)
   const [installMessage, setInstallMessage] = useState('')
@@ -20,7 +21,7 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [variant, dismissed, force, dismiss])
 
-  if (installed || !showInstallUi || (!force && dismissed)) return null
+  if (installed || !showInstallUi || (!force && dismissed) || (iosOnly && !isIos)) return null
 
   const startInstall = async () => {
     setInstallMessage('')
@@ -60,11 +61,14 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
           {isAndroid && <a className="btn btn-outline" href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" style={{ flex: '1 1 160px', textAlign: 'center' }}>Install from Google Play</a>}
-          <button type="button" className="btn btn-primary" style={{ flex: '1 1 160px' }} disabled={busy} onClick={() => void startInstall()}>
-            {busy ? 'Opening install prompt…' : canNativePrompt ? 'Install app' : isIos ? 'How to install' : 'Install / Add to Home'}
-          </button>
+          {isIos ? (
+            <AppleAppStoreBadge onClick={dismiss} />
+          ) : (
+            <button type="button" className="btn btn-primary" style={{ flex: '1 1 160px' }} disabled={busy} onClick={() => void startInstall()}>
+              {busy ? 'Opening install prompt…' : canNativePrompt ? 'Install app' : 'Install / Add to Home'}
+            </button>
+          )}
         </div>
-        {isIos && <InstallSteps isIos={isIos} isAndroid={isAndroid} />}
       </div>
     )
   }
@@ -111,12 +115,11 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
             </button>
           </div>
         ) : isIos ? (
-          <div style={{ display: 'grid', gap: 9 }}>
-            <div style={guidePanelStyle}>
-              <strong>Install on iPhone or iPad</strong>
-              <InstallSteps isIos isAndroid={false} />
-            </div>
-            <button type="button" className="btn btn-primary" onClick={dismiss}>GOT IT</button>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <AppleAppStoreBadge onClick={dismiss} />
+            <p style={{ color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.45, margin: 0 }}>
+              Opens the iPhone installation guide, with step-by-step instructions for adding Hyperion to your Home Screen.
+            </p>
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 9 }}>
@@ -131,6 +134,53 @@ export default function InstallPrompt({ force = false, variant = 'card' }: Insta
         </div>
       </section>
     </div>
+  )
+}
+
+function AppleAppStoreBadge({ onClick }: { onClick: () => void }) {
+  return (
+    <Link
+      to="/install/ios"
+      onClick={onClick}
+      aria-label="Open the Hyperion iPhone installation guide"
+      className="hyperion-apple-install-badge"
+      style={{
+        boxSizing: 'border-box',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 'clamp(12px, 3vw, 28px)',
+        width: '100%',
+        minHeight: 'clamp(96px, 24vw, 154px)',
+        padding: 'clamp(10px, 2.8vw, 22px) clamp(12px, 3vw, 30px)',
+        border: '2px solid #a5a5a5',
+        borderRadius: 'clamp(12px, 2.5vw, 22px)',
+        background: '#000',
+        color: '#fff',
+        textDecoration: 'none',
+        boxShadow: '0 3px 0 rgba(0,0,0,.12)',
+        transition: 'transform 160ms ease, box-shadow 160ms ease'
+      }}
+    >
+      <svg
+        width="clamp(42px, 13vw, 86px)"
+        height="clamp(46px, 14vw, 92px)"
+        viewBox="0 0 24 24"
+        role="img"
+        aria-label="Apple logo"
+        style={{ flex: '0 0 auto', display: 'block', fill: '#fff' }}
+      >
+        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79s-2 .76-3.25.82c-1.3.05-2.29-1.34-3.13-2.57-1.72-2.5-3.04-7.07-1.27-10.16.87-1.23 2.42-2.01 4.1-2.04 1.28-.03 2.49.86 3.28.86s2.26-1.06 3.81-.91c.65.03 2.48.26 3.65 1.98-.1.06-2.18 1.27-2.15 3.78.03 3.01 2.64 4.01 2.67 4.02-.03.07-.42 1.44-1.37 2.54M13.7 3.63c.7-.8 1.86-1.41 2.84-1.46.13 1.14-.33 2.29-1 3.12-.67.82-1.77 1.46-2.85 1.38-.15-1.11.4-2.28 1.01-3.04Z" />
+      </svg>
+      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0, gap: 0 }}>
+        <span style={{ fontSize: 'clamp(.78rem, 2.7vw, 1.35rem)', lineHeight: 1.2, fontWeight: 500, letterSpacing: '.01em' }}>
+          Download on the
+        </span>
+        <span style={{ fontSize: 'clamp(1.75rem, 6.4vw, 3.15rem)', lineHeight: 1.02, fontWeight: 650, letterSpacing: '-.045em', whiteSpace: 'nowrap' }}>
+          App Store
+        </span>
+      </span>
+    </Link>
   )
 }
 
