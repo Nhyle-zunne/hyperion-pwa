@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
 import { encryptJsonPayload, decryptJsonPayload } from '../src/lib/jsonPayloadCrypto.mjs';
+import { createSerialAsyncQueue } from '../src/lib/serializedAsyncQueue.mjs';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
@@ -497,5 +498,18 @@ assert.ok(vaultScreen.includes('authorizeQuestionSet') && vaultScreen.includes('
 assert.ok(practiceStore.includes('addMistake(q, answer.selectedIndex, s.isFreeSession)') && practiceStore.includes('addMistake(q, index, isFreeSession)'), 'Mistake vault records whether a mistake came from a permitted free session');
 assert.ok(encryptedPersistStorage.includes("await db.put('entries', { id: name, ...encrypted })") && encryptedPersistStorage.includes('Remove the cleartext copy only after the encrypted record is safely committed'), 'Legacy localStorage is migrated to encrypted IndexedDB before being removed');
 assert.ok(encryptedPersistStorage.includes('Do not write an unencrypted fallback'), 'Encrypted storage never introduces a new plaintext fallback');
+const serialQueue = createSerialAsyncQueue();
+const queueOrder = [];
+let releaseFirstWrite;
+const firstWriteGate = new Promise((resolve) => { releaseFirstWrite = resolve; });
+const queuedFirst = serialQueue(async () => { queueOrder.push('first-start'); await firstWriteGate; queueOrder.push('first-end'); });
+const queuedSecond = serialQueue(async () => { queueOrder.push('second'); });
+const queuedFailure = serialQueue(async () => { throw new Error('synthetic queue failure'); }).catch(() => undefined);
+const queuedAfterFailure = serialQueue(async () => { queueOrder.push('after-failure'); });
+releaseFirstWrite();
+await Promise.all([queuedFirst, queuedSecond, queuedFailure, queuedAfterFailure]);
+assert.deepEqual(queueOrder, ['first-start', 'first-end', 'second', 'after-failure'], 'Encrypted state operations preserve invocation order and continue after a failed operation');
+assert.ok(encryptedPersistStorage.includes('createSerialAsyncQueue') && encryptedPersistStorage.includes('queueStorageOperation(async () =>'), 'Encrypted IndexedDB reads, writes, and removals share a serialized operation queue');
+
 
 console.log('Release-safety smoke checks passed.');
