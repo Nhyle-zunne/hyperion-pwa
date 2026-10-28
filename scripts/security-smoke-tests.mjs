@@ -65,6 +65,8 @@ const [
   read('../supabase/migrations/20261028172256_expand_account_retention_audit_reason_check.sql')
 ]);
 
+const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
 const timestampMatch = webhook.match(/if \(!\/(.+?)\/\.test\(timestamp\)/);
 assert.ok(timestampMatch, 'Webhook timestamp-validation regex exists');
@@ -284,6 +286,15 @@ assert.ok(installPrompt.includes('iosOnly = false') && installPrompt.includes('(
 assert.ok(installPrompt.includes('<GooglePlayBadge />') && installPrompt.includes('ADD HYPERION TO HOME SCREEN'), 'Existing Android Google Play badge and PWA installation action remain intact');
 assert.ok(iosInstallGuide.includes('Keep the name Hyperion.') && iosInstallGuide.includes('Keep the app name as Hyperion.') && iosInstallGuide.includes('open the new Hyperion icon.'), 'iOS install instructions consistently tell users to name and launch the app as Hyperion');
 assert.ok(!iosInstallGuide.includes('Keep the app name as Hyperion Maritime.') && !iosInstallGuide.includes('Keep the name Hyperion Maritime.'), 'iOS install instructions do not contradict the requested Hyperion app name');
+
+
+assert.ok(questionBank.includes('if (body.action === "authorize-session")') && questionBank.includes('fingerprints.every(hash => allowedFingerprints.has(hash as string))'), 'Saved-session authorization only accepts the server-defined free sample when the caller lacks a license');
+assert.ok(questionBank.includes('const authHeader = req.headers.get("Authorization")') && questionBank.includes('.auth.getUser()'), 'Question-bank identity comes from a validated Supabase user token, not client metadata');
+assert.ok(licenseStore.includes('return status === 0 || status >= 500'), 'Cached entitlement fallback is limited to genuine connectivity/server failures');
+assert.ok(questionBankClient.includes('userId ? getOfflineEntitlementExpiry(userId, track) : null'), 'Offline entitlement lookup is scoped to the currently signed-in Supabase user');
+assert.ok(offlineQuestionCache.includes('if (!value || value.userId !== userId) return null') && offlineQuestionCache.includes('expiresAt > Date.now()'), 'Offline entitlement cache rejects account-mismatched or expired license records');
+assert.ok(questionBankClient.includes('if (error && canFallbackToOffline(error) && await offlineEntitlementExpiry(track))'), 'Online question fallback only consults saved paid packs after a network/server failure plus a valid local expiry');
+assert.ok(questionBank.includes('body.freeOnly !== true') && questionBank.includes('Raw paid-bank delivery is disabled. Use paginated question delivery.'), 'Legacy raw-file endpoint cannot be used to retrieve paid-bank assets');
 
 
 console.log('Release-safety smoke checks passed.');
