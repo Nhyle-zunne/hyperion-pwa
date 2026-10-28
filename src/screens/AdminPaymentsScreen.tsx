@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
@@ -20,6 +20,7 @@ export default function AdminPaymentsScreen() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [authorized, setAuthorized] = useState(false)
+  const [statusTab, setStatusTab] = useState<'active' | 'pending' | 'failed' | 'expired'>('pending')
   const call = useCallback(async (body: Record<string,unknown>) => {
     if (!supabase) throw new Error('Payment administration is temporarily unavailable. Please try again later.')
     const { data, error } = await supabase.functions.invoke('admin-payment-review', { body })
@@ -56,6 +57,31 @@ export default function AdminPaymentsScreen() {
   }
   const duration = (term: Order['license_term']) => term === 'week' ? 'Weekly' : term === 'month' ? 'Monthly' : 'Yearly'
 
+  const orderGroup = (order: Order): 'active' | 'pending' | 'failed' | 'expired' => {
+    if (order.status === 'failed') return 'failed'
+    if (order.status === 'submitted' || order.status === 'pending') return 'pending'
+    if (order.status === 'paid' && order.access_status === 'active') return 'active'
+    // Keep revoked and legacy paid records visible instead of hiding them from all tabs.
+    return 'expired'
+  }
+  const ordersByStatus = useMemo(() => {
+    const groups: Record<'active' | 'pending' | 'failed' | 'expired', Order[]> = {
+      active: [], pending: [], failed: [], expired: []
+    }
+    for (const order of orders) groups[orderGroup(order)].push(order)
+    return groups
+  }, [orders])
+  const visibleOrders = ordersByStatus[statusTab]
+  const paymentStatusLabel = (order: Order) => {
+    const group = orderGroup(order)
+    if (group === 'active') return 'ACTIVE'
+    if (group === 'pending') return 'PENDING'
+    if (group === 'failed') return 'FAILED'
+    if (order.access_status === 'revoked') return 'REVOKED'
+    if (order.access_status === 'not_current') return 'INACTIVE'
+    return 'EXPIRED'
+  }
+
   const card: React.CSSProperties = { background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, padding:'1rem', marginBottom:'1rem' }
   const field: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'.8rem', marginTop:'.4rem', background:'var(--bg-elevated)', color:'var(--text)', border:'1px solid var(--border)', borderRadius:6, font:'inherit' }
   return <div className="screen admin-payments-page" style={{ width:'min(calc(100% - 1rem), 1180px)', maxWidth:1180, margin:'0 auto', paddingBottom:'2rem' }}>
@@ -64,9 +90,14 @@ export default function AdminPaymentsScreen() {
       .admin-payments-page .subtitle{ text-align:left }
       .admin-admin-nav{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
       .admin-payment-orders-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;align-items:start}
+      .admin-payment-status-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.45rem;margin:.9rem 0 1rem}
+      .admin-payment-status-tab{display:flex;align-items:center;justify-content:center;gap:.55rem;min-width:0;border:1px solid var(--border);border-radius:9px;padding:.7rem .6rem;background:var(--bg-card);color:var(--text-muted);font:inherit;font-size:.83rem;font-weight:850;cursor:pointer;transition:background 150ms ease,border-color 150ms ease,color 150ms ease}
+      .admin-payment-status-tab.is-active{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+      .admin-payment-status-count{display:inline-flex;align-items:center;justify-content:center;min-width:1.55rem;height:1.55rem;padding:0 .3rem;border-radius:999px;background:var(--bg-elevated);color:var(--text);font-size:.72rem;font-weight:900}
+      .admin-payment-status-tab.is-active .admin-payment-status-count{background:var(--accent);color:#fff}
       .admin-payment-orders-grid>section{margin:0;min-width:0}
       .admin-payment-orders-grid textarea{min-height:76px}
-      @media(max-width:760px){.admin-payment-orders-grid{grid-template-columns:1fr}.admin-admin-nav{width:100%;justify-content:stretch}.admin-admin-nav button{flex:1 1 160px}}
+      @media(max-width:760px){.admin-payment-orders-grid{grid-template-columns:1fr}.admin-admin-nav{width:100%;justify-content:stretch}.admin-admin-nav button{flex:1 1 160px}.admin-payment-status-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}
     `}</style>
     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap', marginBottom:'.8rem' }}>
       <button type="button" onClick={() => navigate('/account')} style={{ color:'var(--text-muted)' }}>← Account</button>
@@ -102,8 +133,32 @@ export default function AdminPaymentsScreen() {
         <h2 style={{ margin:0 }}>Payment submissions ({orders.length})</h2>
         <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void withPageLoading('Refreshing payment submissions', () => load())} style={{ padding:'.55rem .8rem' }}>Refresh submissions</button>
       </div>
-      {orders.length ? <div className="admin-payment-orders-grid">{orders.map(order => <section key={order.id} style={card}>
-        <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'space-between', gap:8 }}><strong>{names[order.product_code] || order.product_code} · {duration(order.license_term || 'year')} · ₱{order.amount_php}</strong><strong>{order.status.toUpperCase()}</strong></div>
+      <div className="admin-payment-status-tabs" role="tablist" aria-label="Filter payment submissions by status">
+        {([
+          ['active', 'ACTIVE'],
+          ['pending', 'PENDING'],
+          ['failed', 'FAILED'],
+          ['expired', 'EXPIRED']
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={statusTab === id}
+            aria-controls="admin-payment-status-panel"
+            className={`admin-payment-status-tab${statusTab === id ? ' is-active' : ''}`}
+            onClick={() => setStatusTab(id)}
+          >
+            <span>{label}</span><span className="admin-payment-status-count">{ordersByStatus[id].length}</span>
+          </button>
+        ))}
+      </div>
+      {statusTab === 'expired' && visibleOrders.some(order => order.access_status === 'revoked' || order.access_status === 'not_current') && (
+        <p style={{ color:'var(--text-muted)', fontSize:'.82rem', margin:'.1rem 0 .8rem' }}>This tab also includes paid licenses that have been revoked or are no longer current.</p>
+      )}
+      <div id="admin-payment-status-panel" role="tabpanel" aria-label={`${statusTab} payment submissions`}>
+      {visibleOrders.length ? <div className="admin-payment-orders-grid">{visibleOrders.map(order => <section key={order.id} style={card}>
+        <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'space-between', gap:8 }}><strong>{names[order.product_code] || order.product_code} · {duration(order.license_term || 'year')} · ₱{order.amount_php}</strong><strong>{paymentStatusLabel(order)}</strong></div>
         <p style={{ margin:'.6rem 0', overflowWrap:'anywhere' }}>{order.email}<br/>Submitted: {new Date(order.created_at).toLocaleString()}<br/>Order ID: {order.id}</p>
         <p style={{ margin:'.4rem 0' }}><strong>Customer name:</strong> {order.customer_name || 'Not provided'}{order.customer_company ? <><br/>Company: {order.customer_company}</> : null}{order.customer_school ? <><br/>School: {order.customer_school}</> : null}</p>
         <p style={{ margin:'.4rem 0' }}>Method: {order.payment_method || 'Not provided'}<br/>Transaction reference: {order.payment_reference || 'Not provided'}</p>
@@ -114,7 +169,8 @@ export default function AdminPaymentsScreen() {
           <label>Admin note<textarea rows={2} value={note[order.id] || ''} onChange={e => setNote(old => ({...old,[order.id]:e.target.value}))} style={field}/></label>
           <div style={{ display:'flex', gap:8, marginTop:'.8rem' }}><button className="btn btn-primary" disabled={busy} onClick={() => void review(order.id,'approve')}>Approve & unlock</button><button className="btn btn-outline" disabled={busy} onClick={() => void review(order.id,'reject')}>Reject</button></div>
         </>}
-      </section>)}</div> : <section style={card}><p style={{ margin:0 }}>No payment submissions yet.</p></section>}
+      </section>)}</div> : <section style={card}><p style={{ margin:0 }}>No {statusTab} payment submissions.</p></section>}
+      </div>
     </>}
   </div>
 }
