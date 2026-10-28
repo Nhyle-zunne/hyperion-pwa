@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useLicenseStore } from './stores/licenseStore'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import HomeScreen from './screens/HomeScreen'
+import InstallPrompt from './components/InstallPrompt'
 import TrackSelectionScreen from './screens/TrackSelectionScreen'
 import AccountScreen from './screens/AccountScreen'
 import BasketScreen from './screens/BasketScreen'
@@ -368,7 +369,7 @@ export default function App() {
       <main style={{ flex: 1, minHeight: 0, background: 'var(--bg)' }}>
         <div key={`${location.pathname}${location.search}`} className="route-transition" style={{ minHeight: "100%" }}>
         <Routes>
-          <Route path="/" element={<TrackSelectionScreen />} />
+          <Route path="/" element={<><InstallPrompt variant="modal" iosOnly /><TrackSelectionScreen /></>} />
           <Route path="/account" element={<AccountScreen />} />
           <Route path="/manual-payment" element={<ManualPaymentScreen />} />
           <Route path="/orders" element={<OrdersPaymentHistoryScreen />} />
