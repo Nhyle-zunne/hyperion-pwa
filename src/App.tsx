@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useLicenseStore } from './stores/licenseStore'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import InstallPrompt from './components/InstallPrompt'
+import RouteErrorBoundary from './components/RouteErrorBoundary'
 import PaywallDialog from './components/PaywallDialog'
 import BottomNav from './components/BottomNav'
 import TopLoadingIndicator from './components/TopLoadingIndicator'
@@ -416,6 +417,7 @@ export default function App() {
       )}
       <main style={{ flex: 1, minHeight: 0, background: 'var(--bg)' }}>
         <div key={`${location.pathname}${location.search}`} className="route-transition" style={{ minHeight: "100%" }}>
+        <RouteErrorBoundary>
         <Suspense fallback={<div role="status" aria-live="polite" style={{ minHeight: 220, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Loading Hyperion…</div>}>
         <Routes>
           <Route path="/" element={<><InstallPrompt variant="modal" iosOnly /><TrackSelectionScreen /></>} />
@@ -452,6 +454,7 @@ export default function App() {
           <Route path="*" element={<TrackSelectionScreen />} />
         </Routes>
         </Suspense>
+        </RouteErrorBoundary>
         </div>
       </main>
 
