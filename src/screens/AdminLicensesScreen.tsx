@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
@@ -316,10 +317,10 @@ export default function AdminLicensesScreen() {
       {selectedUserId && (() => {
         const user = users.find(item => item.id === selectedUserId)
         if (!user) return null
-        return <div
+        return createPortal(<div
           role="presentation"
           onClick={() => setSelectedUserId(null)}
-          style={{ position: 'fixed', inset: 0, zIndex: 6000, display: 'grid', placeItems: 'center', padding: '1rem', background: 'rgba(3,8,18,.72)', boxSizing: 'border-box' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 20000, display: 'grid', placeItems: 'center', padding: '1rem', background: 'rgba(3,8,18,.76)', boxSizing: 'border-box', overflowY: 'auto' }}
         >
           <section
             role="dialog"
@@ -327,6 +328,7 @@ export default function AdminLicensesScreen() {
             aria-labelledby="admin-license-modal-title"
             className="admin-license-modal"
             onClick={event => event.stopPropagation()}
+            style={{ position: 'relative', zIndex: 1, width: 'min(900px, calc(100vw - 2rem))', maxHeight: 'calc(100dvh - 2rem)', minHeight: 220, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderTop: '3px solid var(--accent)', borderRadius: 12, boxShadow: '0 24px 70px rgba(0,0,0,.5)' }}
           >
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, padding: '1rem', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
               <div style={{ minWidth: 0 }}>
@@ -378,7 +380,7 @@ export default function AdminLicensesScreen() {
               </div>
             </div>
           </section>
-        </div>
+        </div>, document.body)
       })()}
       </div>}
       {activeTab === 'activity' && <section id="admin-license-activity-panel" role="tabpanel" aria-labelledby="admin-license-activity-tab" style={card}>
