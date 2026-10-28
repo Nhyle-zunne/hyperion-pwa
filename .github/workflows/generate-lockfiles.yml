@@ -1,0 +1,46 @@
+name: Generate dependency lockfiles
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - '.github/workflows/generate-lockfiles.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-lockfiles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Generate npm lockfile without running package scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: "1.4.4"
+
+      - name: Generate Bun lockfile
+        run: bun install --lockfile-only
+
+      - name: Upload generated lockfiles for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyperion-lockfiles
+          path: |
+            package-lock.json
+            bun.lock
+          if-no-files-found: error
+          retention-days: 3
