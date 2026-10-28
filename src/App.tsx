@@ -267,6 +267,33 @@ export default function App() {
     useUIStore.getState().openPaywall('This paid question view needs a current, verified license. Renew access or reconnect to check your subscription.')
   }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, isFlashcards, guardedTrack, isFreeSession, sessionLoading, sessionQuestionCount, navigate])
 
+  // Free Reviewer is the only non-mock practice setup available without a license.
+  // Direct URLs must obey the same access rule as the track-hub buttons.
+  const isPracticeSetup = location.pathname === '/practice/competences' || location.pathname === '/practice'
+  const setupParams = new URLSearchParams(location.search)
+  const setupTrackKeyRaw = setupParams.get('track') || 'oic_nw'
+  const setupTrackKey = quickScanKeys[setupTrackKeyRaw] ? setupTrackKeyRaw : 'oic_nw'
+  const setupTrack = quickScanKeys[setupTrackKey]
+  const setupMode = setupParams.get('mode') || ''
+  const isExplicitFreeReviewerSetup = setupParams.get('free') === '1' && setupMode !== 'drill'
+  const setupNeedsLicense = isPracticeSetup && !isExplicitFreeReviewerSetup
+
+  useEffect(() => {
+    if (!entitlementsChecked || !setupNeedsLicense) return
+    const hasActiveLicense = entitlementsVerified && (
+      isAllAccessUnlocked || cloudTrackIds.includes('ALL') ||
+      (setupTrack != null && cloudTrackIds.includes(setupTrack))
+    )
+    if (hasActiveLicense) return
+
+    navigate('/track?track=' + setupTrackKey, { replace: true })
+    useUIStore.getState().openPaywall(
+      setupMode === 'drill'
+        ? 'Drill requires an active license for this track.'
+        : 'Practice All Questions requires an active license. Free Reviewer and Timed Mock Exam remain available without a purchase.'
+    )
+  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isPracticeSetup, setupNeedsLicense, setupTrack, setupTrackKey, setupMode, navigate])
+
   const hideNav = [
     '/practice/quiz',
     '/mock/exam',
