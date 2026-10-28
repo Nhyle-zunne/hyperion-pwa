@@ -9,6 +9,7 @@ import TopLoadingIndicator from './components/TopLoadingIndicator'
 import { useUIStore } from './stores/uiStore'
 import { usePracticeStore } from './stores/practiceStore'
 import { useBookmarksStore } from './stores/bookmarksStore'
+import { useVaultStore } from './stores/vaultStore'
 import { useHistoryStore } from './stores/historyStore'
 import { supabase } from './lib/supabase'
 import { startLearningProgressSync } from './lib/progressSync'
@@ -290,6 +291,7 @@ export default function App() {
     const unavailable = isAllAccessUnlocked ? [] : tracks.filter(track => !cloudTrackIds.includes(track))
     for (const track of unavailable) {
       useBookmarksStore.getState().purgePaidForTracks([track])
+      useVaultStore.getState().purgePaidForTracks([track])
       useHistoryStore.getState().removePaidSavedSessionsForTrack(track)
       void deletePaidQuestionSnapshotsForTrack(track).catch(() => undefined)
       void deletePaidOfflineQuestionPacksForTrack(track).catch(() => undefined)
