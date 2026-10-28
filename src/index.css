@@ -2103,3 +2103,25 @@ a:focus-visible,
 .search-results-protected {
   -webkit-tap-highlight-color: transparent;
 }
+
+
+/* iOS install CTA styled like the supplied App Store badge reference. */
+.hyperion-apple-install-badge {
+  -webkit-tap-highlight-color: transparent;
+}
+.hyperion-apple-install-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .2);
+}
+.hyperion-apple-install-badge:active {
+  transform: translateY(0) scale(.99);
+}
+.hyperion-apple-install-badge:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hyperion-apple-install-badge {
+    transition: none !important;
+  }
+}
