@@ -87,6 +87,7 @@ export default function AccountScreen() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
+  const [renewalGraceUntil, setRenewalGraceUntil] = useState<string | null>(null)
   const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>(() => Object.fromEntries(PAID_PRODUCTS.map(item => [item.code, basket.find(entry => entry.code === item.code)?.term ?? 'year'])) as Record<PaidTrack, LicenseTerm>)
   const [orders, setOrders] = useState<Order[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
@@ -177,14 +178,14 @@ export default function AccountScreen() {
     finally { setBusy(false) }
   })
   const refreshAccount = async () => withPageLoading('Loading account and licenses', async () => {
-    if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); return }
+    if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); setRenewalGraceUntil(null); return }
     const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note,checkout_batch_id'
     const [entitlements, orderResult] = await Promise.all([
       supabase.from('entitlements')
         .select('product_code,order_id,license_term,granted_at,expires_at,renewed_at')
         .eq('user_id', session.user.id)
         .eq('status', 'active')
-        .gt('expires_at', new Date().toISOString()),
+        .not('expires_at', 'is', null),
       supabase.from('orders')
         .select(orderColumns)
         .eq('user_id', session.user.id)
@@ -192,9 +193,23 @@ export default function AccountScreen() {
         .limit(50),
     ])
 
-    const activeLicenses = !entitlements.error ? (entitlements.data ?? []) as OwnedTrack[] : []
+    const entitlementRows = !entitlements.error ? (entitlements.data ?? []) as OwnedTrack[] : []
+    const now = Date.now()
+    const activeLicenses = entitlementRows.filter(item => {
+      const expiry = item.expires_at ? Date.parse(item.expires_at) : 0
+      return Number.isFinite(expiry) && expiry > now
+    })
+    const latestExpiredAt = entitlementRows.reduce((latest, item) => {
+      const expiry = item.expires_at ? Date.parse(item.expires_at) : 0
+      return Number.isFinite(expiry) && expiry > 0 && expiry <= now ? Math.max(latest, expiry) : latest
+    }, 0)
+    const graceUntil = latestExpiredAt + 30 * 24 * 60 * 60 * 1000
+    setRenewalGraceUntil(activeLicenses.length === 0 && latestExpiredAt > 0 && graceUntil > now ? new Date(graceUntil).toISOString() : null)
     setOwned(activeLicenses)
-    if (entitlements.error) setMessage('Unable to refresh account details. Please try again.')
+    if (entitlements.error) {
+      setRenewalGraceUntil(null)
+      setMessage('Unable to refresh account details. Please try again.')
+    }
 
     let linkedOrders: Order[] = []
     const linkedOrderIds = [...new Set(activeLicenses.map(item => item.order_id).filter(Boolean))]
@@ -516,6 +531,11 @@ export default function AccountScreen() {
       {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>You returned from checkout. Sign in with the same Hyperion account to verify payment and activate the purchased track.</div>}
     </section> : <>
       {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
+      {renewalGraceUntil && <div role="status" style={{ ...card, lineHeight: 1.55, marginTop: '.8rem', marginBottom: 0, borderColor: 'var(--warning, #c2410c)' }}>
+        <strong style={{ display: 'block', marginBottom: '.25rem' }}>License renewal grace period</strong>
+        Your website license has expired. Renew or purchase an eligible website license by <strong>{new Date(renewalGraceUntil).toLocaleDateString()}</strong> to keep this account from being deleted under Hyperion's 30-day account-retention policy. A payment only counts after the license is successfully activated.
+        <button type="button" className="btn btn-primary" style={{ width: '100%', marginTop: '.65rem' }} onClick={() => setAccountSection('store')}>Renew or buy a license</button>
+      </div>}
 
       <div className="account-toolbar" style={{ justifyContent: 'flex-end' }}>
 
