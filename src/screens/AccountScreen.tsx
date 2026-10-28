@@ -25,7 +25,7 @@ type Order = {
   admin_note: string | null
   checkout_batch_id: string | null
 }
-type OwnedTrack = { product_code: string; order_id: string; license_term: LicenseTerm; granted_at: string; expires_at: string | null; renewed_at: string | null }
+type OwnedTrack = { product_code: string; order_id: string; license_term: LicenseTerm; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
 function safeAccountError(error: unknown, fallback: string) {
@@ -44,6 +44,22 @@ async function edgeFunctionErrorMessage(error: unknown): Promise<string | null> 
   } catch {
     return null
   }
+}
+function licenseExpiryDetails(value: string | null, now = Date.now()) {
+  if (!value) return { state: 'unknown' as const, label: 'Expiry date unavailable', daysRemaining: null as number | null }
+  const expiresAt = Date.parse(value)
+  if (!Number.isFinite(expiresAt)) return { state: 'unknown' as const, label: 'Expiry date unavailable', daysRemaining: null as number | null }
+  if (expiresAt <= now) return { state: 'expired' as const, label: `Expired on ${new Date(expiresAt).toLocaleDateString()}`, daysRemaining: 0 }
+  const hoursRemaining = Math.ceil((expiresAt - now) / (60 * 60 * 1000))
+  const daysRemaining = Math.ceil(hoursRemaining / 24)
+  const label = hoursRemaining < 24
+    ? 'Expires in less than a day'
+    : `Expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}`
+  return { state: daysRemaining <= 7 ? 'soon' as const : 'active' as const, label, daysRemaining }
+}
+function isCurrentLicense(item: OwnedTrack, now = Date.now()) {
+  const expiresAt = item.expires_at ? Date.parse(item.expires_at) : 0
+  return item.status === 'active' && Number.isFinite(expiresAt) && expiresAt > now
 }
 export default function AccountScreen() {
   const navigate = useNavigate()
@@ -87,6 +103,7 @@ export default function AccountScreen() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [owned, setOwned] = useState<OwnedTrack[]>([])
+  const [inactiveLicenses, setInactiveLicenses] = useState<OwnedTrack[]>([])
   const [renewalGraceUntil, setRenewalGraceUntil] = useState<string | null>(null)
   const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>(() => Object.fromEntries(PAID_PRODUCTS.map(item => [item.code, basket.find(entry => entry.code === item.code)?.term ?? 'year'])) as Record<PaidTrack, LicenseTerm>)
   const [orders, setOrders] = useState<Order[]>([])
@@ -178,14 +195,12 @@ export default function AccountScreen() {
     finally { setBusy(false) }
   })
   const refreshAccount = async () => withPageLoading('Loading account and licenses', async () => {
-    if (!supabase || !session?.user.id) { setOwned([]); setOrders([]); setRenewalGraceUntil(null); return }
+    if (!supabase || !session?.user.id) { setOwned([]); setInactiveLicenses([]); setOrders([]); setRenewalGraceUntil(null); return }
     const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note,checkout_batch_id'
     const [entitlements, orderResult] = await Promise.all([
       supabase.from('entitlements')
-        .select('product_code,order_id,license_term,granted_at,expires_at,renewed_at')
-        .eq('user_id', session.user.id)
-        .eq('status', 'active')
-        .not('expires_at', 'is', null),
+        .select('product_code,order_id,license_term,status,granted_at,expires_at,renewed_at')
+        .eq('user_id', session.user.id),
       supabase.from('orders')
         .select(orderColumns)
         .eq('user_id', session.user.id)
@@ -195,24 +210,26 @@ export default function AccountScreen() {
 
     const entitlementRows = !entitlements.error ? (entitlements.data ?? []) as OwnedTrack[] : []
     const now = Date.now()
-    const activeLicenses = entitlementRows.filter(item => {
-      const expiry = item.expires_at ? Date.parse(item.expires_at) : 0
-      return Number.isFinite(expiry) && expiry > now
-    })
+    const activeLicenses = entitlementRows.filter(item => isCurrentLicense(item, now))
+    const pastLicenses = entitlementRows
+      .filter(item => !isCurrentLicense(item, now))
+      .sort((a, b) => Date.parse(b.expires_at || '') - Date.parse(a.expires_at || ''))
     const latestExpiredAt = entitlementRows.reduce((latest, item) => {
+      if (item.status === 'revoked') return latest
       const expiry = item.expires_at ? Date.parse(item.expires_at) : 0
       return Number.isFinite(expiry) && expiry > 0 && expiry <= now ? Math.max(latest, expiry) : latest
     }, 0)
     const graceUntil = latestExpiredAt + 30 * 24 * 60 * 60 * 1000
     setRenewalGraceUntil(activeLicenses.length === 0 && latestExpiredAt > 0 && graceUntil > now ? new Date(graceUntil).toISOString() : null)
     setOwned(activeLicenses)
+    setInactiveLicenses(pastLicenses)
     if (entitlements.error) {
       setRenewalGraceUntil(null)
       setMessage('Unable to refresh account details. Please try again.')
     }
 
     let linkedOrders: Order[] = []
-    const linkedOrderIds = [...new Set(activeLicenses.map(item => item.order_id).filter(Boolean))]
+    const linkedOrderIds = [...new Set(entitlementRows.map(item => item.order_id).filter(Boolean))]
     if (linkedOrderIds.length > 0) {
       const { data, error } = await supabase.from('orders').select(orderColumns).in('id', linkedOrderIds)
       if (error) setMessage('Unable to refresh license transaction details. Please try again.')
@@ -532,9 +549,9 @@ export default function AccountScreen() {
     </section> : <>
       {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
       {renewalGraceUntil && <div role="status" style={{ ...card, lineHeight: 1.55, marginTop: '.8rem', marginBottom: 0, borderColor: 'var(--warning, #c2410c)' }}>
-        <strong style={{ display: 'block', marginBottom: '.25rem' }}>License renewal grace period</strong>
-        Your website license has expired. The 30-day renewal grace period ends on <strong>{new Date(renewalGraceUntil).toLocaleDateString()}</strong>. Renew or purchase an eligible website license to restore paid-track access. If you do not renew, account deletion is only eligible after the separate inactivity-plus-grace retention deadline has passed. A payment only counts after the license is successfully activated.
-        <button type="button" className="btn btn-primary" style={{ width: '100%', marginTop: '.65rem' }} onClick={() => setAccountTab('payments')}>Renew or buy a license</button>
+        <strong style={{ display: 'block', marginBottom: '.25rem' }}>Your license has expired</strong>
+        Paid-track access ended at expiry. Your account is in its 30-day retention grace period until <strong>{new Date(renewalGraceUntil).toLocaleDateString()}</strong>, giving you time to purchase an eligible website license. This is an account-retention safeguard, not extra paid access. Account deletion is considered only after the separate inactivity and grace requirements are met.
+        <button type="button" className="btn btn-primary" style={{ width: '100%', marginTop: '.65rem' }} onClick={() => setAccountTab('payments')}>View available licenses</button>
       </div>}
 
       <div className="account-toolbar" style={{ justifyContent: 'flex-end' }}>
@@ -586,19 +603,25 @@ export default function AccountScreen() {
 
         <main className="account-main">
           <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />
-          {accountTab === 'licenses' ? <section style={card}>
+          {accountTab === 'licenses' ? <>
+          <section style={card}>
             <div className="account-panel-title">
               <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
               <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
             </div>
             {owned.length ? owned.map(item => {
               const transaction = orders.find(order => order.id === item.order_id)
+              const expiry = licenseExpiryDetails(item.expires_at)
+              const expiringSoon = expiry.daysRemaining !== null && expiry.daysRemaining <= 7
               return <div key={item.product_code} style={{ padding: '.9rem 0', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <strong>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code}</strong>
-                  <span style={{ color: 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 800 }}>ACTIVE</span>
+                  <span style={{ color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 850 }}>{expiringSoon ? 'EXPIRING SOON' : 'ACTIVE'}</span>
                 </div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>{item.license_term === 'week' ? 'Weekly' : item.license_term === 'month' ? 'Monthly' : 'Yearly'} access · Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
+                <div role="status" style={{ marginTop: '.45rem', padding: '.55rem .7rem', borderRadius: 8, background: expiringSoon ? 'var(--bg-elevated)' : 'transparent', border: expiringSoon ? '1px solid var(--border)' : '1px solid transparent', color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--text-muted)', fontSize: '.84rem', fontWeight: expiringSoon ? 800 : 600 }}>
+                  {expiry.label}{expiringSoon ? ' · You can purchase access again after this license expires.' : ''}
+                </div>
                 <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
                   <strong style={{ display: 'block', marginBottom: '.25rem' }}>Transaction details</strong>
                   {transaction ? <>
@@ -614,8 +637,35 @@ export default function AccountScreen() {
                   </> : <div style={{ color: 'var(--text-muted)' }}>Order reference: {item.order_id}</div>}
                 </div>
               </div>
-            }) : <p style={{ color: 'var(--text-muted)' }}>No active licenses are linked to this account yet.</p>}
-          </section> : <>
+            }) : <p style={{ color: 'var(--text-muted)' }}>No active licenses are linked to this account yet. Any previous licenses appear below.</p>}
+          </section>
+          {inactiveLicenses.length > 0 && <section style={{ ...card, marginTop: '1rem' }}>
+            <div className="account-panel-title">
+              <div>
+                <div style={{ color: 'var(--text-muted)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>LICENSE HISTORY</div>
+                <h2 style={{ margin: '.2rem 0 0', fontSize: '1.12rem' }}>Expired and revoked licenses</h2>
+              </div>
+              <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{inactiveLicenses.length} ended</span>
+            </div>
+            {inactiveLicenses.map(item => {
+              const transaction = orders.find(order => order.id === item.order_id)
+              const revoked = item.status === 'revoked'
+              return <div key={item.product_code} style={{ padding: '.85rem 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <strong>{PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code}</strong>
+                  <span style={{ color: revoked ? 'var(--danger, #b91c1c)' : 'var(--text-muted)', fontSize: '.8rem', fontWeight: 850 }}>{revoked ? 'REVOKED' : 'EXPIRED'}</span>
+                </div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.88rem', marginTop: '.3rem' }}>
+                  {revoked ? 'Access was revoked by an administrator.' : item.expires_at ? `Access ended on ${new Date(item.expires_at).toLocaleDateString()}.` : 'No valid expiry date is recorded.'}
+                </div>
+                {transaction && <div style={{ marginTop: '.5rem', color: 'var(--text-muted)', fontSize: '.82rem' }}>
+                  {transaction.amount_php > 0 ? `Last recorded purchase: ₱${transaction.amount_php} · ` : ''}{new Date(transaction.paid_at || transaction.created_at).toLocaleDateString()}
+                </div>}
+              </div>
+            })}
+            <button type="button" className="btn btn-outline" style={{ width: '100%', marginTop: '.9rem' }} onClick={() => setAccountTab('payments')}>Browse available licenses</button>
+          </section>}
+          </> : <>
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
                 <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Choose the track or tracks you need. Active licenses cannot be purchased again.</p></div>

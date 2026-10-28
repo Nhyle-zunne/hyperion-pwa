@@ -218,7 +218,7 @@ assert.ok(accountRetentionFunction.includes('verify_account_retention_cron_token
 assert.ok(scheduleRetentionMigration.includes("'hyperion-expire-inactive-accounts'") && scheduleRetentionMigration.includes("'0 4 * * *'") && scheduleRetentionMigration.includes('hyperion_account_retention_cron_token'), 'Daily retention job is scheduled through the private Vault token');
 assert.ok(adminLicenseManagement.includes('last_accessed_at: lastAccessedAt') && adminLicenseManagement.includes('last_access_source: lastAccessSource') && adminLicenseManagement.includes('retention_status: retentionStatus') && adminLicenseManagement.includes('retention_due_at: retentionDueAt'), 'Admin API returns last access and the account retention state');
 assert.ok(adminLicenses.includes('Last accessed') && adminLicenses.includes('retentionLabel(user)') && adminLicenses.includes('RENEWAL GRACE'), 'Admin user cards and detail modal display last website access and retention status');
-assert.ok(accountScreen.includes('License renewal grace period') && accountScreen.includes('Renew or buy a license') && accountScreen.includes('30 * 24 * 60 * 60 * 1000'), 'Users with expired website licenses see their 30-day renewal deadline in Account');
+assert.ok(accountScreen.includes('Your license has expired') && accountScreen.includes('View available licenses') && accountScreen.includes('30 * 24 * 60 * 60 * 1000') && accountScreen.includes('This is an account-retention safeguard, not extra paid access.'), 'Users with expired website licenses see their retention deadline without mistaking it for extra paid-track access');
 assert.ok(termsScreen.includes('30 consecutive days without authenticated website activity') && termsScreen.includes('30-day renewal grace period'), 'Terms disclose inactivity-based account deletion and license-expiry grace');
 assert.ok(privacyScreen.includes('Website access timestamps') && privacyScreen.includes('automated inactivity-retention process') && privacyScreen.includes('automated deletion is eligible only after both the renewal-grace and inactivity-plus-grace timing requirements have passed'), 'Privacy policy describes website activity logging and the combined inactivity/grace retention deadline');
 assert.ok(termsScreen.includes('October 29, 2026') && privacyScreen.includes('October 29, 2026'), 'Legal pages show the current revision date for activity and retention disclosures');
@@ -382,6 +382,12 @@ assert.ok(expiredSignedClaims && expiredSignedClaims.tracks.DECK_OIC_NW <= crypt
 const unsupportedClaims = { ...sampleClaims, tracks: { ALL: cryptoTestNow + 60_000 } };
 const unsupportedToken = await signOfflineClaims(unsupportedClaims);
 assert.equal(await verifyOfflineEntitlementToken(unsupportedToken, sampleClaims.userId, cryptoTestNow, ephemeralPublicJwk), null, 'Unknown entitlement track identifiers are rejected');
+
+
+assert.ok(accountScreen.includes("status,granted_at,expires_at,renewed_at") && accountScreen.includes("function isCurrentLicense(item: OwnedTrack"), 'Account license display separates current access from past license records using entitlement status and expiry');
+assert.ok(accountScreen.includes('Expired and revoked licenses') && accountScreen.includes("const revoked = item.status === 'revoked'"), 'Account page lists expired and revoked licenses transparently');
+assert.ok(accountScreen.includes('EXPIRING SOON') && accountScreen.includes('purchase access again after this license expires'), 'Account page warns users before a license is about to expire without implying early renewal is available');
+assert.ok(accountScreen.includes('This is an account-retention safeguard, not extra paid access.'), 'The retention grace period is not presented as extra paid-track access');
 
 
 console.log('Release-safety smoke checks passed.');
