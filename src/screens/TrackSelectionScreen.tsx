@@ -138,10 +138,19 @@ export default function TrackSelectionScreen() {
             </span>
           </span>
           <span className="dashboard-exam-panel__streak">{streakStatus}</span>
-          <span className={`dashboard-exam-panel__chevron${examPanelExpanded ? ' is-open' : ''}`} aria-hidden="true">⌄</span>
+          <span className={`dashboard-exam-panel__chevron${examPanelExpanded ? ' is-open' : ''}`} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" focusable="false">
+              <path d="m6.5 9 5.5 5.5L17.5 9" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
         </button>
 
-        <div id="dashboard-exam-details" className="dashboard-exam-panel__details" hidden={!examPanelExpanded}>
+        <div
+          id="dashboard-exam-details"
+          className={`dashboard-exam-panel__details${examPanelExpanded ? ' is-expanded' : ''}`}
+          aria-hidden={!examPanelExpanded}
+          inert={!examPanelExpanded}
+        >
           <div className="dashboard-exam-panel__detail-actions">
             <span className="dashboard-exam-panel__detail-caption">YOUR PREPARATION</span>
             <button type="button" className="btn btn-primary" onClick={saveTarget}>SET DATE →</button>
