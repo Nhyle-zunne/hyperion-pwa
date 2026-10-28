@@ -417,4 +417,10 @@ assert.equal(canAccessPaidTrack({ userId: null, isAdmin: true, entitlement: null
 assert.equal(canAccessPaidTrack({ userId: 'test-user-free', isAdmin: 'true', entitlement: null, track: 'DECK_OIC_NW', now: accessNow }), false, 'A non-boolean admin flag cannot grant access');
 
 
+assert.ok(trackHubScreen.includes("getOfflineEntitlementExpiry(userId, info.trackId)") && trackHubScreen.includes("offlineLicenseExpiry && offlineLicenseExpiry > Date.now()"), 'Offline panel checks the signed per-track lease before claiming paid offline access is verified');
+assert.ok(trackHubScreen.includes('DEVICE ONLINE') && trackHubScreen.includes('DEVICE OFFLINE') && trackHubScreen.includes('Last saved on this device'), 'Offline panel displays connection and last-saved state');
+assert.ok(trackHubScreen.includes('Reconnect before expiry to refresh your license.') && trackHubScreen.includes('valid offline license could not be verified on this device'), 'Offline panel explains the license expiry and reconnect requirement without promising indefinite access');
+assert.ok(trackHubScreen.includes("window.addEventListener('focus', refreshOfflineState)") && trackHubScreen.includes("window.addEventListener('online', updateOnline)"), 'Offline readiness refreshes when the app regains focus or connectivity');
+
+
 console.log('Release-safety smoke checks passed.');
