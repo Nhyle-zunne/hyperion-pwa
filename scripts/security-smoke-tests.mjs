@@ -11,7 +11,7 @@ const [
   practiceConfigScreen, practiceCompetenceScreen, trackHubScreen, drillScreen,
   quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen,
   installPrompt, iosInstallGuide, abandonedCheckoutCleanup, abandonedCheckoutMigration, adminLicenseManagement,
-  accountActivityFunction, accountRetentionFunction, activityRetentionMigration, scheduleRetentionMigration
+  accountActivityFunction, accountRetentionFunction, activityRetentionMigration, scheduleRetentionMigration, retentionReasonMigration
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -61,7 +61,8 @@ const [
   read('../supabase/functions/record-user-activity/index.ts'),
   read('../supabase/functions/expire-inactive-accounts/index.ts'),
   read('../supabase/migrations/20261028154000_add_user_activity_and_retention_tables.sql'),
-  read('../supabase/migrations/20261028154500_schedule_inactive_account_cleanup.sql')
+  read('../supabase/migrations/20261028154500_schedule_inactive_account_cleanup.sql'),
+  read('../supabase/migrations/20261028172256_expand_account_retention_audit_reason_check.sql')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -197,6 +198,7 @@ assert.ok(adminLicenseManagement.includes("function effectiveStatus(row: any, no
 assert.ok(/(?:supabase|client)\.functions\.invoke\('record-user-activity'\)/.test(app) && app.includes("hyperion:last-website-activity") && app.includes("15 * 60 * 1000"), 'Authenticated site access is tracked with a client-side 15-minute write throttle');
 assert.ok(accountActivityFunction.includes("userClient.auth.getUser()") && accountActivityFunction.includes("from('user_activity')") && accountActivityFunction.includes("15 * 60 * 1000"), 'Activity endpoint verifies the caller and throttles writes server-side');
 assert.ok(accountRetentionFunction.includes('const INACTIVITY_DAYS = 30') && accountRetentionFunction.includes('const GRACE_DAYS = 30') && accountRetentionFunction.includes('const FREE_RETENTION_DAYS = INACTIVITY_DAYS + GRACE_DAYS') && accountRetentionFunction.includes("reason = 'free_account_inactivity_grace_ended'") && accountRetentionFunction.includes("reason = 'license_expired_and_inactivity_grace_ended'"), 'Retention function enforces 30 days of inactivity plus a separate 30-day grace period, while preserving post-expiry protection');
+assert.ok(retentionReasonMigration.includes("'free_account_inactivity_grace_ended'") && retentionReasonMigration.includes("'license_expired_and_inactivity_grace_ended'") && retentionReasonMigration.includes("'free_account_inactive_30_days'") && retentionReasonMigration.includes("'license_expired_grace_period_ended'"), 'Retention audit constraint accepts both current and historical cleanup reason values');
 assert.ok(accountRetentionFunction.includes("row.status === 'active' && parseDate(row.expires_at) > now") && accountRetentionFunction.includes('skippedActiveLicense++'), 'Any currently active website license protects the account from retention deletion');
 assert.ok(accountRetentionFunction.includes('freshEntitlements') && accountRetentionFunction.includes('freshActivity') && accountRetentionFunction.includes('freshPendingOrders') && accountRetentionFunction.includes('freshPendingBatch'), 'Deletion rechecks license, activity, and payment state immediately before deletion');
 assert.ok(accountRetentionFunction.includes('dryRun') && accountRetentionFunction.includes('deletion_attempted') && accountRetentionFunction.includes('adminAuditUsers'), 'Retention job supports non-destructive preflight, audit logging, and admin/audit protections');
