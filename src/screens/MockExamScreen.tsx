@@ -284,7 +284,7 @@ export default function MockExamScreen() {
           <p style={{ color: 'var(--text-muted)' }}>Choose the functions to include, then select a competence to begin. The timer runs only while answering that competence.</p>
           <p>{loading ? 'Checking question access and loading counts…' : loadError ? loadError : questionCounts.reduce((sum, item) => sum + item.count, 0).toLocaleString() + ' questions available across ' + visibleCompetences.length + ' competences.'}</p>
           {!loading && !loadError && <p style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>{usingFreePool ? 'Using the eligible free question sample for this track.' : 'Using the full question bank for your active track license.'}</p>}
-          {!!loadError && <button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Retry</button>
+          {!!loadError && <button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Retry</button>}
           <button type="button" className="btn btn-primary" disabled={loading || !!loadError} onClick={() => setStage('confirm')} style={{ width: '100%' }}>START OFFICIAL TIMED MOCK EXAM</button>
         </div>
       )}
@@ -296,7 +296,7 @@ export default function MockExamScreen() {
           <ul style={{ color: 'var(--text-muted)', fontWeight: 700, paddingLeft: '1.2rem', lineHeight: 1.5 }}><li>Passing Cutoff: 70.0% per competence</li><li>Timing: 1 minute per item</li><li>Session lock-in applies once started</li></ul>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: '1.5rem' }}>
             <button type="button" style={secondaryButton} onClick={() => navigate('/track?track=' + trackParam)}>CANCEL</button>
-            <button type="button" style={primaryButton} onClick={() => setStage('functions')}>PROCEED</button>
+            <button type="button" style={primaryButton} disabled={loading || !!loadError} onClick={() => setStage('functions')}>PROCEED</button>
           </div>
         </section>
       </div>}
@@ -327,7 +327,7 @@ export default function MockExamScreen() {
       {(stage === 'competences' || stage === 'results') && <section style={{ margin: '1rem auto 0', width: 'min(100%, 860px)', boxSizing: 'border-box' }}>
         {stage === 'results' && <p style={{ margin: '0 0 .6rem', fontSize: '.85rem', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '.06em' }}>MOCK EXAM RESULTS · SUBMITTED</p>}
         {startError && <div role="alert" className="card" style={{ marginBottom: '.75rem', borderColor: 'var(--warning, #c2410c)', color: 'var(--text)' }}>{startError}</div>}
-        {loadError && <div role="alert" className="card" style={{ marginBottom: '.75rem', borderColor: 'var(--warning, #c2410c)', color: 'var(--text)' }}>{loadError}</div>}
+        {loadError && <div role="alert" className="card" style={{ marginBottom: '.75rem', borderColor: 'var(--warning, #c2410c)', color: 'var(--text)' }}>{loadError} <button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Retry</button></div>}
         <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-card)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', color: 'var(--text)', fontSize: '.9rem', tableLayout: 'fixed' }}>
             <colgroup>
