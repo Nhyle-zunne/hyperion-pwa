@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
@@ -428,5 +429,14 @@ assert.ok(ordersHistory.includes("'Awaiting PayMongo payment'") && ordersHistory
 assert.ok(ordersHistory.includes('No license was activated from this checkout.') && ordersHistory.includes("order.status === 'failed'"), 'Failed or cancelled checkouts clearly explain that no access was granted and users can restart safely');
 assert.ok(ordersHistory.includes('This manual payment submission was rejected.') && ordersHistory.includes("order.status === 'submitted'"), 'Manual payment rejection remains distinct from an expired hosted checkout');
 
+
+const schedulerNow = 1_000_000;
+assert.equal(nextExpiryRefreshDelay([schedulerNow + 10_000, schedulerNow + 5_000], schedulerNow), 5_250, 'Expiry scheduler chooses the nearest future entitlement and adds only a small post-expiry buffer');
+assert.equal(nextExpiryRefreshDelay([schedulerNow - 1, 'invalid'], schedulerNow), null, 'Expired and malformed dates do not schedule a timer');
+assert.equal(nextExpiryRefreshDelay([], schedulerNow), null, 'No entitlements means no expiry timer');
+assert.equal(nextExpiryRefreshDelay([schedulerNow + 5_000_000_000], schedulerNow), MAX_EXPIRY_REFRESH_TIMEOUT_MS, 'Distant expiries are clamped below the browser maximum timeout and can be re-armed');
+assert.equal(nextExpiryRefreshDelay([schedulerNow + 10_000], schedulerNow, 0), null, 'Invalid timeout bounds fail closed');
+assert.ok(licenseStore.includes('scheduleEntitlementExpiryRefresh') && licenseStore.includes('entitlementExpiryRevision'), 'License store schedules expiry refresh and exposes a revision for dependent account UI');
+assert.ok(accountScreen.includes('refreshAccount(true, false)') && accountScreen.includes('Preserve the last known license display during network outages'), 'Account expiry refresh is quiet and does not erase known license details on a temporary network failure');
 
 console.log('Release-safety smoke checks passed.');
