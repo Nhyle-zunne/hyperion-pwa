@@ -61,6 +61,7 @@ export default function ManualPaymentScreen() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
+  const [manualSubmission, setManualSubmission] = useState<{ orderId: string; paymentReference: string } | null>(null)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
   useEffect(() => {
@@ -172,10 +173,14 @@ export default function ManualPaymentScreen() {
       })
       if (error) throw new Error(await edgeMessage(error, 'Unable to submit payment. Please try again.'))
       if (data?.error) throw new Error(data.error)
+      const submittedOrderId = typeof data?.order?.id === 'string' ? data.order.id : ''
+      if (!submittedOrderId) throw new Error('The submission could not be confirmed. Check Orders & payment history before trying again.')
+      setManualSubmission({ orderId: submittedOrderId, paymentReference: reference.trim() })
       setReference('')
       setNote('')
-      setMessage(`Payment details submitted. Your reference is ${data.order.id}. Please send your payment screenshot to our Facebook page. Access will be enabled after manual verification.`)
-      await refreshData()
+      setMessage(`Payment details submitted successfully. Submission reference: ${submittedOrderId}. Access will be enabled after manual verification.`)
+      // The payment submission is already accepted. A refresh failure must not tell the user it failed.
+      try { await refreshData() } catch { /* Keep the confirmed submission and proof instructions visible. */ }
     } catch (error) {
       setIsError(true)
       setMessage(await edgeMessage(error, 'Unable to submit payment. Please try again.'))
@@ -196,6 +201,7 @@ export default function ManualPaymentScreen() {
       const { data, error } = await supabase.functions.invoke('cancel-payment-review', { body: { orderId: pendingManualOrder.id } })
       if (error) throw new Error(await edgeMessage(error, 'Unable to cancel the request. Please try again.'))
       if (data?.error) throw new Error(data.error)
+      setManualSubmission(null)
       await refreshData()
       setMessage('Your manual payment request has been cancelled. You may submit a new one if needed.')
     } catch (error) {
@@ -263,7 +269,19 @@ export default function ManualPaymentScreen() {
       : <>
         {message && <div role="status" style={{ ...card, borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', marginBottom: '1rem', lineHeight: 1.5 }}>{message}</div>}
         {activeLicense ? <section style={{ ...card, borderColor: 'var(--success, #15803d)' }}><h2 style={{ marginTop: 0 }}>License already active</h2><p className="manual-muted">Your {product.label} license is already active{activeLicense.expires_at ? ` until ${new Date(activeLicense.expires_at).toLocaleDateString()}` : ''}.</p><button type="button" className="btn btn-outline" onClick={() => navigate('/account?tab=licenses')}>VIEW MY LICENSES</button></section>
-          : pendingManualOrder ? <section style={{ ...card, borderColor: 'var(--border)' }}><h2 style={{ marginTop: 0 }}>Manual payment already submitted</h2><p className="manual-muted">There is already a {pendingManualOrder.status === 'submitted' ? 'payment awaiting review' : 'pending payment'} for {product.label}. Cancel that request before submitting another one.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelManualRequest()} style={{ width: '100%' }}>CANCEL MANUAL PAYMENT REQUEST</button></section>
+          : (manualSubmission || pendingManualOrder) ? <section style={{ ...card, borderColor: 'var(--border)' }}>
+            <h2 style={{ marginTop: 0 }}>Payment submitted · send payment proof</h2>
+            <p className="manual-muted">Your manual payment details have been submitted. To help us verify the payment, send a clear screenshot or photo of your payment receipt to our Facebook page.</p>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '.8rem', margin: '.85rem 0', background: 'var(--bg-elevated)' }}>
+              <p style={{ margin: '0 0 .45rem' }}><strong>Important:</strong> In your Facebook message, include the email address you use to sign in to your Hyperion account.</p>
+              <p style={{ margin: 0, overflowWrap: 'anywhere' }}><strong>Hyperion account email:</strong> {session.user.email || 'Email unavailable'}</p>
+              {(manualSubmission?.paymentReference || pendingManualOrder?.payment_reference) && <p style={{ margin: '.45rem 0 0', overflowWrap: 'anywhere' }}><strong>Transaction/reference number:</strong> {manualSubmission?.paymentReference || pendingManualOrder?.payment_reference}</p>}
+              {(manualSubmission?.orderId || pendingManualOrder?.id) && <p style={{ margin: '.45rem 0 0', overflowWrap: 'anywhere' }}><strong>Hyperion submission reference:</strong> {manualSubmission?.orderId || pendingManualOrder?.id}</p>}
+            </div>
+            <p className="manual-muted">Your license will only be activated after the payment is manually verified. Do not send your password or verification codes.</p>
+            <a href={facebookPage} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '.8rem' }}>SEND PAYMENT PROOF VIA FACEBOOK</a>
+            {pendingManualOrder && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelManualRequest()} style={{ width: '100%', marginTop: '.65rem' }}>CANCEL MANUAL PAYMENT REQUEST</button>}
+          </section>
            : preparingPayMongoOrder ? <section style={{ ...card, borderColor: 'var(--border)' }}><h2 style={{ marginTop: 0 }}>PayMongo checkout is being prepared</h2><p className="manual-muted">Hyperion is still saving the secure checkout session. Wait a moment and refresh before switching to manual payment, so you don't accidentally pay twice.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshData()} style={{ width: '100%' }}>REFRESH CHECKOUT STATUS</button></section>
            : pendingPayMongoOrder || failedPayMongoOrder ? <section style={{ ...card, borderColor: 'var(--border)' }}><h2 style={{ marginTop: 0 }}>{failedPayMongoOrder ? 'Unresolved PayMongo checkout' : 'PayMongo checkout already open'}</h2><p className="manual-muted">{failedPayMongoOrder ? 'A previous attempt was marked failed, but its provider session is still recorded. Hyperion must verify and close that session before allowing a manual payment.' : 'You have an existing PayMongo checkout for this track. Close it safely before switching to manual payment.'}</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongo(failedPayMongoOrder || pendingPayMongoOrder!)} style={{ width: '100%', color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>VERIFY &amp; CANCEL PAYMONGO CHECKOUT</button></section>
           : <div className="manual-grid">
@@ -286,7 +304,6 @@ export default function ManualPaymentScreen() {
                 <label style={label}>School (optional)<input maxLength={160} value={school} onChange={e => setSchool(e.target.value)} style={field} /></label>
                 <label style={label}>Transaction/reference number<input required maxLength={160} value={reference} onChange={e => setReference(e.target.value)} style={field} /></label>
                 <label style={label}>Additional notes (optional)<textarea maxLength={1000} rows={3} value={note} onChange={e => setNote(e.target.value)} style={field} /></label>
-                <a href={facebookPage} target="_blank" rel="noopener noreferrer" className="btn btn-outline" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '.8rem' }}>SEND PAYMENT SCREENSHOT VIA FACEBOOK</a>
                 <button type="submit" className="btn btn-primary" disabled={busy || !supabaseConfigured || !reference.trim() || !fullName.trim()} style={{ width: '100%', marginTop: '.8rem' }}>{busy ? 'Submitting…' : 'SUBMIT FOR MANUAL REVIEW'}</button>
               </form>
             </aside>
