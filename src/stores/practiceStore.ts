@@ -124,28 +124,31 @@ async function migrateLegacyLocalStorageSavedPractice(): Promise<void> {
           finished: false
         }
 
-        // If the encrypted archive already has this session, prefer that newer record.
+        // Prefer an existing encrypted archive entry for this session if present.
         const existing = await getSessionSnapshot(sessionId)
+        const migratedSnapshot = existing ?? snapshot
         if (!existing) await saveSessionSnapshot(sessionId, snapshot)
 
-        const answered = snapshot.questions.reduce((count, question) =>
-          count + (snapshot.answers[question.id]?.selectedIndex != null ? 1 : 0), 0)
-        const correct = snapshot.questions.reduce((count, question) =>
-          count + (snapshot.answers[question.id]?.isCorrect ? 1 : 0), 0)
-        useHistoryStore.getState().saveSession({
-          id: sessionId,
-          mode: snapshot.mode,
-          track: snapshot.track,
-          competenceId: snapshot.competenceId,
-          part: snapshot.part,
-          currentIndex: snapshot.currentIndex,
-          total: snapshot.questions.length,
-          answered,
-          correct,
-          startedAt: snapshot.startedAt,
-          savedAt: Date.now(),
-          isFreeSession: snapshot.isFreeSession
-        })
+        const answered = migratedSnapshot.questions.reduce((count, question) =>
+          count + (migratedSnapshot.answers[question.id]?.selectedIndex != null ? 1 : 0), 0)
+        const correct = migratedSnapshot.questions.reduce((count, question) =>
+          count + (migratedSnapshot.answers[question.id]?.isCorrect ? 1 : 0), 0)
+        if (!migratedSnapshot.finished) {
+          useHistoryStore.getState().saveSession({
+            id: sessionId,
+            mode: migratedSnapshot.mode,
+            track: migratedSnapshot.track,
+            competenceId: migratedSnapshot.competenceId,
+            part: migratedSnapshot.part,
+            currentIndex: migratedSnapshot.currentIndex,
+            total: migratedSnapshot.questions.length,
+            answered,
+            correct,
+            startedAt: migratedSnapshot.startedAt,
+            savedAt: Date.now(),
+            isFreeSession: migratedSnapshot.isFreeSession
+          })
+        }
         // Remove the legacy cleartext copy only after encrypted storage is confirmed.
         localStorage.removeItem(LEGACY_SAVED_PRACTICE_KEY)
       } catch {
@@ -498,6 +501,90 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       const alreadyCompleted = history.entries.some((entry) => entry.id === current.sessionId);
       if (!alreadyCompleted) void deleteSessionSnapshot(current.sessionId);
     }
+    try {
+      const raw = localStorage.getItem('hyperion-saved-practice');
+      if (raw) {
+        const legacy = JSON.parse(raw) as { sessionId?: string; track?: TrackId; competenceId?: string | null; mode?: SessionMode };
+        if (legacy.sessionId === current.sessionId || (!legacy.sessionId && legacy.track === current.track && legacy.competenceId === current.competenceId && legacy.mode === current.mode)) {
+          localStorage.removeItem('hyperion-saved-practice');
+        }
+      }
+    } catch { /* storage can be unavailable */ }
+    set({
+      questions: [], answers: {}, currentIndex: 0, loading: false, error: null,
+      track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, finished: false,
+      mode: 'PRACTICE', startedAt: 0, timeLimitSec: 0, timeLeftSec: 0, streak: 0, bestStreak: 0
+    });
+  },
+
+  saveProgress: async () => {
+    const current = get();
+    const snapshot = snapshotFromState(current, false);
+    if (!snapshot || !current.track) return;
+
+    const answered = current.questions.reduce(
+      (count, question) => count + (current.answers[question.id]?.selectedIndex != null ? 1 : 0),
+      0
+    );
+    const correct = current.questions.reduce(
+      (count, question) => count + (current.answers[question.id]?.isCorrect ? 1 : 0),
+      0
+    );
+    // Write the resumable History row explicitly before navigating away.
+    useHistoryStore.getState().saveSession({
+      id: snapshot.sessionId,
+      mode: current.mode,
+      track: current.track,
+      competenceId: current.competenceId,
+      part: current.part,
+      currentIndex: current.currentIndex,
+      total: current.questions.length,
+      answered,
+      correct,
+      startedAt: current.startedAt,
+      savedAt: Date.now(),
+      isFreeSession: current.isFreeSession
+    });
+
+    try {
+      await saveSessionSnapshot(snapshot.sessionId, snapshot);
+    } catch {
+      // Keep the localStorage fallback and History metadata even if IndexedDB is unavailable.
+    }
+    window.dispatchEvent(new Event('hyperion:practice-progress-saved'));
+  },
+
+  restoreSavedProgress: async (requestedSessionId) => {
+    await migrateLegacyLocalStorageSavedPractice();
+    const historyState = useHistoryStore.getState();
+    const selectedSaved = requestedSessionId
+      ? historyState.savedSessions.find((item) => item.id === requestedSessionId && !item.deletedAt)
+      : historyState.savedSessions.filter((item) => !item.deletedAt).sort((a, b) => b.savedAt - a.savedAt)[0];
+
+    set({ loading: true, error: null });
+    if (selectedSaved) {
+      const snapshot = await getSessionSnapshot(selectedSaved.id);
+      if (snapshot && snapshot.questions.length > 0 && snapshot.track) {
+        await useLicenseStore.getState().refreshCloudEntitlements();
+        const access = await authorizeQuestionSetAccess(snapshot.track, snapshot.questions);
+        if (!access) {
+          set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample.' });
+          return false;
+        }
+        set({
+          ...snapshot,
+          sessionId: selectedSaved.id,
+          isFreeSession: access === 'free-sample',
+          loading: false,
+          error: null,
+          finished: false,
+          currentIndex: Math.min(Math.max(0, snapshot.currentIndex || 0), snapshot.questions.length - 1)
+        });
+        persistActiveSession(get());
+        return true;
+      }
+    }
+
     set({ loading: false, error: 'The saved question snapshot is unavailable. Start a new session to continue.' });
     return false;
   },
@@ -509,7 +596,3 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     return { correct, total, percent: total === 0 ? 0 : Math.round((correct / total) * 100) };
   }
 }));
-
-// Migrate the previous localStorage fallback into encrypted IndexedDB on app startup.
-void migrateLegacyLocalStorageSavedPractice();
-
