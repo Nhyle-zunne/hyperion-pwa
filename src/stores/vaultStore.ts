@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { encryptedPersistStorage } from '../lib/encryptedPersistStorage';
 import type { Question, TrackId } from '../types/question';
 
 export interface VaultItem {
@@ -84,6 +85,6 @@ export const useVaultStore = create<VaultState>()(
           difficulty: i.difficulty as Question['difficulty']
         }))
     }),
-    { name: 'hyperion-vault' }
+    { name: 'hyperion-vault', storage: createJSONStorage(() => encryptedPersistStorage) }
   )
 );
