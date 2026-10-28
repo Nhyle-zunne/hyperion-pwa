@@ -64,7 +64,13 @@ function removeLegacyValue(name: string) {
 
 export const encryptedPersistStorage: StateStorage = {
   getItem: async (name) => {
-    const db = await database()
+    let db: IDBPDatabase<EncryptedStateDatabase>
+    try {
+      db = await database()
+    } catch {
+      // Preserve access to existing local data if IndexedDB is blocked by the browser.
+      return getLegacyValue(name)
+    }
     const saved = await db.get('entries', name)
     if (saved) {
       try {
