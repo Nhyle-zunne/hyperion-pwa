@@ -180,6 +180,7 @@ export function deletePaidQuestionSnapshotsForTrack(track: TrackId): Promise<str
 export function deleteSessionSnapshot(id: string): Promise<void> {
   return queueWrite(async () => {
     const db = await database()
+    await migrateLegacySnapshots(db)
     await db.delete('snapshots', id)
   })
 }
