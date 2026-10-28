@@ -27,7 +27,7 @@ const TRACKS: Record<string, TrackInfo> = {
     title: 'OIC-NW OPERATIONAL REVIEWER',
     level: 'DECK OIC-NW OPERATIONAL LEVEL',
     freeTitle: 'OIC-NW FREE REVIEWER',
-    freeDesc: '2,065 questions across 12 competencies (F1, F2, F3).',
+    freeDesc: '2,065 free questions',
     totalQuestions: '6,448 ITEMS',
     competencies: '12 COMPETENCIES',
     functions: 'FUNCTIONS 1-3'
