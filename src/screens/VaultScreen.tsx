@@ -1,7 +1,11 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVaultStore } from '../stores/vaultStore'
 import { usePracticeStore } from '../stores/practiceStore'
+import { useLicenseStore } from '../stores/licenseStore'
+import { authorizeQuestionSet } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
+import type { VaultItem } from '../stores/vaultStore'
 
 const TRACK_LABELS: Record<TrackId, string> = {
   DECK_OIC_NW: 'OIC-NW',
@@ -17,56 +21,114 @@ export default function VaultScreen() {
   const remove = useVaultStore((s) => s.remove)
   const clear = useVaultStore((s) => s.clear)
   const asQuestions = useVaultStore((s) => s.asQuestions)
+  const entitlementsVerified = useLicenseStore((s) => s.entitlementsVerified)
+  const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
+  const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
+  const cloudTrackIds = useLicenseStore((s) => s.cloudTrackIds)
+  const [verifiedFreeItems, setVerifiedFreeItems] = useState<string[]>([])
+  const [validatingVault, setValidatingVault] = useState(true)
 
-  const practiceVault = async () => {
-    const qs = asQuestions()
-    if (qs.length === 0) return
-    const track = qs[0].track
-    await usePracticeStore.getState().startSession({
-      mode: 'PRACTICE',
-      track,
-      limit: qs.length
-    })
-    usePracticeStore.setState({
-      questions: qs,
-      answers: {},
-      currentIndex: 0,
-      finished: false,
-      loading: false,
-      error: null,
-      mode: 'DRILL',
-      startedAt: Date.now()
-    })
+  useEffect(() => {
+    let cancelled = false
+    async function validateVault() {
+      setValidatingVault(true)
+      if (!entitlementsVerified) {
+        if (!cancelled) {
+          setVerifiedFreeItems([])
+          setValidatingVault(false)
+        }
+        return
+      }
+
+      const valid = new Set<string>()
+      const questions = asQuestions()
+      const tracks = [...new Set(items.map(item => item.track))]
+      for (const track of tracks) {
+        if (isAllAccessUnlocked || isTrackUnlocked(track)) continue
+
+        // The free-session marker is only a candidate filter. The protected
+        // question service verifies every question before cached text is shown.
+        const candidates = items.filter(item => item.track === track && item.isFreeSession === true)
+        if (!candidates.length) continue
+        const ids = new Set(candidates.map(item => item.id))
+        const candidateQuestions = questions.filter(question => question.track === track && ids.has(question.id))
+        try {
+          if (candidateQuestions.length === candidates.length && await authorizeQuestionSet(track, candidateQuestions)) {
+            candidates.forEach(item => valid.add(item.id))
+          }
+        } catch {
+          // Fail closed: do not display locally cached question text if validation fails.
+        }
+      }
+
+      if (!cancelled) {
+        setVerifiedFreeItems([...valid])
+        setValidatingVault(false)
+      }
+    }
+    void validateVault()
+    return () => { cancelled = true }
+  }, [items, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isTrackUnlocked, asQuestions])
+
+  const validFreeIds = new Set(verifiedFreeItems)
+  const visibleItems = entitlementsVerified
+    ? items.filter(item => validFreeIds.has(item.id) || isAllAccessUnlocked || isTrackUnlocked(item.track))
+    : []
+
+  const trackGroups = new Map<TrackId, VaultItem[]>()
+  for (const item of visibleItems) {
+    const group = trackGroups.get(item.track) ?? []
+    group.push(item)
+    trackGroups.set(item.track, group)
+  }
+  const sortedGroups = [...trackGroups.entries()].map(([track, group]) => [
+    track,
+    [...group].sort((a, b) => b.wrongCount - a.wrongCount || b.lastWrongAt - a.lastWrongAt)
+  ] as const)
+
+  const practiceVault = async (track: TrackId, selectedItems: VaultItem[]) => {
+    const selectedIds = new Set(selectedItems.map(item => item.id))
+    const questions = asQuestions().filter(question => question.track === track && selectedIds.has(question.id))
+    if (!questions.length) return
+    const competenceId = questions.every(question => question.competenceId === questions[0].competenceId)
+      ? questions[0].competenceId
+      : null
+    const started = await usePracticeStore.getState().startCustomSession({ questions, track, competenceId })
+    if (!started) return
+    usePracticeStore.setState({ mode: 'DRILL', startedAt: Date.now(), finished: false, loading: false, error: null })
+    await usePracticeStore.getState().saveProgress()
     navigate('/practice/quiz')
   }
-
-  const sorted = [...items].sort((a, b) => b.wrongCount - a.wrongCount || b.lastWrongAt - a.lastWrongAt)
 
   return (
     <div className="screen">
       <h1 className="page-title">Mistakes Vault</h1>
       <p className="subtitle">
-        {items.length} question{items.length === 1 ? '' : 's'} you missed · auto-saved from Practice,
-        Drill, Mock
+        {visibleItems.length} available question{visibleItems.length === 1 ? '' : 's'} you missed · auto-saved from Practice, Drill, Mock
       </p>
 
-      {items.length > 0 && (
+      {sortedGroups.map(([track, group]) => (
         <button
+          key={track}
           className="btn btn-primary"
-          style={{ width: '100%', marginBottom: '1rem' }}
-          onClick={practiceVault}
+          style={{ width: '100%', marginBottom: '0.6rem' }}
+          onClick={() => void practiceVault(track, group)}
         >
-          Drill mistakes ({items.length})
+          Drill {TRACK_LABELS[track]} mistakes ({group.length})
         </button>
-      )}
+      ))}
 
-      {items.length === 0 ? (
+      {validatingVault ? (
+        <div className="card" role="status" aria-live="polite" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
+          Checking access to saved questions…
+        </div>
+      ) : visibleItems.length === 0 ? (
         <div className="card" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-          Vault is empty. Wrong answers from study sessions appear here.
+          No mistakes are currently available. Free-sample questions are verified separately; paid mistakes require an active track license.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '0.6rem' }}>
-          {sorted.map((item) => (
+          {sortedGroups.map(([track, group]) => group.map((item) => (
             <div key={item.id} className="card">
               <div
                 style={{
@@ -77,7 +139,7 @@ export default function VaultScreen() {
                 }}
               >
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  {TRACK_LABELS[item.track]} · {item.competenceId} · missed {item.wrongCount}×
+                  {TRACK_LABELS[track]} · {item.competenceId} · missed {item.wrongCount}×
                 </span>
                 <button
                   onClick={() => remove(item.id)}
@@ -104,7 +166,7 @@ export default function VaultScreen() {
                 </div>
               )}
             </div>
-          ))}
+          )))}
         </div>
       )}
 
