@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
-import { getQuestionsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import { getQuestionCountsByTrack, listAvailableCompetences } from '../lib/questionBank'
+import type { QuestionBankCount } from '../lib/questionBank'
+import { useLicenseStore } from '../stores/licenseStore'
 import type { Question, TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = { oic_nw: 'DECK_OIC_NW', gmdss: 'GMDSS_GOC', engine_ew: 'ENGINE_OIC_EW', deck_mgt: 'DECK_MGT', engine_mgt: 'ENGINE_MGT' }
@@ -91,16 +93,22 @@ function weightedMockCompetenceScore(
     percent: totalScore > 0 ? Math.round((rawScore / totalScore) * 10000) / 100 : 0
   }
 }
-const competencesForFunction = (track: TrackId, functionId: string) => {
-  const ids: Record<TrackId, Record<string, string[]>> = {
-    DECK_OIC_NW: { F1: ['C1','C2','C3','C4','C5','C7','C9'], F2: ['C10','C11'], F3: ['C12','C13','C17'] },
-    GMDSS_GOC: { GMDSS: ['C1','C2'] },
-    ENGINE_OIC_EW: { F1: ['C1','C2','C3','C4','C5'], F2: ['C6','C7'], F3: ['C8','C9'], F4: ['C10','C11','C15','C16'] },
-    DECK_MGT: { F1: ['C1','C2','C3','C4','C5','C6','C8','C9','C10','C11'], F2: ['C12','C13','C14'], F3: ['C15','C16','C17','C18','C20'] },
-    ENGINE_MGT: { F1: ['C1','C2','C3','C4'], F2: ['C5','C6'], F3: ['C7','C8','C9'], F4: ['C10','C11','C12','C13','C14'] }
-  }
-  return (ids[track][functionId] || []).reduce((sum, id) => sum + mockExamItemCount(track, id), 0)
+const MOCK_COMPETENCES_BY_FUNCTION: Record<TrackId, Record<string, string[]>> = {
+  DECK_OIC_NW: { F1: ['C1','C2','C3','C4','C5','C7','C9'], F2: ['C10','C11'], F3: ['C12','C13','C17'] },
+  GMDSS_GOC: { GMDSS: ['C1','C2'] },
+  ENGINE_OIC_EW: { F1: ['C1','C2','C3','C4','C5'], F2: ['C6','C7'], F3: ['C8','C9'], F4: ['C10','C11','C15','C16'] },
+  DECK_MGT: { F1: ['C1','C2','C3','C4','C5','C6','C8','C9','C10','C11'], F2: ['C12','C13','C14'], F3: ['C15','C16','C17','C18','C20'] },
+  ENGINE_MGT: { F1: ['C1','C2','C3','C4'], F2: ['C5','C6'], F3: ['C7','C8','C9'], F4: ['C10','C11','C12','C13','C14'] }
 }
+
+const competencesForFunction = (track: TrackId, functionId: string) =>
+  (MOCK_COMPETENCES_BY_FUNCTION[track][functionId] || [])
+    .reduce((sum, id) => sum + mockExamItemCount(track, id), 0)
+
+const functionForCompetence = (track: TrackId, competenceId: string) =>
+  Object.entries(MOCK_COMPETENCES_BY_FUNCTION[track])
+    .find(([, ids]) => ids.includes(competenceId))?.[0] ?? 'OTHER'
+
 type Stage = 'confirm' | 'functions' | 'competences' | 'results'
 
 export default function MockExamScreen() {
@@ -109,6 +117,7 @@ export default function MockExamScreen() {
   const trackParam = params.get('track') || 'oic_nw'
   const trackId = TRACK_MAP[trackParam] || 'DECK_OIC_NW'
   const startSession = usePracticeStore((s) => s.startSession)
+  const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
   const [stage, setStage] = useState<Stage>(() => {
     const requestedStage = params.get('stage')
     const saved = readMockExamPlan(trackId)
@@ -116,8 +125,11 @@ export default function MockExamScreen() {
     if (requestedStage === 'results' && saved?.status === 'submitted') return 'results'
     return 'confirm'
   })
-  const [questions, setQuestions] = useState<Question[]>([])
+  const [questionCounts, setQuestionCounts] = useState<QuestionBankCount[]>([])
+  const [usingFreePool, setUsingFreePool] = useState(true)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [startError, setStartError] = useState('')
   const [examPlan, setExamPlan] = useState<MockExamPlan | null>(() => readMockExamPlan(trackId))
   const [selectedFunctions, setSelectedFunctions] = useState<string[]>(() => {
     const requestedStage = params.get('stage')
@@ -131,27 +143,54 @@ export default function MockExamScreen() {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    setQuestions([])
-    getQuestionsByTrack(trackId, true).then((items) => {
-      if (cancelled) return
-      // Mock exams are open to every user and use the protected server-side free sample.
-      setQuestions(items)
-      setLoading(false)
-    }).catch(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [trackId])
+    setQuestionCounts([])
+    setLoadError('')
+    setStartError('')
 
-  const functions = useMemo(() => {
-    const counts = new Map<string, number>()
-    questions.forEach((q) => counts.set(q.functionId, (counts.get(q.functionId) || 0) + 1))
-    return Array.from(counts.entries()).map(([id]) => ({ id, count: competencesForFunction(trackId, id), label: FUNCTION_LABELS[trackId][id] || id }))
-  }, [questions])
+    void (async () => {
+      // Refresh entitlements before requesting the inventory permitted for this track.
+      await refreshCloudEntitlements()
+      const licenseState = useLicenseStore.getState()
+      const hasTrackAccess = licenseState.isAllAccessUnlocked || licenseState.isTrackUnlocked(trackId)
+      const freeOnly = !hasTrackAccess
+      const counts = await getQuestionCountsByTrack(trackId, freeOnly)
+      if (cancelled) return
+      setUsingFreePool(freeOnly)
+      setQuestionCounts(counts)
+      setLoading(false)
+    })().catch((error: unknown) => {
+      if (cancelled) return
+      setLoadError(error instanceof Error ? error.message : 'Could not load the question-bank inventory. Please retry.')
+      setLoading(false)
+    })
+
+    return () => { cancelled = true }
+  }, [trackId, refreshCloudEntitlements])
+
   const competences = listAvailableCompetences(trackId)
-  const visibleCompetences = useMemo(() => competences.map((c) => {
-    const items = questions.filter((q) => q.competenceId === c.id && selectedFunctions.includes(q.functionId))
-    const functionId = items[0]?.functionId || questions.find((q) => q.competenceId === c.id)?.functionId || 'OTHER'
-    return { ...c, functionId, count: items.length }
-  }).filter((c) => c.count > 0), [competences, questions, selectedFunctions])
+  const competenceCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of questionCounts) {
+      counts.set(item.competenceId, (counts.get(item.competenceId) || 0) + item.count)
+    }
+    return counts
+  }, [questionCounts])
+
+  const functions = useMemo(() => Object.keys(FUNCTION_LABELS[trackId])
+    .map((id) => ({ id, count: competencesForFunction(trackId, id), label: FUNCTION_LABELS[trackId][id] || id }))
+    .filter((fn) => (MOCK_COMPETENCES_BY_FUNCTION[trackId][fn.id] || [])
+      .some((competenceId) => (competenceCounts.get(competenceId) || 0) > 0)),
+  [trackId, competenceCounts])
+
+  const visibleCompetences = useMemo(() => competences.map((competence) => {
+    const count = competenceCounts.get(competence.id) || 0
+    return {
+      ...competence,
+      functionId: functionForCompetence(trackId, competence.id),
+      count,
+      requiredCount: mockExamItemCount(trackId, competence.id)
+    }
+  }).filter((competence) => competence.count > 0), [competences, trackId, competenceCounts])
   const groupedCompetences = useMemo(() => functions
     .filter((fn) => selectedFunctions.includes(fn.id))
     .map((fn) => ({ ...fn, competences: visibleCompetences.filter((c) => c.functionId === fn.id) }))
@@ -195,18 +234,32 @@ export default function MockExamScreen() {
     navigate('/mock?track=' + encodeURIComponent(trackParam) + '&stage=results', { replace: true })
   }
   const start = async (competenceId: string) => {
-    const pool = questions.filter((q) => q.competenceId === competenceId && selectedFunctions.includes(q.functionId))
+    const availableCount = competenceCounts.get(competenceId) || 0
     const examItemCount = mockExamItemCount(trackId, competenceId)
-    if (!pool.length) return
+    setStartError('')
+    if (availableCount < examItemCount) {
+      setStartError(`${competenceId} needs ${examItemCount} questions for this mock exam, but only ${availableCount} are available in your current access tier. Please refresh the question bank or contact support.`)
+      return
+    }
     setStartingCompetence(competenceId)
     setStarting(true)
     try {
+      // Do not force free access. The practice store re-verifies the entitlement and
+      // the protected endpoint chooses the full bank or free pool at the start of the attempt.
       await startSession({
-        mode: 'MOCK', track: trackId, competenceId, limit: Math.min(examItemCount, pool.length), startItem: 1,
-        timeLimitSec: Math.min(examItemCount, pool.length) * 60,
-        free: true,
+        mode: 'MOCK', track: trackId, competenceId, limit: examItemCount, startItem: 1,
+        timeLimitSec: examItemCount * 60,
+        free: false,
       })
-      if (usePracticeStore.getState().error || !usePracticeStore.getState().questions.length) return
+      const state = usePracticeStore.getState()
+      if (state.error) {
+        setStartError(state.error)
+        return
+      }
+      if (!state.questions.length) {
+        setStartError('No questions were returned for this competence. Please refresh and try again.')
+        return
+      }
       navigate('/mock/exam')
     } finally { setStarting(false); setStartingCompetence(null) }
   }
@@ -229,8 +282,10 @@ export default function MockExamScreen() {
         <div className="card" style={{ borderRadius: 14 }}>
           <h2 style={{ marginTop: 0 }}>EXAMINATION PROTOCOL</h2>
           <p style={{ color: 'var(--text-muted)' }}>Choose the functions to include, then select a competence to begin. The timer runs only while answering that competence.</p>
-          <p>{loading ? 'Loading question bank…' : questions.length.toLocaleString() + ' questions available across ' + competences.length + ' competences.'}</p>
-          <button type="button" className="btn btn-primary" disabled={loading} onClick={() => setStage('confirm')} style={{ width: '100%' }}>START OFFICIAL TIMED MOCK EXAM</button>
+          <p>{loading ? 'Checking question access and loading counts…' : loadError ? loadError : questionCounts.reduce((sum, item) => sum + item.count, 0).toLocaleString() + ' questions available across ' + visibleCompetences.length + ' competences.'}</p>
+          {!loading && !loadError && <p style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>{usingFreePool ? 'Using the eligible free question sample for this track.' : 'Using the full question bank for your active track license.'}</p>}
+          {!!loadError && <button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Retry</button>
+          <button type="button" className="btn btn-primary" disabled={loading || !!loadError} onClick={() => setStage('confirm')} style={{ width: '100%' }}>START OFFICIAL TIMED MOCK EXAM</button>
         </div>
       )}
 
@@ -264,13 +319,15 @@ export default function MockExamScreen() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: '1.25rem' }}>
             <button type="button" style={secondaryButton} onClick={() => setStage('confirm')}>CANCEL</button>
-            <button type="button" style={{ ...primaryButton, opacity: selectedFunctions.length ? 1 : 0.45 }} disabled={!selectedFunctions.length || loading} onClick={proceedToCompetences}>PROCEED</button>
+            <button type="button" style={{ ...primaryButton, opacity: selectedFunctions.length ? 1 : 0.45 }} disabled={!selectedFunctions.length || loading || !!loadError} onClick={proceedToCompetences}>PROCEED</button>
           </div>
         </section>
       </div>}
 
       {(stage === 'competences' || stage === 'results') && <section style={{ margin: '1rem auto 0', width: 'min(100%, 860px)', boxSizing: 'border-box' }}>
         {stage === 'results' && <p style={{ margin: '0 0 .6rem', fontSize: '.85rem', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '.06em' }}>MOCK EXAM RESULTS · SUBMITTED</p>}
+        {startError && <div role="alert" className="card" style={{ marginBottom: '.75rem', borderColor: 'var(--warning, #c2410c)', color: 'var(--text)' }}>{startError}</div>}
+        {loadError && <div role="alert" className="card" style={{ marginBottom: '.75rem', borderColor: 'var(--warning, #c2410c)', color: 'var(--text)' }}>{loadError}</div>}
         <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-card)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', color: 'var(--text)', fontSize: '.9rem', tableLayout: 'fixed' }}>
             <colgroup>
@@ -321,12 +378,12 @@ export default function MockExamScreen() {
                       <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.35, marginTop: 3 }}>{row.label.replace(/^C\d+\s*[·:-]?\s*/, '')}</span>
                     </td>
                     <td style={{ padding: '.7rem .35rem', borderBottom: '1px solid var(--border)', verticalAlign: 'middle', textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: groupSubmitted ? 800 : 500, overflowWrap: 'anywhere' }}>
-                      {groupSubmitted ? (result ? result.percent.toFixed(2) + '%' : '—') : Math.min(mockExamItemCount(trackId, row.id), row.count)}
+                      {groupSubmitted ? (result ? result.percent.toFixed(2) + '%' : '—') : row.count >= row.requiredCount ? row.requiredCount : `${row.count} / ${row.requiredCount}`}
                     </td>
                     <td style={{ padding: '.55rem .3rem', borderBottom: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>
                       {locked
                         ? <span style={{ display: 'inline-block', padding: '.42rem .35rem', borderRadius: 5, background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: '.7rem', fontWeight: 900, letterSpacing: '.02em' }}>LOCKED</span>
-                        : <button type="button" className="btn btn-primary" disabled={starting || !row.count} onClick={() => void start(row.id)} style={{ minWidth: 0, width: '100%', padding: '.55rem .3rem', whiteSpace: 'normal', lineHeight: 1.2, fontSize: '.75rem' }}>{startingCompetence === row.id ? 'Starting…' : 'Take Exam'}</button>}
+                        : <button type="button" className="btn btn-primary" disabled={starting || row.count < row.requiredCount} onClick={() => void start(row.id)} style={{ minWidth: 0, width: '100%', padding: '.55rem .3rem', whiteSpace: 'normal', lineHeight: 1.2, fontSize: '.75rem' }}>{startingCompetence === row.id ? 'Starting…' : row.count < row.requiredCount ? 'INSUFFICIENT ITEMS' : 'Take Exam'}</button>}
                     </td>
                   </tr>
                 })
