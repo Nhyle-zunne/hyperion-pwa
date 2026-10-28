@@ -73,6 +73,8 @@ const mainEntry = await read('../src/main.tsx');
 const adminPaymentReviewFunction = await read('../supabase/functions/admin-payment-review/index.ts');
 const deleteAccount = await read('../supabase/functions/delete-account/index.ts');
 const cancelCheckout = await read('../supabase/functions/cancel-checkout/index.ts');
+const offlineEntitlementCrypto = await read('../src/lib/offlineEntitlementCrypto.mjs');
+const { verifyOfflineEntitlementToken } = await import('../src/lib/offlineEntitlementCrypto.mjs');
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
 const timestampMatch = webhook.match(/if \(!\/(.+?)\/\.test\(timestamp\)/);
@@ -299,7 +301,7 @@ assert.ok(questionBank.includes('if (body.action === "authorize-session")') && q
 assert.ok(questionBank.includes('const authHeader = req.headers.get("Authorization")') && questionBank.includes('.auth.getUser()'), 'Question-bank identity comes from a validated Supabase user token, not client metadata');
 assert.ok(licenseStore.includes('return status === 0 || status >= 500'), 'Cached entitlement fallback is limited to genuine connectivity/server failures');
 assert.ok(questionBankClient.includes('userId ? getOfflineEntitlementExpiry(userId, track) : null'), 'Offline entitlement lookup is scoped to the currently signed-in Supabase user');
-assert.ok(offlineQuestionCache.includes('if (!stored || stored.userId !== userId) return null') && offlineQuestionCache.includes('expiresAt > Date.now()') && offlineQuestionCache.includes('crypto.subtle.verify'), 'Offline entitlement cache requires a valid signature, matching account, and unexpired track lease');
+assert.ok(offlineQuestionCache.includes('if (!stored || stored.userId !== userId) return null') && offlineQuestionCache.includes('expiresAt > Date.now()') && offlineEntitlementCrypto.includes('crypto.subtle.verify'), 'Offline entitlement cache requires a valid signature, matching account, and unexpired track lease');
 assert.ok(questionBankClient.includes('if (error && canFallbackToOffline(error) && await offlineEntitlementExpiry(track))'), 'Online question fallback only consults saved paid packs after a network/server failure plus a valid local expiry');
 assert.ok(questionBank.includes('body.freeOnly !== true') && questionBank.includes('Raw paid-bank delivery is disabled. Use paginated question delivery.'), 'Legacy raw-file endpoint cannot be used to retrieve paid-bank assets');
 
@@ -324,12 +326,62 @@ assert.ok(offlineEntitlementSigningMigration.includes('private_jwk jsonb NOT NUL
 assert.ok(offlineEntitlementSigningMigration.includes('REVOKE ALL ON TABLE public.offline_entitlement_signing_keys FROM PUBLIC, anon, authenticated') && offlineEntitlementSigningMigration.includes('GRANT SELECT, INSERT ON TABLE public.offline_entitlement_signing_keys TO service_role'), 'Offline private signing keys cannot be read or written by client database roles');
 
 
-assert.ok(offlineQuestionCache.includes('OFFLINE_ENTITLEMENT_PUBLIC_KEY') && offlineQuestionCache.includes('claims.userId !== expectedUserId') && offlineQuestionCache.includes('signature.length !== 64'), 'Offline entitlement verifier pins the public key, account identity, and ECDSA signature size');
+assert.ok(offlineEntitlementCrypto.includes('OFFLINE_ENTITLEMENT_PUBLIC_KEY') && offlineEntitlementCrypto.includes('claims.userId !== expectedUserId') && offlineEntitlementCrypto.includes('signature.length !== 64'), 'Offline entitlement verifier pins the public key, account identity, and ECDSA signature size');
 assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes("typeof value.token !== 'string'"), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
 assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(session.user.id, offlineLicense.token)'), 'Online license refresh stores only a server-signed offline token');
 assert.ok(licenseStore.includes('clearOfflineEntitlements(session.user.id)') && licenseStore.includes('await getOfflineEntitledTracks(session.user.id)'), 'Offline fallback verifies signed leases and clears stale leases on online authorization errors');
 
 assert.ok(learningProgressTriggerMigration.includes('REVOKE ALL ON FUNCTION public.set_user_learning_progress_updated_at() FROM PUBLIC, anon, authenticated'), 'Trigger-only progress helper cannot be called directly by client roles');
+
+
+const ephemeralSigningPair = await globalThis.crypto.subtle.generateKey(
+  { name: 'ECDSA', namedCurve: 'P-256' },
+  true,
+  ['sign', 'verify']
+);
+const ephemeralPublicJwk = await globalThis.crypto.subtle.exportKey('jwk', ephemeralSigningPair.publicKey);
+const base64Url = (bytes) => Buffer.from(bytes).toString('base64url');
+const signOfflineClaims = async (claims) => {
+  const payload = base64Url(Buffer.from(JSON.stringify(claims), 'utf8'));
+  const signature = await globalThis.crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    ephemeralSigningPair.privateKey,
+    Buffer.from(payload, 'utf8')
+  );
+  return payload + '.' + base64Url(new Uint8Array(signature));
+};
+const cryptoTestNow = Date.now();
+const sampleClaims = {
+  v: 1,
+  userId: 'offline-license-test-user',
+  issuedAt: cryptoTestNow,
+  tracks: { DECK_OIC_NW: cryptoTestNow + 7 * 24 * 60 * 60 * 1000 }
+};
+const validOfflineToken = await signOfflineClaims(sampleClaims);
+const validOfflineClaims = await verifyOfflineEntitlementToken(
+  validOfflineToken,
+  sampleClaims.userId,
+  cryptoTestNow,
+  ephemeralPublicJwk
+);
+assert.equal(validOfflineClaims?.tracks?.DECK_OIC_NW, sampleClaims.tracks.DECK_OIC_NW, 'A valid ECDSA-signed offline lease is accepted');
+assert.equal(await verifyOfflineEntitlementToken(validOfflineToken, 'different-user', cryptoTestNow, ephemeralPublicJwk), null, 'Signed offline leases cannot be replayed across accounts');
+const [validPayload, validSignature] = validOfflineToken.split('.');
+const alteredClaims = { ...sampleClaims, tracks: { DECK_OIC_NW: cryptoTestNow + 365 * 24 * 60 * 60 * 1000 } };
+const forgedExpiryToken = base64Url(Buffer.from(JSON.stringify(alteredClaims), 'utf8')) + '.' + validSignature;
+assert.equal(await verifyOfflineEntitlementToken(forgedExpiryToken, sampleClaims.userId, cryptoTestNow, ephemeralPublicJwk), null, 'Editing a signed expiry invalidates the signature');
+const expiredClaims = {
+  v: 1,
+  userId: sampleClaims.userId,
+  issuedAt: cryptoTestNow - 60_000,
+  tracks: { DECK_OIC_NW: cryptoTestNow - 1 }
+};
+const expiredToken = await signOfflineClaims(expiredClaims);
+const expiredSignedClaims = await verifyOfflineEntitlementToken(expiredToken, sampleClaims.userId, cryptoTestNow, ephemeralPublicJwk);
+assert.ok(expiredSignedClaims && expiredSignedClaims.tracks.DECK_OIC_NW <= cryptoTestNow, 'Signature verification does not make an expired track lease current');
+const unsupportedClaims = { ...sampleClaims, tracks: { ALL: cryptoTestNow + 60_000 } };
+const unsupportedToken = await signOfflineClaims(unsupportedClaims);
+assert.equal(await verifyOfflineEntitlementToken(unsupportedToken, sampleClaims.userId, cryptoTestNow, ephemeralPublicJwk), null, 'Unknown entitlement track identifiers are rejected');
 
 
 console.log('Release-safety smoke checks passed.');
