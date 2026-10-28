@@ -27,3 +27,9 @@ verify_jwt = false
 
 [functions.admin-license-management]
 verify_jwt = true
+
+[functions.record-user-activity]
+verify_jwt = true
+
+[functions.expire-inactive-accounts]
+verify_jwt = false
