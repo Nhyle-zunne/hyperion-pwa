@@ -439,4 +439,8 @@ assert.equal(nextExpiryRefreshDelay([schedulerNow + 10_000], schedulerNow, 0), n
 assert.ok(licenseStore.includes('scheduleEntitlementExpiryRefresh') && licenseStore.includes('entitlementExpiryRevision'), 'License store schedules expiry refresh and exposes a revision for dependent account UI');
 assert.ok(accountScreen.includes('refreshAccount(true, false)') && accountScreen.includes('Preserve the last known license display during network outages'), 'Account expiry refresh is quiet and does not erase known license details on a temporary network failure');
 
+assert.ok(app.includes("const PracticeQuizScreen = lazy(() => import('./screens/PracticeQuizScreen'))") && app.includes("const AdminQuestionBankScreen = lazy(() => import('./screens/AdminQuestionBankScreen'))"), 'Heavy learning and admin screens load as separate route chunks');
+assert.ok(app.includes('<Suspense fallback=') && app.includes('Loading Hyperion…'), 'Lazy routes present an accessible loading fallback while a screen chunk loads');
+assert.equal((app.match(/^import .* from '\.\/screens\//gm) || []).length, 0, 'Route screen components are not eagerly imported into the main application entry');
+
 console.log('Release-safety smoke checks passed.');
