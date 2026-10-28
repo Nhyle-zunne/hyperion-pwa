@@ -67,6 +67,8 @@ const [
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const adminPaymentReviewFunction = await read('../supabase/functions/admin-payment-review/index.ts');
+const deleteAccount = await read('../supabase/functions/delete-account/index.ts');
+const cancelCheckout = await read('../supabase/functions/cancel-checkout/index.ts');
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
 const timestampMatch = webhook.match(/if \(!\/(.+?)\/\.test\(timestamp\)/);
