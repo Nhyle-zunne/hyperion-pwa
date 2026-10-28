@@ -66,6 +66,7 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const offlineEntitlementSigningMigration = await read('../supabase/migrations/20261028182000_add_signed_offline_entitlements.sql');
 const viteConfig = await read('../vite.config.ts');
 const mainEntry = await read('../src/main.tsx');
 const adminPaymentReviewFunction = await read('../supabase/functions/admin-payment-review/index.ts');
@@ -313,6 +314,13 @@ assert.ok(cancelCheckout.includes("authClient.auth.getUser()") && cancelCheckout
 assert.ok(viteConfig.includes("globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}']") && !viteConfig.includes('.csv') && !viteConfig.includes('.enc'), 'PWA pre-cache allow-list excludes CSV and encrypted question-bank assets');
 assert.ok(viteConfig.includes('sourcemap: false'), 'Production build does not publish browser source maps');
 assert.ok(mainEntry.includes("caches.delete('hyperion-question-banks')"), 'App startup deletes the legacy static question-bank cache');
+
+
+assert.ok(questionBank.includes("body.action === \"offline-license-public-key\"") && questionBank.includes("Only the verification key is public") && questionBank.includes("key_ops: [\"verify\"]"), 'Offline signing-key endpoint returns only a verification key');
+assert.ok(questionBank.includes("body.action === \"offline-license\"") && questionBank.includes("const claims = { v: 1, userId: user.id, issuedAt: now, tracks }") && questionBank.includes("crypto.subtle.sign"), 'Offline entitlement claims are issued by the authenticated server and cryptographically signed');
+assert.ok(questionBank.includes('.eq("user_id", user.id)') && questionBank.includes('.eq("status", "active")') && questionBank.includes('.gt("expires_at", new Date(now).toISOString())'), 'Offline entitlement token only contains the signed-in user’s currently active, unexpired tracks');
+assert.ok(offlineEntitlementSigningMigration.includes('private_jwk jsonb NOT NULL') && offlineEntitlementSigningMigration.includes('public_jwk jsonb NOT NULL') && offlineEntitlementSigningMigration.includes('ENABLE ROW LEVEL SECURITY'), 'Offline signing keys are stored in an RLS-protected table');
+assert.ok(offlineEntitlementSigningMigration.includes('REVOKE ALL ON TABLE public.offline_entitlement_signing_keys FROM PUBLIC, anon, authenticated') && offlineEntitlementSigningMigration.includes('GRANT SELECT, INSERT ON TABLE public.offline_entitlement_signing_keys TO service_role'), 'Offline private signing keys cannot be read or written by client database roles');
 
 
 console.log('Release-safety smoke checks passed.');
