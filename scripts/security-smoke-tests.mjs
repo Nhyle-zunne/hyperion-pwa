@@ -12,7 +12,7 @@ const [
   practiceConfigScreen, practiceCompetenceScreen, trackHubScreen, drillScreen,
   quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen,
   installPrompt, iosInstallGuide, abandonedCheckoutCleanup, abandonedCheckoutMigration, adminLicenseManagement,
-  accountActivityFunction, accountRetentionFunction, activityRetentionMigration, scheduleRetentionMigration, retentionReasonMigration
+  accountActivityFunction, accountRetentionFunction, activityRetentionMigration, scheduleRetentionMigration, retentionReasonMigration, workflow
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -63,7 +63,8 @@ const [
   read('../supabase/functions/expire-inactive-accounts/index.ts'),
   read('../supabase/migrations/20261028154702_add_user_activity_and_retention_tables.sql'),
   read('../supabase/migrations/20261028155349_schedule_inactive_account_cleanup.sql'),
-  read('../supabase/migrations/20261028172256_expand_account_retention_audit_reason_check.sql')
+  read('../supabase/migrations/20261028172256_expand_account_retention_audit_reason_check.sql'),
+  read('../.github/workflows/pwa-build.yml')
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
@@ -442,5 +443,8 @@ assert.ok(accountScreen.includes('refreshAccount(true, false)') && accountScreen
 assert.ok(app.includes("const PracticeQuizScreen = lazy(() => import('./screens/PracticeQuizScreen'))") && app.includes("const AdminQuestionBankScreen = lazy(() => import('./screens/AdminQuestionBankScreen'))"), 'Heavy learning and admin screens load as separate route chunks');
 assert.ok(app.includes('<Suspense fallback=') && app.includes('Loading Hyperion…'), 'Lazy routes present an accessible loading fallback while a screen chunk loads');
 assert.equal((app.match(/^import .* from '\.\/screens\//gm) || []).length, 0, 'Route screen components are not eagerly imported into the main application entry');
+
+assert.ok(workflow.includes('uses: actions/checkout@v7') && workflow.includes('uses: actions/setup-node@v7'), 'CI uses GitHub Actions maintained for the current runner runtime');
+assert.ok(workflow.includes('package-manager-cache: false') && workflow.includes('bun install --frozen-lockfile'), 'CI disables implicit npm caching and installs only from the frozen Bun lockfile');
 
 console.log('Release-safety smoke checks passed.');
