@@ -25,13 +25,36 @@ type Order = {
   checkout_batch_id: string | null
 }
 
-const statusLabel: Record<string, string> = {
-  submitted: 'Awaiting manual review',
-  pending: 'Awaiting payment',
-  paid: 'Approved',
-  failed: 'Rejected',
-  refunded: 'Refunded',
-  cancelled: 'Cancelled',
+function orderStatusLabel(order: Pick<Order, 'status' | 'payment_method'>): string {
+  if (order.status === 'failed' && order.payment_method === 'PayMongo Checkout') return 'Checkout not completed'
+  if (order.status === 'pending' && order.payment_method === 'PayMongo Checkout') return 'Awaiting PayMongo payment'
+  if (order.status === 'paid') return 'Approved'
+  return ({
+    submitted: 'Awaiting manual review',
+    pending: 'Awaiting payment',
+    failed: 'Rejected',
+    refunded: 'Refunded',
+    cancelled: 'Cancelled',
+  } as Record<string, string>)[order.status] || order.status
+}
+
+function orderStatusHelp(order: Pick<Order, 'status' | 'payment_method'>): string | null {
+  if (order.status === 'failed' && order.payment_method === 'PayMongo Checkout') {
+    return 'No license was activated from this checkout. You can start a new checkout or choose manual payment from the Bond Store.'
+  }
+  if (order.status === 'pending' && order.payment_method === 'PayMongo Checkout') {
+    return 'PayMongo has not confirmed this payment yet. Use Refresh status before trying another payment, and do not pay again while a payment attempt is still processing.'
+  }
+  if (order.status === 'submitted') {
+    return 'Your manual payment submission is waiting for review. Access is activated only after approval.'
+  }
+  if (order.status === 'failed') {
+    return 'This manual payment submission was rejected. Check the admin note above for any explanation.'
+  }
+  if (order.status === 'cancelled') {
+    return 'No license was activated from this checkout. You can start a new purchase when you are ready.'
+  }
+  return null
 }
 
 async function readableError(error: unknown, fallback: string): Promise<string> {
@@ -242,7 +265,8 @@ export default function OrdersPaymentHistoryScreen() {
           {loading && !orders.length ? <p style={{ color: 'var(--text-muted)', padding: '1rem 0' }}>Loading your orders…</p>
             : orders.length ? orders.map(order => {
               const product = PAID_PRODUCTS.find(item => item.code === order.product_code)
-              const status = statusLabel[order.status] || order.status
+              const status = orderStatusLabel(order)
+              const statusHelp = orderStatusHelp(order)
               const paid = order.status === 'paid'
               const rejected = ['failed', 'refunded', 'cancelled'].includes(order.status)
               return <article className="orders-entry" key={order.id}>
@@ -258,6 +282,7 @@ export default function OrdersPaymentHistoryScreen() {
                 {order.customer_school && <div className="orders-meta" style={{ marginTop: '.2rem' }}>School: {order.customer_school}</div>}
                 <div className="orders-meta" style={{ marginTop: '.4rem' }}>Payment reference: {order.payment_reference || 'Not provided'}</div>
                 <div className="orders-meta" style={{ marginTop: '.15rem' }}>Order ID: {order.id}</div>
+                {statusHelp && <p className="orders-meta" style={{ margin: '.6rem 0 0', padding: '.6rem .7rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', lineHeight: 1.5 }}>{statusHelp}</p>}
                 {order.admin_note && <div className="orders-meta" style={{ marginTop: '.4rem' }}>Admin note: {order.admin_note}</div>}
                 {order.customer_note && <div className="orders-meta" style={{ marginTop: '.25rem' }}>Your note: {order.customer_note}</div>}
               </article>
