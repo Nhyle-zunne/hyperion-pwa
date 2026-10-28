@@ -114,14 +114,15 @@ export default function App() {
   useEffect(() => startLearningProgressSync(), [])
 
   useEffect(() => {
-    if (!supabase) return
+    const client = supabase
+    if (!client) return
     let active = true
     let inFlight = false
 
     const recordActivity = async () => {
       if (!active || inFlight || document.visibilityState !== 'visible') return
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session } } = await client.auth.getSession()
         const userId = session?.user?.id
         if (!userId || !active) return
         const storageKey = `hyperion:last-website-activity:${userId}`
@@ -129,7 +130,7 @@ export default function App() {
         if (Date.now() - lastAttempt < 15 * 60 * 1000) return
 
         inFlight = true
-        const { error } = await supabase.functions.invoke('record-user-activity')
+        const { error } = await client.functions.invoke('record-user-activity')
         if (!error && active) sessionStorage.setItem(storageKey, String(Date.now()))
       } catch {
         // Tracking is best effort and must never prevent a page from loading.
@@ -143,7 +144,7 @@ export default function App() {
     window.addEventListener('focus', onResume)
     window.addEventListener('online', onResume)
     document.addEventListener('visibilitychange', onResume)
-    const authListener = supabase.auth.onAuthStateChange((event) => {
+    const authListener = client.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
         window.setTimeout(() => { void recordActivity() }, 0)
       }
