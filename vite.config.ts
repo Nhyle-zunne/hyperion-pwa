@@ -70,6 +70,34 @@ export default defineConfig({
   ],
   build: {
     target: 'esnext',
-    sourcemap: false
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        // Keep large, stable dependencies outside the entry chunk so repeat visits can
+        // reuse them and the entry bundle stays smaller on mobile connections.
+        manualChunks(id) {
+          const normalized = id.replace(/\\/g, '/')
+          if (normalized.includes('/node_modules/react/') ||
+              normalized.includes('/node_modules/react-dom/') ||
+              normalized.includes('/node_modules/scheduler/')) {
+            return 'react-vendor'
+          }
+          if (normalized.includes('/node_modules/@supabase/')) {
+            return 'supabase-vendor'
+          }
+          if (normalized.includes('/node_modules/react-router/') ||
+              normalized.includes('/node_modules/react-router-dom/')) {
+            return 'router-vendor'
+          }
+          if (normalized.includes('/node_modules/zustand/') ||
+              normalized.includes('/node_modules/use-sync-external-store/')) {
+            return 'state-vendor'
+          }
+          if (normalized.includes('/node_modules/date-fns/')) {
+            return 'date-vendor'
+          }
+        }
+      }
+    }
   }
 })
