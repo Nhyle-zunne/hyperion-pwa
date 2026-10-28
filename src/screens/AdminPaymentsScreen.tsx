@@ -84,7 +84,6 @@ export default function AdminPaymentsScreen() {
   }
 
   const card: React.CSSProperties = { background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, padding:'1rem', marginBottom:'1rem' }
-  const field: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'.8rem', marginTop:'.4rem', background:'var(--bg-elevated)', color:'var(--text)', border:'1px solid var(--border)', borderRadius:6, font:'inherit' }
   return <div className="screen admin-payments-page" style={{ width:'min(calc(100% - 1rem), 1180px)', maxWidth:1180, margin:'0 auto', paddingBottom:'2rem' }}>
     <style>{`
       .admin-payments-page .page-title{text-align:left;margin:.2rem 0 .3rem}
