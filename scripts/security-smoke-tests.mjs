@@ -171,6 +171,16 @@ for (const route of [
 assert.ok(practiceStore.includes('useHistoryStore.getState().saveSession'), 'Practice session saves History metadata');
 assert.ok(practiceStore.includes('await saveSessionSnapshot(snapshot.sessionId, snapshot)'), 'Practice session snapshot is persisted');
 assert.ok(practiceStore.includes('authorizeQuestionSetAccess(snapshot.track, snapshot.questions)'), 'Restoring saved questions rechecks authorization');
+assert.ok(mockExam.includes("getQuestionCountsByTrack(trackId, freeOnly)") && mockExam.includes("refreshCloudEntitlements"), 'Mock exam refreshes entitlement and requests counts for the correct access tier');
+assert.ok(!mockExam.includes("getQuestionsByTrack(trackId, true)"), 'Mock exam selection never preloads the free question text for all users');
+assert.ok(mockExam.includes("free: false") && mockExam.includes("limit: examItemCount") && mockExam.includes("timeLimitSec: examItemCount * 60"), 'Mock exam requests the configured competence count without forcing the free pool or shrinking the timer');
+assert.ok(mockExam.includes("MOCK_COMPETENCES_BY_FUNCTION") && mockExam.includes("functionForCompetence(trackId, competence.id)"), 'Mock exam maps function and competence selection independently of loaded question text');
+assert.ok(mockExam.includes("row.count < row.requiredCount") && mockExam.includes("INSUFFICIENT ITEMS"), 'Mock exam blocks a competence when the eligible pool cannot meet its configured count');
+assert.ok(['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'].every(track => mockExam.includes(track + ': {')), 'Mock exam preserves a configured competence distribution for all five tracks');
+assert.ok(practiceStore.includes("mode === 'MOCK' && qs.length < finalLimit") && practiceStore.includes('The exam was not shortened'), 'Practice store rejects any mock sample shorter than the required item count');
+assert.ok(questionBank.includes("if (randomSample) {") && questionBank.includes("Math.floor(Math.random() * (i + 1))") && questionBank.includes("allQuestions.slice(0, limit)"), 'Protected question-bank endpoint randomly shuffles the authorized competence pool before sampling without replacement');
+assert.ok(questionBank.includes('if (!freeOnly)') && questionBank.includes('authorizeTrack(admin, user, isAdmin, track)'), 'Full-bank question requests remain server-authorized by an active track license or admin access');
+assert.ok(questionBank.includes('if (freeOnly) text = sampleFreeCsv(assetPath, text)'), 'Free mock exam sampling remains restricted to the designated free sample');
 assert.ok(mockExam.includes('SUBMIT EXAM'), 'Mock exam requires explicit submission');
 assert.ok(mockExam.includes("window.addEventListener('beforeunload', blockExit)"), 'Mock exam guards accidental exit');
 assert.ok(licenseStore.includes('canUseOfflineEntitlementsAfterError'), 'Offline entitlement fallback is constrained to offline/server outage scenarios');
