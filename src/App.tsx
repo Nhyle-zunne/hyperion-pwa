@@ -141,6 +141,7 @@ export default function App() {
     void recordActivity()
     const onResume = () => { void recordActivity() }
     window.addEventListener('focus', onResume)
+    window.addEventListener('online', onResume)
     document.addEventListener('visibilitychange', onResume)
     const authListener = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
@@ -151,6 +152,7 @@ export default function App() {
     return () => {
       active = false
       window.removeEventListener('focus', onResume)
+      window.removeEventListener('online', onResume)
       document.removeEventListener('visibilitychange', onResume)
       authListener.data.subscription.unsubscribe()
     }
