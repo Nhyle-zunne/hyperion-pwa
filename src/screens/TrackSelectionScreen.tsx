@@ -120,35 +120,34 @@ export default function TrackSelectionScreen() {
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       {location.pathname === '/' && <InstallPrompt variant="modal" />}
 
-      <div className="dash-header">
-        <div>
-          <h1>Hyperion Maritime</h1>
-          <div className="sub">STCW ’78 AS AMENDED · MARINA CRP</div>
-        </div>
-      </div>
-
-      <section className={`card dashboard-exam-panel${examPanelExpanded ? ' is-expanded' : ''}`} style={{ marginBottom: '0.85rem', padding: 0 }}>
-        <button
-          type="button"
-          className="dashboard-exam-panel__toggle"
-          aria-expanded={examPanelExpanded}
-          aria-controls="dashboard-exam-details"
-          onClick={() => setExamPanelExpanded((open) => !open)}
-        >
-          <span className="dashboard-exam-panel__icon" aria-hidden="true">📅</span>
-          <span className="dashboard-exam-panel__summary">
-            <span className="dashboard-exam-panel__eyebrow">MARINA LICENSURE EXAM</span>
-            <span className="dashboard-exam-panel__target">
-              {targetDate ? `Target · ${new Date(targetDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Set your target date'}
+      <div className={`dash-header dashboard-header-with-exam${examPanelExpanded ? ' is-expanded' : ''}`}>
+        <div className="dashboard-header-main">
+          <div className="dashboard-header-brand">
+            <h1>Hyperion Maritime</h1>
+            <div className="sub">STCW ’78 AS AMENDED · MARINA CRP</div>
+          </div>
+          <button
+            type="button"
+            className="dashboard-exam-panel__toggle"
+            aria-expanded={examPanelExpanded}
+            aria-controls="dashboard-exam-details"
+            onClick={() => setExamPanelExpanded((open) => !open)}
+          >
+            <span className="dashboard-exam-panel__icon" aria-hidden="true">📅</span>
+            <span className="dashboard-exam-panel__summary">
+              <span className="dashboard-exam-panel__eyebrow">MARINA LICENSURE EXAM</span>
+              <span className="dashboard-exam-panel__target">
+                {targetDate ? `Target · ${new Date(targetDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Set your target date'}
+              </span>
             </span>
-          </span>
-          <span className="dashboard-exam-panel__streak">{streakStatus}</span>
-          <span className={`dashboard-exam-panel__chevron${examPanelExpanded ? ' is-open' : ''}`} aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="16" height="16" focusable="false">
-              <path d="m6.5 9 5.5 5.5L17.5 9" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-        </button>
+            <span className="dashboard-exam-panel__streak">{streakStatus}</span>
+            <span className={`dashboard-exam-panel__chevron${examPanelExpanded ? ' is-open' : ''}`} aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" focusable="false">
+                <path d="m6.5 9 5.5 5.5L17.5 9" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          </button>
+        </div>
 
         <div
           id="dashboard-exam-details"
@@ -188,7 +187,7 @@ export default function TrackSelectionScreen() {
             </div>
           </div>
         </div>
-      </section>
+      </div>
 
       <div className="track-grid">
         {TRACKS.map((t) => {
