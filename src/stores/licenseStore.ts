@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { getOfflineEntitledTracks, saveOfflineEntitlements } from '../lib/offlineQuestionCache';
+import { clearOfflineEntitlements, getOfflineEntitledTracks, saveOfflineEntitlements } from '../lib/offlineQuestionCache';
 
 interface LicenseState {
   isOicNwUnlocked: boolean;
@@ -52,6 +52,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
 
   refreshCloudEntitlements: async () => {
     if (!supabase) {
+      clearOfflineEntitlements();
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
       return;
     }
@@ -64,21 +65,35 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
       return;
     }
     if (!session?.user) {
+      clearOfflineEntitlements();
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
       return;
     }
 
     // Admin status is checked server-side against ADMIN_EMAILS; never trust client metadata.
+    let isAdmin = false;
     try {
       const { data, error } = await supabase.functions.invoke('admin-payment-review', { body: { action: 'check-admin' } });
-      if (!error && data?.isAdmin === true) {
-        const adminOfflineUntil = Date.now() + 7 * 24 * 60 * 60 * 1000;
-        saveOfflineEntitlements(session.user.id, Object.fromEntries(TRACK_IDS.map(track => [track, adminOfflineUntil])));
-        set({ cloudTrackIds: [...TRACK_IDS], ...accessFlags(TRACK_IDS), entitlementsVerified: true });
-        return;
-      }
+      isAdmin = !error && data?.isAdmin === true;
     } catch {
       // If the admin check is unavailable, continue with ordinary subscription lookup.
+    }
+
+    if (isAdmin) {
+      // Refresh the signed lease from the server. Never synthesize admin expiries in the browser.
+      clearOfflineEntitlements(session.user.id);
+      try {
+        const { data, error } = await supabase.functions.invoke('question-bank', {
+          body: { action: 'offline-license' }
+        });
+        if (!error && typeof data?.token === 'string') {
+          await saveOfflineEntitlements(session.user.id, data.token);
+        }
+      } catch {
+        // Online admin access remains available; offline access stays cleared if signing fails.
+      }
+      set({ cloudTrackIds: [...TRACK_IDS], ...accessFlags(TRACK_IDS), entitlementsVerified: true });
+      return;
     }
 
     try {
@@ -89,28 +104,38 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
         .eq('status', 'active')
         .gt('expires_at', new Date().toISOString());
       if (error) {
-        // Fail closed for 4xx authorization/client errors; only use a saved license
-        // when offline or when the backend has a network/server outage.
+        // Fail closed for 4xx authorization/client errors. Only a network failure or
+        // server outage may use a still-valid signed lease cached for this same account.
         if (canUseOfflineEntitlementsAfterError(error)) {
-          const offlineIds = getOfflineEntitledTracks(session.user.id);
+          const offlineIds = await getOfflineEntitledTracks(session.user.id);
           if (offlineIds.length) {
             set({ cloudTrackIds: offlineIds, ...accessFlags(offlineIds), entitlementsVerified: true });
             return;
           }
+        } else {
+          clearOfflineEntitlements(session.user.id);
         }
         set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
         return;
       }
       const rows = data ?? [];
       const ids = Array.from(new Set(rows.map((row) => row.track_id as string)));
-      const expiresByTrack: Record<string, number> = {};
-      for (const row of rows) {
-        const expiresAt = Date.parse(row.expires_at as string);
-        if (Number.isFinite(expiresAt) && expiresAt > Date.now()) {
-          expiresByTrack[row.track_id as string] = Math.max(expiresByTrack[row.track_id as string] ?? 0, expiresAt);
+
+      // Replace any old signed lease with a fresh server-signed version of the current
+      // entitlement state. If issuance fails, old offline access must not survive a
+      // successful live check that found the license revoked or expired.
+      clearOfflineEntitlements(session.user.id);
+      try {
+        const { data: offlineLicense, error: offlineLicenseError } = await supabase.functions.invoke('question-bank', {
+          body: { action: 'offline-license' }
+        });
+        if (!offlineLicenseError && typeof offlineLicense?.token === 'string') {
+          await saveOfflineEntitlements(session.user.id, offlineLicense.token);
         }
+      } catch {
+        // Keep online access working, but don't retain stale offline access.
       }
-      saveOfflineEntitlements(session.user.id, expiresByTrack);
+
       set({ cloudTrackIds: ids, ...accessFlags(ids), entitlementsVerified: true });
     } catch {
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
@@ -151,5 +176,8 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
     return get().isAllAccessUnlocked ? 'Admin · All tracks unlocked' : count ? `${count} active subscription track${count === 1 ? '' : 's'}` : 'No active subscriptions';
   },
 
-  clearLicense: () => set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false })
+  clearLicense: () => {
+    clearOfflineEntitlements();
+    set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+  }
 }));
