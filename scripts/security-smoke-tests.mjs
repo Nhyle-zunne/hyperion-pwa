@@ -10,7 +10,7 @@ const [
   questionBankClient, adminLicenses, adminPayments, adminQuestionBank,
   practiceConfigScreen, practiceCompetenceScreen, trackHubScreen, drillScreen,
   quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen,
-  abandonedCheckoutCleanup, abandonedCheckoutMigration
+  abandonedCheckoutCleanup, abandonedCheckoutMigration, installPrompt
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -52,6 +52,7 @@ const [
   read('../src/screens/QuickScanViewerScreen.tsx'),
   read('../src/screens/FlashcardsScreen.tsx'),
   read('../src/screens/SearchScreen.tsx'),
+  read('../src/components/InstallPrompt.tsx'),
   read('../supabase/functions/expire-abandoned-checkouts/index.ts'),
   read('../supabase/migrations/20261028030000_schedule_12_hour_abandoned_paymongo_checkout_cleanup.sql')
 ]);
@@ -227,5 +228,11 @@ assert.ok(abandonedCheckoutCleanup.includes('mark_abandoned_paymongo_checkout_fa
 assert.ok(abandonedCheckoutMigration.includes('interval \'12 hours\'') && abandonedCheckoutMigration.includes('created_at <= now() - interval \'12 hours\''), 'Database transition has its own atomic 12-hour cutoff guard');
 assert.ok(abandonedCheckoutMigration.includes('grant execute on function public.verify_abandoned_checkout_cron_token(text) to service_role') && abandonedCheckoutMigration.includes('revoke all on function public.verify_abandoned_checkout_cron_token(text) from public, anon, authenticated'), 'Cron token validation is service-role only');
 assert.ok(abandonedCheckoutMigration.includes('hyperion-expire-abandoned-paymongo-checkouts') && abandonedCheckoutMigration.includes('*/5 * * * *') && abandonedCheckoutMigration.includes('vault.decrypted_secrets'), 'Supabase schedules cleanup every five minutes using secrets stored in Vault');
+assert.ok(app.includes('<InstallPrompt variant="modal" iosOnly />') && app.includes('<Route path="/" element={<><InstallPrompt variant="modal" iosOnly /><TrackSelectionScreen /></>} />'), 'Initial entry page displays the install modal only on iOS');
+assert.ok(installPrompt.includes("isIos ? (") && installPrompt.includes('<AppleAppStoreBadge onClick={dismiss} />') && installPrompt.includes('Download on the') && installPrompt.includes('App Store'), 'iPhone install prompt displays a prominent App Store-style badge instead of text instructions');
+assert.ok(installPrompt.includes('to="/install/ios"') && installPrompt.includes('onClick={onClick}') && installPrompt.includes("onClick={dismiss}"), 'Apple install badge navigates directly to the iOS setup guide and dismisses the prompt');
+assert.ok(installPrompt.includes('iosOnly = false') && installPrompt.includes('(iosOnly && !isIos)'), 'New entry popup is restricted to iPhone and iPad browsers');
+assert.ok(installPrompt.includes('<GooglePlayBadge />') && installPrompt.includes('ADD HYPERION TO HOME SCREEN'), 'Existing Android Google Play badge and PWA installation action remain intact');
+
 
 console.log('Release-safety smoke checks passed.');
