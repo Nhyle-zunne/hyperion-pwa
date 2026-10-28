@@ -66,6 +66,8 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const viteConfig = await read('../vite.config.ts');
+const mainEntry = await read('../src/main.tsx');
 const adminPaymentReviewFunction = await read('../supabase/functions/admin-payment-review/index.ts');
 const deleteAccount = await read('../supabase/functions/delete-account/index.ts');
 const cancelCheckout = await read('../supabase/functions/cancel-checkout/index.ts');
@@ -306,6 +308,11 @@ assert.ok(abandonedCheckoutCleanup.includes("const providedToken = req.headers.g
 assert.ok(accountRetentionFunction.includes("const cronToken = req.headers.get('x-hyperion-account-retention-token')") && accountRetentionFunction.includes("if (!url || !service || !cronToken) return json({ error: 'Not authorized.' }, 401)") && accountRetentionFunction.includes('verify_account_retention_cron_token'), 'Account-retention cleanup requires and verifies its private cron token');
 assert.ok(deleteAccount.includes("userClient.auth.getUser()") && deleteAccount.includes(".eq('user_id', user.id)"), 'Account deletion authenticates the caller and scopes payment dependencies to their own account');
 assert.ok(cancelCheckout.includes("authClient.auth.getUser()") && cancelCheckout.includes(".eq('user_id', user.id)"), 'Checkout cancellation authenticates the caller and scopes order access to the owning user');
+
+
+assert.ok(viteConfig.includes("globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}']") && !viteConfig.includes('.csv') && !viteConfig.includes('.enc'), 'PWA pre-cache allow-list excludes CSV and encrypted question-bank assets');
+assert.ok(viteConfig.includes('sourcemap: false'), 'Production build does not publish browser source maps');
+assert.ok(mainEntry.includes("caches.delete('hyperion-question-banks')"), 'App startup deletes the legacy static question-bank cache');
 
 
 console.log('Release-safety smoke checks passed.');
