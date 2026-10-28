@@ -533,7 +533,7 @@ export default function AccountScreen() {
       {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
       {renewalGraceUntil && <div role="status" style={{ ...card, lineHeight: 1.55, marginTop: '.8rem', marginBottom: 0, borderColor: 'var(--warning, #c2410c)' }}>
         <strong style={{ display: 'block', marginBottom: '.25rem' }}>License renewal grace period</strong>
-        Your website license has expired. Renew or purchase an eligible website license by <strong>{new Date(renewalGraceUntil).toLocaleDateString()}</strong> to keep this account from being deleted under Hyperion's 30-day account-retention policy. A payment only counts after the license is successfully activated.
+        Your website license has expired. The 30-day renewal grace period ends on <strong>{new Date(renewalGraceUntil).toLocaleDateString()}</strong>. Renew or purchase an eligible website license to restore paid-track access. If you do not renew, account deletion is only eligible after the separate inactivity-plus-grace retention deadline has passed. A payment only counts after the license is successfully activated.
         <button type="button" className="btn btn-primary" style={{ width: '100%', marginTop: '.65rem' }} onClick={() => setAccountTab('payments')}>Renew or buy a license</button>
       </div>}
 
