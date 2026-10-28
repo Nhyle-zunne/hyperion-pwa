@@ -298,7 +298,7 @@ assert.ok(questionBank.includes('if (body.action === "authorize-session")') && q
 assert.ok(questionBank.includes('const authHeader = req.headers.get("Authorization")') && questionBank.includes('.auth.getUser()'), 'Question-bank identity comes from a validated Supabase user token, not client metadata');
 assert.ok(licenseStore.includes('return status === 0 || status >= 500'), 'Cached entitlement fallback is limited to genuine connectivity/server failures');
 assert.ok(questionBankClient.includes('userId ? getOfflineEntitlementExpiry(userId, track) : null'), 'Offline entitlement lookup is scoped to the currently signed-in Supabase user');
-assert.ok(offlineQuestionCache.includes('if (!value || value.userId !== userId) return null') && offlineQuestionCache.includes('expiresAt > Date.now()'), 'Offline entitlement cache rejects account-mismatched or expired license records');
+assert.ok(offlineQuestionCache.includes('if (!stored || stored.userId !== userId) return null') && offlineQuestionCache.includes('expiresAt > Date.now()') && offlineQuestionCache.includes('crypto.subtle.verify'), 'Offline entitlement cache requires a valid signature, matching account, and unexpired track lease');
 assert.ok(questionBankClient.includes('if (error && canFallbackToOffline(error) && await offlineEntitlementExpiry(track))'), 'Online question fallback only consults saved paid packs after a network/server failure plus a valid local expiry');
 assert.ok(questionBank.includes('body.freeOnly !== true') && questionBank.includes('Raw paid-bank delivery is disabled. Use paginated question delivery.'), 'Legacy raw-file endpoint cannot be used to retrieve paid-bank assets');
 
@@ -321,6 +321,12 @@ assert.ok(questionBank.includes("body.action === \"offline-license\"") && questi
 assert.ok(questionBank.includes('.eq("user_id", user.id)') && questionBank.includes('.eq("status", "active")') && questionBank.includes('.gt("expires_at", new Date(now).toISOString())'), 'Offline entitlement token only contains the signed-in user’s currently active, unexpired tracks');
 assert.ok(offlineEntitlementSigningMigration.includes('private_jwk jsonb NOT NULL') && offlineEntitlementSigningMigration.includes('public_jwk jsonb NOT NULL') && offlineEntitlementSigningMigration.includes('ENABLE ROW LEVEL SECURITY'), 'Offline signing keys are stored in an RLS-protected table');
 assert.ok(offlineEntitlementSigningMigration.includes('REVOKE ALL ON TABLE public.offline_entitlement_signing_keys FROM PUBLIC, anon, authenticated') && offlineEntitlementSigningMigration.includes('GRANT SELECT, INSERT ON TABLE public.offline_entitlement_signing_keys TO service_role'), 'Offline private signing keys cannot be read or written by client database roles');
+
+
+assert.ok(offlineQuestionCache.includes('OFFLINE_ENTITLEMENT_PUBLIC_KEY') && offlineQuestionCache.includes('claims.userId !== expectedUserId') && offlineQuestionCache.includes('signature.length !== 64'), 'Offline entitlement verifier pins the public key, account identity, and ECDSA signature size');
+assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes("typeof value.token !== 'string'"), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
+assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(session.user.id, offlineLicense.token)'), 'Online license refresh stores only a server-signed offline token');
+assert.ok(licenseStore.includes('clearOfflineEntitlements(session.user.id)') && licenseStore.includes('await getOfflineEntitledTracks(session.user.id)'), 'Offline fallback verifies signed leases and clears stale leases on online authorization errors');
 
 
 console.log('Release-safety smoke checks passed.');
