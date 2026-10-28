@@ -177,10 +177,8 @@ export default function MockExamScreen() {
   }, [questionCounts])
 
   const functions = useMemo(() => Object.keys(FUNCTION_LABELS[trackId])
-    .map((id) => ({ id, count: competencesForFunction(trackId, id), label: FUNCTION_LABELS[trackId][id] || id }))
-    .filter((fn) => (MOCK_COMPETENCES_BY_FUNCTION[trackId][fn.id] || [])
-      .some((competenceId) => (competenceCounts.get(competenceId) || 0) > 0)),
-  [trackId, competenceCounts])
+    .map((id) => ({ id, count: competencesForFunction(trackId, id), label: FUNCTION_LABELS[trackId][id] || id })),
+  [trackId])
 
   const visibleCompetences = useMemo(() => competences.map((competence) => {
     const count = competenceCounts.get(competence.id) || 0
@@ -190,7 +188,7 @@ export default function MockExamScreen() {
       count,
       requiredCount: mockExamItemCount(trackId, competence.id)
     }
-  }).filter((competence) => competence.count > 0), [competences, trackId, competenceCounts])
+  }), [competences, trackId, competenceCounts])
   const groupedCompetences = useMemo(() => functions
     .filter((fn) => selectedFunctions.includes(fn.id))
     .map((fn) => ({ ...fn, competences: visibleCompetences.filter((c) => c.functionId === fn.id) }))
@@ -282,7 +280,7 @@ export default function MockExamScreen() {
         <div className="card" style={{ borderRadius: 14 }}>
           <h2 style={{ marginTop: 0 }}>EXAMINATION PROTOCOL</h2>
           <p style={{ color: 'var(--text-muted)' }}>Choose the functions to include, then select a competence to begin. The timer runs only while answering that competence.</p>
-          <p>{loading ? 'Checking question access and loading counts…' : loadError ? loadError : questionCounts.reduce((sum, item) => sum + item.count, 0).toLocaleString() + ' questions available across ' + visibleCompetences.length + ' competences.'}</p>
+          <p>{loading ? 'Checking question access and loading counts…' : loadError ? loadError : questionCounts.reduce((sum, item) => sum + item.count, 0).toLocaleString() + ' eligible questions across ' + competences.length + ' competences.'}</p>
           {!loading && !loadError && <p style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>{usingFreePool ? 'Using the eligible free question sample for this track.' : 'Using the full question bank for your active track license.'}</p>}
           {!!loadError && <button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Retry</button>}
           <button type="button" className="btn btn-primary" disabled={loading || !!loadError} onClick={() => setStage('confirm')} style={{ width: '100%' }}>START OFFICIAL TIMED MOCK EXAM</button>
