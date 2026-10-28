@@ -423,4 +423,10 @@ assert.ok(trackHubScreen.includes('Reconnect before expiry to refresh your licen
 assert.ok(trackHubScreen.includes("window.addEventListener('focus', refreshOfflineState)") && trackHubScreen.includes("window.addEventListener('online', updateOnline)"), 'Offline readiness refreshes when the app regains focus or connectivity');
 
 
+assert.ok(ordersHistory.includes("order.status === 'failed' && order.payment_method === 'PayMongo Checkout'") && ordersHistory.includes("'Checkout not completed'"), 'Expired/failed PayMongo checkout is not mislabeled as a rejected manual payment');
+assert.ok(ordersHistory.includes("'Awaiting PayMongo payment'") && ordersHistory.includes('PayMongo has not confirmed this payment yet.'), 'Pending PayMongo checkout status explains the unresolved payment and next safe action');
+assert.ok(ordersHistory.includes('No license was activated from this checkout.') && ordersHistory.includes("order.status === 'failed'"), 'Failed or cancelled checkouts clearly explain that no access was granted and users can restart safely');
+assert.ok(ordersHistory.includes('This manual payment submission was rejected.') && ordersHistory.includes("order.status === 'submitted'"), 'Manual payment rejection remains distinct from an expired hosted checkout');
+
+
 console.log('Release-safety smoke checks passed.');
