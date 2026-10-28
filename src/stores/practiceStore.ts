@@ -214,8 +214,21 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     try {
       await useLicenseStore.getState().refreshCloudEntitlements();
       const lic = useLicenseStore.getState();
-      const licensed = lic.isAllAccessUnlocked || lic.isTrackUnlocked(track);
-      const isFreeSession = Boolean(free || !licensed);
+      const licensed = lic.isAllAccessUnlocked || lic.cloudTrackIds.includes('ALL') || lic.isTrackUnlocked(track);
+      // Only the explicitly launched Free Reviewer may use a free pool in PRACTICE mode.
+      // Drill and full Practice All Questions always require an active track entitlement.
+      const isFreeReviewerSession = mode === 'PRACTICE' && free === true;
+      if (mode !== 'MOCK' && !licensed && !isFreeReviewerSession) {
+        set({
+          loading: false,
+          sessionId: null,
+          questions: [],
+          isFreeSession: false,
+          error: 'An active license is required for Practice All Questions and Drill. Use Free Reviewer or Timed Mock Exam for free access.'
+        });
+        return;
+      }
+      const isFreeSession = mode === 'MOCK' ? !licensed : isFreeReviewerSession;
       if (!competenceId) {
         set({ loading: false, sessionId: null, questions: [], error: 'Select a competence before starting practice.' });
         return;
