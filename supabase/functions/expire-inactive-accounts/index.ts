@@ -3,6 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 const DAY_MS = 24 * 60 * 60 * 1000
 const RETENTION_DAYS = 30
 const PAGE_SIZE = 1000
+const MAX_DELETIONS_PER_RUN = 100
 
 type AuthUser = {
   id: string
@@ -68,7 +69,7 @@ Deno.serve(async req => {
   let failed = 0
   const dryRunCandidates: { userId: string; reason: string; dueAt: string }[] = []
 
-  for (let page = 1; page <= 100; page++) {
+  userPages: for (let page = 1; page <= 100; page++) {
     const usersResult = await admin.auth.admin.listUsers({ page, perPage: PAGE_SIZE })
     if (usersResult.error) return json({ error: 'Could not load accounts for retention processing.', processed: totalUsers }, 500)
     const users = (usersResult.data.users || []) as AuthUser[]
@@ -146,6 +147,7 @@ Deno.serve(async req => {
     }
 
     for (const user of users) {
+      if (!dryRun && deleted >= MAX_DELETIONS_PER_RUN) break
       if (!idSet.has(user.id)) continue
       if (profileIsAdmin(user, adminEmails)) { skippedAdmin++; continue }
       if (adminAuditUsers.has(user.id)) { skippedAuditDependency++; continue }
@@ -270,6 +272,7 @@ Deno.serve(async req => {
       else deleted++
     }
 
+    if (!dryRun && deleted >= MAX_DELETIONS_PER_RUN) break userPages
     if (users.length < PAGE_SIZE) break
   }
 
@@ -277,6 +280,7 @@ Deno.serve(async req => {
     ok: failed === 0,
     dryRun,
     retentionDays: RETENTION_DAYS,
+    maximumDeletesPerRun: dryRun ? null : MAX_DELETIONS_PER_RUN,
     processedUsers: totalUsers,
     eligible,
     deleted,
