@@ -231,6 +231,16 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         mode === 'MOCK'
       );
 
+      if (mode === 'MOCK' && qs.length < finalLimit) {
+        set({
+          loading: false,
+          error: `This mock competence requires ${finalLimit} questions, but only ${qs.length} are available in your authorized question pool. The exam was not shortened. Please refresh the question bank or contact support.`,
+          sessionId: null,
+          questions: []
+        });
+        return;
+      }
+
       if (qs.length === 0) {
         set({ loading: false, error: 'No questions available for this selection yet.', sessionId: null, questions: [] });
         return;
