@@ -102,7 +102,7 @@ export default function AdminLicensesScreen() {
   const [activeTab, setActiveTab] = useState<'users' | 'activity'>('users')
   const [audit, setAudit] = useState<AuditRecord[]>([])
   const [query, setQuery] = useState('')
-  const [userSort, setUserSort] = useState<'name-asc' | 'joined-desc' | 'joined-asc'>('name-asc')
+  const [userSort, setUserSort] = useState<'name-asc' | 'joined-desc' | 'joined-asc'>('joined-desc')
   const [activeLicenseOnly, setActiveLicenseOnly] = useState(false)
   const [terms, setTerms] = useState<Record<string, LicenseTerm>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
