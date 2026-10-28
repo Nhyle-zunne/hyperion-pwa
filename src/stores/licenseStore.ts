@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { clearOfflineEntitlements, getOfflineEntitledTracks, saveOfflineEntitlements } from '../lib/offlineQuestionCache';
+import { clearOfflineEntitlements, getOfflineEntitledTracks, getOfflineEntitlementExpiry, saveOfflineEntitlements } from '../lib/offlineQuestionCache';
+import { nextExpiryRefreshDelay } from '../lib/entitlementExpiryScheduler.mjs';
 
 interface LicenseState {
   isOicNwUnlocked: boolean;
@@ -11,6 +12,7 @@ interface LicenseState {
   isAllAccessUnlocked: boolean;
   cloudTrackIds: string[];
   entitlementsVerified: boolean;
+  entitlementExpiryRevision: number;
   checkLicenseStatus: () => void;
   isTrackUnlocked: (track: string) => boolean;
   getRemainingLabel: () => string;
@@ -18,7 +20,28 @@ interface LicenseState {
   refreshCloudEntitlements: () => Promise<void>;
 }
 
-const TRACK_IDS = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'];
+const TRACK_IDS = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'] as const;
+
+let entitlementExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearEntitlementExpiryTimer() {
+  if (entitlementExpiryTimer !== null) clearTimeout(entitlementExpiryTimer);
+  entitlementExpiryTimer = null;
+}
+
+function scheduleEntitlementExpiryRefresh(
+  userId: string,
+  expiryValues: unknown[],
+  onExpiry: (userId: string) => void
+) {
+  clearEntitlementExpiryTimer();
+  const delay = nextExpiryRefreshDelay(expiryValues);
+  if (delay === null) return;
+  entitlementExpiryTimer = setTimeout(() => {
+    entitlementExpiryTimer = null;
+    onExpiry(userId);
+  }, delay);
+}
 
 function canUseOfflineEntitlementsAfterError(error: unknown): boolean {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
@@ -40,7 +63,27 @@ function accessFlags(trackIds: string[]) {
   };
 }
 
-export const useLicenseStore = create<LicenseState>()((set, get) => ({
+export const useLicenseStore = create<LicenseState>()((set, get) => {
+  const armEntitlementExpiryRefresh = (userId: string, expiryValues: unknown[]) => {
+    scheduleEntitlementExpiryRefresh(userId, expiryValues, (expectedUserId) => {
+      void (async () => {
+        if (!supabase) return;
+        try {
+          const current = await supabase.auth.getSession();
+          if (current.data.session?.user.id !== expectedUserId) return;
+          await get().refreshCloudEntitlements();
+          const latest = await supabase.auth.getSession();
+          if (latest.data.session?.user.id === expectedUserId) {
+            set((state) => ({ entitlementExpiryRevision: state.entitlementExpiryRevision + 1 }));
+          }
+        } catch {
+          // The next focus/visibility/online refresh retries if the browser was suspended or offline.
+        }
+      })();
+    });
+  };
+
+  return ({
   isOicNwUnlocked: false,
   isGmdssUnlocked: false,
   isEngineEwUnlocked: false,
@@ -49,8 +92,10 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
   isAllAccessUnlocked: false,
   cloudTrackIds: [],
   entitlementsVerified: false,
+  entitlementExpiryRevision: 0,
 
   refreshCloudEntitlements: async () => {
+    clearEntitlementExpiryTimer();
     if (!supabase) {
       clearOfflineEntitlements();
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
@@ -65,6 +110,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
       return;
     }
     if (!session?.user) {
+      clearEntitlementExpiryTimer();
       clearOfflineEntitlements();
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
       return;
@@ -87,12 +133,16 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
           body: { action: 'offline-license' }
         });
         if (!error && typeof data?.token === 'string') {
-          await saveOfflineEntitlements(session.user.id, data.token);
+          const saved = await saveOfflineEntitlements(session.user.id, data.token);
+          if (saved) {
+            const expiryTimes = await Promise.all(TRACK_IDS.map((track) => getOfflineEntitlementExpiry(session.user.id, track)));
+            armEntitlementExpiryRefresh(session.user.id, expiryTimes);
+          }
         }
       } catch {
         // Online admin access remains available; offline access stays cleared if signing fails.
       }
-      set({ cloudTrackIds: [...TRACK_IDS], ...accessFlags(TRACK_IDS), entitlementsVerified: true });
+      set({ cloudTrackIds: [...TRACK_IDS], ...accessFlags([...TRACK_IDS]), entitlementsVerified: true });
       return;
     }
 
@@ -109,6 +159,10 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
         if (canUseOfflineEntitlementsAfterError(error)) {
           const offlineIds = await getOfflineEntitledTracks(session.user.id);
           if (offlineIds.length) {
+            const expiryTimes = await Promise.all(offlineIds.map((track) =>
+              getOfflineEntitlementExpiry(session.user.id, track as (typeof TRACK_IDS)[number])
+            ));
+            armEntitlementExpiryRefresh(session.user.id, expiryTimes);
             set({ cloudTrackIds: offlineIds, ...accessFlags(offlineIds), entitlementsVerified: true });
             return;
           }
@@ -136,6 +190,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
         // Keep online access working, but don't retain stale offline access.
       }
 
+      armEntitlementExpiryRefresh(session.user.id, rows.map((row) => row.expires_at));
       set({ cloudTrackIds: ids, ...accessFlags(ids), entitlementsVerified: true });
     } catch {
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
@@ -177,7 +232,9 @@ export const useLicenseStore = create<LicenseState>()((set, get) => ({
   },
 
   clearLicense: () => {
+    clearEntitlementExpiryTimer();
     clearOfflineEntitlements();
     set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
   }
-}));
+  });
+});
