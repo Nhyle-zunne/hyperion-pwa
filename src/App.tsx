@@ -1,34 +1,7 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useLicenseStore } from './stores/licenseStore'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
-import HomeScreen from './screens/HomeScreen'
 import InstallPrompt from './components/InstallPrompt'
-import TrackSelectionScreen from './screens/TrackSelectionScreen'
-import AccountScreen from './screens/AccountScreen'
-import BasketScreen from './screens/BasketScreen'
-import ManualPaymentScreen from './screens/ManualPaymentScreen'
-import OrdersPaymentHistoryScreen from './screens/OrdersPaymentHistoryScreen'
-import OAuthCallbackScreen from './screens/OAuthCallbackScreen'
-import AdminPaymentsScreen from './screens/AdminPaymentsScreen'
-import AdminLicensesScreen from './screens/AdminLicensesScreen'
-import AdminQuestionBankScreen from './screens/AdminQuestionBankScreen'
-import TrackHubScreen from './screens/TrackHubScreen'
-import AboutScreen from './screens/AboutScreen'
-import TermsScreen from './screens/TermsScreen'
-import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen'
-import PracticeConfigScreen from './screens/PracticeConfigScreen'
-import PracticeCompetenceScreen from './screens/PracticeCompetenceScreen'
-import PracticeQuizScreen from './screens/PracticeQuizScreen'
-import DrillScreen from './screens/DrillScreen'
-import QuickScanCompetenceScreen from './screens/QuickScanCompetenceScreen'
-import QuickScanViewerScreen from './screens/QuickScanViewerScreen'
-import MockExamScreen, { MockExamRunner } from './screens/MockExamScreen'
-import HistoryScreen from './screens/HistoryScreen'
-import FlashcardsScreen from './screens/FlashcardsScreen'
-import BookmarksScreen from './screens/BookmarksScreen'
-import SearchScreen from './screens/SearchScreen'
-import StudyTimeScreen from './screens/StudyTimeScreen'
-import IOSInstallGuideScreen from './screens/IOSInstallGuideScreen'
 import PaywallDialog from './components/PaywallDialog'
 import BottomNav from './components/BottomNav'
 import TopLoadingIndicator from './components/TopLoadingIndicator'
@@ -40,10 +13,38 @@ import { supabase } from './lib/supabase'
 import { startLearningProgressSync } from './lib/progressSync'
 import { useStudyTimeStore } from './stores/studyTimeStore'
 import { withPageLoading } from './lib/pageLoading'
-import { useRef, useState } from 'react'
 import { clearPaidQuestionCache } from './lib/questionBank'
 import { deletePaidQuestionSnapshotsForTrack } from './lib/sessionArchive'
 import { deletePaidOfflineQuestionPacksForTrack } from './lib/offlineQuestionCache'
+
+const HomeScreen = lazy(() => import('./screens/HomeScreen'))
+const TrackSelectionScreen = lazy(() => import('./screens/TrackSelectionScreen'))
+const AccountScreen = lazy(() => import('./screens/AccountScreen'))
+const BasketScreen = lazy(() => import('./screens/BasketScreen'))
+const ManualPaymentScreen = lazy(() => import('./screens/ManualPaymentScreen'))
+const OrdersPaymentHistoryScreen = lazy(() => import('./screens/OrdersPaymentHistoryScreen'))
+const OAuthCallbackScreen = lazy(() => import('./screens/OAuthCallbackScreen'))
+const AdminPaymentsScreen = lazy(() => import('./screens/AdminPaymentsScreen'))
+const AdminLicensesScreen = lazy(() => import('./screens/AdminLicensesScreen'))
+const AdminQuestionBankScreen = lazy(() => import('./screens/AdminQuestionBankScreen'))
+const TrackHubScreen = lazy(() => import('./screens/TrackHubScreen'))
+const AboutScreen = lazy(() => import('./screens/AboutScreen'))
+const TermsScreen = lazy(() => import('./screens/TermsScreen'))
+const PrivacyPolicyScreen = lazy(() => import('./screens/PrivacyPolicyScreen'))
+const PracticeConfigScreen = lazy(() => import('./screens/PracticeConfigScreen'))
+const PracticeCompetenceScreen = lazy(() => import('./screens/PracticeCompetenceScreen'))
+const PracticeQuizScreen = lazy(() => import('./screens/PracticeQuizScreen'))
+const DrillScreen = lazy(() => import('./screens/DrillScreen'))
+const QuickScanCompetenceScreen = lazy(() => import('./screens/QuickScanCompetenceScreen'))
+const QuickScanViewerScreen = lazy(() => import('./screens/QuickScanViewerScreen'))
+const MockExamScreen = lazy(() => import('./screens/MockExamScreen'))
+const MockExamRunner = lazy(() => import('./screens/MockExamScreen').then((module) => ({ default: module.MockExamRunner })))
+const HistoryScreen = lazy(() => import('./screens/HistoryScreen'))
+const FlashcardsScreen = lazy(() => import('./screens/FlashcardsScreen'))
+const BookmarksScreen = lazy(() => import('./screens/BookmarksScreen'))
+const SearchScreen = lazy(() => import('./screens/SearchScreen'))
+const StudyTimeScreen = lazy(() => import('./screens/StudyTimeScreen'))
+const IOSInstallGuideScreen = lazy(() => import('./screens/IOSInstallGuideScreen'))
 
 export default function App() {
   const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
@@ -415,6 +416,7 @@ export default function App() {
       )}
       <main style={{ flex: 1, minHeight: 0, background: 'var(--bg)' }}>
         <div key={`${location.pathname}${location.search}`} className="route-transition" style={{ minHeight: "100%" }}>
+        <Suspense fallback={<div role="status" aria-live="polite" style={{ minHeight: 220, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Loading Hyperion…</div>}>
         <Routes>
           <Route path="/" element={<><InstallPrompt variant="modal" iosOnly /><TrackSelectionScreen /></>} />
           <Route path="/account" element={<AccountScreen />} />
@@ -449,6 +451,7 @@ export default function App() {
           <Route path="/streak" element={<StudyTimeScreen />} />
           <Route path="*" element={<TrackSelectionScreen />} />
         </Routes>
+        </Suspense>
         </div>
       </main>
 
