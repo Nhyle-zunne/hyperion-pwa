@@ -1,7 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const RETENTION_DAYS = 30
+const INACTIVITY_DAYS = 30
+const GRACE_DAYS = 30
+const FREE_RETENTION_DAYS = INACTIVITY_DAYS + GRACE_DAYS
 const PAGE_SIZE = 1000
 const MAX_DELETIONS_PER_RUN = 100
 
@@ -55,7 +57,6 @@ Deno.serve(async req => {
   const adminEmails = new Set((Deno.env.get('ADMIN_EMAILS') || '')
     .split(',').map(value => value.trim().toLowerCase()).filter(Boolean))
   const now = Date.now()
-  const inactivityCutoff = now - RETENTION_DAYS * DAY_MS
 
   let totalUsers = 0
   let deleted = 0
@@ -166,18 +167,19 @@ Deno.serve(async req => {
 
       let reason: string
       let dueAt: number
+      // A non-licensed account first becomes inactive after 30 days. It then receives
+      // a separate 30-day grace period. Expired-license accounts also retain at least
+      // 30 days after expiry, with fresh activity extending the retention deadline.
+      const lastAccess = parseDate(activityMap.get(user.id)) || parseDate(user.last_sign_in_at) || parseDate(user.created_at)
+      const freeAccountDueAt = lastAccess + FREE_RETENTION_DAYS * DAY_MS
       if (latestValidExpiry > 0) {
-        // All licenses have expired; give the account a full 30 days after the latest expiry.
-        dueAt = latestValidExpiry + RETENTION_DAYS * DAY_MS
+        dueAt = Math.max(latestValidExpiry + GRACE_DAYS * DAY_MS, freeAccountDueAt)
         if (dueAt > now) { skippedGracePeriod++; continue }
-        reason = 'license_expired_grace_period_ended'
+        reason = 'license_expired_and_inactivity_grace_ended'
       } else {
-        // Legacy users without tracked visits use their last successful sign-in as the baseline,
-        // or account creation if a sign-in timestamp is not available.
-        const lastAccess = parseDate(activityMap.get(user.id)) || parseDate(user.last_sign_in_at) || parseDate(user.created_at)
-        dueAt = lastAccess + RETENTION_DAYS * DAY_MS
+        dueAt = freeAccountDueAt
         if (dueAt > now || lastAccess === 0) { skippedRecentlyActive++; continue }
-        reason = 'free_account_inactive_30_days'
+        reason = 'free_account_inactivity_grace_ended'
       }
 
       const payments = paymentMap.get(user.id) || []
@@ -224,23 +226,24 @@ Deno.serve(async req => {
         const expiry = parseDate(row.expires_at)
         return expiry > latest && expiry <= currentTime ? expiry : latest
       }, 0)
+      const currentLastAccess = parseDate(freshActivity.data?.last_accessed_at)
+        || parseDate(user.last_sign_in_at)
+        || parseDate(user.created_at)
+      const currentFreeAccountDueAt = currentLastAccess + FREE_RETENTION_DAYS * DAY_MS
       if (currentLatestExpiry > 0) {
-        dueAt = currentLatestExpiry + RETENTION_DAYS * DAY_MS
+        dueAt = Math.max(currentLatestExpiry + GRACE_DAYS * DAY_MS, currentFreeAccountDueAt)
         if (dueAt > currentTime) {
           skippedGracePeriod++
           continue
         }
-        reason = 'license_expired_grace_period_ended'
+        reason = 'license_expired_and_inactivity_grace_ended'
       } else {
-        const currentLastAccess = parseDate(freshActivity.data?.last_accessed_at)
-          || parseDate(user.last_sign_in_at)
-          || parseDate(user.created_at)
-        dueAt = currentLastAccess + RETENTION_DAYS * DAY_MS
+        dueAt = currentFreeAccountDueAt
         if (!currentLastAccess || dueAt > currentTime) {
           skippedRecentlyActive++
           continue
         }
-        reason = 'free_account_inactive_30_days'
+        reason = 'free_account_inactivity_grace_ended'
       }
 
       eligible++
@@ -279,7 +282,9 @@ Deno.serve(async req => {
   return json({
     ok: failed === 0,
     dryRun,
-    retentionDays: RETENTION_DAYS,
+    inactivityDays: INACTIVITY_DAYS,
+    graceDays: GRACE_DAYS,
+    freeAccountRetentionDays: FREE_RETENTION_DAYS,
     maximumDeletesPerRun: dryRun ? null : MAX_DELETIONS_PER_RUN,
     processedUsers: totalUsers,
     eligible,
