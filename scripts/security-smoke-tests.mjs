@@ -73,6 +73,7 @@ const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.t
 const bookmarksStore = await read('../src/stores/bookmarksStore.ts');
 const vaultStore = await read('../src/stores/vaultStore.ts');
 const vaultScreen = await read('../src/screens/VaultScreen.tsx');
+const practiceQuizScreen = await read('../src/screens/PracticeQuizScreen.tsx');
 const questionBankAccessModule = await read('../supabase/functions/question-bank/access.mjs');
 const { canAccessPaidTrack } = await import('../supabase/functions/question-bank/access.mjs');
 const learningProgressTriggerMigration = await read('../supabase/migrations/20261028181820_revoke_client_execute_on_learning_progress_trigger.sql');
@@ -465,6 +466,12 @@ assert.ok(sessionArchive.includes('DATABASE_VERSION = 2') && sessionArchive.incl
 assert.ok(!sessionArchive.includes("db.put('snapshots', { id, snapshot })"), 'Session archive never directly writes plaintext question snapshots');
 assert.ok(!practiceStore.includes("localStorage.setItem('hyperion-saved-practice'") && practiceStore.includes('migrateLegacyLocalStorageSavedPractice') && practiceStore.includes('never load it directly'), 'Question-containing session snapshots are removed from new localStorage writes and legacy copies are migrated before restore');
 assert.ok(practiceStore.includes('The saved question snapshot is unavailable'), 'Resume fails clearly when no encrypted session snapshot is available instead of loading raw question text');
+const saveProgressStart = practiceStore.indexOf('saveProgress: async () => {');
+const snapshotWritePosition = practiceStore.indexOf('await saveSessionSnapshot(snapshot.sessionId, snapshot)', saveProgressStart);
+const historyWritePosition = practiceStore.indexOf('useHistoryStore.getState().saveSession({', saveProgressStart);
+assert.ok(practiceStore.includes('saveProgress: () => Promise<boolean>') && snapshotWritePosition >= saveProgressStart && historyWritePosition > snapshotWritePosition, 'History is recorded only after the encrypted session snapshot is safely persisted');
+assert.ok(practiceQuizScreen.includes('const saved = await saveProgress()') && practiceQuizScreen.includes('Your session is still open') && practiceQuizScreen.includes('disabled={savingProgress}'), 'Save failure keeps the user in the session and prevents duplicate save requests');
+assert.ok(vaultScreen.includes('const saved = await usePracticeStore.getState().saveProgress()') && vaultScreen.includes('Could not save this drill on the device'), 'Mistakes Vault drills do not navigate as though a failed save succeeded');
 assert.ok(!practiceStore.includes("localStorage.setItem('hyperion-saved-practice'") && practiceStore.includes('migrateLegacyLocalStorageSavedPractice') && practiceStore.includes('never load it directly'), 'Question-containing session snapshots are removed from new localStorage writes and legacy copies are migrated before restore');
 assert.ok(practiceStore.includes('The saved question snapshot is unavailable'), 'Resume fails clearly when no encrypted session snapshot is available instead of loading raw question text');
 
