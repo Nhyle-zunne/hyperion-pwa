@@ -10,7 +10,7 @@ const [
   questionBankClient, adminLicenses, adminPayments, adminQuestionBank,
   practiceConfigScreen, practiceCompetenceScreen, trackHubScreen, drillScreen,
   quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen,
-  abandonedCheckoutCleanup, abandonedCheckoutMigration, installPrompt
+  installPrompt, abandonedCheckoutCleanup, abandonedCheckoutMigration
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
