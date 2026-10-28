@@ -7,7 +7,9 @@ const [
   finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen, accountScreen,
   indexCss, manualPayment, ordersHistory, historyScreen, studyTimeScreen, trackSelectionScreen, studyTimeStore, progressSync,
   aboutScreen, termsScreen, privacyScreen, topLoadingIndicator, pageLoadingManager,
-  questionBankClient, adminLicenses, adminPayments, adminQuestionBank
+  questionBankClient, adminLicenses, adminPayments, adminQuestionBank,
+  practiceConfigScreen, practiceCompetenceScreen, trackHubScreen, drillScreen,
+  quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -40,7 +42,15 @@ const [
   read('../src/lib/questionBank.ts'),
   read('../src/screens/AdminLicensesScreen.tsx'),
   read('../src/screens/AdminPaymentsScreen.tsx'),
-  read('../src/screens/AdminQuestionBankScreen.tsx')
+  read('../src/screens/AdminQuestionBankScreen.tsx'),
+  read('../src/screens/PracticeConfigScreen.tsx'),
+  read('../src/screens/PracticeCompetenceScreen.tsx'),
+  read('../src/screens/TrackHubScreen.tsx'),
+  read('../src/screens/DrillScreen.tsx'),
+  read('../src/screens/QuickScanCompetenceScreen.tsx'),
+  read('../src/screens/QuickScanViewerScreen.tsx'),
+  read('../src/screens/FlashcardsScreen.tsx'),
+  read('../src/screens/SearchScreen.tsx')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -189,5 +199,19 @@ assert.ok(questionBank.includes('if (freeOnly) text = sampleFreeCsv(assetPath, t
 assert.ok(mockExam.includes('SUBMIT EXAM'), 'Mock exam requires explicit submission');
 assert.ok(mockExam.includes("window.addEventListener('beforeunload', blockExit)"), 'Mock exam guards accidental exit');
 assert.ok(licenseStore.includes('canUseOfflineEntitlementsAfterError'), 'Offline entitlement fallback is constrained to offline/server outage scenarios');
+assert.ok(app.includes("location.pathname === '/practice/competences' || location.pathname === '/practice'") && app.includes('setupNeedsLicense'), 'Direct Practice All Questions and practice-config URLs are guarded by track entitlement');
+assert.ok(app.includes("setupParams.get('free') === '1' && setupMode !== 'drill'") && app.includes('Free Reviewer and Timed Mock Exam remain available without a purchase.'), 'Only the explicit Free Reviewer route bypasses practice setup licensing');
+assert.ok(app.includes("isMockRunner && currentMode === 'MOCK'") && app.includes("isPracticeQuiz && currentMode === 'PRACTICE'") && app.includes('const isPermittedFreeRunner = isFreeSession'), 'Question-runner access only treats actual Mock and Free Reviewer sessions as free');
+assert.ok(practiceStore.includes("mode !== 'MOCK' && !licensed && !isFreeReviewerSession") && practiceStore.includes("mode === 'PRACTICE' && free === true"), 'Practice store blocks unlicensed Practice All Questions and Drill sessions except explicit Free Reviewer');
+assert.ok(practiceStore.includes("mode === 'MOCK' ? !licensed : isFreeReviewerSession"), 'Mock Exam remains usable as a free feature and uses the full pool only for licensed users');
+assert.ok(practiceConfigScreen.includes('await refreshCloudEntitlements()') && practiceConfigScreen.includes('if (!freeMode && !hasLicense)') && practiceConfigScreen.includes('shuffleChoices, free: freeMode'), 'Practice configuration rechecks entitlement and no longer silently downgrades paid mode into free practice');
+assert.ok(practiceCompetenceScreen.includes("if (!freeMode && !unlocked)") && practiceCompetenceScreen.includes("openPaywall('Practice')"), 'Practice competence links without the explicit free reviewer flag require a license');
+assert.ok(trackHubScreen.includes("title: 'PRACTICE ALL QUESTIONS'") && trackHubScreen.includes("title: 'QUICK SCAN MODE'") && trackHubScreen.includes("title: 'FLASHCARD REVISION'") && trackHubScreen.includes('locked: !unlocked'), 'Track hub keeps paid practice, Quick Scan and Flashcards locked without the track license');
+assert.ok(drillScreen.includes("if (!isUnlocked)") && drillScreen.includes("openPaywall('Drill')"), 'Drill mode requires an active track license');
+assert.ok(quickScanCompetenceScreen.includes("if (!unlocked)") && quickScanViewerScreen.includes("getQuestionCountsByTrack(track, false)"), 'Quick Scan requires verified full-bank access and does not use the free-only route');
+assert.ok(flashcardsScreen.includes("if (!isUnlocked)") && questionBank.includes('An active license is required to open flashcards'), 'Flashcard UI and server endpoint both enforce the license boundary');
+assert.ok(searchScreen.includes("if (!isUnlocked)") && questionBank.includes('An active license is required to search this track'), 'Question search UI and server endpoint both enforce the license boundary');
+assert.ok(questionBank.includes('if (!freeOnly)') && questionBank.includes('An active license is required to retrieve these questions') && questionBank.includes('An active license is required to access paid question counts'), 'Backend rejects unauthenticated or unlicensed full-bank question and count requests');
+assert.ok(questionBank.includes('if (freeOnly) text = sampleFreeCsv(assetPath, text)') && questionBank.includes('if (body.action === "flashcards")') && questionBank.includes('if (body.action === "search")'), 'Backend free requests are limited to the designated sample while paid-content actions remain separately guarded');
 
 console.log('Release-safety smoke checks passed.');
