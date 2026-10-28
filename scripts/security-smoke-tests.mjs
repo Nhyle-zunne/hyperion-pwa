@@ -456,7 +456,7 @@ assert.equal((await decryptSessionSnapshot(encryptedSnapshot.iv, encryptedSnapsh
 assert.equal(new TextDecoder().decode(encryptedSnapshot.ciphertext).includes('confidential synthetic question'), false, 'Ciphertext does not expose the synthetic question text');
 const tamperedSnapshotCiphertext = encryptedSnapshot.ciphertext.slice();
 tamperedSnapshotCiphertext[0] ^= 1;
-await assert.rejects(() => decryptSessionSnapshot(encryptedSnapshot.iv, tamperedSnapshotCiphertext, snapshotCryptoKey), 'Tampered session snapshots fail authenticated decryption');
+await assert.rejects(() => decryptSessionSnapshot(encryptedSnapshot.iv, tamperedSnapshotCiphertext, snapshotCryptoKey), { name: 'OperationError' }, 'Tampered session snapshots fail authenticated decryption');
 assert.ok(sessionArchive.includes('DATABASE_VERSION = 2') && sessionArchive.includes('encryptSessionSnapshot') && sessionArchive.includes('decryptSessionSnapshot') && sessionArchive.includes('migrateLegacySnapshots'), 'Session archive encrypts records and migrates legacy plaintext snapshots');
 assert.ok(!sessionArchive.includes("db.put('snapshots', { id, snapshot })"), 'Session archive never directly writes plaintext question snapshots');
 
