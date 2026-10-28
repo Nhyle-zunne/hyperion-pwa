@@ -21,6 +21,10 @@ type ManagedUser = {
   email: string
   display_name: string | null
   created_at: string
+  last_accessed_at: string
+  last_access_source: 'website_activity' | 'last_sign_in_baseline' | 'created_at_baseline'
+  retention_status: 'active_license_protected' | 'renewal_grace' | 'deletion_due' | 'free_account_active' | 'pending_payment_hold' | 'admin_protected' | 'admin_audit_hold'
+  retention_due_at: string | null
   licenses: Record<ProductCode, LicenseRecord>
 }
 type AuditRecord = {
@@ -56,6 +60,31 @@ function dateLabel(value: string | null) {
   if (!value) return 'No expiry recorded'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 'Unknown expiry' : date.toLocaleString()
+}
+function lastAccessLabel(user: ManagedUser) {
+  if (user.last_access_source === 'website_activity') return 'Last accessed'
+  if (user.last_access_source === 'last_sign_in_baseline') return 'Last sign-in (baseline)'
+  return 'Created (baseline)'
+}
+function retentionLabel(user: ManagedUser) {
+  switch (user.retention_status) {
+    case 'active_license_protected': return 'ACTIVE LICENSE · PROTECTED'
+    case 'renewal_grace': return `RENEWAL GRACE · ${dateLabel(user.retention_due_at)}`
+    case 'deletion_due': return 'DELETION ELIGIBLE'
+    case 'pending_payment_hold': return 'PENDING PAYMENT · ON HOLD'
+    case 'admin_protected': return 'ADMIN · PROTECTED'
+    case 'admin_audit_hold': return 'ADMIN AUDIT · ON HOLD'
+    default: return `FREE ACCOUNT · RETENTION DATE ${dateLabel(user.retention_due_at)}`
+  }
+}
+function retentionTone(status: ManagedUser['retention_status']): React.CSSProperties {
+  if (status === 'active_license_protected' || status === 'admin_protected') {
+    return { color: 'var(--success, #15803d)', borderColor: 'color-mix(in srgb, var(--success, #15803d) 35%, var(--border))', background: 'var(--accent-soft)' }
+  }
+  if (status === 'deletion_due') {
+    return { color: 'var(--danger, #b91c1c)', borderColor: 'color-mix(in srgb, var(--danger, #b91c1c) 35%, var(--border))', background: 'var(--bg-elevated)' }
+  }
+  return { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'var(--bg-elevated)' }
 }
 function safeMessage(error: unknown) {
   const value = error instanceof Error ? error.message : ''
@@ -276,6 +305,8 @@ export default function AdminLicensesScreen() {
           >
             <strong style={{ display: 'block', fontSize: '.9rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{user.display_name || 'Hyperion user'}</strong>
             <span style={{ display: 'block', marginTop: '.2rem', color: 'var(--text-muted)', fontSize: '.8rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{user.email || '(email unavailable)'}</span>
+            <span style={{ display: 'block', marginTop: '.45rem', color: 'var(--text-muted)', fontSize: '.72rem', lineHeight: 1.4, overflowWrap: 'anywhere' }}>{lastAccessLabel(user)}: {dateLabel(user.last_accessed_at)}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', marginTop: '.4rem', padding: '.22rem .4rem', border: '1px solid', borderRadius: 999, fontSize: '.62rem', lineHeight: 1.3, fontWeight: 850, ...retentionTone(user.retention_status) }}>{retentionLabel(user)}</span>
           </button>)}
         </div>
       ) : <section style={card}>No registered users match this search.</section>}
@@ -300,6 +331,8 @@ export default function AdminLicensesScreen() {
                 <h2 id="admin-license-modal-title" style={{ margin: 0, fontSize: '1.15rem', overflowWrap: 'anywhere' }}>{user.display_name || 'Hyperion user'}</h2>
                 <div style={{ marginTop: '.25rem', color: 'var(--text-muted)', fontSize: '.88rem', overflowWrap: 'anywhere' }}>{user.email || '(email unavailable)'}</div>
                 <div style={{ marginTop: '.25rem', color: 'var(--text-muted)', fontSize: '.72rem' }}>Joined {dateLabel(user.created_at)}</div>
+                <div style={{ marginTop: '.35rem', color: 'var(--text-muted)', fontSize: '.78rem', lineHeight: 1.45 }}>{lastAccessLabel(user)}: {dateLabel(user.last_accessed_at)}</div>
+                <div style={{ display: 'inline-flex', marginTop: '.4rem', padding: '.25rem .45rem', border: '1px solid', borderRadius: 999, fontSize: '.65rem', fontWeight: 850, ...retentionTone(user.retention_status) }}>{retentionLabel(user)}</div>
               </div>
               <button type="button" className="btn btn-outline" onClick={() => setSelectedUserId(null)} aria-label="Close user license details" style={{ flexShrink: 0 }}>CLOSE ✕</button>
             </header>
