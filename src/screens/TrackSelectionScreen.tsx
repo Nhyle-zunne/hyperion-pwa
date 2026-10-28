@@ -145,7 +145,7 @@ export default function TrackSelectionScreen() {
           <div className="dashboard-exam-panel__detail-actions">
             <span className="dashboard-exam-panel__detail-caption">YOUR PREPARATION</span>
             <button type="button" className="btn btn-primary" onClick={saveTarget}>SET DATE →</button>
-            <input id="target-date-input" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} aria-label="MARINA licensure exam target date" />
+            <input id="target-date-input" className="dashboard-exam-panel__date-input" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} aria-label="MARINA licensure exam target date" />
           </div>
 
           <div className="dashboard-exam-panel__stats">
