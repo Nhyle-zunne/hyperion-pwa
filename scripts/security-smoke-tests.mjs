@@ -10,7 +10,7 @@ const [
   questionBankClient, adminLicenses, adminPayments, adminQuestionBank,
   practiceConfigScreen, practiceCompetenceScreen, trackHubScreen, drillScreen,
   quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen,
-  installPrompt, abandonedCheckoutCleanup, abandonedCheckoutMigration, adminLicenseManagement
+  installPrompt, iosInstallGuide, abandonedCheckoutCleanup, abandonedCheckoutMigration, adminLicenseManagement
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -53,6 +53,7 @@ const [
   read('../src/screens/FlashcardsScreen.tsx'),
   read('../src/screens/SearchScreen.tsx'),
   read('../src/components/InstallPrompt.tsx'),
+  read('../src/screens/IOSInstallGuideScreen.tsx'),
   read('../supabase/functions/expire-abandoned-checkouts/index.ts'),
   read('../supabase/migrations/20261028030000_schedule_12_hour_abandoned_paymongo_checkout_cleanup.sql'),
   read('../supabase/functions/admin-license-management/index.ts')
@@ -259,6 +260,8 @@ assert.ok(installPrompt.includes("isIos ? (") && installPrompt.includes('<AppleA
 assert.ok(installPrompt.includes('to="/install/ios"') && installPrompt.includes('onClick={onClick}') && installPrompt.includes("onClick={dismiss}"), 'Apple install badge navigates directly to the iOS setup guide and dismisses the prompt');
 assert.ok(installPrompt.includes('iosOnly = false') && installPrompt.includes('(iosOnly && !isIos)'), 'New entry popup is restricted to iPhone and iPad browsers');
 assert.ok(installPrompt.includes('<GooglePlayBadge />') && installPrompt.includes('ADD HYPERION TO HOME SCREEN'), 'Existing Android Google Play badge and PWA installation action remain intact');
+assert.ok(iosInstallGuide.includes('Keep the name Hyperion.') && iosInstallGuide.includes('Keep the app name as Hyperion.') && iosInstallGuide.includes('open the new Hyperion icon.'), 'iOS install instructions consistently tell users to name and launch the app as Hyperion');
+assert.ok(!iosInstallGuide.includes('Keep the app name as Hyperion Maritime.') && !iosInstallGuide.includes('Keep the name Hyperion Maritime.'), 'iOS install instructions do not contradict the requested Hyperion app name');
 
 
 console.log('Release-safety smoke checks passed.');
