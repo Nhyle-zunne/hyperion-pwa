@@ -10,7 +10,7 @@ const [
   questionBankClient, adminLicenses, adminPayments, adminQuestionBank,
   practiceConfigScreen, practiceCompetenceScreen, trackHubScreen, drillScreen,
   quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen,
-  installPrompt, abandonedCheckoutCleanup, abandonedCheckoutMigration
+  installPrompt, abandonedCheckoutCleanup, abandonedCheckoutMigration, adminLicenseManagement
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -54,7 +54,8 @@ const [
   read('../src/screens/SearchScreen.tsx'),
   read('../src/components/InstallPrompt.tsx'),
   read('../supabase/functions/expire-abandoned-checkouts/index.ts'),
-  read('../supabase/migrations/20261028030000_schedule_12_hour_abandoned_paymongo_checkout_cleanup.sql')
+  read('../supabase/migrations/20261028030000_schedule_12_hour_abandoned_paymongo_checkout_cleanup.sql'),
+  read('../supabase/functions/admin-license-management/index.ts')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -163,6 +164,12 @@ assert.ok(basketScreen.includes("withPageLoading('Loading checkout and licenses'
 assert.ok(manualPayment.includes("withPageLoading('Loading payment details'") && manualPayment.includes("withPageLoading('Submitting payment for review'"), 'Manual payment lookup and submission display the indicator');
 assert.ok(ordersHistory.includes("withPageLoading('Loading orders and payment history'") && ordersHistory.includes("withPageLoading('Verifying payment status'"), 'Order history and payment reconciliation display the indicator');
 assert.ok(adminLicenses.includes("withPageLoading('Loading license administration'") && adminPayments.includes("withPageLoading('Loading payment submissions'") && adminQuestionBank.includes("withPageLoading('Loading question-bank inventory'"), 'Admin data loading uses the shared indicator');
+assert.ok(adminLicenses.includes("useState<'name-asc' | 'joined-desc' | 'joined-asc'>('name-asc')") && adminLicenses.includes('Alphabetical (A–Z)') && adminLicenses.includes('Date joined (newest first)') && adminLicenses.includes('Date joined (oldest first)'), 'Admin users can sort alphabetically or by newest/oldest join date');
+assert.ok(adminLicenses.includes('a.display_name ||') && adminLicenses.includes("localeCompare(b.display_name || ''") && adminLicenses.includes('Date.parse(a.created_at)') && adminLicenses.includes('Date.parse(b.created_at)'), 'User sorting compares display names and auth account creation dates');
+assert.ok(adminLicenses.includes('const [activeLicenseOnly, setActiveLicenseOnly] = useState(false)') && adminLicenses.includes("license?.status === 'active'") && adminLicenses.includes('(!activeLicenseOnly || hasActiveLicense)'), 'Active-only filter uses current active license statuses and composes with search');
+assert.ok(adminLicenses.includes('aria-pressed={activeLicenseOnly}') && adminLicenses.includes('Active licenses only') && adminLicenses.indexOf('Active licenses only') < adminLicenses.indexOf('Refresh users'), 'Active-license toggle appears before Refresh users and exposes its pressed state accessibly');
+assert.ok(adminLicenseManagement.includes("function effectiveStatus(row: any, now = Date.now())") && adminLicenseManagement.includes("if (row.status === 'revoked') return 'revoked'") && adminLicenseManagement.includes('expiry <= now') && adminLicenseManagement.includes("return 'active'"), 'Admin backend computes effective license status from revocation and expiry before filtering');
+
 assert.ok(trackSelectionScreen.includes('const [examPanelExpanded, setExamPanelExpanded] = useState(false)'), 'Dashboard exam and streak dropdown starts collapsed to save space');
 assert.ok(trackSelectionScreen.includes('aria-expanded={examPanelExpanded}') && trackSelectionScreen.includes('aria-controls="dashboard-exam-details"'), 'Dashboard dropdown exposes its expanded state accessibly');
 assert.ok(trackSelectionScreen.includes('aria-hidden={!examPanelExpanded}') && trackSelectionScreen.includes('ref={examDetailsRef}') && trackSelectionScreen.includes('examDetailsRef.current.inert = !examPanelExpanded') && trackSelectionScreen.includes("' is-expanded'"), 'Dropdown details transition smoothly and use native DOM inert state while collapsed');
