@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Question, TrackId } from '../types/question'
+import { verifyOfflineEntitlementToken } from './offlineEntitlementCrypto.mjs'
 
 export interface OfflineQuestionPack {
   id: string
@@ -193,115 +194,10 @@ export async function getOfflineQuestionCounts(track: TrackId, freeOnly: boolean
   }
 }
 
-interface OfflineEntitlementClaims {
-  v: 1
-  userId: string
-  issuedAt: number
-  tracks: Record<string, number>
-}
-
 interface StoredOfflineEntitlements {
   userId: string
   savedAt: number
   token: string
-}
-
-const OFFLINE_TRACK_IDS: readonly TrackId[] = [
-  'DECK_OIC_NW',
-  'GMDSS_GOC',
-  'ENGINE_OIC_EW',
-  'DECK_MGT',
-  'ENGINE_MGT'
-]
-
-// Public verification key for the server-side ECDSA P-256 offline-entitlement signer.
-// The private half is stored server-side only and is never returned by the API.
-const OFFLINE_ENTITLEMENT_PUBLIC_KEY: JsonWebKey = {
-  kty: 'EC',
-  crv: 'P-256',
-  x: 'rRSoQJxUoGwX8-g5IwWOnDik-l_HYqJrN01fOg4vzOY',
-  y: 'IEysYJ20UAhm1-CrPoqVTW0ODu5nfa4qBZT1nCM5ZjU',
-  ext: true,
-  key_ops: ['verify']
-}
-
-let offlineEntitlementVerificationKey: Promise<CryptoKey> | null = null
-
-function decodeBase64Url(value: string): Uint8Array {
-  if (!value || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('Invalid base64url data.')
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4)
-  const binary = atob(padded)
-  return Uint8Array.from(binary, character => character.charCodeAt(0))
-}
-
-async function getOfflineEntitlementVerificationKey(): Promise<CryptoKey> {
-  if (!offlineEntitlementVerificationKey) {
-    offlineEntitlementVerificationKey = crypto.subtle.importKey(
-      'jwk',
-      OFFLINE_ENTITLEMENT_PUBLIC_KEY,
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      false,
-      ['verify']
-    )
-  }
-  return offlineEntitlementVerificationKey
-}
-
-async function verifyOfflineEntitlementToken(
-  token: string,
-  expectedUserId: string
-): Promise<OfflineEntitlementClaims | null> {
-  try {
-    if (!token || token.length > 12000 || !expectedUserId) return null
-    const parts = token.split('.')
-    if (parts.length !== 2) return null
-
-    const payloadBytes = decodeBase64Url(parts[0])
-    const signature = decodeBase64Url(parts[1])
-    if (signature.length !== 64) return null
-
-    const valid = await crypto.subtle.verify(
-      { name: 'ECDSA', hash: 'SHA-256' },
-      await getOfflineEntitlementVerificationKey(),
-      signature,
-      new TextEncoder().encode(parts[0])
-    )
-    if (!valid) return null
-
-    const claims = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(payloadBytes)) as Partial<OfflineEntitlementClaims>
-    if (
-      claims.v !== 1 ||
-      claims.userId !== expectedUserId ||
-      typeof claims.issuedAt !== 'number' ||
-      !Number.isFinite(claims.issuedAt) ||
-      claims.issuedAt > Date.now() + 5 * 60 * 1000 ||
-      !claims.tracks ||
-      typeof claims.tracks !== 'object' ||
-      Array.isArray(claims.tracks)
-    ) return null
-
-    const tracks = claims.tracks as Record<string, unknown>
-    const verifiedTracks: Record<string, number> = {}
-    for (const [track, rawExpiry] of Object.entries(tracks)) {
-      if (
-        !OFFLINE_TRACK_IDS.includes(track as TrackId) ||
-        typeof rawExpiry !== 'number' ||
-        !Number.isFinite(rawExpiry) ||
-        rawExpiry <= claims.issuedAt
-      ) return null
-      verifiedTracks[track] = rawExpiry
-    }
-
-    return {
-      v: 1,
-      userId: claims.userId,
-      issuedAt: claims.issuedAt,
-      tracks: verifiedTracks
-    }
-  } catch {
-    return null
-  }
 }
 
 function readStoredOfflineEntitlements(): StoredOfflineEntitlements | null {
