@@ -47,6 +47,7 @@ export default function PracticeConfigScreen() {
   const sessionMode = isDrill ? 'DRILL' : 'PRACTICE'
   const openPaywall = useUIStore(s => s.openPaywall)
   const isUnlocked = useLicenseStore(s => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
+  const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
   const startSession = usePracticeStore(s => s.startSession)
   const historyEntries = useHistoryStore(s => s.entries)
   const savedSessions = useHistoryStore(s => s.savedSessions)
@@ -69,6 +70,7 @@ export default function PracticeConfigScreen() {
   const [prioritizeUnseen, setPrioritizeUnseen] = useState(false)
   const [intensiveMode, setIntensiveMode] = useState(false)
   const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState('')
   const [recentlyDeletedOpen, setRecentlyDeletedOpen] = useState(false)
   const [sessionPendingDelete, setSessionPendingDelete] = useState<ConfigSessionRow | null>(null)
   const [sessionPendingPermanentDelete, setSessionPendingPermanentDelete] = useState<ConfigSessionRow | null>(null)
@@ -185,15 +187,39 @@ export default function PracticeConfigScreen() {
   ], [maxRange])
 
   const start = async () => {
-    if (isDrill && !isUnlocked) { openPaywall('Drill'); return }
+    setStartError('')
     setStarting(true)
     try {
+      // Re-check access at the action boundary instead of trusting a stale UI flag.
+      await refreshCloudEntitlements()
+      const entitlement = useLicenseStore.getState()
+      const hasLicense = entitlement.entitlementsVerified && (
+        entitlement.isAllAccessUnlocked ||
+        entitlement.cloudTrackIds.includes('ALL') ||
+        entitlement.isTrackUnlocked(trackId)
+      )
+      if (isDrill && (!hasLicense || freeMode)) {
+        openPaywall('Drill')
+        return
+      }
+      if (!freeMode && !hasLicense) {
+        openPaywall('Practice')
+        return
+      }
+
       await startSession({
         mode: sessionMode, track: trackId, competenceId, limit: itemCount,
         startItem: actualStart, part: selectedPart, randomizeOrder: randomizeOrder || prioritizeUnseen,
-        shuffleChoices, free: freeMode || !isUnlocked
+        shuffleChoices, free: freeMode
       })
+      const session = usePracticeStore.getState()
+      if (session.error || session.loading || session.questions.length === 0) {
+        setStartError(session.error || 'Questions could not be loaded for this session. Please retry.')
+        return
+      }
       navigate('/practice/quiz')
+    } catch {
+      setStartError('Could not verify access or load this session. Please try again.')
     } finally { setStarting(false) }
   }
 
@@ -402,7 +428,8 @@ export default function PracticeConfigScreen() {
       {!freeMode && !isUnlocked && <p style={{ ...muted, fontSize: '.8rem', marginBottom: 0 }}>Only the free sample is available until a key is activated.</p>}
     </section>
 
-    <button type="button" disabled={starting || availableQuestionCount === 0} onClick={start} style={{ width: '100%', minHeight: 58, background: 'var(--accent)', color: 'var(--btn-primary-text)', border: 0, fontSize: '1.05rem', fontWeight: 900, padding: '.8rem', opacity: starting || availableQuestionCount === 0 ? .65 : 1 }}>
+    {startError && <div role="alert" className="card" style={{ marginTop: '.75rem', borderColor: 'var(--warning, #c2410c)' }}>{startError}</div>}
+    <button type="button" disabled={starting || availableQuestionCount === 0 || (!freeMode && !isUnlocked)} onClick={start} style={{ width: '100%', minHeight: 58, background: 'var(--accent)', color: 'var(--btn-primary-text)', border: 0, fontSize: '1.05rem', fontWeight: 900, padding: '.8rem', opacity: starting || availableQuestionCount === 0 ? .65 : 1 }}>
       ▶　{starting ? 'Preparing Questions…' : `Start Reviewing (${itemCount.toLocaleString()} Items: #${actualStart}–#${actualEnd})`}
     </button>
   </div>
