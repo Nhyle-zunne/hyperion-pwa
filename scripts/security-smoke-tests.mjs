@@ -10,7 +10,8 @@ const [
   questionBankClient, adminLicenses, adminPayments, adminQuestionBank,
   practiceConfigScreen, practiceCompetenceScreen, trackHubScreen, drillScreen,
   quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen,
-  installPrompt, iosInstallGuide, abandonedCheckoutCleanup, abandonedCheckoutMigration, adminLicenseManagement
+  installPrompt, iosInstallGuide, abandonedCheckoutCleanup, abandonedCheckoutMigration, adminLicenseManagement,
+  accountActivityFunction, accountRetentionFunction, activityRetentionMigration, scheduleRetentionMigration
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
   read('../supabase/functions/create-checkout/index.ts'),
@@ -56,7 +57,11 @@ const [
   read('../src/screens/IOSInstallGuideScreen.tsx'),
   read('../supabase/functions/expire-abandoned-checkouts/index.ts'),
   read('../supabase/migrations/20261028030000_schedule_12_hour_abandoned_paymongo_checkout_cleanup.sql'),
-  read('../supabase/functions/admin-license-management/index.ts')
+  read('../supabase/functions/admin-license-management/index.ts'),
+  read('../supabase/functions/record-user-activity/index.ts'),
+  read('../supabase/functions/expire-inactive-accounts/index.ts'),
+  read('../supabase/migrations/20261028154000_add_user_activity_and_retention_tables.sql'),
+  read('../supabase/migrations/20261028154500_schedule_inactive_account_cleanup.sql')
 ]);
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
@@ -189,6 +194,20 @@ assert.ok(adminLicenses.includes('a.display_name ||') && adminLicenses.includes(
 assert.ok(adminLicenses.includes('const [activeLicenseOnly, setActiveLicenseOnly] = useState(false)') && adminLicenses.includes("license?.status === 'active'") && adminLicenses.includes('(!activeLicenseOnly || hasActiveLicense)'), 'Active-only filter uses current active license statuses and composes with search');
 assert.ok(adminLicenses.includes('aria-pressed={activeLicenseOnly}') && adminLicenses.includes('Active licenses only') && adminLicenses.indexOf('Active licenses only') < adminLicenses.indexOf('Refresh users'), 'Active-license toggle appears before Refresh users and exposes its pressed state accessibly');
 assert.ok(adminLicenseManagement.includes("function effectiveStatus(row: any, now = Date.now())") && adminLicenseManagement.includes("if (row.status === 'revoked') return 'revoked'") && adminLicenseManagement.includes('expiry <= now') && adminLicenseManagement.includes("return 'active'"), 'Admin backend computes effective license status from revocation and expiry before filtering');
+assert.ok(app.includes("supabase.functions.invoke('record-user-activity')") && app.includes("hyperion:last-website-activity") && app.includes("15 * 60 * 1000"), 'Authenticated site access is tracked with a client-side 15-minute write throttle');
+assert.ok(accountActivityFunction.includes("userClient.auth.getUser()") && accountActivityFunction.includes("from('user_activity')") && accountActivityFunction.includes("15 * 60 * 1000"), 'Activity endpoint verifies the caller and throttles writes server-side');
+assert.ok(accountRetentionFunction.includes('const RETENTION_DAYS = 30') && accountRetentionFunction.includes("reason = 'free_account_inactive_30_days'") && accountRetentionFunction.includes("reason = 'license_expired_grace_period_ended'"), 'Retention function enforces the 30-day free-inactivity and post-expiry grace rules');
+assert.ok(accountRetentionFunction.includes("row.status === 'active' && parseDate(row.expires_at) > now") && accountRetentionFunction.includes('skippedActiveLicense++'), 'Any currently active website license protects the account from retention deletion');
+assert.ok(accountRetentionFunction.includes('freshEntitlements') && accountRetentionFunction.includes('freshActivity') && accountRetentionFunction.includes('freshPendingOrders') && accountRetentionFunction.includes('freshPendingBatch'), 'Deletion rechecks license, activity, and payment state immediately before deletion');
+assert.ok(accountRetentionFunction.includes('dryRun') && accountRetentionFunction.includes('deletion_attempted') && accountRetentionFunction.includes('adminAuditUsers'), 'Retention job supports non-destructive preflight, audit logging, and admin/audit protections');
+assert.ok(accountRetentionFunction.includes('verify_account_retention_cron_token') && activityRetentionMigration.includes('revoke all on table public.user_activity from anon, authenticated') && activityRetentionMigration.includes('revoke all on table public.account_retention_audit from anon, authenticated'), 'Activity and retention internals are service-role-only and cron calls are token-protected');
+assert.ok(scheduleRetentionMigration.includes("'hyperion-expire-inactive-accounts'") && scheduleRetentionMigration.includes("'0 4 * * *'") && scheduleRetentionMigration.includes('hyperion_account_retention_cron_token'), 'Daily retention job is scheduled through the private Vault token');
+assert.ok(adminLicenseManagement.includes('last_accessed_at: lastAccessedAt') && adminLicenseManagement.includes('last_access_source: lastAccessSource') && adminLicenseManagement.includes('retention_status: retentionStatus') && adminLicenseManagement.includes('retention_due_at: retentionDueAt'), 'Admin API returns last access and the account retention state');
+assert.ok(adminLicenses.includes('Last accessed') && adminLicenses.includes('retentionLabel(user)') && adminLicenses.includes('RENEWAL GRACE'), 'Admin user cards and detail modal display last website access and retention status');
+assert.ok(accountScreen.includes('License renewal grace period') && accountScreen.includes('Renew or buy a license') && accountScreen.includes('30 * 24 * 60 * 60 * 1000'), 'Users with expired website licenses see their 30-day renewal deadline in Account');
+assert.ok(termsScreen.includes('30 consecutive days without authenticated website activity') && termsScreen.includes('30-day renewal grace period'), 'Terms disclose inactivity-based account deletion and license-expiry grace');
+assert.ok(privacyScreen.includes('Website access timestamps') && privacyScreen.includes('automated inactivity-retention process') && privacyScreen.includes('after it ends, the account may be deleted'), 'Privacy policy describes website activity logging and automated retention');
+assert.ok(termsScreen.includes('October 28, 2026') && privacyScreen.includes('October 28, 2026'), 'Legal pages show the current revision date for activity and retention disclosures');
 
 assert.ok(trackSelectionScreen.includes('const [examPanelExpanded, setExamPanelExpanded] = useState(false)'), 'Dashboard exam and streak dropdown starts collapsed to save space');
 assert.ok(trackSelectionScreen.includes('aria-expanded={examPanelExpanded}') && trackSelectionScreen.includes('aria-controls="dashboard-exam-details"'), 'Dashboard dropdown exposes its expanded state accessibly');
