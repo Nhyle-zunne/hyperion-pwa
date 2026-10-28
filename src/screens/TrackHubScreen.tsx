@@ -169,7 +169,7 @@ export default function TrackHubScreen() {
         ? info.freeDesc
         : freeQuestionCount === null
           ? 'Free sample: 40% of every competence.'
-          : `${freeQuestionCount.toLocaleString()} free questions (40% of every competence).`,
+          : `${freeQuestionCount.toLocaleString()} free questions`,
       badge: 'FREE ACCESS',
       icon: '▰',
       locked: false,
