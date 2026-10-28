@@ -110,7 +110,14 @@ export default function SearchScreen() {
         </p>
       )}
 
-      <div style={{ display: 'grid', gap: '0.6rem' }}>
+      <div
+        className="search-results-protected"
+        style={{ display: 'grid', gap: '0.6rem' }}
+        onCopy={(event) => event.preventDefault()}
+        onCut={(event) => event.preventDefault()}
+        onContextMenu={(event) => event.preventDefault()}
+        aria-label="Search results. Copying question text is disabled."
+      >
         {results.map((q) => {
           const open = expanded === q.id
           const bm = isBookmarked(q.id)
