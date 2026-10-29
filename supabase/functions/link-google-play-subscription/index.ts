@@ -129,7 +129,22 @@ async function readGoogleSubscription(token: string) {
     // Google API status and error text are safe diagnostics; omit the purchase token.
     console.error('google_play_subscription_lookup_failed', {
       httpStatus: response.status,
+      packageName: PACKAGE_NAME,
+      // Email is an identifier, not a credential. Never log the key, JWT or purchase token.
+      configuredServiceAccountEmail: (() => {
+        try {
+          const raw = Deno.env.get('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON')
+          const email = raw ? JSON.parse(raw).client_email : undefined
+          return typeof email === 'string' ? email : '(missing)'
+        } catch {
+          return '(invalid JSON)'
+        }
+      })(),
       apiStatus: typeof payload?.error?.status === 'string' ? payload.error.status : undefined,
+      apiReason: Array.isArray(payload?.error?.errors)
+        && typeof payload.error.errors[0]?.reason === 'string'
+        ? payload.error.errors[0].reason
+        : undefined,
       apiMessage: typeof payload?.error?.message === 'string'
         ? payload.error.message.slice(0, 180)
         : undefined
