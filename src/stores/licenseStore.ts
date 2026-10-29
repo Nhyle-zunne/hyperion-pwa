@@ -66,12 +66,12 @@ function canUseOfflineEntitlementsAfterError(error: unknown, responseStatus?: nu
     if (Number.isFinite(status)) return status === 0 || status >= 500;
   }
 
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-
   // PostgREST/database errors carry a code but may not expose their HTTP status on the
-  // error object. Treat coded client/database errors as definitive unless the response
-  // status above confirmed a server outage.
+  // error object. Treat coded client/database errors as definitive before considering
+  // the browser's offline flag, so an authorization error never grants cached access.
   if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false;
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
 
   const message = typeof candidate?.message === 'string' ? candidate.message : String(error ?? '');
   return /failed to fetch|network error|network request failed|networkerror|load failed|timed out|timeout|connection reset|connection refused|enotfound|econn|enetunreach|eai_again|aborted/i.test(message);
