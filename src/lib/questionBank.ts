@@ -5,6 +5,7 @@ import {
   getOfflinePackManifest,
   getOfflineQuestionCounts,
   getOfflineQuestionPacks,
+  getOfflinePackStatus,
   getOfflineQuestionsByCompetence,
   getOfflineQuestionsByTrack,
   recordOfflinePackVersionCheck,
@@ -669,8 +670,10 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
  */
 export async function ensureOfflineFreeSamplePack(track: TrackId): Promise<void> {
   if (track !== 'DECK_OIC_NW' && track !== 'GMDSS_GOC') return;
-  const current = await getOfflineQuestionsByTrack(track, true);
-  if (current?.length) return;
+  // A current manifest proves all expected encrypted groups exist and are intact
+  // at the metadata level. Avoid decrypting the whole free bank on every question.
+  const status = await getOfflinePackStatus(track, true);
+  if (status?.complete && status.sampleVersion === 2) return;
 
   const fullBank = await getOfflineQuestionsByTrack(track, false);
   if (!fullBank?.length) return;
@@ -679,8 +682,9 @@ export async function ensureOfflineFreeSamplePack(track: TrackId): Promise<void>
   if (!sample.length) return;
   const groups = new Map<string, { competenceId: string; part: number | null; questions: Question[] }>();
   for (const question of sample) {
-    const key = question.competenceId;
-    const group = groups.get(key) ?? { competenceId: question.competenceId, part: null, questions: [] };
+    const part = track === 'GMDSS_GOC' ? Number(question.id.match(/-P(\d+)-/)?.[1] ?? 0) : null;
+    const key = `${question.competenceId}:${part ?? ''}`;
+    const group = groups.get(key) ?? { competenceId: question.competenceId, part, questions: [] };
     group.questions.push(question);
     groups.set(key, group);
   }
