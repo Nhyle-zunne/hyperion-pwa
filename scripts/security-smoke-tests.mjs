@@ -641,6 +641,12 @@ assert.ok(questionBankClient.includes("body: { action: 'content-versions', track
 assert.ok(offlineQuestionCache.includes('sourceVersions?: Record<string, string>') && offlineQuestionCache.includes('lastKnownUpdateState') && offlineQuestionCache.includes('recordOfflinePackVersionCheck'), 'Offline manifests persist per-source download versions and the last verified update state');
 assert.ok(questionBankClient.includes('const versionsBefore = await fetchRemoteQuestionBankVersions(track)') && questionBankClient.includes('const versionsAfter = await fetchRemoteQuestionBankVersions(track)') && questionBankClient.includes('The question bank changed while downloading'), 'Question downloads verify the bank did not change during transfer before committing a fully updated manifest');
 assert.ok(trackHubScreen.includes('FULLY UPDATED') && trackHubScreen.includes('UPDATE AVAILABLE') && trackHubScreen.includes('checkOfflineQuestionPackUpdates') && !trackHubScreen.includes('UPDATE OFFLINE QUESTION PACK'), 'Track page shows verified FULLY UPDATED or UPDATE AVAILABLE states instead of a confusing always-update button');
+const offlineUpdateButtonStart = trackHubScreen.indexOf('<button', trackHubScreen.indexOf('OFFLINE ACCESS'));
+const offlineUpdateButtonEnd = trackHubScreen.indexOf('</button>', offlineUpdateButtonStart);
+const offlineUpdateButton = trackHubScreen.slice(offlineUpdateButtonStart, offlineUpdateButtonEnd);
+assert.ok(offlineUpdateButton.includes("'FULLY UPDATED'") && offlineUpdateButton.includes("disabled={") && offlineUpdateButton.includes("offlineUpdateCheck.status === 'current'"), 'A downloaded pack that matches the latest bank displays a disabled FULLY UPDATED button');
+assert.ok(offlineUpdateButton.includes("offlineUpdateCheck.status === 'available'") && offlineUpdateButton.includes("void startOfflineDownload()"), 'The question pack download action is only started when the user has no pack or an update is actually available');
+assert.ok(offlineUpdateButton.includes("'UPDATE AVAILABLE · RECONNECT'") && offlineUpdateButton.includes("'FULLY UPDATED · LAST CHECK'"), 'Offline track pages show the last verified state and never offer an update download without connectivity');
 
 
 console.log('Release-safety smoke checks passed.');
