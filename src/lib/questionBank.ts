@@ -265,6 +265,7 @@ async function getCachedCompetenceRange(
   if (!(await mayUseOfflineTrack(track, freeOnly))) {
     throw new Error('Offline access to this paid track is unavailable or the saved license has expired. Reconnect to verify your subscription.')
   }
+  if (freeOnly) await ensureOfflineFreeSamplePack(track)
   const cached = await getOfflineQuestionsByCompetence(track, competenceId, part, freeOnly)
   if (!cached) throw new Error('This question bank is not downloaded for offline use yet. Connect to the internet and download the offline pack from the track page.')
   const offset = Math.max(0, Math.floor(startItem || 1) - 1)
@@ -629,11 +630,42 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
   return out;
 }
 
+/**
+ * Repair older Deck OIC-NW free-only packs that were sampled using an outdated
+ * shuffle rule. The replacement is derived only from this device's already
+ * downloaded full bank, using the same deterministic sample as the server.
+ * If the full bank is unavailable, fail closed and ask the user to refresh online.
+ */
+export async function ensureOfflineFreeSamplePack(track: TrackId): Promise<void> {
+  if (track !== 'DECK_OIC_NW') return;
+  const current = await getOfflineQuestionsByTrack(track, true);
+  if (current?.length) return;
+
+  const fullBank = await getOfflineQuestionsByTrack(track, false);
+  if (!fullBank?.length) return;
+
+  const sample = freeSample(fullBank, track);
+  if (!sample.length) return;
+  const groups = new Map<string, { competenceId: string; part: number | null; questions: Question[] }>();
+  for (const question of sample) {
+    const key = question.competenceId;
+    const group = groups.get(key) ?? { competenceId: question.competenceId, part: null, questions: [] };
+    group.questions.push(question);
+    groups.set(key, group);
+  }
+  await saveOfflineQuestionPackSets([{
+    track,
+    freeOnly: true,
+    groups: Array.from(groups.values())
+  }]);
+}
+
 async function loadQuestionsByTrackInternal(track: TrackId, freeOnly = false): Promise<Question[]> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     if (!(await mayUseOfflineTrack(track, freeOnly))) {
       throw new Error('Offline access to this paid track is unavailable or the saved license has expired.')
     }
+    if (freeOnly) await ensureOfflineFreeSamplePack(track)
     const cached = await getOfflineQuestionsByTrack(track, freeOnly)
     if (cached) return cached
     throw new Error('Download this question bank for offline use while connected to the internet.')
@@ -683,6 +715,7 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   }
 
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    await ensureOfflineFreeSamplePack(track)
     if (await matchesCachedPack(true)) return 'free-sample'
     if ((await offlineEntitlementExpiry(track)) && await matchesCachedPack(false)) return 'licensed'
     return null
@@ -701,6 +734,7 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   try {
     // Safari/iOS and installed PWAs can report online while the API is unreachable.
     // Prefer already verified local packs after a genuine network/server failure.
+    await ensureOfflineFreeSamplePack(track)
     if (await matchesCachedPack(true)) return 'free-sample'
     if (await offlineEntitlementExpiry(track) && await matchesCachedPack(false)) return 'licensed'
 
@@ -722,6 +756,7 @@ export async function authorizeQuestionSet(track: TrackId, questions: Question[]
 async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     if (!(await mayUseOfflineTrack(track, freeOnly))) throw new Error('Offline access to this paid track is unavailable or the saved license has expired.')
+    if (freeOnly) await ensureOfflineFreeSamplePack(track)
     const cached = await getOfflineQuestionCounts(track, freeOnly)
     if (cached) return cached
     throw new Error('Download this question bank for offline use while connected to the internet.')
