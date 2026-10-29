@@ -87,19 +87,42 @@ function pemBytes(pem: string) {
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i)
   return out
 }
-async function validatePushIdentity(req: Request, audience: string, expectedEmail: string): Promise<boolean> {
+async function validatePushIdentity(
+  req: Request,
+  audience: string,
+  expectedEmail: string
+): Promise<{ valid: boolean; reason?: string }> {
   const header = req.headers.get('Authorization') || ''
   const match = header.match(/^Bearer\s+([^\s]+)$/i)
-  if (!match) return false
+  if (!match) return { valid: false, reason: 'missing_bearer_token' }
   try {
     const { payload } = await jwtVerify(match[1], GOOGLE_JWKS, {
       issuer: ['https://accounts.google.com', 'accounts.google.com'],
       audience,
       algorithms: ['RS256']
     })
-    return payload.email === expectedEmail && payload.email_verified === true
-  } catch {
-    return false
+    if (payload.email !== expectedEmail) {
+      return { valid: false, reason: 'service_account_email_mismatch' }
+    }
+    if (payload.email_verified !== true) {
+      return { valid: false, reason: 'service_account_email_not_verified' }
+    }
+    return { valid: true }
+  } catch (error) {
+    const details = error && typeof error === 'object'
+      ? error as { name?: unknown; code?: unknown; claim?: unknown }
+      : {}
+    const claim = typeof details.claim === 'string' ? details.claim : ''
+    const code = typeof details.code === 'string' ? details.code : ''
+    const name = typeof details.name === 'string' ? details.name : ''
+    const reason = claim
+      ? `jwt_claim_${claim}_failed`
+      : code
+        ? `jwt_verification_${code}`
+        : name
+          ? `jwt_verification_${name}`
+          : 'jwt_verification_failed'
+    return { valid: false, reason }
   }
 }
 async function googleAccessToken() {
@@ -174,7 +197,10 @@ Deno.serve(async (req: Request) => {
   if (!url || !service || !audience || !expectedEmail) {
     return respond(503, { error: 'Google Play RTDN endpoint is not configured.' })
   }
-  if (!(await validatePushIdentity(req, audience, expectedEmail))) {
+  const identity = await validatePushIdentity(req, audience, expectedEmail)
+  if (!identity.valid) {
+    // Log only a categorized failure reason; never log the bearer token or private claims.
+    console.warn('google_play_rtdn_auth_rejected', { reason: identity.reason || 'unknown' })
     return respond(401, { error: 'Unauthorized Pub/Sub push request.' })
   }
 
