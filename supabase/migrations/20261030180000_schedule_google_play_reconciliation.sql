@@ -5,10 +5,10 @@
 -- these extensions; other runtimes must provide the same cron/net schemas to apply this file.
 DO $extensions$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_catalog.pg_available_extensions WHERE name = 'pg_cron') THEN
+  IF pg_catalog.to_regnamespace('cron') IS NULL AND EXISTS (SELECT 1 FROM pg_catalog.pg_available_extensions WHERE name = 'pg_cron') THEN
     EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_cron';
   END IF;
-  IF EXISTS (SELECT 1 FROM pg_catalog.pg_available_extensions WHERE name = 'pg_net') THEN
+  IF pg_catalog.to_regnamespace('net') IS NULL AND EXISTS (SELECT 1 FROM pg_catalog.pg_available_extensions WHERE name = 'pg_net') THEN
     EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_net';
   END IF;
   IF pg_catalog.to_regnamespace('cron') IS NULL OR pg_catalog.to_regnamespace('net') IS NULL THEN
