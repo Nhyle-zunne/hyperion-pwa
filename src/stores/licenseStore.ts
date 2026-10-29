@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { clearOfflineEntitlements, getOfflineEntitledTracks, getOfflineEntitlementExpiry, saveOfflineEntitlements } from '../lib/offlineQuestionCache';
+import { MAX_OFFLINE_ENTITLEMENT_AGE_MS } from '../lib/offlineEntitlementCrypto.mjs';
 import { nextExpiryRefreshDelay } from '../lib/entitlementExpiryScheduler.mjs';
 
 interface LicenseState {
@@ -91,7 +92,14 @@ function accessFlags(trackIds: string[]) {
 
 export const useLicenseStore = create<LicenseState>()((set, get) => {
   const armEntitlementExpiryRefresh = (userId: string, expiryValues: unknown[]) => {
-    scheduleEntitlementExpiryRefresh(userId, expiryValues, (expectedUserId) => {
+    // Refresh the signed offline lease before its 72-hour maximum age, even when
+    // the underlying subscription expires much later. This keeps normal online
+    // users' offline packs available without extending any paid track expiry.
+    const leaseRefreshAt = Date.now() + MAX_OFFLINE_ENTITLEMENT_AGE_MS - 10 * 60 * 1000;
+    const scheduledExpiries = expiryValues.length
+      ? [...expiryValues, leaseRefreshAt]
+      : expiryValues;
+    scheduleEntitlementExpiryRefresh(userId, scheduledExpiries, (expectedUserId) => {
       void (async () => {
         if (!supabase) return;
         try {
