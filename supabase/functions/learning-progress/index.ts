@@ -91,12 +91,17 @@ async function fingerprintQuestion(question: JsonRecord): Promise<string | null>
   if (typeof question.questionText !== 'string'
       || !Array.isArray(question.options)
       || !question.options.every(option => typeof option === 'string')
-      || !Number.isInteger(question.correctAnswerIndex)) return null
-  const payload = new TextEncoder().encode(JSON.stringify([
-    question.questionText,
-    question.options,
-    question.correctAnswerIndex
-  ]))
+      || !Number.isInteger(question.correctAnswerIndex)
+      || Number(question.correctAnswerIndex) < 0
+      || Number(question.correctAnswerIndex) >= question.options.length) return null
+  const canonicalOptions = question.options
+    .map((text: string, index: number) => ({ text, correct: index === Number(question.correctAnswerIndex) }))
+    .sort((left: { text: string; correct: boolean }, right: { text: string; correct: boolean }) => {
+      if (left.text < right.text) return -1
+      if (left.text > right.text) return 1
+      return Number(left.correct) - Number(right.correct)
+    })
+  const payload = new TextEncoder().encode(JSON.stringify([question.questionText, canonicalOptions]))
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', payload))
   return Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('')
 }
