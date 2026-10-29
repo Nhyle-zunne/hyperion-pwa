@@ -737,9 +737,16 @@ export type QuestionSetAccess = 'admin' | 'licensed' | 'free-sample';
  */
 export async function authorizeQuestionSetAccess(track: TrackId, questions: Question[]): Promise<QuestionSetAccess | null> {
   if (!questions.length || questions.length > 3000 || questions.some(q => q.track !== track)) return null;
+
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  // The signed local lease is the quickest and authoritative offline gate for a
+  // paid saved session. Check it before hashing hundreds of saved questions.
+  if (offline && await hasValidOfflineTrackLease(track)) return 'licensed';
+
   const fingerprintResults = await Promise.all(questions.map(fingerprintQuestion));
   if (fingerprintResults.some((fingerprint) => fingerprint === null)) return null;
   const fingerprints = fingerprintResults as string[];
+
   const matchesCachedPack = async (freeOnly: boolean) => {
     const cached = await getOfflineQuestionsByTrack(track, freeOnly)
     if (!cached) return false
@@ -749,11 +756,7 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
     return fingerprints.every(fingerprint => allowedFingerprints.has(fingerprint))
   }
 
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    // Paid access is based on the signed offline lease and the integrity-checked
-    // full pack. Saved question fingerprints may be from an older bank version.
-    if (await hasValidOfflineTrackLease(track)) return 'licensed'
-
+  if (offline) {
     // Non-paying users are restricted to the exact downloaded official free sample.
     await ensureOfflineFreeSamplePack(track)
     if (await matchesCachedPack(true)) return 'free-sample'
@@ -772,7 +775,7 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   }
   try {
     // Safari/iOS and installed PWAs can report online while the API is unreachable.
-    // Prefer already verified local packs after a genuine network/server failure.
+    // Prefer the local signed lease after a genuine network/server failure.
     if (await hasValidOfflineTrackLease(track)) return 'licensed'
     await ensureOfflineFreeSamplePack(track)
     if (await matchesCachedPack(true)) return 'free-sample'
