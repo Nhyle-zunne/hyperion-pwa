@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useUIStore } from '../stores/uiStore'
 import GooglePlayBadge from './GooglePlayBadge'
 import DesktopInstallBadge from './DesktopInstallBadge'
-import { useInstallPrompt } from '../hooks/useInstallPrompt'
+import { getManualInstallInstructions, useInstallPrompt } from '../hooks/useInstallPrompt'
 
 const FB = 'https://www.facebook.com/hyperionbynhyle/'
 
@@ -52,8 +52,8 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
       const accepted = await promptInstall()
       if (!accepted) {
         setDesktopInstallNotice(canNativePrompt
-          ? 'The browser install prompt was dismissed.'
-          : 'This browser has not made a one-click install prompt available.')
+          ? 'The browser install prompt was dismissed. You can also install from the browser menu.'
+          : getManualInstallInstructions())
       }
     } finally {
       setDesktopInstallBusy(false)
