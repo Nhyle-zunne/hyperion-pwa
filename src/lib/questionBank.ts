@@ -2,9 +2,12 @@ import { supabase } from './supabase';
 import { withPageLoading } from './pageLoading';
 import {
   getOfflineEntitlementExpiry,
+  getOfflinePackManifest,
   getOfflineQuestionCounts,
+  getOfflineQuestionPacks,
   getOfflineQuestionsByCompetence,
   getOfflineQuestionsByTrack,
+  recordOfflinePackVersionCheck,
   saveOfflineEntitlements,
   saveOfflineQuestionPackSets
 } from './offlineQuestionCache';
@@ -806,6 +809,177 @@ async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = fals
 }
 export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
   return withPageLoading('Loading question counts', () => loadQuestionCountsByTrackInternal(track, freeOnly))
+}
+
+interface RemoteQuestionSourceVersion {
+  path: string
+  competenceId: string
+  part: number | null
+  fullHash?: string
+  freeHash: string
+}
+
+interface RemoteQuestionBankVersions {
+  track: TrackId
+  versions: RemoteQuestionSourceVersion[]
+  checkedAt: number
+}
+
+export interface OfflinePackUpdateCheck {
+  status: 'not-downloaded' | 'current' | 'available' | 'offline' | 'unavailable'
+  changedCompetences: string[]
+  checkedAt: number | null
+  lastKnownState?: 'current' | 'available'
+  savedAt?: number
+}
+
+async function fetchRemoteQuestionBankVersions(track: TrackId): Promise<RemoteQuestionBankVersions> {
+  if (!supabase) throw new Error('Protected question service is not configured.')
+  const { data, error } = await supabase.functions.invoke('question-bank', {
+    body: { action: 'content-versions', track }
+  })
+  if (error || data?.track !== track || !Array.isArray(data?.versions)) {
+    throw error || new Error(data?.error || 'Question-bank versions are unavailable.')
+  }
+  const versions = data.versions as RemoteQuestionSourceVersion[]
+  if (versions.some(item =>
+    typeof item.path !== 'string' ||
+    typeof item.competenceId !== 'string' ||
+    !(item.part == null || Number.isInteger(item.part)) ||
+    typeof item.freeHash !== 'string' || !/^[a-f0-9]{64}$/.test(item.freeHash) ||
+    (item.fullHash != null && (typeof item.fullHash !== 'string' || !/^[a-f0-9]{64}$/.test(item.fullHash)))
+  )) throw new Error('The server returned invalid question-bank version metadata.')
+  return { track, versions, checkedAt: Number(data.checkedAt) || Date.now() }
+}
+
+function sourceVersionMap(remote: RemoteQuestionBankVersions, freeOnly: boolean): Record<string, string> {
+  const versions: Record<string, string> = {}
+  for (const item of remote.versions) {
+    const value = freeOnly ? item.freeHash : item.fullHash
+    if (typeof value !== 'string') {
+      throw new Error('A valid license is required to verify the full question-bank version.')
+    }
+    versions[item.path] = value
+  }
+  return versions
+}
+
+function changedVersionPaths(previous: Record<string, string>, current: Record<string, string>): string[] {
+  const paths = new Set([...Object.keys(previous), ...Object.keys(current)])
+  return Array.from(paths).filter(path => previous[path] !== current[path]).sort()
+}
+
+function describeChangedCompetences(paths: string[]): string[] {
+  const labels = new Set<string>()
+  for (const path of paths) {
+    const source = SOURCES.find(item => item.path === path)
+    if (!source) {
+      labels.add(path)
+      continue
+    }
+    labels.add(source.track === 'GMDSS_GOC' && /_part\d+/.test(path)
+      ? `${source.competenceId} · Part ${path.match(/_part(\d+)/)?.[1] ?? ''}`.trim()
+      : source.competenceId)
+  }
+  return Array.from(labels).sort((left, right) =>
+    left.localeCompare(right, undefined, { numeric: true })
+  )
+}
+
+async function hashQuestionListForVersion(questions: Question[]): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(questions))
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+  return Array.from(digest, value => value.toString(16).padStart(2, '0')).join('')
+}
+
+async function compareLegacyPackToCurrent(
+  track: TrackId,
+  freeOnly: boolean,
+  packs: Awaited<ReturnType<typeof getOfflineQuestionPacks>>,
+  remote: RemoteQuestionBankVersions
+): Promise<string[]> {
+  if (!packs) return remote.versions.map(item => item.path)
+  const mismatches: string[] = []
+  for (const remoteSource of remote.versions) {
+    const source = SOURCES.find(item => item.path === remoteSource.path && item.track === track)
+    if (!source) {
+      mismatches.push(remoteSource.path)
+      continue
+    }
+    const localPack = packs.find(pack =>
+      pack.competenceId === source.competenceId &&
+      (pack.part ?? null) === (source.track === 'GMDSS_GOC' ? remoteSource.part : null)
+    )
+    const localQuestions = localPack?.questions ?? []
+    const localHash = await hashQuestionListForVersion(localQuestions)
+    const expectedHash = freeOnly ? remoteSource.freeHash : remoteSource.fullHash
+    if (typeof expectedHash !== 'string' || localHash !== expectedHash) mismatches.push(remoteSource.path)
+  }
+  return mismatches
+}
+
+/**
+ * Compare the downloaded version for each source file with the latest protected
+ * bank. Existing packs without version metadata are checked against the actual
+ * local question lists first, so unchanged legacy downloads can be marked current
+ * without forcing a needless full re-download.
+ */
+export async function checkOfflineQuestionPackUpdates(
+  track: TrackId,
+  freeOnly: boolean
+): Promise<OfflinePackUpdateCheck> {
+  const manifest = await getOfflinePackManifest(track, freeOnly)
+  if (!manifest?.complete) {
+    return { status: 'not-downloaded', changedCompetences: [], checkedAt: null }
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const knownPaths = manifest.availableSources ?? []
+    return {
+      status: 'offline',
+      changedCompetences: describeChangedCompetences(knownPaths),
+      checkedAt: manifest.lastCheckedAt ?? null,
+      lastKnownState: manifest.lastKnownUpdateState,
+      savedAt: manifest.savedAt
+    }
+  }
+
+  try {
+    const remote = await fetchRemoteQuestionBankVersions(track)
+    const currentVersions = sourceVersionMap(remote, freeOnly)
+    let changedPaths: string[] = []
+
+    if (manifest.sourceVersions && Object.keys(manifest.sourceVersions).length) {
+      changedPaths = changedVersionPaths(manifest.sourceVersions, currentVersions)
+    } else {
+      const localPacks = await getOfflineQuestionPacks(track, freeOnly)
+      changedPaths = await compareLegacyPackToCurrent(track, freeOnly, localPacks, remote)
+    }
+
+    const checkedAt = Date.now()
+    const state = changedPaths.length ? 'available' : 'current'
+    await recordOfflinePackVersionCheck(track, freeOnly, {
+      checkedAt,
+      state,
+      ...(state === 'current' ? { sourceVersions: currentVersions } : {}),
+      availableSources: changedPaths
+    })
+    return {
+      status: state,
+      changedCompetences: describeChangedCompetences(changedPaths),
+      checkedAt,
+      lastKnownState: state,
+      savedAt: manifest.savedAt
+    }
+  } catch {
+    return {
+      status: 'unavailable',
+      changedCompetences: describeChangedCompetences(manifest.availableSources ?? []),
+      checkedAt: manifest.lastCheckedAt ?? null,
+      lastKnownState: manifest.lastKnownUpdateState,
+      savedAt: manifest.savedAt
+    }
+  }
 }
 
 export function listAvailableCompetences(
