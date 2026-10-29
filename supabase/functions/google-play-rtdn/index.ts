@@ -102,6 +102,14 @@ async function validatePushIdentity(
       algorithms: ['RS256']
     })
     if (payload.email !== expectedEmail) {
+      // Both values are service-account identifiers, not credentials. Logging
+      // them helps diagnose an OIDC configuration mismatch without logging the JWT.
+      console.warn('google_play_rtdn_email_mismatch', {
+        actualServiceAccountEmail: typeof payload.email === 'string' ? payload.email : '(missing)',
+        configuredExpectedEmail: expectedEmail,
+        trimmedCaseInsensitiveMatch: typeof payload.email === 'string'
+          && payload.email.trim().toLowerCase() === expectedEmail.trim().toLowerCase()
+      })
       return { valid: false, reason: 'service_account_email_mismatch' }
     }
     if (payload.email_verified !== true) {
