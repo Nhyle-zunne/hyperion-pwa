@@ -77,7 +77,9 @@ const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const submitManualPaymentFunction = await read('../supabase/functions/submit-manual-payment/index.ts');
 const googlePlayLinkFunction = await read('../supabase/functions/link-google-play-subscription/index.ts');
 const googlePlayRtdnFunction = await read('../supabase/functions/google-play-rtdn/index.ts');
+const googlePlayReconciliationFunction = await read('../supabase/functions/reconcile-google-play-subscriptions/index.ts');
 const googlePlayLinkMigration = await read('../supabase/migrations/20261029164000_add_google_play_purchase_links.sql');
+const googlePlayScheduleMigration = await read('../supabase/migrations/20261030180000_schedule_google_play_reconciliation.sql');
 const googlePlaySchema = await read('../supabase/schema.sql');
 const questionFingerprintSource = await read('../src/lib/questionFingerprint.mjs');
 const offlinePwaConfig = await read('../vite.config.ts');
@@ -776,6 +778,30 @@ assert.ok(
   'Replaced predecessor tokens cannot be re-linked or reactivated by late RTDN notifications'
 );
 assert.ok(googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_ACTIVE'") && googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_IN_GRACE_PERIOD'") && googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_CANCELED'") && googlePlayLinkFunction.includes("maxExpiry > now"), 'Google Play access is tied to an allowed subscription state and a future verified expiry');
+
+assert.ok(
+  googlePlayReconciliationFunction.includes("verify_google_play_reconciliation_cron_token") &&
+    googlePlayReconciliationFunction.includes("x-hyperion-google-play-reconcile-token") &&
+    googlePlayReconciliationFunction.includes(".limit(BATCH_SIZE)") &&
+    googlePlayReconciliationFunction.includes(".order('last_reconciliation_attempt_at', { ascending: true })") &&
+    googlePlayReconciliationFunction.includes("SUBSCRIPTION_STATE_REPLACED"),
+  'Periodic Play reconciliation requires a Vault-verified private token, processes a bounded fair batch, and skips replaced predecessor tokens'
+);
+assert.ok(
+  googlePlayScheduleMigration.includes("hyperion_google_play_reconciliation_enabled") &&
+    googlePlayScheduleMigration.includes("vault.create_secret(\n      'false'") &&
+    googlePlayScheduleMigration.includes("'*/15 * * * *'") &&
+    googlePlayScheduleMigration.includes("WHEN EXISTS") &&
+    googlePlayScheduleMigration.includes("verify_google_play_reconciliation_cron_token"),
+  'The recurring job is registered every 15 minutes but sends no network request until the explicit Vault enable flag is true'
+);
+assert.ok(
+  googlePlayLinkMigration.includes('last_reconciliation_attempt_at timestamptz NOT NULL DEFAULT now()') &&
+    googlePlayLinkMigration.includes('google_play_purchase_links_reconciliation_attempt_idx') &&
+    googlePlaySchema.includes('last_reconciliation_attempt_at timestamptz NOT NULL DEFAULT now()') &&
+    functionConfig.includes('[functions.reconcile-google-play-subscriptions]\\nverify_jwt = false'),
+  'The reconciler has its fair-scheduling column/index and is configured for private handler-level authentication'
+);
 assert.ok(googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_purchase_links FROM PUBLIC, anon, authenticated") && googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_entitlements FROM PUBLIC, anon, authenticated"), 'Google Play raw purchase tokens and entitlement writes are not exposed to browser roles');
 assert.ok(googlePlayLinkMigration.includes('CREATE POLICY "Users read own Google Play entitlements"') && googlePlayLinkMigration.includes("USING ((SELECT auth.uid()) = user_id)"), 'Signed-in users can read only their own Google Play track entitlements');
 assert.ok(googlePlayLinkMigration.includes("SET search_path = ''") && googlePlayLinkMigration.includes("REVOKE ALL ON FUNCTION public.revoke_google_play_entitlements_on_inactive_link() FROM PUBLIC, anon, authenticated"), 'The entitlement-revocation trigger uses a hardened function search path and restricted execution');
