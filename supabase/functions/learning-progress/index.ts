@@ -71,30 +71,31 @@ async function authorizeSavedQuestions(
   }
   if (!candidates.length) return new Set()
 
-  try {
-    const { data, error } = await client.functions.invoke('question-bank', {
-      body: {
-        action: 'authorize-saved-questions',
-        track,
-        items: candidates.map(({ id, fingerprint }) => ({ id, fingerprint }))
-      }
-    })
-    if (error || !Array.isArray(data?.allowedIndexes)) return new Set()
-    const allowed = new Set<number>()
-    for (const index of data.allowedIndexes) {
-      if (Number.isInteger(index) && index >= 0 && index < candidates.length) {
-        allowed.add(candidates[index].originalIndex)
-      }
+  const { data, error } = await client.functions.invoke('question-bank', {
+    body: {
+      action: 'authorize-saved-questions',
+      track,
+      items: candidates.map(({ id, fingerprint }) => ({ id, fingerprint }))
     }
-    return allowed
-  } catch {
-    return new Set()
+  })
+  if (error || !Array.isArray(data?.allowedIndexes)) {
+    // Fail closed and preserve the previous cloud row; do not treat verifier outages
+    // as proof that saved question text is a permitted free sample.
+    throw new Error('Saved question authorization could not be verified.')
   }
+  const allowed = new Set<number>()
+  for (const index of data.allowedIndexes) {
+    if (Number.isInteger(index) && index >= 0 && index < candidates.length) {
+      allowed.add(candidates[index].originalIndex)
+    }
+  }
+  return allowed
 }
 
 async function filterQuestionCollection(
   client: ReturnType<typeof createClient>,
-  raw: unknown
+  raw: unknown,
+  allowedTracks: Set<TrackId>
 ): Promise<string | null> {
   if (typeof raw !== 'string') return null
   let persisted: JsonRecord
@@ -118,6 +119,12 @@ async function filterQuestionCollection(
     byTrack.set(track, group)
   })
   for (const [track, group] of byTrack) {
+    if (allowedTracks.has(track)) {
+      group.items.forEach((item, localIndex) => {
+        if (isQuestion(item) && item.track === track) keep.add(group.indexes[localIndex])
+      })
+      continue
+    }
     const allowed = await authorizeSavedQuestions(client, track, group.items)
     for (const localIndex of allowed) keep.add(group.indexes[localIndex])
   }
@@ -128,40 +135,42 @@ async function filterQuestionCollection(
 async function authorizeSession(
   client: ReturnType<typeof createClient>,
   track: unknown,
-  questions: unknown
+  questions: unknown,
+  allowedTracks: Set<TrackId>
 ): Promise<boolean> {
   if (!isTrackId(track) || !Array.isArray(questions) || questions.length < 1 || questions.length > 3000) return false
+  if (!questions.every(question => isQuestion(question) && question.track === track)) return false
+  if (allowedTracks.has(track)) return true
+
   const ids: string[] = []
   const fingerprints: string[] = []
-  for (const question of questions) {
-    if (!isQuestion(question) || question.track !== track || question.id.length > 120) return false
+  for (const question of questions as JsonRecord[]) {
     const fingerprint = await fingerprintQuestion(question)
     if (!fingerprint) return false
-    ids.push(question.id)
+    ids.push(String(question.id))
     fingerprints.push(fingerprint)
   }
-  try {
-    const { data, error } = await client.functions.invoke('question-bank', {
-      body: { action: 'authorize-session', track, questionIds: ids, fingerprints }
-    })
-    return !error && data?.allowed === true
-  } catch {
-    return false
+  const { data, error } = await client.functions.invoke('question-bank', {
+    body: { action: 'authorize-session', track, questionIds: ids, fingerprints }
+  })
+  if (error || typeof data?.allowed !== 'boolean') {
+    throw new Error('Session question authorization could not be verified.')
   }
+  return data.allowed === true
 }
 
 async function sanitizeSnapshot(
   client: ReturnType<typeof createClient>,
-  input: unknown
+  input: unknown,
+  allowedTracks: Set<TrackId>
 ): Promise<JsonRecord> {
   if (!isRecord(input) || input.version !== 1 || !isRecord(input.storage)) {
     throw new Error('Invalid learning progress snapshot.')
   }
-  // Clone before filtering so callers' objects are never mutated unexpectedly.
   const snapshot = JSON.parse(JSON.stringify(input)) as JsonRecord
   const storage = snapshot.storage as JsonRecord
   for (const key of QUESTION_STORAGE_KEYS) {
-    storage[key] = await filterQuestionCollection(client, storage[key])
+    storage[key] = await filterQuestionCollection(client, storage[key], allowedTracks)
   }
 
   const legacySavedPractice = storage['hyperion-saved-practice']
@@ -174,7 +183,7 @@ async function sanitizeSnapshot(
       legacy = null
     }
     if (legacy) {
-      const keep = await authorizeSession(client, legacy.track, legacy.questions)
+      const keep = await authorizeSession(client, legacy.track, legacy.questions, allowedTracks)
       if (!keep) storage['hyperion-saved-practice'] = null
     } else {
       storage['hyperion-saved-practice'] = null
@@ -183,13 +192,28 @@ async function sanitizeSnapshot(
 
   if (isRecord(snapshot.activeSession)) {
     const activeSession = snapshot.activeSession
-    if (!await authorizeSession(client, activeSession.track, activeSession.questions)) {
-      snapshot.activeSession = null
-    }
+    const keep = await authorizeSession(client, activeSession.track, activeSession.questions, allowedTracks)
+    if (!keep) snapshot.activeSession = null
   } else {
     snapshot.activeSession = null
   }
   return snapshot
+}
+
+async function loadAllowedTracks(
+  admin: ReturnType<typeof createClient>,
+  user: { id: string; email?: string }
+): Promise<Set<TrackId>> {
+  const adminEmails = (Deno.env.get('ADMIN_EMAILS') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean)
+  if (user.email && adminEmails.includes(user.email.toLowerCase())) return new Set(TRACKS)
+
+  const { data, error } = await admin.from('entitlements')
+    .select('track_id')
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .gt('expires_at', new Date().toISOString())
+  if (error) throw new Error('Current entitlements could not be verified.')
+  return new Set((data || []).map(row => row.track_id).filter(isTrackId))
 }
 
 Deno.serve(async req => {
@@ -208,6 +232,12 @@ Deno.serve(async req => {
   const { data: { user }, error: authError } = await client.auth.getUser()
   if (authError || !user) return json(req, { error: 'Please sign in again.' }, 401)
   const admin = createClient(url, service, { auth: { persistSession: false } })
+  let allowedTracks: Set<TrackId>
+  try {
+    allowedTracks = await loadAllowedTracks(admin, user)
+  } catch {
+    return json(req, { error: 'Current license access could not be verified.' }, 503)
+  }
 
   let body: JsonRecord
   let rawBody: string
@@ -229,7 +259,7 @@ Deno.serve(async req => {
     if (error) return json(req, { error: 'Could not load progress.' }, 500)
     if (!data) return json(req, { data: null, updated_at: null })
     try {
-      const sanitized = await sanitizeSnapshot(client, data.data)
+      const sanitized = await sanitizeSnapshot(client, data.data, allowedTracks)
       return json(req, { data: sanitized, updated_at: data.updated_at })
     } catch {
       return json(req, { error: 'Could not safely verify saved question access.' }, 503)
@@ -238,7 +268,7 @@ Deno.serve(async req => {
 
   if (body.action === 'write') {
     try {
-      const sanitized = await sanitizeSnapshot(client, body.data)
+      const sanitized = await sanitizeSnapshot(client, body.data, allowedTracks)
       const { data, error } = await admin.from('user_learning_progress')
         .upsert({ user_id: user.id, data: sanitized }, { onConflict: 'user_id' })
         .select('updated_at')
