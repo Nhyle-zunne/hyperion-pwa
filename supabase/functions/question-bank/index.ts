@@ -667,6 +667,49 @@ Deno.serve(async (req: Request) => {
   try { state = await migrationState(admin); } catch { return json(req, { error: "Question service is not ready." }, 503); }
   if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Protected question bank is not ready yet." }, 503);
 
+  if (body.action === "content-versions") {
+    const track = typeof body.track === "string" ? body.track : "";
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) {
+      return json(req, { error: "Choose a valid track." }, 400);
+    }
+
+    try {
+      // Only hashes and public metadata leave this endpoint. Question text and
+      // answer data continue to come exclusively from the protected question routes.
+      const canReadFullBank = await authorizeTrack(admin, user, isAdmin, track);
+      const sources = SOURCE_ASSETS
+        .filter(path => trackForPath(path) === track)
+        .map(path => ({ path, info: sourceInfo(path) }))
+        .filter(item => item.info !== null)
+        .sort((left, right) =>
+          left.info!.competenceId.localeCompare(right.info!.competenceId, undefined, { numeric: true }) ||
+          ((left.info!.part ?? 0) - (right.info!.part ?? 0))
+        );
+      const versions = [];
+      const hashQuestions = async (questions: Record<string, unknown>[]) => {
+        const bytes = new TextEncoder().encode(JSON.stringify(questions));
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+        return Array.from(digest, value => value.toString(16).padStart(2, "0")).join("");
+      };
+      for (const source of sources) {
+        const text = await privateText(admin, source.path);
+        const version: Record<string, unknown> = {
+          path: source.path,
+          competenceId: source.info!.competenceId,
+          part: source.info!.part,
+          freeHash: await hashQuestions(toSearchQuestions(source.path, sampleFreeCsv(source.path, text)))
+        };
+        if (canReadFullBank) {
+          version.fullHash = await hashQuestions(toSearchQuestions(source.path, text));
+        }
+        versions.push(version);
+      }
+      return json(req, { track, versions, checkedAt: Date.now(), fullBankIncluded: canReadFullBank });
+    } catch {
+      return json(req, { error: "Could not verify the latest question-bank version. Please try again while connected." }, 503);
+    }
+  }
+
   if (body.action === "offline-license-public-key") {
     try {
       const keys = await loadOrCreateOfflineSigningKeys(admin);
