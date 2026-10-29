@@ -71,8 +71,8 @@ export default function FlashcardsScreen() {
         return
       }
       setSession(shuffle(qs).slice(0, Math.min(20, qs.length)))
-    } catch {
-      setError('Failed to load questions.')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Flashcards are unavailable. Connect to the internet or download this track first.')
     }
     setLoading(false)
   }
