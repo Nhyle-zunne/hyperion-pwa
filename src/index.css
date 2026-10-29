@@ -1316,10 +1316,10 @@ a:focus-visible,
 [data-theme='light'] .practice-quiz-screen {
   --quiz-selection-bg: rgba(71, 85, 105, 0.14);
 }
-.practice-quiz-screen > header > div:nth-child(2) > div:first-child {
+.practice-quiz-screen > header > div:first-child > div:first-child {
   font-size: calc(1rem * var(--quiz-text-scale)) !important;
 }
-.practice-quiz-screen > header > div:nth-child(2) > div:last-child {
+.practice-quiz-screen > header > div:first-child > div:last-child {
   font-size: calc(.82rem * var(--quiz-text-scale)) !important;
 }
 .practice-quiz-screen > div[style*="justify-content: space-between"] {
