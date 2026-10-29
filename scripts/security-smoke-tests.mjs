@@ -74,7 +74,6 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
-const licenseStore = await read('../src/stores/licenseStore.ts');
 const googlePlayLinkFunction = await read('../supabase/functions/link-google-play-subscription/index.ts');
 const googlePlayRtdnFunction = await read('../supabase/functions/google-play-rtdn/index.ts');
 const googlePlayLinkMigration = await read('../supabase/migrations/20261029164000_add_google_play_purchase_links.sql');
