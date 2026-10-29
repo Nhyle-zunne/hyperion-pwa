@@ -19,13 +19,8 @@ $extensions$;
 
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM vault.decrypted_secrets
-    WHERE name = 'hyperion_supabase_project_url'
-  ) THEN
-    RAISE EXCEPTION 'The hyperion_supabase_project_url Vault secret must exist before scheduling Google Play reconciliation.';
-  END IF;
-
+  -- The project URL is configured separately after the local/hosted migration.
+  -- A missing URL is safe: the scheduled job checks for it and makes no HTTP request.
   IF NOT EXISTS (
     SELECT 1 FROM vault.decrypted_secrets
     WHERE name = 'hyperion_google_play_reconciliation_cron_token'
@@ -97,6 +92,28 @@ BEGIN
           SELECT 1 FROM vault.decrypted_secrets
           WHERE name = 'hyperion_google_play_reconciliation_enabled'
             AND decrypted_secret = 'true'
+        )
+        AND EXISTS (
+          SELECT 1 FROM vault.decrypted_secrets
+          WHERE name = 'hyperion_supabase_project_url'
+            AND decrypted_secret ~ '^https://[^/]+
+          url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'hyperion_supabase_project_url')
+            || '/functions/v1/reconcile-google-play-subscriptions',
+          headers := jsonb_build_object(
+            'Content-Type', 'application/json',
+            'x-hyperion-google-play-reconcile-token',
+            (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'hyperion_google_play_reconciliation_cron_token')
+          ),
+          body := jsonb_build_object('source', 'pg_cron', 'requested_at', now()),
+          timeout_milliseconds := 55000
+        )
+        ELSE NULL::bigint
+      END AS request_id;
+    $job$
+  );
+END;
+$$;
+
         )
         THEN net.http_post(
           url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'hyperion_supabase_project_url')
