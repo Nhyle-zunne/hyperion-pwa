@@ -289,7 +289,7 @@ RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
-AS $
+AS $$
 DECLARE
   v_link_id uuid;
   v_now timestamptz := pg_catalog.now();
@@ -300,7 +300,8 @@ BEGIN
      OR p_purchase_token IS NULL
      OR pg_catalog.btrim(p_purchase_token) = ''
      OR pg_catalog.char_length(p_purchase_token) > 4096
-     OR p_purchase_token_sha256 !~ '^[0-9a-f]{64}
+     OR p_purchase_token_sha256 !~ '^[0-9a-f]{64}$'
+     OR p_expires_at IS NULL
      OR p_status IS NULL
      OR p_status NOT IN ('active', 'inactive')
      OR p_entitlements IS NULL
@@ -613,7 +614,6 @@ $;
 
   RETURN v_link_id;
 END;
-$;
-
+$$;
 REVOKE ALL ON FUNCTION public.sync_google_play_subscription_atomic(uuid, text, text, text[], text, text, timestamptz, jsonb, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sync_google_play_subscription_atomic(uuid, text, text, text[], text, text, timestamptz, jsonb, uuid) TO service_role;

@@ -670,8 +670,10 @@ const atomicRpcStart = googlePlayLinkMigration.indexOf('CREATE OR REPLACE FUNCTI
 const atomicRpcEnd = googlePlayLinkMigration.indexOf('REVOKE ALL ON FUNCTION public.sync_google_play_subscription_atomic(', atomicRpcStart);
 const atomicRpcSource = googlePlayLinkMigration.slice(atomicRpcStart, atomicRpcEnd);
 assert.ok(atomicRpcStart >= 0 && atomicRpcEnd > atomicRpcStart && atomicRpcSource.includes('ON CONFLICT (purchase_token_sha256) DO UPDATE') && atomicRpcSource.includes('user_id = EXCLUDED.user_id'), 'Atomic reconciliation checks token ownership on concurrent account-link attempts');
+const dollarChar = String.fromCharCode(36);
+const dollarQuote = dollarChar.repeat(2);
 assert.ok(atomicRpcSource.includes('jsonb_array_elements(p_entitlements)') && atomicRpcSource.includes("current_entitlement.status <> 'revoked'") && !atomicRpcSource.includes('granted_at'), 'Atomic reconciliation retires stale track grants while preserving original grant timestamps');
-assert.ok(atomicRpcSource.includes("AS $\\nDECLARE") && atomicRpcSource.includes("p_purchase_token_sha256 !~ '^[0-9a-f]{64}
+assert.ok(atomicRpcSource.includes("AS " + dollarQuote + "\nDECLARE") && atomicRpcSource.includes("p_purchase_token_sha256 !~ '^[0-9a-f]{64}" + dollarChar + "'") && atomicRpcSource.includes('OR p_expires_at IS NULL') && atomicRpcSource.includes('RETURN v_link_id;'), 'Atomic reconciliation SQL has complete dollar quoting, full SHA-256 validation, and expiry validation');
 assert.ok(googlePlayRtdnFunction.includes('jwtVerify') && googlePlayRtdnFunction.includes('createRemoteJWKSet') && googlePlayRtdnFunction.includes('https://www.googleapis.com/oauth2/v3/certs'), 'RTDN authenticates Google Pub/Sub push tokens with Google signing keys');
 assert.ok(googlePlayRtdnFunction.includes("GOOGLE_PLAY_PUBSUB_AUDIENCE") && googlePlayRtdnFunction.includes("GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL") && googlePlayRtdnFunction.includes('payload.email_verified === true'), 'RTDN validates the configured exact audience and verified service-account email');
 assert.ok(googlePlayRtdnFunction.includes("notification?.packageName !== PACKAGE_NAME") && googlePlayRtdnFunction.includes('purchases/subscriptionsv2/tokens/'), 'RTDN checks the Android package and rereads current subscription state from Google Play');
