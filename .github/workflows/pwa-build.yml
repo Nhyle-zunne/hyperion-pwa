@@ -93,7 +93,7 @@ jobs:
             VALUES ('hyperion_supabase_project_url', 'https://test-project.supabase.co');
 
           CREATE FUNCTION vault.create_secret(p_secret text, p_name text, p_description text)
-          RETURNS uuid LANGUAGE plpgsql AS $
+          RETURNS uuid LANGUAGE plpgsql AS $fn$
           DECLARE v_id uuid;
           BEGIN
             INSERT INTO vault.decrypted_secrets(name, decrypted_secret, description)
@@ -103,7 +103,7 @@ jobs:
             RETURNING id INTO v_id;
             RETURN v_id;
           END;
-          $;
+          $fn$;
 
           CREATE SCHEMA cron;
           CREATE TABLE cron.job (
@@ -113,14 +113,14 @@ jobs:
             command text NOT NULL
           );
           CREATE FUNCTION cron.unschedule(p_jobid bigint) RETURNS boolean
-          LANGUAGE plpgsql AS $
+          LANGUAGE plpgsql AS $fn$
           BEGIN
             DELETE FROM cron.job WHERE jobid = p_jobid;
             RETURN FOUND;
           END;
-          $;
+          $fn$;
           CREATE FUNCTION cron.schedule(p_jobname text, p_schedule text, p_command text) RETURNS bigint
-          LANGUAGE plpgsql AS $
+          LANGUAGE plpgsql AS $fn$
           DECLARE v_jobid bigint;
           BEGIN
             INSERT INTO cron.job(jobname, schedule, command)
@@ -130,14 +130,14 @@ jobs:
             RETURNING jobid INTO v_jobid;
             RETURN v_jobid;
           END;
-          $;
+          $fn$;
 
           CREATE SCHEMA net;
           CREATE SCHEMA IF NOT EXISTS extensions;
           CREATE OR REPLACE FUNCTION extensions.gen_random_bytes(p_bytes integer) RETURNS bytea
-          LANGUAGE sql IMMUTABLE AS $
+          LANGUAGE sql IMMUTABLE AS $fn$
             SELECT pg_catalog.decode(pg_catalog.repeat('ab', p_bytes), 'hex')
-          $;
+          $fn$;
           SQL
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261030180000_schedule_google_play_reconciliation.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
