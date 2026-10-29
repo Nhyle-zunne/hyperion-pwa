@@ -1,7 +1,7 @@
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.nhyle.hyperionmaritime'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useInstallPrompt } from '../hooks/useInstallPrompt'
+import { getManualInstallInstructions, useInstallPrompt } from '../hooks/useInstallPrompt'
 import GooglePlayBadge from './GooglePlayBadge'
 import DesktopInstallBadge from './DesktopInstallBadge'
 
@@ -30,8 +30,8 @@ export default function InstallPrompt({ force = false, variant = 'card', iosOnly
       const accepted = await promptInstall()
       if (!accepted) {
         setInstallMessage(canNativePrompt
-          ? 'The install prompt was dismissed. Tap the button to try again.'
-          : 'Your browser has not made its direct install prompt available.')
+          ? 'The install prompt was dismissed. You can also install from the browser menu.'
+          : getManualInstallInstructions())
       }
     } finally {
       setBusy(false)
@@ -69,6 +69,7 @@ export default function InstallPrompt({ force = false, variant = 'card', iosOnly
             </button>
           )}
         </div>
+        {installMessage && <p role="status" aria-live="polite" style={{ margin: '.6rem 0 0', color: 'var(--text-muted)', fontSize: '.8rem', lineHeight: 1.4 }}>{installMessage}</p>}
       </div>
     )
   }
