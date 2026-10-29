@@ -104,6 +104,29 @@ BEGIN
     RAISE EXCEPTION 'Replacement subscription did not grant the verified track';
   END IF;
 
+  -- A replaced predecessor must not be reactivated by an old token or stale notification.
+  BEGIN
+    PERFORM public.sync_google_play_subscription_atomic(
+      v_user_one, 'token-user-one-initial', pg_catalog.repeat('a', 64),
+      ARRAY['hyperion_gmdss_pass']::text[],
+      'SUBSCRIPTION_STATE_CANCELED', 'active', v_future,
+      pg_catalog.jsonb_build_array(
+        pg_catalog.jsonb_build_object('product_code', 'gmdss', 'track_id', 'GMDSS_GOC', 'status', 'active', 'expires_at', v_future::text)
+      ),
+      NULL
+    );
+    RAISE EXCEPTION 'Expected replaced predecessor token to be rejected' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN SQLSTATE '23514' THEN
+    GET STACKED DIAGNOSTICS v_message = MESSAGE_TEXT;
+    IF v_message NOT LIKE '%replaced Google Play purchase token%' THEN RAISE; END IF;
+  END;
+  IF (SELECT status FROM public.google_play_purchase_links WHERE id = v_link_one) <> 'inactive' THEN
+    RAISE EXCEPTION 'Replaced predecessor link became active again';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.google_play_entitlements WHERE purchase_link_id = v_link_one AND status = 'active') THEN
+    RAISE EXCEPTION 'Replaced predecessor entitlement was restored';
+  END IF;
+
   -- Inactive/on-hold subscriptions revoke access, even if a stale entitlement array is supplied.
   PERFORM public.sync_google_play_subscription_atomic(
     v_user_one, 'token-user-one-replacement', pg_catalog.repeat('b', 64),
