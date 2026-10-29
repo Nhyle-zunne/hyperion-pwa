@@ -25,7 +25,7 @@ export function isOfflinePackSetComplete(manifest, packs) {
   if (packs.length !== manifest.groupCount) return false;
   // Deck OIC-NW's local free-sample selection changed to match the protected server.
   // Old unversioned packs cannot be trusted as the current free-reviewer sample.
-  if ((manifest.track === 'DECK_OIC_NW' || manifest.track === 'GMDSS_GOC') && manifest.freeOnly === true && manifest.sampleVersion !== 2) return false;
+  if (manifest.track === 'DECK_OIC_NW' && manifest.freeOnly === true && manifest.sampleVersion !== 2) return false;
 
   let count = 0;
   const seen = new Set();
