@@ -431,9 +431,31 @@ export default function App() {
           <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 700 }}>
             {isMockRunner ? 'MOCK EXAM' : 'PRACTICE'}
           </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }}>
-            <button type="button" onClick={() => { if (q) toggleBookmark(q, !isFreeSession) }} aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'} style={{ border: 0, background: 'transparent', color: bookmarked ? 'var(--accent)' : 'var(--text)', fontSize: '1.5rem', padding: 6 }}> {bookmarked ? '▮' : '♧'} </button>
-            <button type="button" onClick={() => setSettingsOpen(v => !v)} aria-label="Question settings" style={{ border: 0, background: 'transparent', color: 'var(--text)', fontSize: '1.5rem', padding: 6 }}>⚙</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => { if (q) toggleBookmark(q, !isFreeSession) }}
+              aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'}
+              aria-pressed={bookmarked}
+              title={bookmarked ? 'Bookmarked' : 'Bookmark question'}
+              style={{ display: 'grid', placeItems: 'center', width: 44, height: 44, border: 0, borderRadius: 8, background: 'transparent', color: bookmarked ? 'var(--accent)' : 'var(--text)', padding: 8, cursor: 'pointer' }}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="25" height="25" fill={bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6.75 4.25A1.75 1.75 0 0 1 8.5 2.5h7A1.75 1.75 0 0 1 17.25 4.25V21l-5.25-3.6L6.75 21V4.25Z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(v => !v)}
+              aria-label="Question settings"
+              aria-expanded={settingsOpen}
+              title="Question settings"
+              style={{ display: 'grid', placeItems: 'center', width: 44, height: 44, border: 0, borderRadius: 8, background: 'transparent', color: 'var(--text)', padding: 8, cursor: 'pointer' }}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="27" height="27" fill="currentColor">
+                <path d="M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.58-.2l-2.39.96a7.3 7.3 0 0 0-1.63-.94l-.36-2.52a.49.49 0 0 0-.49-.4h-3.82a.49.49 0 0 0-.49.4L9.24 5.37c-.59.24-1.13.56-1.63.94L5.22 5.35a.5.5 0 0 0-.58.2L2.72 8.87a.5.5 0 0 0 .12.61l2.03 1.58c-.05.31-.07.63-.07.94s.02.63.07.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32a.5.5 0 0 0 .58.2l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.52a.49.49 0 0 0 .49.4h3.82a.49.49 0 0 0 .49-.4l.36-2.52c.59-.24 1.13-.56 1.63-.94l2.39.96a.5.5 0 0 0 .58-.2l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" />
+              </svg>
+            </button>
             {settingsOpen && <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 300, width: 'min(310px, calc(100vw - 24px))', maxHeight: '75vh', overflowY: 'auto', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 8px 28px rgba(0,0,0,.22)' }}>
               <div style={{ padding: 12, fontWeight: 800, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>DISPLAY SETTINGS</div>
               <div style={{ width: '100%', padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'transparent', borderBottom: '1px solid var(--border)', color: 'var(--text)' }}><span>{theme === 'light' ? '☀ Daylight' : '☾ Night Mode'}</span><button type="button" role="switch" aria-label="Night Mode" aria-checked={theme !== 'light'} onClick={toggleTheme} style={{ position: 'relative', width: 64, height: 30, flexShrink: 0, padding: 3, border: 0, borderRadius: 999, cursor: 'pointer', background: theme !== 'light' ? '#16c60c' : '#d1d5db', transition: 'background 180ms ease', boxShadow: 'inset 0 1px 2px rgba(0,0,0,.14)' }}><span style={{ position: 'absolute', top: 3, left: theme !== 'light' ? 37 : 3, width: 24, height: 24, borderRadius: '50%', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,.28)', transition: 'left 180ms ease' }} /><span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: theme !== 'light' ? 'flex-start' : 'flex-end', padding: '0 8px', color: theme !== 'light' ? '#ffffff' : '#374151', fontSize: 9, fontWeight: 900, pointerEvents: 'none' }}>{theme !== 'light' ? 'ON' : 'OFF'}</span></button></div>
