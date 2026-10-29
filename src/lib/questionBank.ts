@@ -773,6 +773,7 @@ async function loadFlashcardQuestionsInternal(track: TrackId, competenceId?: str
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     if (!(await offlineEntitlementExpiry(track))) throw new Error('An active offline license is required for flashcards.')
     const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
+    if (!local.length) throw new Error('Download the full question bank for this track before using flashcards offline.')
     const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
     return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
   }
@@ -784,6 +785,7 @@ async function loadFlashcardQuestionsInternal(track: TrackId, competenceId?: str
       const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
       const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
       if (local.length) return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
+      throw new Error('Download the full question bank for this track before using flashcards offline.')
     }
     throw error || new Error(data?.error || 'Flashcards are unavailable.');
   }
