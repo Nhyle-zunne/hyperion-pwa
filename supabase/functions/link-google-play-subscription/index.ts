@@ -169,12 +169,15 @@ Deno.serve(async (req: Request) => {
     const admin = createClient(url, service, { auth: { persistSession: false } })
 
     const { data: existing, error: lookupError } = await admin.from('google_play_purchase_links')
-      .select('id,user_id')
+      .select('id,user_id,subscription_state')
       .eq('purchase_token_sha256', tokenHash)
       .maybeSingle()
     if (lookupError) return json(req, { error: 'Could not check whether this purchase is already linked.' }, 500)
     if (existing && existing.user_id !== user.id) {
       return json(req, { error: 'This Google Play subscription is already linked to another Hyperion account. Contact support if you believe this is incorrect.' }, 409)
+    }
+    if (existing?.subscription_state === 'SUBSCRIPTION_STATE_REPLACED') {
+      return json(req, { error: 'This Google Play purchase token has been replaced. Link the current subscription instead.' }, 409)
     }
 
     // Validate the verified replacement relationship before writing anything. A token
