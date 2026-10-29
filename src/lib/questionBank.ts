@@ -5,9 +5,11 @@ import {
   getOfflineQuestionCounts,
   getOfflineQuestionsByCompetence,
   getOfflineQuestionsByTrack,
+  saveOfflineEntitlements,
   saveOfflinePackManifest,
   saveOfflineQuestionPack
 } from './offlineQuestionCache';
+import { fingerprintQuestion } from './questionFingerprint.mjs';
 import { parseCsvText } from './csvParser';
 import type { Question, TrackId, Difficulty } from '../types/question';
 
@@ -659,14 +661,6 @@ export interface QuestionBankCount {
   count: number;
 }
 
-async function fingerprintQuestion(question: Question): Promise<string> {
-  const payload = new TextEncoder().encode(JSON.stringify([
-    question.questionText, question.options, question.correctAnswerIndex
-  ]));
-  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', payload));
-  return Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('');
-}
-
 export type QuestionSetAccess = 'admin' | 'licensed' | 'free-sample';
 
 /**
@@ -676,11 +670,15 @@ export type QuestionSetAccess = 'admin' | 'licensed' | 'free-sample';
  */
 export async function authorizeQuestionSetAccess(track: TrackId, questions: Question[]): Promise<QuestionSetAccess | null> {
   if (!questions.length || questions.length > 3000 || questions.some(q => q.track !== track)) return null;
-  const fingerprints = await Promise.all(questions.map(fingerprintQuestion));
+  const fingerprintResults = await Promise.all(questions.map(fingerprintQuestion));
+  if (fingerprintResults.some((fingerprint) => fingerprint === null)) return null;
+  const fingerprints = fingerprintResults as string[];
   const matchesCachedPack = async (freeOnly: boolean) => {
     const cached = await getOfflineQuestionsByTrack(track, freeOnly)
     if (!cached) return false
-    const allowedFingerprints = new Set(await Promise.all(cached.map(fingerprintQuestion)))
+    const cachedFingerprints = await Promise.all(cached.map(fingerprintQuestion))
+    if (cachedFingerprints.some((fingerprint) => fingerprint === null)) return false
+    const allowedFingerprints = new Set(cachedFingerprints as string[])
     return fingerprints.every(fingerprint => allowedFingerprints.has(fingerprint))
   }
 
@@ -805,6 +803,29 @@ async function downloadOfflinePackInternal(
   const counts = await getQuestionCountsByTrack(track, freeOnly)
   const totalExpected = counts.reduce((sum, item) => sum + item.count, 0)
   if (!counts.length || totalExpected <= 0) throw new Error('No questions are available to download for this track.')
+
+  // A paid offline pack is only useful if this same device has a current,
+  // server-signed offline entitlement lease. Acquire and verify it before marking
+  // the existing pack incomplete, so a lease failure does not damage a previous pack.
+  if (!freeOnly) {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    const userId = sessionData.session?.user?.id
+    if (sessionError || !userId) {
+      throw new Error('Sign in again before preparing a licensed offline pack.')
+    }
+    const { data: offlineLicense, error: offlineLicenseError } = await supabase.functions.invoke('question-bank', {
+      body: { action: 'offline-license' }
+    })
+    if (offlineLicenseError || typeof offlineLicense?.token !== 'string') {
+      throw new Error('Your questions were not prepared for offline access because the secure license could not be verified. Reconnect and retry.')
+    }
+    const savedLease = await saveOfflineEntitlements(userId, offlineLicense.token)
+    const expiry = savedLease ? await getOfflineEntitlementExpiry(userId, track) : null
+    if (!expiry) {
+      throw new Error('Your questions were not prepared for offline access because this device could not verify the track license. Reconnect and retry.')
+    }
+  }
+
   // Mark this pack incomplete before replacing any saved groups. Interrupted
   // updates must never leave a stale complete marker pointing at mixed data.
   await saveOfflinePackManifest({ track, freeOnly, questionCount: 0, groupCount: 0, complete: false })
