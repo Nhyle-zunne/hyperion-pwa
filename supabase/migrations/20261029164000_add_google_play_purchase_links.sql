@@ -193,7 +193,7 @@ BEGIN
   END;
   v_product_ids := CASE WHEN v_status = 'active' THEN COALESCE(p_product_ids, ARRAY[]::text[]) ELSE ARRAY[]::text[] END;
 
-  INSERT INTO public.google_play_purchase_links (
+  INSERT INTO public.google_play_purchase_links AS existing_link (
     user_id,
     purchase_token,
     purchase_token_sha256,
@@ -223,7 +223,7 @@ BEGIN
         expires_at = EXCLUDED.expires_at,
         last_verified_at = EXCLUDED.last_verified_at,
         updated_at = EXCLUDED.updated_at
-    WHERE public.google_play_purchase_links.user_id = EXCLUDED.user_id
+    WHERE existing_link.user_id = EXCLUDED.user_id
   RETURNING id INTO v_link_id;
 
   IF v_link_id IS NULL THEN
