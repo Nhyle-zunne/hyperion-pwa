@@ -24,6 +24,9 @@ const serviceWorkerPath = join(distDirectory, 'sw.js');
 assert.ok(files.includes('index.html'), 'Production bundle includes the app shell HTML');
 assert.ok(files.includes('sw.js'), 'Production bundle includes the generated service worker');
 assert.ok(files.includes('manifest.webmanifest'), 'Production bundle includes the PWA manifest');
+assert.ok(files.includes('logo.png'), 'Production bundle includes the local loading-indicator logo');
+const loaderSource = await readFile(fileURLToPath(new URL('../src/components/TopLoadingIndicator.tsx', import.meta.url)), 'utf8');
+assert.ok(loaderSource.includes('src="/logo.png"') && !loaderSource.includes('/logo.png?'), 'Loading indicator references the exact precached local logo URL without a query string');
 
 const indexHtml = await readFile(join(distDirectory, 'index.html'), 'utf8');
 for (const socialTag of [
