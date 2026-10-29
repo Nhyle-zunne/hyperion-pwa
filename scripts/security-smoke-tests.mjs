@@ -683,6 +683,17 @@ assert.ok(
 assert.ok(googlePlayLinkFunction.includes("if (req.method === 'OPTIONS') return json(req, { ok: true })"), 'Google Play linking preflight responses use the same origin-aware CORS helper as normal responses');
 assert.ok(googlePlayLinkFunction.includes("'http://localhost:5173'") && googlePlayLinkFunction.includes("'http://127.0.0.1:5173'"), 'Google Play linking CORS supports the documented local development origins');
 assert.ok(
+  accountScreen.includes("candidate.code !== 'PGRST205'") &&
+    accountScreen.includes("message.includes('google_play_entitlements')") &&
+    accountScreen.includes("message.includes('schema cache')"),
+  'Account license display ignores only the exact missing optional Google Play table response'
+);
+assert.ok(
+  accountScreen.includes('const entitlementError = entitlements.error || (playTableMissing ? null : playEntitlements.error)') &&
+    accountScreen.includes('(playTableMissing ? [] : (playEntitlements.data ?? []))'),
+  'A missing Google Play table does not hide existing website licenses in the Account page'
+);
+assert.ok(
   questionBank.includes('function isMissingGooglePlayEntitlementsTable(error: unknown)') &&
     questionBank.includes('candidate.code !== "PGRST205"') &&
     questionBank.includes('message.includes("google_play_entitlements")') &&
