@@ -357,7 +357,7 @@ assert.ok(deleteAccount.includes("userClient.auth.getUser()") && deleteAccount.i
 assert.ok(cancelCheckout.includes("authClient.auth.getUser()") && cancelCheckout.includes(".eq('user_id', user.id)"), 'Checkout cancellation authenticates the caller and scopes order access to the owning user');
 
 
-assert.ok(viteConfig.includes("globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}']") && !viteConfig.includes('.csv') && !viteConfig.includes('.enc'), 'PWA pre-cache allow-list excludes CSV and encrypted question-bank assets');
+assert.ok(viteConfig.includes("globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,avif,woff2,webmanifest}']") && !viteConfig.includes('.csv') && !viteConfig.includes('.enc'), 'PWA pre-cache includes bundled screen images but excludes CSV and encrypted question-bank assets');
 assert.ok(viteConfig.includes('sourcemap: false'), 'Production build does not publish browser source maps');
 assert.ok(mainEntry.includes("caches.delete('hyperion-question-banks')"), 'App startup deletes the legacy static question-bank cache');
 
