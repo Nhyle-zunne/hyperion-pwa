@@ -74,6 +74,7 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const submitManualPaymentFunction = await read('../supabase/functions/submit-manual-payment/index.ts');
 const googlePlayLinkFunction = await read('../supabase/functions/link-google-play-subscription/index.ts');
 const googlePlayRtdnFunction = await read('../supabase/functions/google-play-rtdn/index.ts');
 const googlePlayLinkMigration = await read('../supabase/migrations/20261029164000_add_google_play_purchase_links.sql');
@@ -669,9 +670,9 @@ assert.ok(
   'PayMongo checkout remains usable before the Play migration while still rejecting other license-query errors'
 );
 assert.ok(
-  manualPayment.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
-    manualPayment.includes("activePlayResult.error && !playTableMissing") &&
-    manualPayment.includes("playTableMissing ? null : activePlayResult.data"),
+  submitManualPaymentFunction.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
+    submitManualPaymentFunction.includes("activePlayResult.error && !playTableMissing") &&
+    submitManualPaymentFunction.includes("playTableMissing ? null : activePlayResult.data"),
   'Manual-payment submissions remain usable before the Play migration while still rejecting other license-query errors'
 );
 assert.ok(
