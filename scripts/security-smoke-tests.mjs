@@ -74,6 +74,7 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const licenseStore = await read('../src/stores/licenseStore.ts');
 const googlePlayLinkFunction = await read('../supabase/functions/link-google-play-subscription/index.ts');
 const googlePlayRtdnFunction = await read('../supabase/functions/google-play-rtdn/index.ts');
 const googlePlayLinkMigration = await read('../supabase/migrations/20261029164000_add_google_play_purchase_links.sql');
@@ -661,6 +662,24 @@ assert.ok(offlineUpdateButton.includes("'FULLY UPDATED'") && offlineUpdateButton
 assert.ok(offlineUpdateButton.includes("offlineUpdateCheck.status === 'available'") && offlineUpdateButton.includes("void startOfflineDownload()"), 'The question pack download action is only started when the user has no pack or an update is actually available');
 assert.ok(offlineUpdateButton.includes("'UPDATE AVAILABLE · RECONNECT'") && offlineUpdateButton.includes("'FULLY UPDATED · LAST CHECK'"), 'Offline track pages show the last verified state and never offer an update download without connectivity');
 
+
+assert.ok(
+  licenseStore.includes("candidate.code !== 'PGRST205'") &&
+    licenseStore.includes("message.includes('google_play_entitlements')") &&
+    licenseStore.includes("message.includes('schema cache')"),
+  'Only a confirmed PostgREST missing-table response for google_play_entitlements is treated as an optional table'
+);
+assert.ok(
+  licenseStore.includes('const errorStatus = websiteResult.error ? websiteResult.status : playResult.status') &&
+    licenseStore.includes('canUseOfflineEntitlementsAfterError(error, errorStatus)') &&
+    licenseStore.includes("if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false"),
+  'Cached offline license fallback does not treat coded authorization/database errors as network failures'
+);
+assert.ok(
+  licenseStore.includes('const error = websiteResult.error || (playTableMissing ? null : playResult.error)') &&
+    licenseStore.includes('(playTableMissing ? [] : (playResult.data ?? []))'),
+  'Missing optional Google Play table does not block website-license reads, while website query errors remain enforced'
+);
 
 assert.ok(googlePlayLinkFunction.includes("if (req.method === 'OPTIONS') return json(req, { ok: true })"), 'Google Play linking preflight responses use the same origin-aware CORS helper as normal responses');
 assert.ok(googlePlayLinkFunction.includes("'http://localhost:5173'") && googlePlayLinkFunction.includes("'http://127.0.0.1:5173'"), 'Google Play linking CORS supports the documented local development origins');
