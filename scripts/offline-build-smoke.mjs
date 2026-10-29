@@ -25,7 +25,21 @@ assert.ok(files.includes('index.html'), 'Production bundle includes the app shel
 assert.ok(files.includes('sw.js'), 'Production bundle includes the generated service worker');
 assert.ok(files.includes('manifest.webmanifest'), 'Production bundle includes the PWA manifest');
 
+const indexHtml = await readFile(join(distDirectory, 'index.html'), 'utf8');
+for (const socialTag of [
+  '<meta property="og:type" content="website" />',
+  '<meta property="og:title" content="Hyperion Maritime | Maritime Licensure Reviewer" />',
+  '<meta property="og:description"',
+  '<meta property="og:image" content="https://hyperionmaritime.org/pwa-512x512.png" />',
+  '<meta name="twitter:card" content="summary_large_image" />',
+  '<link rel="canonical" href="https://hyperionmaritime.org/" />'
+]) {
+  assert.ok(indexHtml.includes(socialTag), `Production HTML includes social sharing metadata: ${socialTag}`);
+}
+assert.ok(files.includes('pwa-512x512.png'), 'Production bundle includes the social-preview logo image');
+
 const serviceWorker = await readFile(serviceWorkerPath, 'utf8');
+assert.ok(serviceWorker.includes('pwa-512x512.png'), 'Generated service worker precaches the social-preview image');
 const requiredOfflineAssets = [
   'index.html',
   'manifest.webmanifest',
