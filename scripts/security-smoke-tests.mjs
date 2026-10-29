@@ -696,6 +696,26 @@ assert.ok(
   'A missing Google Play table does not hide existing website licenses in the Account page'
 );
 assert.ok(
+  accountRetentionFunction.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
+    accountRetentionFunction.includes("candidate.code !== 'PGRST205'") &&
+    accountRetentionFunction.includes("message.includes('google_play_entitlements')") &&
+    accountRetentionFunction.includes("message.includes('schema cache')"),
+  'Account-retention cleanup recognizes only the exact missing optional Google Play table response'
+);
+assert.ok(
+  accountRetentionFunction.includes('if (result.error && !playTableMissing)') &&
+    accountRetentionFunction.includes('if (playTableMissing || rows.length < PAGE_SIZE) break') &&
+    accountRetentionFunction.includes('freshPlayEntitlements.error && !freshPlayTableMissing') &&
+    accountRetentionFunction.includes('freshPlayTableMissing ? [] : ((freshPlayEntitlements.data || []) as Entitlement[])'),
+  'Account retention stays operational before the Play migration while failing closed on other entitlement-query errors'
+);
+assert.ok(
+  adminLicenseManagement.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
+    adminLicenseManagement.includes("if (result.error && !playTableMissing)") &&
+    adminLicenseManagement.includes("playError && !isMissingGooglePlayEntitlementsTable(playError)"),
+  'Admin website license management remains available before the Play table migration and still fails closed on other query errors'
+);
+assert.ok(
   questionBank.includes('function isMissingGooglePlayEntitlementsTable(error: unknown)') &&
     questionBank.includes('candidate.code !== "PGRST205"') &&
     questionBank.includes('message.includes("google_play_entitlements")') &&
