@@ -79,7 +79,7 @@ jobs:
             LANGUAGE sql STABLE
             AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
           SQL
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261029164000_add_google_play_purchase_links.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261029184029_add_google_play_purchase_links.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/google_play_subscription_atomic.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           CREATE SCHEMA vault;
@@ -139,7 +139,7 @@ jobs:
             SELECT pg_catalog.decode(pg_catalog.repeat('ab', p_bytes), 'hex')
           $fn$;
           SQL
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261030180000_schedule_google_play_reconciliation.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261029184034_schedule_google_play_reconciliation.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DO $tests$
           DECLARE
