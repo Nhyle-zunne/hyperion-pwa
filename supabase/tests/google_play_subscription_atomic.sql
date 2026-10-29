@@ -234,6 +234,30 @@ BEGIN
 END;
 $tests$;
 
+DO $reconciliation_cursor$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_catalog.pg_attribute
+     WHERE attrelid = 'public.google_play_purchase_links'::regclass
+       AND attname = 'last_reconciliation_attempt_at'
+       AND attnotnull
+       AND NOT attisdropped
+  ) THEN
+    RAISE EXCEPTION 'Google Play purchase links are missing the non-null reconciliation-attempt timestamp';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_catalog.pg_indexes
+     WHERE schemaname = 'public'
+       AND indexname = 'google_play_purchase_links_reconciliation_attempt_idx'
+  ) THEN
+    RAISE EXCEPTION 'Google Play purchase links are missing the reconciliation scheduling index';
+  END IF;
+END;
+$reconciliation_cursor$;
+
 -- The authenticated role can read its own grants, not another account's grants.
 SET ROLE authenticated;
 SET request.jwt.claim.sub = '00000000-0000-4000-8000-000000000001';
