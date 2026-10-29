@@ -1,7 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Question, TrackId } from '../types/question'
 import { verifyOfflineEntitlementToken } from './offlineEntitlementCrypto.mjs'
-import { isOfflinePackSetComplete } from './offlinePackIntegrity.mjs'
+import { isGmdssFreeSampleQuestion, isOfflinePackSetComplete } from './offlinePackIntegrity.mjs'
 
 export interface OfflineQuestionPack {
   id: string
@@ -248,6 +248,7 @@ export async function getOfflineQuestionPacks(track: TrackId, freeOnly: boolean)
     for (const pack of stored) {
       const decoded = await decryptOfflineQuestionPack(savedKey.key, pack)
       if (decoded.questions.length !== pack.questionCount) return null
+      if (track === 'GMDSS_GOC' && freeOnly && decoded.questions.some(question => !isGmdssFreeSampleQuestion(question))) return null
       decrypted.push(decoded)
     }
     return decrypted
