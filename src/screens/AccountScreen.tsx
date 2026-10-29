@@ -34,6 +34,14 @@ function safeAccountError(error: unknown, fallback: string) {
   return message
 }
 
+function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { code?: unknown; message?: unknown }
+  if (candidate.code !== 'PGRST205' || typeof candidate.message !== 'string') return false
+  const message = candidate.message.toLowerCase()
+  return message.includes('google_play_entitlements') && message.includes('schema cache')
+}
+
 async function edgeFunctionErrorMessage(error: unknown): Promise<string | null> {
   if (!error || typeof error !== 'object' || !('context' in error)) return null
   const context = (error as { context?: unknown }).context
@@ -213,11 +221,14 @@ export default function AccountScreen() {
         .limit(50),
     ])
 
-    const entitlementError = entitlements.error || playEntitlements.error
+    // The Google Play table is optional until its backend migration is released.
+    // Ignore only PostgREST's exact missing-table/schema-cache response.
+    const playTableMissing = isMissingGooglePlayEntitlementsTable(playEntitlements.error)
+    const entitlementError = entitlements.error || (playTableMissing ? null : playEntitlements.error)
     const mergeNow = Date.now()
     const fetchedEntitlements: OwnedTrack[] = [
       ...((entitlements.data ?? []) as Omit<OwnedTrack, 'source'>[]).map(row => ({ ...row, source: 'website' as const })),
-      ...((playEntitlements.data ?? []).map(row => ({
+      ...((playTableMissing ? [] : (playEntitlements.data ?? [])).map(row => ({
         product_code: row.product_code,
         order_id: null,
         license_term: null,
