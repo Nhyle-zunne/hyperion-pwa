@@ -374,6 +374,7 @@ async function authorizeTrack(admin: any, user: any, isAdmin: boolean, track: st
 }
 const FREE_FINGERPRINT_CACHE_TTL_MS = 30_000;
 const freeQuestionFingerprintCache = new Map<string, { fingerprints: Set<string>; cachedAt: number }>();
+const fullQuestionFingerprintCache = new Map<string, { fingerprints: Set<string>; cachedAt: number }>();
 function questionIdBelongsToTrack(id: string, track: string) {
   if (track === "DECK_OIC_NW") return id.startsWith("D-");
   if (track === "GMDSS_GOC") return id.startsWith("G-");
@@ -383,7 +384,19 @@ function questionIdBelongsToTrack(id: string, track: string) {
   return false;
 }
 async function questionFingerprint(question: { questionText: string; options: string[]; correctAnswerIndex: number }): Promise<string> {
-  const payload = new TextEncoder().encode(JSON.stringify([question.questionText, question.options, question.correctAnswerIndex]));
+  if (!Number.isInteger(question.correctAnswerIndex) ||
+      question.correctAnswerIndex < 0 ||
+      question.correctAnswerIndex >= question.options.length) {
+    throw new Error("Invalid correct answer index.");
+  }
+  const canonicalOptions = question.options
+    .map((text, index) => ({ text, correct: index === question.correctAnswerIndex }))
+    .sort((left, right) => {
+      if (left.text < right.text) return -1;
+      if (left.text > right.text) return 1;
+      return Number(left.correct) - Number(right.correct);
+    });
+  const payload = new TextEncoder().encode(JSON.stringify([question.questionText, canonicalOptions]));
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", payload));
   return Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -402,6 +415,22 @@ async function freeQuestionFingerprints(admin: any, track: string): Promise<Set<
     hashes.forEach(hash => fingerprints.add(hash));
   }
   freeQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now() });
+  return fingerprints;
+}
+async function fullQuestionFingerprints(admin: any, track: string): Promise<Set<string>> {
+  const cached = fullQuestionFingerprintCache.get(track);
+  if (cached && Date.now() - cached.cachedAt < FREE_FINGERPRINT_CACHE_TTL_MS) return cached.fingerprints;
+  const fingerprints = new Set<string>();
+  for (const path of SOURCE_ASSETS.filter(item => trackForPath(item) === track)) {
+    const questions = toSearchQuestions(path, await privateText(admin, path));
+    const hashes = await Promise.all(questions.map(question => questionFingerprint({
+      questionText: String(question.questionText),
+      options: question.options as string[],
+      correctAnswerIndex: Number(question.correctAnswerIndex)
+    })));
+    hashes.forEach(hash => fingerprints.add(hash));
+  }
+  fullQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now() });
   return fingerprints;
 }
 
@@ -672,14 +701,21 @@ Deno.serve(async (req: Request) => {
       return json(req, { allowedIndexes: [], error: "Invalid track." }, 400);
     }
     if (!Array.isArray(items) || items.length < 1 || items.length > 1000 ||
-        items.some(item => !item || typeof item.id !== "string" || item.id.length > 120 ||
-          !questionIdBelongsToTrack(item.id, track) ||
+        items.some(item => !item || typeof item.id !== "string" || item.id.length < 1 || item.id.length > 120 ||
           typeof item.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(item.fingerprint))) {
       return json(req, { allowedIndexes: [], error: "Invalid saved question set." }, 400);
     }
     try {
       if (await authorizeTrack(admin, user, isAdmin, track)) {
-        return json(req, { allowedIndexes: items.map((_, index) => index), access: isAdmin ? "admin" : "licensed" });
+        if (items.every(item => questionIdBelongsToTrack(item.id, track))) {
+          return json(req, { allowedIndexes: items.map((_, index) => index), access: isAdmin ? "admin" : "licensed" });
+        }
+        // Older app versions used different question ID prefixes. Recover only those
+        // entries whose content fingerprint matches the private source bank for this
+        // exact track; never use a legacy ID alone to grant cross-track access.
+        const allowedFingerprints = await fullQuestionFingerprints(admin, track);
+        const allowedIndexes = items.flatMap((item, index) => allowedFingerprints.has(item.fingerprint) ? [index] : []);
+        return json(req, { allowedIndexes, access: isAdmin ? "admin" : "licensed" });
       }
       const allowedFingerprints = await freeQuestionFingerprints(admin, track);
       const allowedIndexes = items.flatMap((item, index) => allowedFingerprints.has(item.fingerprint) ? [index] : []);
@@ -695,13 +731,23 @@ Deno.serve(async (req: Request) => {
     const fingerprints = body.fingerprints;
     if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) return json(req, { allowed: false, error: "Invalid track." }, 400);
     if (!Array.isArray(questionIds) || questionIds.length < 1 || questionIds.length > 3000 ||
-        questionIds.some(id => typeof id !== "string" || id.length > 120 || !questionIdBelongsToTrack(id, track)) ||
+        questionIds.some(id => typeof id !== "string" || id.length < 1 || id.length > 120) ||
         !Array.isArray(fingerprints) || fingerprints.length !== questionIds.length ||
         fingerprints.some(hash => typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash))) {
       return json(req, { allowed: false, error: "Invalid question set." }, 400);
     }
     try {
-      if (await authorizeTrack(admin, user, isAdmin, track)) return json(req, { allowed: true, access: isAdmin ? "admin" : "licensed" });
+      if (await authorizeTrack(admin, user, isAdmin, track)) {
+        if (questionIds.every(id => questionIdBelongsToTrack(id, track))) {
+          return json(req, { allowed: true, access: isAdmin ? "admin" : "licensed" });
+        }
+        // Backwards-compatible recovery for archived sessions written by older app
+        // versions with different IDs. The question content must match this track's
+        // server-side private bank before allowing a legacy session to resume.
+        const trackFingerprints = await fullQuestionFingerprints(admin, track);
+        const allowed = fingerprints.every(hash => trackFingerprints.has(hash as string));
+        return json(req, { allowed, access: allowed ? (isAdmin ? "admin" : "licensed") : "denied" }, allowed ? 200 : 403);
+      }
       const allowedFingerprints = await freeQuestionFingerprints(admin, track);
       const allowed = fingerprints.every(hash => allowedFingerprints.has(hash as string));
       return json(req, { allowed, access: allowed ? "free-sample" : "denied" }, allowed ? 200 : 403);
