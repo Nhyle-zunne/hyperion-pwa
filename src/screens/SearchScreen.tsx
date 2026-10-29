@@ -19,6 +19,7 @@ export default function SearchScreen() {
   const [results, setResults] = useState<Question[]>([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [searchError, setSearchError] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
 
   const isUnlocked = useLicenseStore((s) => s.isTrackUnlocked(track) || s.isAllAccessUnlocked)
@@ -44,12 +45,14 @@ export default function SearchScreen() {
     if (q.length < 2) return
     setLoading(true)
     setSearched(true)
+    setSearchError('')
     setExpanded(null)
     try {
       const hits = await searchQuestions(track, q, 40)
       setResults(hits)
-    } catch {
+    } catch (error) {
       setResults([])
+      setSearchError(error instanceof Error ? error.message : 'Search is unavailable. Connect to the internet or download this track first.')
     }
     setLoading(false)
   }
@@ -175,8 +178,8 @@ export default function SearchScreen() {
       </div>
 
       {searched && !loading && results.length === 0 && (
-        <div className="card" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-          No matches. Try another keyword or track.
+        <div className="card" style={{ color: searchError ? 'var(--warning)' : 'var(--text-muted)', textAlign: 'center' }} role={searchError ? 'status' : undefined}>
+          {searchError || 'No matches. Try another keyword or track.'}
         </div>
       )}
     </div>
