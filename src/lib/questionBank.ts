@@ -908,6 +908,7 @@ async function searchQuestionsInternal(
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     if (!(await offlineEntitlementExpiry(track))) throw new Error('An active offline license is required for question search.')
     const cached = (await getOfflineQuestionsByTrack(track, false)) ?? []
+    if (!cached.length) throw new Error('Download the full question bank for this track before using Search offline.')
     return cached.filter(question =>
       (question.questionText + ' ' + question.topic + ' ' + question.competenceId + ' ' + question.options.join(' '))
         .toLowerCase().includes(q.toLowerCase())
