@@ -6,7 +6,7 @@ import { useHistoryStore } from '../stores/historyStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useVaultStore } from '../stores/vaultStore'
 import type { TrackId } from '../types/question'
-import { downloadOfflinePack, ensureOfflineFreeSamplePack, getQuestionCountsByTrack } from '../lib/questionBank'
+import { checkOfflineQuestionPackUpdates, downloadOfflinePack, ensureOfflineFreeSamplePack, getQuestionCountsByTrack } from '../lib/questionBank'
 import { getOfflineEntitlementExpiry, getOfflinePackStatus } from '../lib/offlineQuestionCache'
 import { supabase } from '../lib/supabase'
 import './TrackHubScreen.css'
@@ -82,6 +82,10 @@ export default function TrackHubScreen() {
   const [offlineDownloading, setOfflineDownloading] = useState(false)
   const [offlineProgress, setOfflineProgress] = useState({ downloaded: 0, total: 0 })
   const [offlineStatus, setOfflineStatus] = useState<{ questionCount: number; groupCount: number; savedAt: number } | null>(null)
+  const [offlineUpdateCheck, setOfflineUpdateCheck] = useState<Awaited<ReturnType<typeof checkOfflineQuestionPackUpdates>>>({
+    status: 'not-downloaded', changedCompetences: [], checkedAt: null
+  })
+  const [checkingOfflineVersion, setCheckingOfflineVersion] = useState(false)
   const [offlineError, setOfflineError] = useState('')
   const [freeQuestionCount, setFreeQuestionCount] = useState<number | null>(null)
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
@@ -141,8 +145,20 @@ export default function TrackHubScreen() {
         if (!unlocked && !online) await ensureOfflineFreeSamplePack(info.trackId)
         const status = await getOfflinePackStatus(info.trackId, !unlocked)
         if (active) setOfflineStatus(status?.complete ? status : null)
+        if (status?.complete) {
+          if (active) setCheckingOfflineVersion(true)
+          const updateCheck = await checkOfflineQuestionPackUpdates(info.trackId, !unlocked)
+          if (active) setOfflineUpdateCheck(updateCheck)
+        } else if (active) {
+          setOfflineUpdateCheck({ status: 'not-downloaded', changedCompetences: [], checkedAt: null })
+        }
       } catch {
-        if (active) setOfflineStatus(null)
+        if (active) {
+          setOfflineStatus(null)
+          setOfflineUpdateCheck({ status: 'unavailable', changedCompetences: [], checkedAt: null })
+        }
+      } finally {
+        if (active) setCheckingOfflineVersion(false)
       }
 
       if (!unlocked || !supabase) {
@@ -182,10 +198,29 @@ export default function TrackHubScreen() {
       })
       const status = await getOfflinePackStatus(info.trackId, !unlocked)
       setOfflineStatus(status?.complete ? status : { ...result, savedAt: Date.now() })
+      setOfflineUpdateCheck({
+        status: 'current',
+        changedCompetences: [],
+        checkedAt: Date.now(),
+        lastKnownState: 'current',
+        savedAt: status?.savedAt ?? Date.now()
+      })
     } catch (error) {
       setOfflineError(error instanceof Error ? error.message : 'Offline download failed. Please try again while online.')
     } finally {
       setOfflineDownloading(false)
+    }
+  }
+
+  const refreshOfflineVersionCheck = async () => {
+    if (!online || checkingOfflineVersion) return
+    setCheckingOfflineVersion(true)
+    try {
+      const result = await checkOfflineQuestionPackUpdates(info.trackId, !unlocked)
+      setOfflineUpdateCheck(result)
+      setOfflineRefreshKey(current => current + 1)
+    } finally {
+      setCheckingOfflineVersion(false)
     }
   }
 
@@ -310,7 +345,34 @@ export default function TrackHubScreen() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <span aria-hidden="true" style={{ fontSize: '1.4rem' }}>⇩</span>
           <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--text)' }}>OFFLINE ACCESS</h2>
-          {offlineStatus && <span style={{ color: 'var(--success, #16803d)', fontSize: '0.75rem', fontWeight: 800 }}>DOWNLOADED</span>}
+          {offlineStatus && (
+            <span
+              role="status"
+              style={{
+                color: online
+                  ? offlineUpdateCheck.status === 'current' ? 'var(--success, #16803d)' : offlineUpdateCheck.status === 'available' ? 'var(--warning, #c2410c)' : 'var(--text-muted)'
+                  : offlineUpdateCheck.lastKnownState === 'current' ? 'var(--success, #16803d)' : offlineUpdateCheck.lastKnownState === 'available' ? 'var(--warning, #c2410c)' : 'var(--text-muted)',
+                fontSize: '0.72rem',
+                fontWeight: 850
+              }}
+            >
+              {checkingOfflineVersion
+                ? 'CHECKING…'
+                : online
+                  ? offlineUpdateCheck.status === 'current'
+                    ? 'FULLY UPDATED'
+                    : offlineUpdateCheck.status === 'available'
+                      ? 'UPDATE AVAILABLE'
+                      : offlineUpdateCheck.status === 'unavailable'
+                        ? 'UPDATE CHECK UNAVAILABLE'
+                        : 'CHECK REQUIRED'
+                  : offlineUpdateCheck.lastKnownState === 'current'
+                    ? 'FULLY UPDATED · LAST CHECK'
+                    : offlineUpdateCheck.lastKnownState === 'available'
+                      ? 'UPDATE AVAILABLE · RECONNECT'
+                      : 'UPDATE STATUS UNKNOWN'}
+            </span>
+          )}
           <span style={{ marginLeft: 'auto', padding: '.25rem .45rem', borderRadius: 999, border: '1px solid var(--border)', color: online ? 'var(--success, #16803d)' : 'var(--warning, #c2410c)', fontSize: '0.7rem', fontWeight: 850 }}>{online ? 'DEVICE ONLINE' : 'DEVICE OFFLINE'}</span>
         </div>
         <p style={{ margin: '0 0 0.8rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
@@ -329,6 +391,21 @@ export default function TrackHubScreen() {
               ? `Offline access is verified until ${new Date(offlineLicenseExpiry).toLocaleString()}. Reconnect before expiry to refresh your license.`
               : 'Your paid question pack is saved, but a valid offline license could not be verified on this device. Reconnect to refresh access before going offline.'}
         </p>}
+        {offlineStatus && offlineUpdateCheck.status === 'current' && online && <p role="status" style={{ margin: '0 0 .8rem', padding: '.65rem .75rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--success, #16803d)', fontSize: '.84rem', lineHeight: 1.5 }}>
+          Your downloaded question pack matches the latest published question bank. No update is needed.
+        </p>}
+        {offlineStatus && offlineUpdateCheck.status === 'available' && <p role="status" style={{ margin: '0 0 .8rem', padding: '.65rem .75rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--warning, #c2410c)', fontSize: '.84rem', lineHeight: 1.5 }}>
+          Updates detected in {offlineUpdateCheck.changedCompetences.length ? offlineUpdateCheck.changedCompetences.join(', ') : 'this track'}. Press UPDATE AVAILABLE while connected to download the latest questions.
+        </p>}
+        {offlineStatus && !online && offlineUpdateCheck.lastKnownState === 'current' && <p style={{ margin: '0 0 .8rem', color: 'var(--text-muted)', fontSize: '.78rem' }}>
+          Last verified fully updated: {offlineUpdateCheck.checkedAt ? new Date(offlineUpdateCheck.checkedAt).toLocaleString() : 'not recorded'}. Connect again to check for newer changes.
+        </p>}
+        {offlineStatus && offlineUpdateCheck.status === 'unavailable' && online && <p role="status" style={{ margin: '0 0 .8rem', color: 'var(--text-muted)', fontSize: '.84rem' }}>
+          The latest version could not be checked. Your saved questions are still stored. Please retry the check.
+        </p>}
+        {offlineStatus && offlineUpdateCheck.status === 'offline' && offlineUpdateCheck.lastKnownState === 'available' && <p style={{ margin: '0 0 .8rem', color: 'var(--text-muted)', fontSize: '.84rem' }}>
+          An update was found during the last online check. Reconnect to download it.
+        </p>}
         {offlineStatus && <p style={{ margin: '0 0 .8rem', color: 'var(--text-muted)', fontSize: '.78rem' }}>
           Last saved on this device: {new Date(offlineStatus.savedAt).toLocaleString()}.
         </p>}
@@ -342,16 +419,29 @@ export default function TrackHubScreen() {
           </div>
         )}
         {offlineError && <p role="alert" style={{ color: 'var(--danger, #b42318)', fontSize: '0.85rem' }}>{offlineError}</p>}
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => void startOfflineDownload()}
-          disabled={!online || offlineDownloading}
-          style={{ width: '100%', minHeight: 44 }}
-        >
-          {offlineDownloading ? 'DOWNLOADING…' : offlineStatus ? 'UPDATE OFFLINE QUESTION PACK' : unlocked ? 'DOWNLOAD FULL BANK FOR OFFLINE' : 'DOWNLOAD FREE QUESTIONS FOR OFFLINE'}
-        </button>
-        {!online && !offlineStatus && <p style={{ margin: '0.65rem 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Connect to the internet to download this pack first.</p>}
+        {(!offlineStatus || offlineUpdateCheck.status === 'available' || (offlineStatus && online && offlineUpdateCheck.status !== 'current' && !checkingOfflineVersion)) && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              if (offlineStatus && offlineUpdateCheck.status !== 'available') void refreshOfflineVersionCheck()
+              else void startOfflineDownload()
+            }}
+            disabled={!online || offlineDownloading || checkingOfflineVersion}
+            style={{ width: '100%', minHeight: 44 }}
+          >
+            {offlineDownloading
+              ? 'DOWNLOADING…'
+              : checkingOfflineVersion
+                ? 'CHECKING FOR UPDATES…'
+                : !offlineStatus
+                  ? unlocked ? 'DOWNLOAD FULL BANK FOR OFFLINE' : 'DOWNLOAD FREE QUESTIONS FOR OFFLINE'
+                  : offlineUpdateCheck.status === 'available'
+                    ? 'UPDATE AVAILABLE'
+                    : 'CHECK FOR UPDATES'}
+          </button>
+        )}
+        {!online && (!offlineStatus || offlineUpdateCheck.lastKnownState !== 'current') && <p style={{ margin: '0.65rem 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Connect to the internet to download this pack or check for updates.</p>}
         <p style={{ margin: '0.65rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
           Packs are stored on this device. Paid offline access requires a valid server-signed license; reconnect periodically to refresh it. Revocation cannot reach a device while it remains fully offline.
         </p>
