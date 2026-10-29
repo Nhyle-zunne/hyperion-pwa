@@ -228,6 +228,7 @@ export default function AccountScreen() {
         source: 'google_play' as const,
       })))
     ]
+    // Preserve the last known license display during network outages, then re-evaluate expiry locally.
     const entitlementRows = !entitlementError
       ? Array.from(fetchedEntitlements.reduce((map, row) => {
           const previous = map.get(row.product_code)
