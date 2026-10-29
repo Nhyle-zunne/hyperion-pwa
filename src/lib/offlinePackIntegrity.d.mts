@@ -1,3 +1,7 @@
+export interface OfflinePackIntegrityQuestion {
+  id?: unknown;
+}
+export declare function isGmdssFreeSampleQuestion(question: OfflinePackIntegrityQuestion | null | undefined): boolean;
 export interface OfflinePackIntegrityManifest {
   track: string;
   freeOnly: boolean;
