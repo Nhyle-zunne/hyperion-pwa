@@ -682,6 +682,19 @@ assert.ok(
 
 assert.ok(googlePlayLinkFunction.includes("if (req.method === 'OPTIONS') return json(req, { ok: true })"), 'Google Play linking preflight responses use the same origin-aware CORS helper as normal responses');
 assert.ok(googlePlayLinkFunction.includes("'http://localhost:5173'") && googlePlayLinkFunction.includes("'http://127.0.0.1:5173'"), 'Google Play linking CORS supports the documented local development origins');
+assert.ok(
+  questionBank.includes('function isMissingGooglePlayEntitlementsTable(error: unknown)') &&
+    questionBank.includes('candidate.code !== "PGRST205"') &&
+    questionBank.includes('message.includes("google_play_entitlements")') &&
+    questionBank.includes('message.includes("schema cache")'),
+  'Protected question-bank licensing recognizes only the exact missing optional Google Play table response'
+);
+assert.ok(
+  questionBank.includes('if (website.error || (play.error && !playTableMissing))') &&
+    questionBank.includes('playTableMissing ? null : play.data') &&
+    questionBank.includes('playTableMissing ? [] : (play.data ?? [])'),
+  'Website paid-track authorization and signed offline-license issuance remain compatible before the Google Play migration, while other query errors fail closed'
+);
 assert.ok(googlePlayLinkFunction.includes("userClient.auth.getUser()"), 'Google Play purchase linking requires a verified authenticated Hyperion user');
 assert.ok(googlePlayLinkFunction.includes("admin.rpc('sync_google_play_subscription_atomic'") && !googlePlayLinkFunction.includes('upsertPlayEntitlement'), 'The verified link endpoint reconciles the whole subscription in one database transaction');
 const atomicRpcStart = googlePlayLinkMigration.indexOf('CREATE OR REPLACE FUNCTION public.sync_google_play_subscription_atomic(');
