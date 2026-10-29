@@ -4,14 +4,15 @@
  * Options are sorted with the correct answer attached to its option text, so
  * shuffling answer choices does not make an otherwise identical saved question
  * look like different content.
+ *
+ * @typedef {Object} FingerprintableQuestion
+ * @property {string} questionText
+ * @property {string[]} options
+ * @property {number} correctAnswerIndex
  */
-export interface FingerprintableQuestion {
-  questionText: string;
-  options: string[];
-  correctAnswerIndex: number;
-}
 
-export function questionFingerprintPayload(question: FingerprintableQuestion): string | null {
+/** @param {FingerprintableQuestion} question */
+export function questionFingerprintPayload(question) {
   if (
     typeof question.questionText !== 'string' ||
     !Array.isArray(question.options) ||
@@ -32,7 +33,8 @@ export function questionFingerprintPayload(question: FingerprintableQuestion): s
   return JSON.stringify([question.questionText, canonicalOptions]);
 }
 
-export async function fingerprintQuestion(question: FingerprintableQuestion): Promise<string | null> {
+/** @param {FingerprintableQuestion} question */
+export async function fingerprintQuestion(question) {
   const canonical = questionFingerprintPayload(question);
   if (canonical === null) return null;
   const payload = new TextEncoder().encode(canonical);
