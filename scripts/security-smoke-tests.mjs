@@ -506,6 +506,7 @@ assert.ok(vaultScreen.includes('authorizeQuestionSet') && vaultScreen.includes('
 assert.ok(practiceStore.includes('addMistake(q, answer.selectedIndex, s.isFreeSession)') && practiceStore.includes('addMistake(q, index, isFreeSession)'), 'Mistake vault records whether a mistake came from a permitted free session');
 assert.ok(encryptedPersistStorage.includes("await db.put('entries', { id: name, ...encrypted })") && encryptedPersistStorage.includes('Remove the cleartext copy only after the encrypted record is safely committed'), 'Legacy localStorage is migrated to encrypted IndexedDB before being removed');
 assert.ok(encryptedPersistStorage.includes('Do not write an unencrypted fallback'), 'Encrypted storage never introduces a new plaintext fallback');
+assert.ok((encryptedPersistStorage.match(/removeLegacyValue\(name\)/g) || []).length >= 4 && encryptedPersistStorage.includes('Once the encrypted copy is verified, remove any stale cleartext'), 'Verified encrypted reads and successful writes clean up stale plaintext persistence keys');
 const serialQueue = createSerialAsyncQueue();
 const queueOrder = [];
 let releaseFirstWrite;

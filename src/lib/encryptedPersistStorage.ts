@@ -88,7 +88,9 @@ async function readEncryptedValueUnlocked(name: string): Promise<string | null> 
     if (saved) {
       const key = await getOrCreateKey(db)
       const value = await decryptJsonPayload<unknown>(saved.iv, saved.ciphertext, key)
-      return typeof value === 'string' ? value : null
+      if (typeof value !== 'string') return null
+      removeLegacyValue(name)
+      return value
     }
   } catch {
     return null
@@ -146,7 +148,10 @@ export const encryptedPersistStorage: StateStorage = {
       try {
         const key = await getOrCreateKey(db)
         const value = await decryptJsonPayload<unknown>(saved.iv, saved.ciphertext, key)
-        return typeof value === 'string' ? value : null
+        if (typeof value !== 'string') return null
+        // Once the encrypted copy is verified, remove any stale cleartext left by an older restore path.
+        removeLegacyValue(name)
+        return value
       } catch {
         // Do not fall back to plaintext when an encrypted value is corrupt or the key is unavailable.
         return null
@@ -182,10 +187,7 @@ export const encryptedPersistStorage: StateStorage = {
 
   setItem: (name, value) => queueStorageOperation(async () => {
     try {
-      const db = await database()
-      const key = await getOrCreateKey(db)
-      const encrypted = await encryptJsonPayload(value, key)
-      await db.put('entries', { id: name, ...encrypted })
+      await writeEncryptedValueUnlocked(name, value)
     } catch (error) {
       // Do not write an unencrypted fallback. A subsequent page visit can retry storage.
       console.warn('[Hyperion] Could not persist encrypted browser state.', error instanceof Error ? error.name : 'StorageError')
