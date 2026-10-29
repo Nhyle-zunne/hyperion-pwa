@@ -86,6 +86,7 @@ const routeErrorBoundary = await read('../src/components/RouteErrorBoundary.tsx'
 const adminPaymentReviewFunction = await read('../supabase/functions/admin-payment-review/index.ts');
 const deleteAccount = await read('../supabase/functions/delete-account/index.ts');
 const learningProgressFunction = await read('../supabase/functions/learning-progress/index.ts');
+const progressPrivilegeMigration = await read('../supabase/migrations/20261029032000_lock_down_user_learning_progress.sql');
 const cancelCheckout = await read('../supabase/functions/cancel-checkout/index.ts');
 const offlineEntitlementCrypto = await read('../src/lib/offlineEntitlementCrypto.mjs');
 const sessionArchive = await read('../src/lib/sessionArchive.ts');
@@ -535,5 +536,9 @@ assert.ok(learningProgressFunction.includes("admin.from('user_learning_progress'
 assert.ok(learningProgressFunction.includes("client.functions.invoke('question-bank'") && learningProgressFunction.includes('sanitizeSnapshot'), 'Progress server responses are filtered through the protected question-bank authorization service');
 assert.ok(progressSyncSource.includes("functions.invoke('learning-progress'") && !progressSyncSource.includes(".from(TABLE)"), 'The browser no longer directly reads or writes user_learning_progress');
 assert.ok(functionConfig.includes('[functions.learning-progress]') && functionConfig.includes('verify_jwt = true'), 'Learning progress endpoint requires a valid JWT');
+
+
+assert.ok(progressPrivilegeMigration.includes('revoke all privileges on table public.user_learning_progress from PUBLIC, anon, authenticated') && progressPrivilegeMigration.includes('grant all privileges on table public.user_learning_progress to service_role'), 'Direct browser privileges are revoked while service-role access is retained');
+assert.ok(progressPrivilegeMigration.includes('alter table public.user_learning_progress enable row level security') && progressPrivilegeMigration.includes('drop policy if exists "Users can read their own learning progress"'), 'Learning progress remains RLS-enabled without direct per-user JSON read policies');
 
 console.log('Release-safety smoke checks passed.');
