@@ -95,22 +95,24 @@ function database() {
           // intact and avoid decrypting their question payloads on future reads.
           const packStore = transaction.objectStore('packs')
           const metadataStore = transaction.objectStore('packMeta')
-          const cursorRequest = packStore.openCursor()
-          cursorRequest.onsuccess = () => {
-            const cursor = cursorRequest.result
-            if (!cursor) return
-            const pack = cursor.value as StoredOfflineQuestionPack
-            metadataStore.put({
-              id: pack.id,
-              track: pack.track,
-              competenceId: pack.competenceId,
-              part: pack.part,
-              freeOnly: pack.freeOnly,
-              questionCount: pack.questionCount,
-              savedAt: pack.savedAt
-            })
-            cursor.continue()
-          }
+          // idb wraps cursor requests in promises; keep the upgrade transaction
+          // alive by awaiting each cursor continuation instead of using DOM events.
+          void (async () => {
+            let cursor = await packStore.openCursor()
+            while (cursor) {
+              const pack = cursor.value as StoredOfflineQuestionPack
+              metadataStore.put({
+                id: pack.id,
+                track: pack.track,
+                competenceId: pack.competenceId,
+                part: pack.part,
+                freeOnly: pack.freeOnly,
+                questionCount: pack.questionCount,
+                savedAt: pack.savedAt
+              })
+              cursor = await cursor.continue()
+            }
+          })()
         }
       }
     })
