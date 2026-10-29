@@ -62,8 +62,8 @@ function pemBytes(pem: string) {
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i)
   return out
 }
-async function googleAccessToken() {
-  if (cachedGoogleAccessToken && cachedGoogleAccessToken.expiresAt > Date.now() + 60_000) {
+async function googleAccessToken(forceRefresh = false) {
+  if (!forceRefresh && cachedGoogleAccessToken && cachedGoogleAccessToken.expiresAt > Date.now() + 60_000) {
     return cachedGoogleAccessToken.token
   }
   const secret = Deno.env.get('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON')
@@ -120,45 +120,95 @@ async function sha256Hex(value: string) {
   return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')
 }
 async function readGoogleSubscription(token: string) {
-  const accessToken = await googleAccessToken()
   const endpoint = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/' +
     encodeURIComponent(PACKAGE_NAME) + '/purchases/subscriptionsv2/tokens/' + encodeURIComponent(token)
-  const response = await fetch(endpoint, { headers: { Authorization: 'Bearer ' + accessToken } })
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    // Google API status and error text are safe diagnostics; omit the purchase token.
-    console.error('google_play_subscription_lookup_failed', {
-      httpStatus: response.status,
-      packageName: PACKAGE_NAME,
-      // Email is an identifier, not a credential. Never log the key, JWT or purchase token.
-      configuredServiceAccountEmail: (() => {
-        try {
-          const raw = Deno.env.get('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON')
-          const email = raw ? JSON.parse(raw).client_email : undefined
-          return typeof email === 'string' ? email : '(missing)'
-        } catch {
-          return '(invalid JSON)'
-        }
-      })(),
-      apiStatus: typeof payload?.error?.status === 'string' ? payload.error.status : undefined,
-      apiReason: Array.isArray(payload?.error?.errors)
-        && typeof payload.error.errors[0]?.reason === 'string'
-        ? payload.error.errors[0].reason
-        : undefined,
-      apiMessage: typeof payload?.error?.message === 'string'
-        ? payload.error.message.slice(0, 180)
-        : undefined
-    })
-    if (response.status === 404 || response.status === 400) throw new Error('Google Play could not verify this purchase token.')
-    if (response.status === 401 || response.status === 403) throw new Error('Google Play API access is not authorized. Check Play Console API access and service-account permissions.')
-    throw new Error('Google Play subscription verification is temporarily unavailable.')
+
+  let response: Response | null = null
+  let payload: Record<string, any> = {}
+
+  // If a service-account key or permissions have just changed, an isolate may still
+  // hold a token minted before that change. On 401/403, discard it and retry once.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const accessToken = await googleAccessToken(attempt === 1)
+    response = await fetch(endpoint, { headers: { Authorization: 'Bearer ' + accessToken } })
+    payload = await response.json().catch(() => ({})) as Record<string, any>
+    if (response.ok) return payload as {
+      subscriptionState?: string
+      linkedPurchaseToken?: string
+      lineItems?: Array<{ productId?: string; expiryTime?: string }>
+    }
+    if ((response.status === 401 || response.status === 403) && attempt === 0) {
+      cachedGoogleAccessToken = null
+      console.warn('google_play_subscription_lookup_retrying_after_auth_error', {
+        httpStatus: response.status,
+        packageName: PACKAGE_NAME
+      })
+      continue
+    }
+    break
   }
-  return payload as {
-    subscriptionState?: string
-    linkedPurchaseToken?: string
-    lineItems?: Array<{ productId?: string; expiryTime?: string }>
+
+  if (!response) throw new Error('Google Play subscription verification failed.')
+
+  if (response.status === 401 || response.status === 403) {
+    // Read-only diagnostic probe. This does not grant access or alter any purchase;
+    // it determines whether the same service account can read the app's subscription catalog.
+    try {
+      const accessToken = await googleAccessToken()
+      const catalogEndpoint = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/' +
+        encodeURIComponent(PACKAGE_NAME) + '/subscriptions?pageSize=1'
+      const catalogResponse = await fetch(catalogEndpoint, {
+        headers: { Authorization: 'Bearer ' + accessToken }
+      })
+      const catalogPayload = await catalogResponse.json().catch(() => ({})) as Record<string, any>
+      console.error('google_play_catalog_access_probe', {
+        httpStatus: catalogResponse.status,
+        packageName: PACKAGE_NAME,
+        accessible: catalogResponse.ok,
+        apiReason: Array.isArray(catalogPayload?.error?.errors)
+          && typeof catalogPayload.error.errors[0]?.reason === 'string'
+          ? catalogPayload.error.errors[0].reason
+          : undefined,
+        apiMessage: typeof catalogPayload?.error?.message === 'string'
+          ? catalogPayload.error.message.slice(0, 160)
+          : undefined
+      })
+    } catch {
+      console.error('google_play_catalog_access_probe_failed', {
+        packageName: PACKAGE_NAME,
+        reason: 'probe_request_failed'
+      })
+    }
   }
+
+  // Provider status and error text are safe diagnostics; never include purchase tokens,
+  // service-account JSON, private keys, JWT assertions, or OAuth access tokens.
+  console.error('google_play_subscription_lookup_failed', {
+    httpStatus: response.status,
+    packageName: PACKAGE_NAME,
+    configuredServiceAccountEmail: (() => {
+      try {
+        const raw = Deno.env.get('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON')
+        const email = raw ? JSON.parse(raw).client_email : undefined
+        return typeof email === 'string' ? email : '(missing)'
+      } catch {
+        return '(invalid JSON)'
+      }
+    })(),
+    apiStatus: typeof payload?.error?.status === 'string' ? payload.error.status : undefined,
+    apiReason: Array.isArray(payload?.error?.errors)
+      && typeof payload.error.errors[0]?.reason === 'string'
+      ? payload.error.errors[0].reason
+      : undefined,
+    apiMessage: typeof payload?.error?.message === 'string'
+      ? payload.error.message.slice(0, 180)
+      : undefined
+  })
+  if (response.status === 404 || response.status === 400) throw new Error('Google Play could not verify this purchase token.')
+  if (response.status === 401 || response.status === 403) throw new Error('Google Play API access is not authorized. Google API diagnostics were recorded; no entitlement was granted.')
+  throw new Error('Google Play subscription verification is temporarily unavailable.')
 }
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return json(req, { ok: true })
   if (req.method !== 'POST') return json(req, { error: 'Method not allowed.' }, 405)
