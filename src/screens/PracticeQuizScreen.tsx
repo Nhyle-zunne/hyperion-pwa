@@ -193,8 +193,7 @@ export default function PracticeQuizScreen() {
           </section>
         </div>
       )}
-      <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,margin:'-0.5rem -0.25rem 1rem',padding:'0.4rem 0',borderBottom:'3px solid var(--accent)'}}>
-        <button className="btn btn-outline" onClick={() => { setSaveError(null); setShowExitDialog(true) }} aria-label="Back">← Back</button>
+      <header style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,margin:'-0.5rem -0.25rem 1rem',padding:'0.4rem 0',borderBottom:'3px solid var(--accent)'}}>
         <div style={{minWidth:0,flex:1,textAlign:'center'}}>
           <div style={{fontWeight:800,lineHeight:1.2}}>Question {currentIndex + 1} of {questions.length}</div>
           <div style={{fontSize:'0.82rem',color:'var(--accent)',fontWeight:700}}>{q.track} · {q.competenceId}</div>
