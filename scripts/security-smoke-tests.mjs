@@ -72,6 +72,7 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const questionFingerprintSource = await read('../src/lib/questionFingerprint.mjs');
 const offlinePwaConfig = await read('../vite.config.ts');
 const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.ts');
 const progressSyncSource = await read('../src/lib/progressSync.ts');
@@ -625,7 +626,7 @@ const localCompetenceReader = offlineQuestionCache.slice(localCompetenceStart, l
 assert.ok(localCompetenceReader.includes('getValidatedPackMetadata') && localCompetenceReader.includes("validated.db.get('packs', meta.id)") && !localCompetenceReader.includes('getOfflineQuestionPacks(track, freeOnly)'), 'Offline competence loading decrypts only the selected competence/part rather than every pack for the track');
 assert.ok(questionBankClient.includes('const status = await getOfflinePackStatus(track, true)') && questionBankClient.includes('status?.complete && status.sampleVersion === 2'), 'A validated free pack skips the expensive repair/full-bank scan on every question load');
 assert.ok(practiceStore.includes("if (typeof navigator === 'undefined' || navigator.onLine !== false)") && practiceStore.includes('await useLicenseStore.getState().refreshCloudEntitlements()'), 'Resuming saved sessions skips network entitlement refresh while offline');
-assert.ok(questionBankClient.includes('fingerprintCache.get(question)') && questionBankClient.includes('fingerprintCache.set(question'), 'Repeated saved-session fingerprint checks reuse cached hashes for the same in-memory question objects');
+assert.ok(questionFingerprintSource.includes('fingerprintCache.get(question)') && questionFingerprintSource.includes('fingerprintCache.set(question'), 'Repeated saved-session fingerprint checks reuse cached hashes for the same in-memory question objects');
 const fallbackStart = questionBankClient.indexOf('// Safari/iOS and installed PWAs can report online while the API is unreachable.');
 const fallbackBlock = questionBankClient.slice(fallbackStart, questionBankClient.indexOf('const freeQuestions = await getQuestionsByTrack(track, true);', fallbackStart));
 assert.ok(fallbackBlock.indexOf('hasValidOfflineTrackLease(track)') >= 0 && fallbackBlock.indexOf("matchesCachedPack(true)") > fallbackBlock.indexOf('hasValidOfflineTrackLease(track)'), 'The same safe licensed-bank fallback applies when a browser reports online but the API is unreachable');
