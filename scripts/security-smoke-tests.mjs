@@ -589,11 +589,16 @@ assert.equal(isOfflinePackSetComplete(completePackManifest, completePackRecords)
 assert.equal(isOfflinePackSetComplete(completePackManifest, completePackRecords.slice(0, 1)), false, 'Missing IndexedDB question groups invalidate the offline pack');
 assert.equal(isOfflinePackSetComplete({ ...completePackManifest, questionCount: 4 }, completePackRecords), false, 'Mismatched manifest question totals invalidate the offline pack');
 assert.equal(isOfflinePackSetComplete({ ...completePackManifest, complete: false }, completePackRecords), false, 'Interrupted offline downloads cannot be treated as complete packs');
+const freeDeckManifest = { ...completePackManifest, track: 'DECK_OIC_NW', freeOnly: true, sampleVersion: 2 };
+const freeDeckPacks = completePackRecords.map(pack => ({ ...pack, id: pack.id.replace('licensed', 'free'), freeOnly: true }));
+assert.equal(isOfflinePackSetComplete({ ...freeDeckManifest, sampleVersion: undefined }, freeDeckPacks), false, 'Legacy Deck OIC free samples with an outdated shuffle rule are not trusted');
+assert.equal(isOfflinePackSetComplete(freeDeckManifest, freeDeckPacks), true, 'New server-matched Deck OIC free sample manifests pass integrity validation');
 assert.equal(isOfflinePackSetComplete(completePackManifest, completePackRecords.map(pack => ({ ...pack, track: 'GMDSS_GOC' }))), false, 'Question packs from another track cannot satisfy a manifest');
 assert.equal(isOfflinePackSetComplete(completePackManifest, [completePackRecords[0], completePackRecords[0]]), false, 'Duplicate IndexedDB pack IDs cannot satisfy a pack manifest');
 assert.ok(offlineQuestionCache.includes('isOfflinePackSetComplete(manifest, stored)'), 'Offline reads verify that manifest totals and group records still agree after storage eviction');
 assert.ok(offlineQuestionCache.includes('saveOfflineQuestionPackSets') && offlineQuestionCache.includes("db.transaction(['packs', 'manifests'], 'readwrite')"), 'Question and manifest updates commit in one IndexedDB transaction');
 assert.ok(questionBankClient.includes('await saveOfflineQuestionPackSets(updates)') && questionBankClient.includes('Keep any existing complete pack usable'), 'Failed offline downloads preserve the last complete question pack until an atomic replacement is ready');
+assert.ok(questionBankClient.includes('export async function ensureOfflineFreeSamplePack') && questionBankClient.includes('const fullBank = await getOfflineQuestionsByTrack(track, false)') && questionBankClient.includes('freeSample(fullBank, track)'), 'An old Deck OIC offline free sample is repaired only from the complete cached bank and the current server-matched sampler');
 assert.ok(questionBankClient.includes('new JavaRandom(2065 + Number(compId.slice(1)) * 31)') && questionBank.includes('javaShuffle(valid, 2065 + Number(comp) * 31)'), 'Locally retained Deck OIC-NW free samples use the same deterministic per-competence selection as the protected server bank');
 assert.ok(offlinePwaConfig.includes('jpg,jpeg,webp,avif') && offlinePwaConfig.includes('google-fonts-webfonts'), 'The service worker precaches bundled image formats and caches webfont assets for offline screens');
 assert.ok(app.includes('OFFLINE MODE') && app.includes('Only downloaded question packs and saved sessions are available'), 'All routes clearly explain what remains available without a connection');
