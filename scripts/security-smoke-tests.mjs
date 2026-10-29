@@ -661,6 +661,8 @@ assert.ok(offlineUpdateButton.includes("offlineUpdateCheck.status === 'available
 assert.ok(offlineUpdateButton.includes("'UPDATE AVAILABLE · RECONNECT'") && offlineUpdateButton.includes("'FULLY UPDATED · LAST CHECK'"), 'Offline track pages show the last verified state and never offer an update download without connectivity');
 
 
+assert.ok(googlePlayLinkFunction.includes("if (req.method === 'OPTIONS') return json(req, { ok: true })"), 'Google Play linking preflight responses use the same origin-aware CORS helper as normal responses');
+assert.ok(googlePlayLinkFunction.includes("'http://localhost:5173'") && googlePlayLinkFunction.includes("'http://127.0.0.1:5173'"), 'Google Play linking CORS supports the documented local development origins');
 assert.ok(googlePlayLinkFunction.includes("userClient.auth.getUser()"), 'Google Play purchase linking requires a verified authenticated Hyperion user');
 assert.ok(googlePlayLinkFunction.includes("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON") && googlePlayLinkFunction.includes("purchases/subscriptionsv2/tokens/"), 'Google Play tokens are checked against the Android Publisher API from the server');
 assert.ok(googlePlayLinkFunction.includes("purchase_token_sha256") && googlePlayLinkFunction.includes("existing.user_id !== user.id"), 'Google Play purchase tokens are uniquely fingerprinted and cannot be claimed by a second Hyperion account');

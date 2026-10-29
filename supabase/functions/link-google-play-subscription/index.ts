@@ -141,7 +141,7 @@ async function upsertPlayEntitlement(admin: any, linkId: string, userId: string,
   if (error) throw new Error('Could not save the verified Google Play entitlement.')
 }
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: { ...CORS, 'Access-Control-Allow-Origin': 'https://hyperionmaritime.org' } })
+  if (req.method === 'OPTIONS') return json(req, { ok: true })
   if (req.method !== 'POST') return json(req, { error: 'Method not allowed.' }, 405)
 
   const url = Deno.env.get('SUPABASE_URL')
