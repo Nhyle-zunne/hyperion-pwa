@@ -778,7 +778,7 @@ assert.ok(
   googlePlayLinkMigration.includes("subscription_state = 'SUBSCRIPTION_STATE_REPLACED'") &&
     googlePlayLinkMigration.includes("A replaced Google Play purchase token cannot be linked again") &&
     googlePlayLinkFunction.includes("existing?.subscription_state === 'SUBSCRIPTION_STATE_REPLACED'") &&
-    googlePlayRtdnFunction.includes("if (link.subscription_state === 'SUBSCRIPTION_STATE_REPLACED') return respond(204)") &&
+    googlePlayRtdnFunction.includes("link.subscription_state === 'SUBSCRIPTION_STATE_REPLACED'") && googlePlayRtdnFunction.includes("google_play_rtdn_ignored_replaced_token") &&
     googlePlayLinkMigration.includes("public.google_play_purchase_links"),
   'Replaced predecessor tokens cannot be re-linked or reactivated by late RTDN notifications'
 );
