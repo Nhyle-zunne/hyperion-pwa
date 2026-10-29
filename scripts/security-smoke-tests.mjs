@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
 import { encryptJsonPayload, decryptJsonPayload } from '../src/lib/jsonPayloadCrypto.mjs';
 import { fingerprintQuestion } from '../src/lib/questionFingerprint.mjs';
+import { isOfflinePackSetComplete } from '../src/lib/offlinePackIntegrity.mjs';
 import { createSerialAsyncQueue } from '../src/lib/serializedAsyncQueue.mjs';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
@@ -71,6 +72,7 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const offlinePwaConfig = await read('../vite.config.ts');
 const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.ts');
 const progressSyncSource = await read('../src/lib/progressSync.ts');
 const bookmarksStore = await read('../src/stores/bookmarksStore.ts');
@@ -569,5 +571,31 @@ assert.ok(functionConfig.includes('[functions.learning-progress]') && functionCo
 
 assert.ok(progressPrivilegeMigration.includes('revoke all privileges on table public.user_learning_progress from PUBLIC, anon, authenticated') && progressPrivilegeMigration.includes('grant all privileges on table public.user_learning_progress to service_role'), 'Direct browser privileges are revoked while service-role access is retained');
 assert.ok(progressPrivilegeMigration.includes('alter table public.user_learning_progress enable row level security') && progressPrivilegeMigration.includes('drop policy if exists "Users can read their own learning progress"'), 'Learning progress remains RLS-enabled without direct per-user JSON read policies');
+
+
+const completePackManifest = {
+  track: 'DECK_OIC_NW',
+  freeOnly: false,
+  questionCount: 3,
+  groupCount: 2,
+  complete: true
+};
+const completePackRecords = [
+  { id: 'DECK_OIC_NW:licensed:C1:all', track: 'DECK_OIC_NW', freeOnly: false, questionCount: 2 },
+  { id: 'DECK_OIC_NW:licensed:C2:all', track: 'DECK_OIC_NW', freeOnly: false, questionCount: 1 }
+];
+assert.equal(isOfflinePackSetComplete(completePackManifest, completePackRecords), true, 'A complete offline pack set passes manifest and group integrity validation');
+assert.equal(isOfflinePackSetComplete(completePackManifest, completePackRecords.slice(0, 1)), false, 'Missing IndexedDB question groups invalidate the offline pack');
+assert.equal(isOfflinePackSetComplete({ ...completePackManifest, questionCount: 4 }, completePackRecords), false, 'Mismatched manifest question totals invalidate the offline pack');
+assert.equal(isOfflinePackSetComplete({ ...completePackManifest, complete: false }, completePackRecords), false, 'Interrupted offline downloads cannot be treated as complete packs');
+assert.equal(isOfflinePackSetComplete(completePackManifest, completePackRecords.map(pack => ({ ...pack, track: 'GMDSS_GOC' }))), false, 'Question packs from another track cannot satisfy a manifest');
+assert.equal(isOfflinePackSetComplete(completePackManifest, [completePackRecords[0], completePackRecords[0]]), false, 'Duplicate IndexedDB pack IDs cannot satisfy a pack manifest');
+assert.ok(offlineQuestionCache.includes('isOfflinePackSetComplete(manifest, stored)'), 'Offline reads verify that manifest totals and group records still agree after storage eviction');
+assert.ok(offlineQuestionCache.includes('saveOfflineQuestionPackSets') && offlineQuestionCache.includes("db.transaction(['packs', 'manifests'], 'readwrite')"), 'Question and manifest updates commit in one IndexedDB transaction');
+assert.ok(questionBankClient.includes('await saveOfflineQuestionPackSets(updates)') && questionBankClient.includes('Keep any existing complete pack usable'), 'Failed offline downloads preserve the last complete question pack until an atomic replacement is ready');
+assert.ok(offlinePwaConfig.includes('jpg,jpeg,webp,avif') && offlinePwaConfig.includes('google-fonts-webfonts'), 'The service worker precaches bundled image formats and caches webfont assets for offline screens');
+assert.ok(app.includes('OFFLINE MODE') && app.includes('Only downloaded question packs and saved sessions are available'), 'All routes clearly explain what remains available without a connection');
+assert.ok(searchScreen.includes('Download the full question bank for this track before using Search offline') || questionBankClient.includes('Download the full question bank for this track before using Search offline'), 'Offline Search gives a clear download requirement instead of reporting a false zero-result search');
+assert.ok(flashcardsScreen.includes('Download the full question bank for this track before using flashcards offline') || questionBankClient.includes('Download the full question bank for this track before using flashcards offline'), 'Offline Flashcards explains when the full bank must be downloaded first');
 
 console.log('Release-safety smoke checks passed.');
