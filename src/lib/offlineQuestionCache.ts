@@ -54,14 +54,25 @@ interface StoredOfflineQuestionPack {
   ciphertext: Uint8Array
 }
 
+interface StoredOfflineQuestionPackMetadata {
+  id: string
+  track: TrackId
+  competenceId: string
+  part: number | null
+  freeOnly: boolean
+  questionCount: number
+  savedAt: number
+}
+
 interface OfflineBankDatabase extends DBSchema {
   packs: { key: string; value: StoredOfflineQuestionPack }
+  packMeta: { key: string; value: StoredOfflineQuestionPackMetadata }
   manifests: { key: string; value: OfflinePackManifest }
   keys: { key: string; value: { id: string; key: CryptoKey } }
 }
 
 const DB_NAME = 'hyperion-offline-question-bank'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const ENTITLEMENTS_KEY = 'hyperion-offline-entitlements'
 let dbPromise: Promise<IDBPDatabase<OfflineBankDatabase>> | null = null
 
@@ -70,6 +81,7 @@ function database() {
     dbPromise = openDB<OfflineBankDatabase>(DB_NAME, DB_VERSION, {
       upgrade(db, oldVersion, _newVersion, transaction) {
         if (!db.objectStoreNames.contains('packs')) db.createObjectStore('packs', { keyPath: 'id' })
+        if (!db.objectStoreNames.contains('packMeta')) db.createObjectStore('packMeta', { keyPath: 'id' })
         if (!db.objectStoreNames.contains('manifests')) db.createObjectStore('manifests', { keyPath: 'id' })
         if (!db.objectStoreNames.contains('keys')) db.createObjectStore('keys', { keyPath: 'id' })
         // Version 1 stored question objects in plaintext. Clear those early test
@@ -77,6 +89,28 @@ function database() {
         if (oldVersion > 0 && oldVersion < 2) {
           transaction.objectStore('packs').clear()
           transaction.objectStore('manifests').clear()
+          transaction.objectStore('packMeta').clear()
+        } else if (oldVersion >= 2 && oldVersion < 3) {
+          // Migrate only lightweight metadata during upgrade. Keep encrypted packs
+          // intact and avoid decrypting their question payloads on future reads.
+          const packStore = transaction.objectStore('packs')
+          const metadataStore = transaction.objectStore('packMeta')
+          const cursorRequest = packStore.openCursor()
+          cursorRequest.onsuccess = () => {
+            const cursor = cursorRequest.result
+            if (!cursor) return
+            const pack = cursor.value as StoredOfflineQuestionPack
+            metadataStore.put({
+              id: pack.id,
+              track: pack.track,
+              competenceId: pack.competenceId,
+              part: pack.part,
+              freeOnly: pack.freeOnly,
+              questionCount: pack.questionCount,
+              savedAt: pack.savedAt
+            })
+            cursor.continue()
+          }
         }
       }
     })
@@ -118,7 +152,13 @@ export async function saveOfflineQuestionPack(pack: Omit<OfflineQuestionPack, 'i
     iv,
     ciphertext: new Uint8Array(encrypted)
   }
-  await db.put('packs', record)
+  const metadata: StoredOfflineQuestionPackMetadata = {
+    id, track: pack.track, competenceId: pack.competenceId, part: pack.part,
+    freeOnly: pack.freeOnly, questionCount: pack.questions.length, savedAt: record.savedAt
+  }
+  const tx = db.transaction(['packs', 'packMeta'], 'readwrite')
+  await Promise.all([tx.objectStore('packs').put(record), tx.objectStore('packMeta').put(metadata)])
+  await tx.done
 }
 
 /**
@@ -189,16 +229,26 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
     })
   }
 
-  const tx = db.transaction(['packs', 'manifests'], 'readwrite')
+  const tx = db.transaction(['packs', 'packMeta', 'manifests'], 'readwrite')
   const packsStore = tx.objectStore('packs')
-  const existingIds = await packsStore.getAllKeys()
+  const metadataStore = tx.objectStore('packMeta')
+  const existingIds = await metadataStore.getAllKeys()
   for (const update of updates) {
     const prefix = `${update.track}:${update.freeOnly ? 'free' : 'licensed'}:`
     for (const id of existingIds) {
-      if (typeof id === 'string' && id.startsWith(prefix)) await packsStore.delete(id)
+      if (typeof id === 'string' && id.startsWith(prefix)) {
+        await Promise.all([packsStore.delete(id), metadataStore.delete(id)])
+      }
     }
   }
-  for (const record of records) await packsStore.put(record)
+  for (const record of records) {
+    await packsStore.put(record)
+    await metadataStore.put({
+      id: record.id, track: record.track, competenceId: record.competenceId,
+      part: record.part, freeOnly: record.freeOnly,
+      questionCount: record.questionCount, savedAt: record.savedAt
+    })
+  }
   const manifestsStore = tx.objectStore('manifests')
   for (const manifest of manifests) await manifestsStore.put(manifest)
   await tx.done
@@ -214,6 +264,45 @@ async function decryptOfflineQuestionPack(
     id: pack.id, track: pack.track, competenceId: pack.competenceId,
     part: pack.part, freeOnly: pack.freeOnly, questions, savedAt: pack.savedAt
   }
+}
+
+const decryptedPackCache = new Map<string, OfflineQuestionPack>()
+const MAX_DECRYPTED_PACK_CACHE = 12
+
+async function getCachedDecryptedPack(
+  key: CryptoKey,
+  pack: StoredOfflineQuestionPack
+): Promise<OfflineQuestionPack> {
+  const cached = decryptedPackCache.get(pack.id)
+  if (cached && cached.savedAt === pack.savedAt) {
+    // Refresh insertion order to behave as a small LRU cache.
+    decryptedPackCache.delete(pack.id)
+    decryptedPackCache.set(pack.id, cached)
+    return cached
+  }
+  const decoded = await decryptOfflineQuestionPack(key, pack)
+  decryptedPackCache.set(pack.id, decoded)
+  while (decryptedPackCache.size > MAX_DECRYPTED_PACK_CACHE) {
+    const oldestKey = decryptedPackCache.keys().next().value
+    if (oldestKey === undefined) break
+    decryptedPackCache.delete(oldestKey)
+  }
+  return decoded
+}
+
+async function getValidatedPackMetadata(
+  track: TrackId,
+  freeOnly: boolean
+): Promise<{ manifest: OfflinePackManifest; metadata: StoredOfflineQuestionPackMetadata[]; key: CryptoKey; db: IDBPDatabase<OfflineBankDatabase> } | null> {
+  const db = await database()
+  const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
+  if (!manifest) return null
+  // This store contains only IDs/counts, never ciphertext or question text.
+  const metadata = (await db.getAll('packMeta')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+  if (!isOfflinePackSetComplete(manifest, metadata)) return null
+  const savedKey = await db.get('keys', 'device-key')
+  if (!savedKey?.key) return null
+  return { manifest, metadata, key: savedKey.key, db }
 }
 
 export async function saveOfflinePackManifest(manifest: Omit<OfflinePackManifest, 'id' | 'savedAt'>) {
@@ -261,9 +350,9 @@ export async function getOfflinePackStatus(track: TrackId, freeOnly: boolean) {
     const db = await database()
     const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
     if (!manifest) return null
-    const stored = (await db.getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    const metadata = (await db.getAll('packMeta')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
     const savedKey = await db.get('keys', 'device-key')
-    if (!savedKey?.key || !isOfflinePackSetComplete(manifest, stored)) return null
+    if (!savedKey?.key || !isOfflinePackSetComplete(manifest, metadata)) return null
     return manifest
   } catch {
     return null
@@ -275,14 +364,16 @@ export async function getOfflineQuestionPacks(track: TrackId, freeOnly: boolean)
     const db = await database()
     const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
     if (!manifest) return null
-    const stored = (await db.getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
-    if (!isOfflinePackSetComplete(manifest, stored)) return null
+    const metadata = (await db.getAll('packMeta')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    if (!isOfflinePackSetComplete(manifest, metadata)) return null
     const savedKey = await db.get('keys', 'device-key')
     if (!savedKey?.key) return null
     const decrypted: OfflineQuestionPack[] = []
-    for (const pack of stored) {
-      const decoded = await decryptOfflineQuestionPack(savedKey.key, pack)
-      if (decoded.questions.length !== pack.questionCount) return null
+    for (const meta of metadata) {
+      const pack = await db.get('packs', meta.id)
+      if (!pack) return null
+      const decoded = await getCachedDecryptedPack(savedKey.key, pack)
+      if (decoded.questions.length !== meta.questionCount) return null
       if (track === 'GMDSS_GOC' && freeOnly && decoded.questions.some(question => !isGmdssFreeSampleQuestion(question))) return null
       decrypted.push(decoded)
     }
@@ -299,13 +390,29 @@ export async function getOfflineQuestionsByCompetence(
   part: number | undefined,
   freeOnly: boolean
 ): Promise<Question[] | null> {
-  const packs = await getOfflineQuestionPacks(track, freeOnly)
-  if (!packs) return null
-  const matching = packs
-    .filter(pack => pack.competenceId === competenceId && (part == null || pack.part === part))
-    .sort((a, b) => (a.part ?? 0) - (b.part ?? 0))
-  if (!matching.length) return null
-  return matching.flatMap(pack => pack.questions)
+  try {
+    const validated = await getValidatedPackMetadata(track, freeOnly)
+    if (!validated) return null
+    const matching = validated.metadata
+      .filter(pack => pack.competenceId === competenceId && (part == null || pack.part === part))
+      .sort((a, b) => (a.part ?? 0) - (b.part ?? 0))
+    if (!matching.length) return null
+
+    // Decrypt only this competence/part. The previous implementation decrypted
+    // every question group for the entire track before filtering to one competence.
+    const questions: Question[] = []
+    for (const meta of matching) {
+      const pack = await validated.db.get('packs', meta.id)
+      if (!pack) return null
+      const decoded = await getCachedDecryptedPack(validated.key, pack)
+      if (decoded.questions.length !== meta.questionCount) return null
+      if (track === 'GMDSS_GOC' && freeOnly && decoded.questions.some(question => !isGmdssFreeSampleQuestion(question))) return null
+      questions.push(...decoded.questions)
+    }
+    return questions
+  } catch {
+    return null
+  }
 }
 
 export async function getOfflineQuestionsByTrack(track: TrackId, freeOnly: boolean): Promise<Question[] | null> {
@@ -322,10 +429,10 @@ export async function getOfflineQuestionCounts(track: TrackId, freeOnly: boolean
     const db = await database()
     const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
     if (!manifest) return null
-    const stored = (await db.getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    const metadata = (await db.getAll('packMeta')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
     const savedKey = await db.get('keys', 'device-key')
-    if (!savedKey?.key || !isOfflinePackSetComplete(manifest, stored)) return null
-    return stored.map(pack => ({
+    if (!savedKey?.key || !isOfflinePackSetComplete(manifest, metadata)) return null
+    return metadata.map(pack => ({
       competenceId: pack.competenceId,
       part: pack.part,
       count: pack.questionCount
@@ -414,10 +521,13 @@ export async function getOfflineEntitledTracks(userId: string): Promise<string[]
 
 export async function deletePaidOfflineQuestionPacksForTrack(track: TrackId) {
   const db = await database()
-  const tx = db.transaction(['packs', 'manifests'], 'readwrite')
-  const packs = await tx.objectStore('packs').getAll()
-  for (const pack of packs) {
-    if (pack.track === track && !pack.freeOnly) await tx.objectStore('packs').delete(pack.id)
+  const tx = db.transaction(['packs', 'packMeta', 'manifests'], 'readwrite')
+  const metadata = await tx.objectStore('packMeta').getAll()
+  for (const pack of metadata) {
+    if (pack.track === track && !pack.freeOnly) {
+      await Promise.all([tx.objectStore('packs').delete(pack.id), tx.objectStore('packMeta').delete(pack.id)])
+      decryptedPackCache.delete(pack.id)
+    }
   }
   await tx.objectStore('manifests').delete(offlineManifestId(track, false))
   await tx.done
