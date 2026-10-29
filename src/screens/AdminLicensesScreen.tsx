@@ -17,6 +17,7 @@ type LicenseRecord = {
   expires_at: string | null
   order_id: string | null
   source?: string
+  has_active_google_play?: boolean
 }
 type ManagedUser = {
   id: string
@@ -391,8 +392,8 @@ export default function AdminLicensesScreen() {
                     </label>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: '.65rem' }}>
                       <button type="button" className="btn btn-primary" disabled={!!busyKey} onClick={() => void grant(user, track)} style={{ flex: '1 1 145px', fontSize: '.72rem' }}>{busy ? 'SAVING…' : license.status === 'active' ? 'EXTEND LICENSE' : 'ACTIVATE LICENSE'}</button>
-                      {license.exists && license.status !== 'revoked' && !license.source?.includes('google_play') && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track)} style={{ flex: '1 1 95px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE</button>}
-                      {license.source?.includes('google_play') && <div style={{ flexBasis: '100%', color: 'var(--text-muted)', fontSize: '.72rem', lineHeight: 1.4 }}>Google Play access is verified server-side. Cancel or revoke the subscription through Google Play; access remains until its verified entitlement ends.</div>}
+                      {license.exists && license.status !== 'revoked' && !license.has_active_google_play && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track)} style={{ flex: '1 1 95px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE</button>}
+                      {license.has_active_google_play && <div style={{ flexBasis: '100%', color: 'var(--text-muted)', fontSize: '.72rem', lineHeight: 1.4 }}>Google Play access is verified server-side. Cancel or revoke the subscription through Google Play; access remains until its verified entitlement ends.</div>}
                     </div>
                   </div>
                 })}
