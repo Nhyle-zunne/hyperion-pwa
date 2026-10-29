@@ -1,8 +1,21 @@
 -- Periodic Google Play reconciliation is opt-in: setting the Vault flag to "true"
 -- enables outbound calls. This migration creates the private token and cron definition,
 -- but does not make any HTTP request until an operator enables the flag after E2E tests.
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-CREATE EXTENSION IF NOT EXISTS pg_net;
+-- Keep the migration readable by plain-Postgres static regression tests: Supabase installs
+-- these extensions; other runtimes must provide the same cron/net schemas to apply this file.
+DO $extensions$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_available_extensions WHERE name = 'pg_cron') THEN
+    EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_cron';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_available_extensions WHERE name = 'pg_net') THEN
+    EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_net';
+  END IF;
+  IF pg_catalog.to_regnamespace('cron') IS NULL OR pg_catalog.to_regnamespace('net') IS NULL THEN
+    RAISE EXCEPTION 'Google Play reconciliation requires the existing pg_cron and pg_net schemas.';
+  END IF;
+END;
+$extensions$;
 
 DO $$
 BEGIN
