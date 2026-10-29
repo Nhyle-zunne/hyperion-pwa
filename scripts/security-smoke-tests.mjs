@@ -743,6 +743,11 @@ assert.ok(
     questionBank.includes('playTableMissing ? [] : (play.data ?? [])'),
   'Website paid-track authorization and signed offline-license issuance remain compatible before the Google Play migration, while other query errors fail closed'
 );
+assert.ok(
+  questionBank.includes('.eq("user_id", userId).eq("track_id", track).eq("status", "active").gt("expires_at", now)') &&
+    questionBank.includes('.order("expires_at", { ascending: false }).limit(1).maybeSingle()'),
+  'Paid-track authorization only considers active unexpired rows and safely handles historical duplicate entitlements'
+);
 assert.ok(googlePlayLinkFunction.includes("userClient.auth.getUser()"), 'Google Play purchase linking requires a verified authenticated Hyperion user');
 assert.ok(googlePlayLinkFunction.includes("admin.rpc('sync_google_play_subscription_atomic'") && !googlePlayLinkFunction.includes('upsertPlayEntitlement'), 'The verified link endpoint reconciles the whole subscription in one database transaction');
 const atomicRpcStart = googlePlayLinkMigration.indexOf('CREATE OR REPLACE FUNCTION public.sync_google_play_subscription_atomic(');
