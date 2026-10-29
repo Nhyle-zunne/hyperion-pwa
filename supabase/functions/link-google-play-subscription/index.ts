@@ -101,6 +101,15 @@ async function googleAccessToken() {
   })
   const body = await response.json().catch(() => ({}))
   if (!response.ok || typeof body.access_token !== 'string') {
+    // Log provider error metadata only. Never log assertions, tokens, service-account
+    // JSON, private keys, or purchase tokens.
+    console.error('google_play_oauth_token_exchange_failed', {
+      httpStatus: response.status,
+      error: typeof body.error === 'string' ? body.error : 'unknown',
+      errorDescription: typeof body.error_description === 'string'
+        ? body.error_description.slice(0, 180)
+        : undefined
+    })
     throw new Error('Google Play API authentication failed. Check service-account access and credentials.')
   }
   cachedGoogleAccessToken = { token: body.access_token, expiresAt: Date.now() + Math.min(Number(body.expires_in || 3600), 3500) * 1000 }
@@ -117,6 +126,14 @@ async function readGoogleSubscription(token: string) {
   const response = await fetch(endpoint, { headers: { Authorization: 'Bearer ' + accessToken } })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
+    // Google API status and error text are safe diagnostics; omit the purchase token.
+    console.error('google_play_subscription_lookup_failed', {
+      httpStatus: response.status,
+      apiStatus: typeof payload?.error?.status === 'string' ? payload.error.status : undefined,
+      apiMessage: typeof payload?.error?.message === 'string'
+        ? payload.error.message.slice(0, 180)
+        : undefined
+    })
     if (response.status === 404 || response.status === 400) throw new Error('Google Play could not verify this purchase token.')
     if (response.status === 401 || response.status === 403) throw new Error('Google Play API access is not authorized. Check Play Console API access and service-account permissions.')
     throw new Error('Google Play subscription verification is temporarily unavailable.')
@@ -252,6 +269,10 @@ Deno.serve(async (req: Request) => {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Google Play subscription verification failed.'
+    console.error('google_play_subscription_link_failed', {
+      errorName: error instanceof Error ? error.name : 'UnknownError',
+      reason: message.slice(0, 240)
+    })
     return json(req, { error: message }, 502)
   }
 })
