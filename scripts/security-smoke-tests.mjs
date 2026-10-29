@@ -74,7 +74,6 @@ const [
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const questionFingerprintSource = await read('../src/lib/questionFingerprint.mjs');
 const offlinePwaConfig = await read('../vite.config.ts');
-const topLoadingIndicator = await read('../src/components/TopLoadingIndicator.tsx');
 const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.ts');
 const progressSyncSource = await read('../src/lib/progressSync.ts');
 const bookmarksStore = await read('../src/stores/bookmarksStore.ts');
