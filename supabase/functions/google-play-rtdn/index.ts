@@ -230,7 +230,13 @@ Deno.serve(async (req: Request) => {
   // Pub/Sub test messages and unrelated apps should be acknowledged, not retried forever.
   if (notification?.testNotification || notification?.packageName !== PACKAGE_NAME) return respond(204)
   const token = notification?.subscriptionNotification?.purchaseToken
-  if (typeof token !== 'string' || token.length === 0 || token.length > 4096) return respond(204)
+  const notificationType = typeof notification?.subscriptionNotification?.notificationType === 'number'
+    ? notification.subscriptionNotification.notificationType
+    : null
+  if (typeof token !== 'string' || token.length === 0 || token.length > 4096) {
+    console.info('google_play_rtdn_ignored_notification_without_purchase_token', { notificationType })
+    return respond(204)
+  }
 
   const admin = createClient(url, service, { auth: { persistSession: false } })
   const tokenHash = await sha256Hex(token)
@@ -241,10 +247,16 @@ Deno.serve(async (req: Request) => {
   if (lookupError) return respond(503, { error: 'Could not look up the linked Google Play subscription.' })
   // Do not associate an RTDN token with an account. Unknown tokens are safely
   // acknowledged; the authenticated Android client must establish ownership.
-  if (!link) return respond(204)
+  if (!link) {
+    console.info('google_play_rtdn_ignored_unlinked_token', { notificationType })
+    return respond(204)
+  }
   // Once a verified replacement has retired a predecessor token, late RTDN
   // notifications must never reactivate the predecessor's grants.
-  if (link.subscription_state === 'SUBSCRIPTION_STATE_REPLACED') return respond(204)
+  if (link.subscription_state === 'SUBSCRIPTION_STATE_REPLACED') {
+    console.info('google_play_rtdn_ignored_replaced_token', { notificationType })
+    return respond(204)
+  }
 
   let google: Awaited<ReturnType<typeof readGoogleSubscription>>
   try {
@@ -263,9 +275,18 @@ Deno.serve(async (req: Request) => {
         p_entitlements: [],
         p_prior_purchase_link_id: null
       })
-      return revokeError
-        ? respond(503, { error: 'Could not revoke an unverifiable Google Play subscription.' })
-        : respond(204)
+      if (revokeError) {
+        console.error('google_play_rtdn_expiry_revoke_failed', {
+          notificationType,
+          httpStatus: error.status
+        })
+        return respond(503, { error: 'Could not revoke an unverifiable Google Play subscription.' })
+      }
+      console.info('google_play_rtdn_revoked_after_unverifiable_token', {
+        notificationType,
+        httpStatus: error.status
+      })
+      return respond(204)
     }
     return respond(503, { error: 'Google Play subscription verification is temporarily unavailable.' })
   }
@@ -311,6 +332,20 @@ Deno.serve(async (req: Request) => {
     p_entitlements: entitlements,
     p_prior_purchase_link_id: null
   })
-  if (syncError) return respond(503, { error: 'Could not reconcile the verified Google Play subscription.' })
+  if (syncError) {
+    console.error('google_play_rtdn_atomic_reconcile_failed', {
+      notificationType,
+      subscriptionState: google.subscriptionState || 'SUBSCRIPTION_STATE_UNSPECIFIED'
+    })
+    return respond(503, { error: 'Could not reconcile the verified Google Play subscription.' })
+  }
+  // Safe aggregate diagnostics only: never log purchase tokens, token hashes, or user IDs.
+  console.info('google_play_rtdn_subscription_reconciled', {
+    notificationType,
+    subscriptionState: google.subscriptionState || 'SUBSCRIPTION_STATE_UNSPECIFIED',
+    active: isEntitledNow,
+    productCount: productIds.length,
+    entitlementCount: entitlements.length
+  })
   return respond(204)
 })
