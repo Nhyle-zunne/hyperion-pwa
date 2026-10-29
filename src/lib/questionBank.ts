@@ -6,8 +6,7 @@ import {
   getOfflineQuestionsByCompetence,
   getOfflineQuestionsByTrack,
   saveOfflineEntitlements,
-  saveOfflinePackManifest,
-  saveOfflineQuestionPack
+  saveOfflineQuestionPackSets
 } from './offlineQuestionCache';
 import { fingerprintQuestion } from './questionFingerprint.mjs';
 import { parseCsvText } from './csvParser';
@@ -832,13 +831,8 @@ async function downloadOfflinePackInternal(
     }
   }
 
-  // Mark this pack incomplete before replacing any saved groups. Interrupted
-  // updates must never leave a stale complete marker pointing at mixed data.
-  await saveOfflinePackManifest({ track, freeOnly, questionCount: 0, groupCount: 0, complete: false })
-  if (!freeOnly) {
-    // The free preview pack is updated from this licensed bank as well.
-    // Invalidate it only when we are about to overwrite its individual groups.
-  }
+  // Keep any existing complete pack usable until the entire replacement has
+  // downloaded, passed count checks, been encrypted, and can be committed atomically.
   let downloaded = 0
   const allQuestions: Question[] = []
   const writtenGroups: { competenceId: string; part: number | null; questions: Question[] }[] = []
@@ -864,17 +858,20 @@ async function downloadOfflinePackInternal(
         throw new Error('The server returned fewer questions than expected. No complete offline pack was marked ready.')
       }
     }
-    await saveOfflineQuestionPack({ track, competenceId: group.competenceId, part: group.part, freeOnly, questions })
     writtenGroups.push({ competenceId: group.competenceId, part: group.part, questions })
     allQuestions.push(...questions)
   }
 
   if (downloaded !== totalExpected) throw new Error(`Downloaded ${downloaded} of ${totalExpected} expected questions. Retry while online.`)
+  const updates: {
+    track: TrackId
+    freeOnly: boolean
+    groups: { competenceId: string; part: number | null; questions: Question[] }[]
+  }[] = [{ track, freeOnly, groups: writtenGroups }]
+
   if (!freeOnly) {
     // Keep the free reviewer available if this subscription expires while the device is offline.
     const samples = freeSample(allQuestions, track)
-    // Invalidate the free pack before replacing its question groups.
-    await saveOfflinePackManifest({ track, freeOnly: true, questionCount: 0, groupCount: 0, complete: false })
     const sampleGroups = new Map<string, { competenceId: string; part: number | null; questions: Question[] }>()
     for (const question of samples) {
       const part = question.id.match(/-P(\d+)-/)?.[1]
@@ -883,15 +880,11 @@ async function downloadOfflinePackInternal(
       existing.questions.push(question)
       sampleGroups.set(key, existing)
     }
-    for (const sample of sampleGroups.values()) {
-      await saveOfflineQuestionPack({ track, competenceId: sample.competenceId, part: sample.part, freeOnly: true, questions: sample.questions })
-    }
-    await saveOfflinePackManifest({ track, freeOnly: true, questionCount: samples.length, groupCount: sampleGroups.size, complete: true })
+    if (!samples.length || !sampleGroups.size) throw new Error('The free reviewer sample could not be prepared. Your previous offline packs are unchanged.')
+    updates.push({ track, freeOnly: true, groups: Array.from(sampleGroups.values()) })
   }
 
-  await saveOfflinePackManifest({
-    track, freeOnly, questionCount: allQuestions.length, groupCount: writtenGroups.length, complete: true
-  })
+  await saveOfflineQuestionPackSets(updates)
   return { questionCount: allQuestions.length, groupCount: writtenGroups.length }
 }
 
