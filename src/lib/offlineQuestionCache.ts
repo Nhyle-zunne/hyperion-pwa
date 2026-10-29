@@ -22,6 +22,11 @@ export interface OfflinePackManifest {
   savedAt: number
   complete: boolean
   sampleVersion?: number
+  /** Content hashes captured at download time, keyed by private source asset path. */
+  sourceVersions?: Record<string, string>
+  lastCheckedAt?: number
+  lastKnownUpdateState?: 'current' | 'available'
+  availableSources?: string[]
 }
 
 export interface OfflineQuestionPackGroup {
@@ -34,6 +39,7 @@ export interface OfflineQuestionPackSetUpdate {
   track: TrackId
   freeOnly: boolean
   groups: OfflineQuestionPackGroup[]
+  sourceVersions?: Record<string, string>
 }
 
 interface StoredOfflineQuestionPack {
@@ -173,7 +179,13 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
       groupCount: update.groups.length,
       savedAt: Date.now(),
       complete: true,
-      ...(update.track === 'DECK_OIC_NW' && update.freeOnly ? { sampleVersion: 2 } : {})
+      ...(update.track === 'DECK_OIC_NW' && update.freeOnly ? { sampleVersion: 2 } : {}),
+      ...(update.sourceVersions ? {
+        sourceVersions: update.sourceVersions,
+        lastCheckedAt: Date.now(),
+        lastKnownUpdateState: 'current' as const,
+        availableSources: []
+      } : {})
     })
   }
 
@@ -219,6 +231,29 @@ export async function getOfflinePackManifest(track: TrackId, freeOnly: boolean) 
   } catch {
     return null
   }
+}
+
+export async function recordOfflinePackVersionCheck(
+  track: TrackId,
+  freeOnly: boolean,
+  result: {
+    checkedAt: number
+    state: 'current' | 'available'
+    sourceVersions?: Record<string, string>
+    availableSources: string[]
+  }
+) {
+  const db = await database()
+  const id = offlineManifestId(track, freeOnly)
+  const existing = await db.get('manifests', id)
+  if (!existing) return
+  await db.put('manifests', {
+    ...existing,
+    ...(result.sourceVersions ? { sourceVersions: result.sourceVersions } : {}),
+    lastCheckedAt: result.checkedAt,
+    lastKnownUpdateState: result.state,
+    availableSources: result.availableSources
+  })
 }
 
 export async function getOfflinePackStatus(track: TrackId, freeOnly: boolean) {
