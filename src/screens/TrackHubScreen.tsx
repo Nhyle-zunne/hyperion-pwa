@@ -418,28 +418,47 @@ export default function TrackHubScreen() {
           </div>
         )}
         {offlineError && <p role="alert" style={{ color: 'var(--danger, #b42318)', fontSize: '0.85rem' }}>{offlineError}</p>}
-        {(!offlineStatus || offlineUpdateCheck.status === 'available' || (offlineStatus && online && offlineUpdateCheck.status !== 'current' && !checkingOfflineVersion)) && (
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              if (offlineStatus && offlineUpdateCheck.status !== 'available') void refreshOfflineVersionCheck()
-              else void startOfflineDownload()
-            }}
-            disabled={!online || offlineDownloading || checkingOfflineVersion}
-            style={{ width: '100%', minHeight: 44 }}
-          >
-            {offlineDownloading
-              ? 'DOWNLOADING…'
-              : checkingOfflineVersion
-                ? 'CHECKING FOR UPDATES…'
-                : !offlineStatus
-                  ? unlocked ? 'DOWNLOAD FULL BANK FOR OFFLINE' : 'DOWNLOAD FREE QUESTIONS FOR OFFLINE'
+        <button
+          type="button"
+          className={offlineStatus && (offlineUpdateCheck.status === 'current' || (!online && offlineUpdateCheck.lastKnownState === 'current')) ? 'btn btn-outline' : 'btn btn-primary'}
+          onClick={() => {
+            if (!offlineStatus) void startOfflineDownload()
+            else if (offlineUpdateCheck.status === 'available') void startOfflineDownload()
+            else void refreshOfflineVersionCheck()
+          }}
+          disabled={
+            !online ||
+            offlineDownloading ||
+            checkingOfflineVersion ||
+            Boolean(offlineStatus && offlineUpdateCheck.status === 'current')
+          }
+          aria-disabled={!online || offlineDownloading || checkingOfflineVersion || Boolean(offlineStatus && offlineUpdateCheck.status === 'current')}
+          style={{
+            width: '100%',
+            minHeight: 44,
+            ...(offlineStatus && offlineUpdateCheck.status === 'current'
+              ? { color: 'var(--success, #16803d)', borderColor: 'var(--success, #16803d)', cursor: 'not-allowed', opacity: 0.9 }
+              : {})
+          }}
+        >
+          {offlineDownloading
+            ? 'DOWNLOADING…'
+            : checkingOfflineVersion
+              ? 'CHECKING FOR UPDATES…'
+              : !offlineStatus
+                ? unlocked ? 'DOWNLOAD FULL BANK FOR OFFLINE' : 'DOWNLOAD FREE QUESTIONS FOR OFFLINE'
+                : offlineUpdateCheck.status === 'current'
+                  ? 'FULLY UPDATED'
                   : offlineUpdateCheck.status === 'available'
-                    ? 'UPDATE AVAILABLE'
-                    : 'CHECK FOR UPDATES'}
-          </button>
-        )}
+                    ? online ? 'UPDATE AVAILABLE' : 'UPDATE AVAILABLE · RECONNECT'
+                    : !online && offlineUpdateCheck.lastKnownState === 'current'
+                      ? 'FULLY UPDATED · LAST CHECK'
+                      : !online && offlineUpdateCheck.lastKnownState === 'available'
+                        ? 'UPDATE AVAILABLE · RECONNECT'
+                        : online
+                          ? 'CHECK FOR UPDATES'
+                          : 'CONNECT TO CHECK UPDATES'}
+        </button>
         {!online && (!offlineStatus || offlineUpdateCheck.lastKnownState !== 'current') && <p style={{ margin: '0.65rem 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Connect to the internet to download this pack or check for updates.</p>}
         <p style={{ margin: '0.65rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
           Packs are stored on this device. Paid offline access requires a valid server-signed license; reconnect periodically to refresh it. Revocation cannot reach a device while it remains fully offline.
