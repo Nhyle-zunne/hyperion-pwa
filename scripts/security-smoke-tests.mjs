@@ -320,6 +320,7 @@ assert.ok(questionBank.includes('if (body.action === "authorize-session")') && q
 assert.ok(questionBank.includes('fullQuestionFingerprints') && questionBank.includes('questionIds.every(id => questionIdBelongsToTrack(id, track))'), 'Licensed legacy sessions require private-bank fingerprint matches when old question IDs do not match the current track prefix');
 assert.ok(questionBank.includes('const canonicalOptions') && learningProgressFunction.includes('const canonicalOptions'), 'Question access and cloud-progress filtering use stable option-order-independent fingerprints');
 assert.ok(questionBankClient.includes("saveOfflineEntitlements") && questionBankClient.includes("body: { action: 'offline-license' }") && questionBankClient.includes('await getOfflineEntitlementExpiry(userId, track)'), 'Paid offline-pack downloads save and verify a signed, track-specific offline entitlement lease');
+assert.ok(questionBankClient.includes("if (await matchesCachedPack(true)) return 'free-sample'") && questionBankClient.includes("if (await offlineEntitlementExpiry(track) && await matchesCachedPack(false)) return 'licensed'"), 'Saved-session fallback prioritizes locally cached free samples and verified paid packs after network/server failures');
 const originalQuestionFingerprint = await fingerprintQuestion({
   questionText: 'Which option is correct?',
   options: ['Alpha', 'Bravo', 'Charlie'],
