@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
 import { encryptJsonPayload, decryptJsonPayload } from '../src/lib/jsonPayloadCrypto.mjs';
 import { fingerprintQuestion } from '../src/lib/questionFingerprint.mjs';
-import { isOfflinePackSetComplete } from '../src/lib/offlinePackIntegrity.mjs';
+import { isGmdssFreeSampleQuestion, isOfflinePackSetComplete } from '../src/lib/offlinePackIntegrity.mjs';
 import { createSerialAsyncQueue } from '../src/lib/serializedAsyncQueue.mjs';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
@@ -593,6 +593,13 @@ const freeDeckManifest = { ...completePackManifest, track: 'DECK_OIC_NW', freeOn
 const freeDeckPacks = completePackRecords.map(pack => ({ ...pack, id: pack.id.replace('licensed', 'free'), freeOnly: true }));
 assert.equal(isOfflinePackSetComplete({ ...freeDeckManifest, sampleVersion: undefined }, freeDeckPacks), false, 'Legacy Deck OIC free samples with an outdated shuffle rule are not trusted');
 assert.equal(isOfflinePackSetComplete(freeDeckManifest, freeDeckPacks), true, 'New server-matched Deck OIC free sample manifests pass integrity validation');
+assert.equal(isGmdssFreeSampleQuestion({ id: 'G-C1-P10-090' }), true, 'GMDSS C1 part 10 free-sample boundary is accepted');
+assert.equal(isGmdssFreeSampleQuestion({ id: 'G-C1-P10-091' }), false, 'GMDSS C1 cannot expose questions beyond the 90-question free quota for a part');
+assert.equal(isGmdssFreeSampleQuestion({ id: 'G-C2-P2-065' }), true, 'GMDSS C2 part 2 free-sample boundary is accepted');
+assert.equal(isGmdssFreeSampleQuestion({ id: 'G-C2-P2-066' }), false, 'GMDSS C2 cannot expose questions beyond the 65-question free quota for a part');
+assert.equal(isGmdssFreeSampleQuestion({ id: 'G-C2-P3-001' }), false, 'GMDSS free-sample validation rejects out-of-range source parts');
+assert.ok(offlineQuestionCache.includes('isGmdssFreeSampleQuestion(question)'), 'Offline GMDSS packs are checked against server-defined per-part free quotas before use');
+assert.ok(questionBankClient.includes("for (let part = 1; part <= 10; part++) sample.push(...byPart('C1', part).slice(0, 90))") && questionBankClient.includes("for (let part = 1; part <= 2; part++) sample.push(...byPart('C2', part).slice(0, 65))"), 'GMDSS free packs derived from a paid download follow the exact server quotas for every source part');
 assert.equal(isOfflinePackSetComplete(completePackManifest, completePackRecords.map(pack => ({ ...pack, track: 'GMDSS_GOC' }))), false, 'Question packs from another track cannot satisfy a manifest');
 assert.equal(isOfflinePackSetComplete(completePackManifest, [completePackRecords[0], completePackRecords[0]]), false, 'Duplicate IndexedDB pack IDs cannot satisfy a pack manifest');
 assert.ok(offlineQuestionCache.includes('isOfflinePackSetComplete(manifest, stored)'), 'Offline reads verify that manifest totals and group records still agree after storage eviction');
