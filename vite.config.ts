@@ -51,6 +51,8 @@ export default defineConfig({
       workbox: {
         // Question banks are delivered by the protected Supabase Edge Function.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,avif,woff2,webmanifest}'],
+        // Every client-side route should open from the cached app shell when offline.
+        navigateFallback: 'index.html',
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         runtimeCaching: [
           {
