@@ -160,7 +160,7 @@ BEGIN
   -- A duplicate token hash cannot be linked to another Hyperion user.
   BEGIN
     PERFORM public.sync_google_play_subscription_atomic(
-      v_user_two, 'attacker-token', pg_catalog.repeat('a', 64),
+      v_user_two, 'attacker-token', pg_catalog.repeat('d', 64),
       ARRAY['hyperion_oic_nw_pass']::text[], 'SUBSCRIPTION_STATE_ACTIVE', 'active', v_future,
       pg_catalog.jsonb_build_array(
         pg_catalog.jsonb_build_object('product_code', 'oic_nw', 'track_id', 'DECK_OIC_NW', 'status', 'active', 'expires_at', v_future::text)
