@@ -620,7 +620,15 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
   }
 
   if (track === 'GMDSS_GOC') {
-    return [...(byComp.get('C1') ?? []).slice(0, 900), ...(byComp.get('C2') ?? []).slice(0, 130)];
+    // Mirror the server's per-source GMDSS quotas exactly: 90 from each C1
+    // part and 65 from each C2 part. Slicing the combined competence list could
+    // accidentally bias the sample toward whichever part happens to load first.
+    const byPart = (competenceId: string, part: number) =>
+      (byComp.get(competenceId) ?? []).filter(question => question.id.includes(`-${competenceId}-P${part}-`));
+    const sample: Question[] = [];
+    for (let part = 1; part <= 10; part++) sample.push(...byPart('C1', part).slice(0, 90));
+    for (let part = 1; part <= 2; part++) sample.push(...byPart('C2', part).slice(0, 65));
+    return sample;
   }
 
   const out: Question[] = [];
