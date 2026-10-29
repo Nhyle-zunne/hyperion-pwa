@@ -219,7 +219,7 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
       groupCount: update.groups.length,
       savedAt: Date.now(),
       complete: true,
-      ...(update.track === 'DECK_OIC_NW' && update.freeOnly ? { sampleVersion: 2 } : {}),
+      ...((update.track === 'DECK_OIC_NW' || update.track === 'GMDSS_GOC') && update.freeOnly ? { sampleVersion: 2 } : {}),
       ...(update.sourceVersions ? {
         sourceVersions: update.sourceVersions,
         lastCheckedAt: Date.now(),
