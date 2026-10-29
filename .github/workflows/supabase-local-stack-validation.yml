@@ -1,0 +1,156 @@
+name: Supabase local stack validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  local-stack:
+    name: Replay migrations on local Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.122.0
+
+      - name: Confirm CLI version and reset options
+        run: |
+          supabase --version
+          supabase db reset --help
+
+      - name: Start isolated local Supabase stack
+        run: supabase start
+
+      - name: Replay every migration from a clean local database
+        run: supabase db reset --local --yes
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Run Google Play entitlement atomicity regression tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/google_play_subscription_atomic.sql
+
+      - name: Verify Google Play access controls and opt-in scheduler
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $checks$
+          DECLARE
+            v_enabled text;
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'public'
+                 AND c.relname = 'google_play_purchase_links'
+                 AND c.relrowsecurity
+            ) THEN
+              RAISE EXCEPTION 'Purchase-link table is missing or RLS is disabled';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'public'
+                 AND c.relname = 'google_play_entitlements'
+                 AND c.relrowsecurity
+            ) THEN
+              RAISE EXCEPTION 'Google Play entitlement table is missing or RLS is disabled';
+            END IF;
+
+            IF pg_catalog.has_table_privilege('anon', 'public.google_play_purchase_links', 'SELECT')
+               OR pg_catalog.has_table_privilege('authenticated', 'public.google_play_purchase_links', 'SELECT') THEN
+              RAISE EXCEPTION 'Raw Google Play purchase tokens are readable by client roles';
+            END IF;
+
+            IF NOT pg_catalog.has_table_privilege('service_role', 'public.google_play_purchase_links', 'SELECT') THEN
+              RAISE EXCEPTION 'Service role cannot read purchase links';
+            END IF;
+
+            IF NOT pg_catalog.has_table_privilege('authenticated', 'public.google_play_entitlements', 'SELECT') THEN
+              RAISE EXCEPTION 'Signed-in users cannot read their own entitlement rows through RLS';
+            END IF;
+
+            IF pg_catalog.has_function_privilege(
+                 'anon',
+                 'public.sync_google_play_subscription_atomic(uuid,text,text,text[],text,text,timestamptz,jsonb,uuid)',
+                 'EXECUTE'
+               )
+               OR pg_catalog.has_function_privilege(
+                 'authenticated',
+                 'public.sync_google_play_subscription_atomic(uuid,text,text,text[],text,text,timestamptz,jsonb,uuid)',
+                 'EXECUTE'
+               )
+               OR NOT pg_catalog.has_function_privilege(
+                 'service_role',
+                 'public.sync_google_play_subscription_atomic(uuid,text,text,text[],text,text,timestamptz,jsonb,uuid)',
+                 'EXECUTE'
+               ) THEN
+              RAISE EXCEPTION 'Atomic entitlement reconciliation RPC is not service-role-only';
+            END IF;
+
+            SELECT decrypted_secret INTO v_enabled
+              FROM vault.decrypted_secrets
+             WHERE name = 'hyperion_google_play_reconciliation_enabled';
+
+            IF v_enabled IS DISTINCT FROM 'false' THEN
+              RAISE EXCEPTION 'Periodic Google Play reconciliation must default to disabled';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1
+                FROM cron.job
+               WHERE jobname = 'hyperion-reconcile-google-play-subscriptions'
+                 AND schedule = '*/15 * * * *'
+                 AND command LIKE '%hyperion_google_play_reconciliation_enabled%'
+                 AND command LIKE '%net.http_post%'
+            ) THEN
+              RAISE EXCEPTION 'Guarded Google Play reconciliation cron job was not registered';
+            END IF;
+
+            IF pg_catalog.has_function_privilege(
+                 'anon',
+                 'public.verify_google_play_reconciliation_cron_token(text)',
+                 'EXECUTE'
+               )
+               OR pg_catalog.has_function_privilege(
+                 'authenticated',
+                 'public.verify_google_play_reconciliation_cron_token(text)',
+                 'EXECUTE'
+               )
+               OR NOT pg_catalog.has_function_privilege(
+                 'service_role',
+                 'public.verify_google_play_reconciliation_cron_token(text)',
+                 'EXECUTE'
+               ) THEN
+              RAISE EXCEPTION 'Cron-token verifier is not service-role-only';
+            END IF;
+          END;
+          $checks$;
+          SQL
+
+      - name: Lint the migrated local database
+        run: supabase db lint --local --fail-on error
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: supabase stop --no-backup || true

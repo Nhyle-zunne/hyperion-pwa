@@ -17,6 +17,14 @@ const prices: Record<keyof typeof products, Record<LicenseTerm, number>> = {
 }
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 
+function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { code?: unknown; message?: unknown }
+  if (candidate.code !== 'PGRST205' || typeof candidate.message !== 'string') return false
+  const message = candidate.message.toLowerCase()
+  return message.includes('google_play_entitlements') && message.includes('schema cache')
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
@@ -55,11 +63,23 @@ Deno.serve(async req => {
   if (!customerName) return json({ error: 'Please add your full name to your account before submitting payment details.' }, 400)
 
   const admin = createClient(url, service, { auth: { persistSession: false } })
-  const { data: activeLicense, error: licenseError } = await admin.from('entitlements')
-    .select('id,expires_at').eq('user_id', user.id).eq('product_code', code).eq('status', 'active').maybeSingle()
-  if (licenseError) return json({ error: 'Could not check your existing license. Please try again.' }, 500)
+  const [activeLicenseResult, activePlayResult] = await Promise.all([
+    admin.from('entitlements')
+      .select('id,expires_at,status').eq('user_id', user.id).eq('product_code', code).eq('status', 'active').maybeSingle(),
+    admin.from('google_play_entitlements')
+      .select('id,expires_at').eq('user_id', user.id).eq('product_code', code).eq('status', 'active')
+      .gt('expires_at', new Date().toISOString()).limit(1).maybeSingle()
+  ])
+  const playTableMissing = isMissingGooglePlayEntitlementsTable(activePlayResult.error)
+  if (activeLicenseResult.error || (activePlayResult.error && !playTableMissing)) {
+    return json({ error: 'Could not check your existing license. Please try again.' }, 500)
+  }
+  const activeLicense = activeLicenseResult.data
+  const activePlayLicense = playTableMissing ? null : activePlayResult.data
   const licenseExpiry = activeLicense?.expires_at ? new Date(activeLicense.expires_at).getTime() : null
-  if (activeLicense && (licenseExpiry === null || licenseExpiry > Date.now())) {
+  const websiteActive = activeLicense?.status === 'active' && licenseExpiry !== null && licenseExpiry > Date.now()
+  const playActive = !!activePlayLicense?.expires_at && new Date(activePlayLicense.expires_at).getTime() > Date.now()
+  if (websiteActive || playActive) {
     return json({ error: 'This license is already active for your account. You do not need to purchase this track again.' }, 409)
   }
 

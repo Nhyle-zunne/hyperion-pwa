@@ -1,3 +1,5 @@
+project_id = "hyperion-maritime-local"
+
 [functions.submit-manual-payment]
 verify_jwt = true
 
@@ -36,3 +38,12 @@ verify_jwt = false
 
 [functions.learning-progress]
 verify_jwt = true
+
+[functions.link-google-play-subscription]
+verify_jwt = true
+
+[functions.google-play-rtdn]
+verify_jwt = false
+
+[functions.reconcile-google-play-subscriptions]
+verify_jwt = false

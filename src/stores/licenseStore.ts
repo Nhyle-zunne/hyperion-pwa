@@ -43,12 +43,38 @@ function scheduleEntitlementExpiryRefresh(
   }, delay);
 }
 
-function canUseOfflineEntitlementsAfterError(error: unknown): boolean {
+function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  if (candidate.code !== 'PGRST205' || typeof candidate.message !== 'string') return false;
+  const message = candidate.message.toLowerCase();
+  return message.includes('google_play_entitlements') && message.includes('schema cache');
+}
+
+function canUseOfflineEntitlementsAfterError(error: unknown, responseStatus?: number): boolean {
+  const candidate = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    context?: { status?: unknown };
+    code?: unknown;
+    message?: unknown;
+    name?: unknown;
+  } | null;
+  const rawStatus = responseStatus ?? candidate?.status ?? candidate?.statusCode ?? candidate?.context?.status;
+  if (rawStatus !== undefined && rawStatus !== null && rawStatus !== '') {
+    const status = Number(rawStatus);
+    if (Number.isFinite(status)) return status === 0 || status >= 500;
+  }
+
+  // PostgREST/database errors carry a code but may not expose their HTTP status on the
+  // error object. Treat coded client/database errors as definitive before considering
+  // the browser's offline flag, so an authorization error never grants cached access.
+  if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false;
+
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-  const status = Number((error as { context?: { status?: number } } | null)?.context?.status || 0);
-  // Never fall back to a locally cached license after an authorization/client error.
-  // Only genuine network failures and server-side outages may use offline access.
-  return status === 0 || status >= 500;
+
+  const message = typeof candidate?.message === 'string' ? candidate.message : String(error ?? '');
+  return /failed to fetch|network error|network request failed|networkerror|load failed|timed out|timeout|connection reset|connection refused|enotfound|econn|enetunreach|eai_again|aborted/i.test(message);
 }
 
 function accessFlags(trackIds: string[]) {
@@ -147,16 +173,28 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('entitlements')
-        .select('track_id, expires_at')
-        .eq('user_id', session.user.id)
-        .eq('status', 'active')
-        .gt('expires_at', new Date().toISOString());
+      const [websiteResult, playResult] = await Promise.all([
+        supabase.from('entitlements')
+          .select('track_id, expires_at')
+          .eq('user_id', session.user.id)
+          .eq('status', 'active')
+          .gt('expires_at', new Date().toISOString()),
+        supabase.from('google_play_entitlements')
+          .select('track_id, expires_at')
+          .eq('user_id', session.user.id)
+          .eq('status', 'active')
+          .gt('expires_at', new Date().toISOString())
+      ]);
+      // Google Play entitlement syncing is an optional backend extension until its
+      // migration is released. Ignore only PostgREST's exact missing-table/schema-cache
+      // response; permission failures and other client/server errors must not be hidden.
+      const playTableMissing = isMissingGooglePlayEntitlementsTable(playResult.error);
+      const error = websiteResult.error || (playTableMissing ? null : playResult.error);
+      const errorStatus = websiteResult.error ? websiteResult.status : playResult.status;
       if (error) {
-        // Fail closed for 4xx authorization/client errors. Only a network failure or
+        // Fail closed for authorization/client errors. Only a confirmed network failure or
         // server outage may use a still-valid signed lease cached for this same account.
-        if (canUseOfflineEntitlementsAfterError(error)) {
+        if (canUseOfflineEntitlementsAfterError(error, errorStatus)) {
           const offlineIds = await getOfflineEntitledTracks(session.user.id);
           if (offlineIds.length) {
             const expiryTimes = await Promise.all(offlineIds.map((track) =>
@@ -172,7 +210,10 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
         set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
         return;
       }
-      const rows = data ?? [];
+      const rows = [
+        ...(websiteResult.data ?? []),
+        ...(playTableMissing ? [] : (playResult.data ?? []))
+      ];
       const ids = Array.from(new Set(rows.map((row) => row.track_id as string)));
 
       // Replace any old signed lease with a fresh server-signed version of the current

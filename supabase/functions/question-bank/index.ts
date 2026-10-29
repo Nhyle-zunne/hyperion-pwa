@@ -27,10 +27,19 @@ function deriveKeyBytes(): Uint8Array {
   }
   return result;
 }
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
 async function decryptToText(encrypted: Uint8Array): Promise<string> {
   if (encrypted.length < 28) throw new Error("Encrypted asset is too short.");
-  const key = await crypto.subtle.importKey("raw", deriveKeyBytes(), { name: "AES-GCM" }, false, ["decrypt"]);
-  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: encrypted.slice(0, 12), tagLength: 128 }, key, encrypted.slice(12));
+  const key = await crypto.subtle.importKey("raw", toArrayBuffer(deriveKeyBytes()), { name: "AES-GCM" }, false, ["decrypt"]);
+  const plain = await crypto.subtle.decrypt({
+    name: "AES-GCM",
+    iv: toArrayBuffer(encrypted.slice(0, 12)),
+    tagLength: 128
+  }, key, toArrayBuffer(encrypted.slice(12)));
   const bytes = new Uint8Array(plain);
   try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
   catch { return new TextDecoder("windows-1252").decode(bytes); }
@@ -153,14 +162,36 @@ function isAdminEmail(email: string | undefined) {
   const configured = (Deno.env.get("ADMIN_EMAILS") || "").split(/[;,\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
   return !!email && configured.includes(email.toLowerCase());
 }
+function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  if (candidate.code !== "PGRST205" || typeof candidate.message !== "string") return false;
+  const message = candidate.message.toLowerCase();
+  return message.includes("google_play_entitlements") && message.includes("schema cache");
+}
 async function loadEntitlement(admin: any, userId: string, track: string) {
-  const result = await admin.from("entitlements")
-    .select("user_id,track_id,status,expires_at")
-    .eq("user_id", userId)
-    .eq("track_id", track)
-    .maybeSingle();
-  if (result.error) throw new Error("Could not verify the license.");
-  return result.data;
+  const now = new Date().toISOString();
+  // Keep the latest currently valid license from either checkout/admin grants or Google Play.
+  // Filter and limit database-side so old historical rows cannot make maybeSingle() fail.
+  const [website, play] = await Promise.all([
+    admin.from("entitlements").select("user_id,track_id,status,expires_at")
+      .eq("user_id", userId).eq("track_id", track).eq("status", "active").gt("expires_at", now)
+      .order("expires_at", { ascending: false }).limit(1).maybeSingle(),
+    admin.from("google_play_entitlements").select("user_id,track_id,status,expires_at")
+      .eq("user_id", userId).eq("track_id", track).eq("status", "active").gt("expires_at", now)
+      .order("expires_at", { ascending: false }).limit(1).maybeSingle()
+  ]);
+  const playTableMissing = isMissingGooglePlayEntitlementsTable(play.error);
+  if (website.error || (play.error && !playTableMissing)) throw new Error("Could not verify the license.");
+  const candidates = [website.data, playTableMissing ? null : play.data].filter((row: any) =>
+    row && row.user_id === userId && row.track_id === track && row.status === "active" &&
+    typeof row.expires_at === "string" && Number.isFinite(Date.parse(row.expires_at)) &&
+    Date.parse(row.expires_at) > Date.now()
+  );
+  if (!candidates.length) return null;
+  return candidates.reduce((latest: any, row: any) =>
+    Date.parse(row.expires_at) > Date.parse(latest.expires_at) ? row : latest
+  );
 }
 async function migrationState(admin: any) {
   const result = await admin.from("question_bank_migration_state").select("status,asset_count,error_summary,updated_at").eq("id", 1).single();
@@ -480,13 +511,15 @@ async function issueOfflineEntitlement(admin: any, user: any, isAdmin: boolean) 
     const offlineAdminExpiry = now + 7 * 24 * 60 * 60 * 1000;
     for (const track of OFFLINE_TRACK_IDS) tracks[track] = offlineAdminExpiry;
   } else {
-    const entitlements = await admin.from("entitlements")
-      .select("track_id,expires_at")
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .gt("expires_at", new Date(now).toISOString());
-    if (entitlements.error) throw new Error("Could not verify current offline licenses.");
-    for (const row of entitlements.data ?? []) {
+    const [website, play] = await Promise.all([
+      admin.from("entitlements").select("track_id,expires_at")
+        .eq("user_id", user.id).eq("status", "active").gt("expires_at", new Date(now).toISOString()),
+      admin.from("google_play_entitlements").select("track_id,expires_at")
+        .eq("user_id", user.id).eq("status", "active").gt("expires_at", new Date(now).toISOString())
+    ]);
+    const playTableMissing = isMissingGooglePlayEntitlementsTable(play.error);
+    if (website.error || (play.error && !playTableMissing)) throw new Error("Could not verify current offline licenses.");
+    for (const row of [...(website.data ?? []), ...(playTableMissing ? [] : (play.data ?? []))]) {
       if (!OFFLINE_TRACK_IDS.includes(row.track_id)) continue;
       const expiry = Date.parse(row.expires_at);
       if (Number.isFinite(expiry) && expiry > now) {
@@ -525,7 +558,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceKey) return json(req, { error: "Question service is not configured." }, 503);
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let body: { action?: string; path?: string; csvText?: string; uploadFormat?: string; encryptedBase64?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown };
+  let body: { action?: string; path?: string; csvText?: string; uploadFormat?: string; encryptedBase64?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown; items?: unknown };
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
   let user: any = null, isAdmin = false;
   const authHeader = req.headers.get("Authorization");
@@ -607,12 +640,16 @@ Deno.serve(async (req: Request) => {
     if (backup.error) return json(req, { error: "Could not save a private backup. No file was changed." }, 500);
     try {
       if (body.uploadFormat === "csv") {
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        const key = await crypto.subtle.importKey("raw", deriveKeyBytes(), { name: "AES-GCM" }, false, ["encrypt"]);
-        const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, tagLength: 128 }, key, plainBytes));
-        replacementBytes = new Uint8Array(iv.length + ciphertext.length);
-        replacementBytes.set(iv, 0);
-        replacementBytes.set(ciphertext, iv.length);
+        const ivBytes = crypto.getRandomValues(new Uint8Array(12));
+        const key = await crypto.subtle.importKey("raw", toArrayBuffer(deriveKeyBytes()), { name: "AES-GCM" }, false, ["encrypt"]);
+        const ciphertext = new Uint8Array(await crypto.subtle.encrypt({
+          name: "AES-GCM",
+          iv: toArrayBuffer(ivBytes),
+          tagLength: 128
+        }, key, toArrayBuffer(plainBytes)));
+        replacementBytes = new Uint8Array(ivBytes.length + ciphertext.length);
+        replacementBytes.set(ivBytes, 0);
+        replacementBytes.set(ciphertext, ivBytes.length);
       }
       const upload = await bucket.upload(path, replacementBytes, { contentType: "application/octet-stream", cacheControl: "0", upsert: true });
       if (upload.error) return json(req, { error: "Replacement failed. Previous file backed up at " + backupPath + "." }, 500);

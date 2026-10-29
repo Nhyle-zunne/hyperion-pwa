@@ -74,6 +74,13 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const submitManualPaymentFunction = await read('../supabase/functions/submit-manual-payment/index.ts');
+const googlePlayLinkFunction = await read('../supabase/functions/link-google-play-subscription/index.ts');
+const googlePlayRtdnFunction = await read('../supabase/functions/google-play-rtdn/index.ts');
+const googlePlayReconciliationFunction = await read('../supabase/functions/reconcile-google-play-subscriptions/index.ts');
+const googlePlayLinkMigration = await read('../supabase/migrations/20261029184029_add_google_play_purchase_links.sql');
+const googlePlayScheduleMigration = await read('../supabase/migrations/20261029184034_schedule_google_play_reconciliation.sql');
+const googlePlaySchema = await read('../supabase/schema.sql');
 const questionFingerprintSource = await read('../src/lib/questionFingerprint.mjs');
 const offlinePwaConfig = await read('../vite.config.ts');
 const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.ts');
@@ -657,5 +664,172 @@ assert.ok(offlineUpdateButton.includes("'FULLY UPDATED'") && offlineUpdateButton
 assert.ok(offlineUpdateButton.includes("offlineUpdateCheck.status === 'available'") && offlineUpdateButton.includes("void startOfflineDownload()"), 'The question pack download action is only started when the user has no pack or an update is actually available');
 assert.ok(offlineUpdateButton.includes("'UPDATE AVAILABLE · RECONNECT'") && offlineUpdateButton.includes("'FULLY UPDATED · LAST CHECK'"), 'Offline track pages show the last verified state and never offer an update download without connectivity');
 
+
+assert.ok(
+  checkout.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
+    checkout.includes("if (website.error || (play.error && !playTableMissing))") &&
+    checkout.includes("!playTableMissing && play.data?.status === 'active'"),
+  'PayMongo checkout remains usable before the Play migration while still rejecting other license-query errors'
+);
+assert.ok(
+  submitManualPaymentFunction.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
+    submitManualPaymentFunction.includes("activePlayResult.error && !playTableMissing") &&
+    submitManualPaymentFunction.includes("playTableMissing ? null : activePlayResult.data"),
+  'Manual-payment submissions remain usable before the Play migration while still rejecting other license-query errors'
+);
+assert.ok(
+  licenseStore.includes("candidate.code !== 'PGRST205'") &&
+    licenseStore.includes("message.includes('google_play_entitlements')") &&
+    licenseStore.includes("message.includes('schema cache')"),
+  'Only a confirmed PostgREST missing-table response for google_play_entitlements is treated as an optional table'
+);
+assert.ok(
+  licenseStore.includes('const errorStatus = websiteResult.error ? websiteResult.status : playResult.status') &&
+    licenseStore.includes('canUseOfflineEntitlementsAfterError(error, errorStatus)') &&
+    licenseStore.includes("if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false") &&
+    licenseStore.indexOf("if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false") <
+      licenseStore.indexOf("if (typeof navigator !== 'undefined' && navigator.onLine === false)"),
+  'Coded authorization/database errors fail closed before offline fallback is considered'
+);
+assert.ok(
+  licenseStore.includes('const error = websiteResult.error || (playTableMissing ? null : playResult.error)') &&
+    licenseStore.includes('(playTableMissing ? [] : (playResult.data ?? []))'),
+  'Missing optional Google Play table does not block website-license reads, while website query errors remain enforced'
+);
+
+assert.ok(googlePlayLinkFunction.includes("if (req.method === 'OPTIONS') return json(req, { ok: true })"), 'Google Play linking preflight responses use the same origin-aware CORS helper as normal responses');
+assert.ok(googlePlayLinkFunction.includes("'http://localhost:5173'") && googlePlayLinkFunction.includes("'http://127.0.0.1:5173'"), 'Google Play linking CORS supports the documented local development origins');
+assert.ok(
+  accountScreen.includes("candidate.code !== 'PGRST205'") &&
+    accountScreen.includes("message.includes('google_play_entitlements')") &&
+    accountScreen.includes("message.includes('schema cache')"),
+  'Account license display ignores only the exact missing optional Google Play table response'
+);
+assert.ok(
+  accountScreen.includes('const entitlementError = entitlements.error || (playTableMissing ? null : playEntitlements.error)') &&
+    accountScreen.includes('(playTableMissing ? [] : (playEntitlements.data ?? []))'),
+  'A missing Google Play table does not hide existing website licenses in the Account page'
+);
+assert.ok(
+  accountRetentionFunction.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
+    accountRetentionFunction.includes("candidate.code !== 'PGRST205'") &&
+    accountRetentionFunction.includes("message.includes('google_play_entitlements')") &&
+    accountRetentionFunction.includes("message.includes('schema cache')"),
+  'Account-retention cleanup recognizes only the exact missing optional Google Play table response'
+);
+assert.ok(
+  accountRetentionFunction.includes('if (result.error && !playTableMissing)') &&
+    accountRetentionFunction.includes('if (playTableMissing || rows.length < PAGE_SIZE) break') &&
+    accountRetentionFunction.includes('freshPlayEntitlements.error && !freshPlayTableMissing') &&
+    accountRetentionFunction.includes('freshPlayTableMissing ? [] : ((freshPlayEntitlements.data || []) as Entitlement[])'),
+  'Account retention stays operational before the Play migration while failing closed on other entitlement-query errors'
+);
+assert.ok(
+  adminLicenseManagement.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
+    adminLicenseManagement.includes("if (result.error && !playTableMissing)") &&
+    adminLicenseManagement.includes("playError && !isMissingGooglePlayEntitlementsTable(playError)"),
+  'Admin website license management remains available before the Play table migration and still fails closed on other query errors'
+);
+assert.ok(
+  questionBank.includes('function isMissingGooglePlayEntitlementsTable(error: unknown)') &&
+    questionBank.includes('candidate.code !== "PGRST205"') &&
+    questionBank.includes('message.includes("google_play_entitlements")') &&
+    questionBank.includes('message.includes("schema cache")'),
+  'Protected question-bank licensing recognizes only the exact missing optional Google Play table response'
+);
+assert.ok(
+  questionBank.includes('if (website.error || (play.error && !playTableMissing))') &&
+    questionBank.includes('playTableMissing ? null : play.data') &&
+    questionBank.includes('playTableMissing ? [] : (play.data ?? [])'),
+  'Website paid-track authorization and signed offline-license issuance remain compatible before the Google Play migration, while other query errors fail closed'
+);
+assert.ok(
+  questionBank.includes('.eq("user_id", userId).eq("track_id", track).eq("status", "active").gt("expires_at", now)') &&
+    questionBank.includes('.order("expires_at", { ascending: false }).limit(1).maybeSingle()'),
+  'Paid-track authorization only considers active unexpired rows and safely handles historical duplicate entitlements'
+);
+assert.ok(googlePlayLinkFunction.includes("userClient.auth.getUser()"), 'Google Play purchase linking requires a verified authenticated Hyperion user');
+assert.ok(googlePlayLinkFunction.includes("admin.rpc('sync_google_play_subscription_atomic'") && !googlePlayLinkFunction.includes('upsertPlayEntitlement'), 'The verified link endpoint reconciles the whole subscription in one database transaction');
+const atomicRpcStart = googlePlayLinkMigration.indexOf('CREATE OR REPLACE FUNCTION public.sync_google_play_subscription_atomic(');
+const atomicRpcEnd = googlePlayLinkMigration.indexOf('REVOKE ALL ON FUNCTION public.sync_google_play_subscription_atomic(', atomicRpcStart);
+const atomicRpcSource = googlePlayLinkMigration.slice(atomicRpcStart, atomicRpcEnd);
+assert.ok(atomicRpcStart >= 0 && atomicRpcEnd > atomicRpcStart && atomicRpcSource.includes('ON CONFLICT (purchase_token_sha256) DO UPDATE') && atomicRpcSource.includes('user_id = EXCLUDED.user_id'), 'Atomic reconciliation checks token ownership on concurrent account-link attempts');
+const dollarChar = String.fromCharCode(36);
+const dollarQuote = dollarChar.repeat(2);
+assert.ok(atomicRpcSource.includes('jsonb_array_elements(p_entitlements)') && atomicRpcSource.includes("current_entitlement.status <> 'revoked'") && !atomicRpcSource.includes('granted_at'), 'Atomic reconciliation retires stale track grants while preserving original grant timestamps');
+assert.ok(atomicRpcSource.includes("AS " + dollarQuote + "\nDECLARE") && atomicRpcSource.includes("p_purchase_token_sha256 !~ '^[0-9a-f]{64}" + dollarChar + "'") && atomicRpcSource.includes('OR p_expires_at IS NULL') && atomicRpcSource.includes('RETURN v_link_id;'), 'Atomic reconciliation SQL has complete dollar quoting, full SHA-256 validation, and expiry validation');
+const rpcDefinitionCount = googlePlayLinkMigration.split('CREATE OR REPLACE FUNCTION public.sync_google_play_subscription_atomic(').length - 1;
+const rpcExpiryGuardCount = googlePlayLinkMigration.split('OR p_expires_at IS NULL').length - 1;
+assert.ok(rpcDefinitionCount === 1 && rpcExpiryGuardCount === 1 && atomicRpcSource.trimEnd().endsWith('END;' + String.fromCharCode(10) + dollarQuote + ';'), 'Migration contains exactly one complete atomic RPC with one expiry guard and a proper closing delimiter');
+const schemaAtomicRpcStart = googlePlaySchema.indexOf('CREATE OR REPLACE FUNCTION public.sync_google_play_subscription_atomic(');
+const schemaAtomicRpcEnd = googlePlaySchema.indexOf('REVOKE ALL ON FUNCTION public.sync_google_play_subscription_atomic(', schemaAtomicRpcStart);
+const schemaAtomicRpcSource = googlePlaySchema.slice(schemaAtomicRpcStart, schemaAtomicRpcEnd).trim();
+assert.equal(schemaAtomicRpcSource, atomicRpcSource.trim(), 'The consolidated local schema and migration contain the same atomic RPC definition');
+assert.ok(googlePlayRtdnFunction.includes('jwtVerify') && googlePlayRtdnFunction.includes('createRemoteJWKSet') && googlePlayRtdnFunction.includes('https://www.googleapis.com/oauth2/v3/certs'), 'RTDN authenticates Google Pub/Sub push tokens with Google signing keys');
+assert.ok(googlePlayRtdnFunction.includes("GOOGLE_PLAY_PUBSUB_AUDIENCE") && googlePlayRtdnFunction.includes("GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL") && googlePlayRtdnFunction.includes('payload.email_verified !== true'), 'RTDN validates the configured exact audience and verified service-account email');
+assert.ok(googlePlayRtdnFunction.includes("notification?.packageName !== PACKAGE_NAME") && googlePlayRtdnFunction.includes('purchases/subscriptionsv2/tokens/'), 'RTDN checks the Android package and rereads current subscription state from Google Play');
+assert.ok(googlePlayRtdnFunction.includes("if (!link) return respond(204)") && googlePlayRtdnFunction.includes("admin.rpc('sync_google_play_subscription_atomic'"), 'RTDN cannot create a new account association and uses the atomic entitlement reconciler for known tokens');
+assert.ok(functionConfig.includes('[functions.google-play-rtdn]\nverify_jwt = false'), 'RTDN disables Supabase-JWT gateway checks because its handler verifies the Google OIDC bearer token itself');
+
+assert.ok(googlePlayLinkFunction.includes("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON") && googlePlayLinkFunction.includes("purchases/subscriptionsv2/tokens/"), 'Google Play tokens are checked against the Android Publisher API from the server');
+assert.ok(googlePlayLinkFunction.includes("purchase_token_sha256") && googlePlayLinkFunction.includes("existing.user_id !== user.id"), 'Google Play purchase tokens are uniquely fingerprinted and cannot be claimed by a second Hyperion account');
+assert.ok(googlePlayLinkFunction.includes("if (prior && prior.user_id !== user.id)") && googlePlayLinkFunction.includes("p_prior_purchase_link_id: priorPurchaseLink?.id ?? null") && googlePlayLinkMigration.includes("WHERE id = p_prior_purchase_link_id") && googlePlayLinkMigration.includes("AND user_id = p_user_id"), 'Replacement tokens retire prior grants only when the prior link belongs to the same Hyperion account');
+assert.ok(
+  googlePlayLinkMigration.includes("subscription_state = 'SUBSCRIPTION_STATE_REPLACED'") &&
+    googlePlayLinkMigration.includes("A replaced Google Play purchase token cannot be linked again") &&
+    googlePlayLinkFunction.includes("existing?.subscription_state === 'SUBSCRIPTION_STATE_REPLACED'") &&
+    googlePlayRtdnFunction.includes("if (link.subscription_state === 'SUBSCRIPTION_STATE_REPLACED') return respond(204)") &&
+    googlePlayLinkMigration.includes("public.google_play_purchase_links"),
+  'Replaced predecessor tokens cannot be re-linked or reactivated by late RTDN notifications'
+);
+assert.ok(googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_ACTIVE'") && googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_IN_GRACE_PERIOD'") && googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_CANCELED'") && googlePlayLinkFunction.includes("maxExpiry > now"), 'Google Play access is tied to an allowed subscription state and a future verified expiry');
+
+assert.ok(
+  googlePlayReconciliationFunction.includes("verify_google_play_reconciliation_cron_token") &&
+    googlePlayReconciliationFunction.includes("x-hyperion-google-play-reconcile-token") &&
+    googlePlayReconciliationFunction.includes(".limit(BATCH_SIZE)") &&
+    googlePlayReconciliationFunction.includes(".order('last_reconciliation_attempt_at', { ascending: true })") &&
+    googlePlayReconciliationFunction.includes("SUBSCRIPTION_STATE_REPLACED"),
+  'Periodic Play reconciliation requires a Vault-verified private token, processes a bounded fair batch, and skips replaced predecessor tokens'
+);
+assert.ok(
+  googlePlayScheduleMigration.includes("hyperion_google_play_reconciliation_enabled") &&
+    googlePlayScheduleMigration.includes("vault.create_secret(\n      'false'") &&
+    googlePlayScheduleMigration.includes("'*/15 * * * *'") &&
+    googlePlayScheduleMigration.includes("WHEN EXISTS") &&
+    googlePlayScheduleMigration.includes("verify_google_play_reconciliation_cron_token"),
+  'The recurring job is registered every 15 minutes but sends no network request until the explicit Vault enable flag is true'
+);
+assert.ok(
+  googlePlayLinkMigration.includes('last_reconciliation_attempt_at timestamptz NOT NULL DEFAULT now()') &&
+    googlePlayLinkMigration.includes('google_play_purchase_links_reconciliation_attempt_idx') &&
+    googlePlaySchema.includes('last_reconciliation_attempt_at timestamptz NOT NULL DEFAULT now()') &&
+    functionConfig.includes('[functions.reconcile-google-play-subscriptions]') &&
+    functionConfig.slice(functionConfig.indexOf('[functions.reconcile-google-play-subscriptions]')).split(/\r?\n/)[1]?.trim() === 'verify_jwt = false',
+  'The reconciler has its fair-scheduling column/index and is configured for private handler-level authentication'
+);
+assert.ok(googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_purchase_links FROM PUBLIC, anon, authenticated") && googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_entitlements FROM PUBLIC, anon, authenticated"), 'Google Play raw purchase tokens and entitlement writes are not exposed to browser roles');
+assert.ok(googlePlayLinkMigration.includes('CREATE POLICY "Users read own Google Play entitlements"') && googlePlayLinkMigration.includes("USING ((SELECT auth.uid()) = user_id)"), 'Signed-in users can read only their own Google Play track entitlements');
+assert.ok(googlePlayLinkMigration.includes("SET search_path = ''") && googlePlayLinkMigration.includes("REVOKE ALL ON FUNCTION public.revoke_google_play_entitlements_on_inactive_link() FROM PUBLIC, anon, authenticated"), 'The entitlement-revocation trigger uses a hardened function search path and restricted execution');
+assert.ok(googlePlayLinkMigration.includes("CREATE TRIGGER google_play_link_inactive_revoke_entitlements") && googlePlayLinkMigration.includes("AFTER UPDATE OF status, expires_at, product_ids") && googlePlayLinkMigration.includes("NEW.status <> 'active'") && googlePlayLinkMigration.includes("AND status <> 'revoked'"), 'Inactive or expired Google Play links revoke all of their track entitlements in the database');
+const adminMergeLoopStart = adminLicenseManagement.indexOf('for (const row of entitlements)')
+const adminMergeLoopEnd = adminLicenseManagement.indexOf('const now = Date.now()', adminMergeLoopStart)
+const adminMergeLoop = adminLicenseManagement.slice(adminMergeLoopStart, adminMergeLoopEnd)
+assert.ok(
+  adminLicenseManagement.indexOf('const retentionNow = Date.now()') >= 0 &&
+    adminLicenseManagement.indexOf('const retentionNow = Date.now()') < adminMergeLoopStart &&
+    adminMergeLoop.includes("effectiveStatus(previous, retentionNow)") &&
+    !adminMergeLoop.includes("effectiveStatus(previous, now)"),
+  'Admin license aggregation uses an initialized timestamp when merging duplicate product rows'
+)
+assert.ok(
+  adminLicenseManagement.includes('has_active_google_play: hasActiveGooglePlay') &&
+    adminLicenseManagement.includes("row.source === 'google_play' && rowActive") &&
+    adminLicenses.includes('!license.has_active_google_play') &&
+    adminLicenses.includes('license.has_active_google_play &&'),
+  'Admin revocation controls are blocked only while a verified active Google Play entitlement exists, not merely because an old Play record exists'
+)
+assert.ok(googlePlayLinkMigration.includes("AND NOT (track_id = ANY(allowed_tracks))") && googlePlayLinkMigration.includes("'hyperion_all_access_pass' = ANY"), 'A changed verified product set atomically retires stale track grants while preserving all-access mapping');
+assert.ok(googlePlaySchema.includes("CREATE TRIGGER google_play_link_inactive_revoke_entitlements") && googlePlaySchema.includes("AFTER UPDATE OF status, expires_at, product_ids") && googlePlaySchema.includes("AND NOT (track_id = ANY(allowed_tracks))"), 'The consolidated local schema includes the same Google Play entitlement reconciliation trigger');
 
 console.log('Release-safety smoke checks passed.');

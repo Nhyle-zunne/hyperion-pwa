@@ -24,6 +24,14 @@ const products = {
   engine_mgt: { env: 'PRICE_ENGINE_MGT_PHP', name: 'Hyperion Engine Management', track: 'ENGINE_MGT' },
 } as const
 
+function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { code?: unknown; message?: unknown }
+  if (candidate.code !== 'PGRST205' || typeof candidate.message !== 'string') return false
+  const message = candidate.message.toLowerCase()
+  return message.includes('google_play_entitlements') && message.includes('schema cache')
+}
+
 function profileFor(user: any) {
   const metadata = user.user_metadata ?? {}
   const identityNames = (user.identities ?? [])
@@ -227,15 +235,23 @@ Deno.serve(async (req) => {
   }
 
   for (const code of codes) {
-    const { data: entitlement, error } = await admin.from('entitlements')
-      .select('status,expires_at').eq('user_id', user.id).eq('product_code', code).maybeSingle()
-    if (error) return json({ error: 'Could not check your current licenses. Please retry.' }, 500)
-    // Access is finite-term only. A missing/invalid expiry must never grant access
-    // or permanently prevent a user from purchasing a valid replacement license.
-    if (entitlement?.status === 'active' && entitlement.expires_at &&
-        Number.isFinite(Date.parse(entitlement.expires_at)) &&
-        new Date(entitlement.expires_at).getTime() > Date.now()) {
-      return json({ error: `${products[code].name} is already active for your account. Remove it from the basket before checkout.` }, 409)
+    const [website, play] = await Promise.all([
+      admin.from('entitlements')
+        .select('status,expires_at').eq('user_id', user.id).eq('product_code', code).maybeSingle(),
+      admin.from('google_play_entitlements')
+        .select('status,expires_at').eq('user_id', user.id).eq('product_code', code)
+        .eq('status', 'active').gt('expires_at', new Date().toISOString()).limit(1).maybeSingle()
+    ])
+    const playTableMissing = isMissingGooglePlayEntitlementsTable(play.error)
+    if (website.error || (play.error && !playTableMissing)) {
+      return json({ error: 'Could not check your current licenses. Please retry.' }, 500)
+    }
+    const activeWebsite = website.data?.status === 'active' && website.data.expires_at &&
+      Number.isFinite(Date.parse(website.data.expires_at)) && new Date(website.data.expires_at).getTime() > Date.now()
+    const activePlay = !playTableMissing && play.data?.status === 'active' && play.data.expires_at &&
+      Number.isFinite(Date.parse(play.data.expires_at)) && new Date(play.data.expires_at).getTime() > Date.now()
+    if (activeWebsite || activePlay) {
+      return json({ error: `${products[code].name} is already active for your account. You do not need to purchase it again.` }, 409)
     }
   }
 
