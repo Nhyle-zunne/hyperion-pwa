@@ -393,7 +393,9 @@ assert.ok(licenseStore.includes('clearOfflineEntitlements(session.user.id)') && 
 assert.ok(
   licenseStore.includes('MAX_OFFLINE_ENTITLEMENT_AGE_MS') &&
     licenseStore.includes('MAX_OFFLINE_ENTITLEMENT_AGE_MS - 10 * 60 * 1000') &&
-    licenseStore.includes('expiryValues.length ? [...expiryValues, leaseRefreshAt] : expiryValues'),
+    licenseStore.includes('const scheduledExpiries = expiryValues.length') &&
+    licenseStore.includes('[...expiryValues, leaseRefreshAt]') &&
+    licenseStore.includes('scheduleEntitlementExpiryRefresh(userId, scheduledExpiries'),
   'The signed offline lease refresh is scheduled before its 72-hour age cap without adding timers for users with no entitlements'
 );
 
