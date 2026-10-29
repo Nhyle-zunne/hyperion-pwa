@@ -220,7 +220,9 @@ RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
-AS $
+AS $$
+DECLARE
+  allowed_tracks text[] := ARRAY[]::text[];
 BEGIN
   IF NEW.status <> 'active' OR NEW.expires_at <= pg_catalog.now() THEN
     UPDATE public.google_play_entitlements
@@ -228,14 +230,42 @@ BEGIN
            updated_at = pg_catalog.now()
      WHERE purchase_link_id = NEW.id
        AND status <> 'revoked';
+  ELSE
+    IF 'hyperion_all_access_pass' = ANY(COALESCE(NEW.product_ids, ARRAY[]::text[])) THEN
+      allowed_tracks := ARRAY['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT']::text[];
+    ELSE
+      IF 'hyperion_oic_nw_pass' = ANY(COALESCE(NEW.product_ids, ARRAY[]::text[])) THEN
+        allowed_tracks := allowed_tracks || ARRAY['DECK_OIC_NW']::text[];
+      END IF;
+      IF 'hyperion_gmdss_pass' = ANY(COALESCE(NEW.product_ids, ARRAY[]::text[])) THEN
+        allowed_tracks := allowed_tracks || ARRAY['GMDSS_GOC']::text[];
+      END IF;
+      IF 'hyperion_engine_oic_ew_pass' = ANY(COALESCE(NEW.product_ids, ARRAY[]::text[])) THEN
+        allowed_tracks := allowed_tracks || ARRAY['ENGINE_OIC_EW']::text[];
+      END IF;
+      IF 'hyperion_deck_mgt_pass' = ANY(COALESCE(NEW.product_ids, ARRAY[]::text[])) THEN
+        allowed_tracks := allowed_tracks || ARRAY['DECK_MGT']::text[];
+      END IF;
+      IF 'hyperion_engine_mgt_pass' = ANY(COALESCE(NEW.product_ids, ARRAY[]::text[])) THEN
+        allowed_tracks := allowed_tracks || ARRAY['ENGINE_MGT']::text[];
+      END IF;
+    END IF;
+
+    -- Immediately retire grants that no longer correspond to this token's verified products.
+    UPDATE public.google_play_entitlements
+       SET status = 'revoked',
+           updated_at = pg_catalog.now()
+     WHERE purchase_link_id = NEW.id
+       AND status <> 'revoked'
+       AND NOT (track_id = ANY(allowed_tracks));
   END IF;
   RETURN NEW;
 END;
-$;
+$$;
 
 REVOKE ALL ON FUNCTION public.revoke_google_play_entitlements_on_inactive_link() FROM PUBLIC, anon, authenticated;
 DROP TRIGGER IF EXISTS google_play_link_inactive_revoke_entitlements ON public.google_play_purchase_links;
 CREATE TRIGGER google_play_link_inactive_revoke_entitlements
-AFTER UPDATE OF status, expires_at ON public.google_play_purchase_links
+AFTER UPDATE OF status, expires_at, product_ids ON public.google_play_purchase_links
 FOR EACH ROW
 EXECUTE FUNCTION public.revoke_google_play_entitlements_on_inactive_link();

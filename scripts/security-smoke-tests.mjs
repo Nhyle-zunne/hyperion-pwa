@@ -76,6 +76,7 @@ const [
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const googlePlayLinkFunction = await read('../supabase/functions/link-google-play-subscription/index.ts');
 const googlePlayLinkMigration = await read('../supabase/migrations/20261029164000_add_google_play_purchase_links.sql');
+const googlePlaySchema = await read('../supabase/schema.sql');
 const questionFingerprintSource = await read('../src/lib/questionFingerprint.mjs');
 const offlinePwaConfig = await read('../vite.config.ts');
 const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.ts');
@@ -668,6 +669,8 @@ assert.ok(googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_ACTIVE'") && goog
 assert.ok(googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_purchase_links FROM PUBLIC, anon, authenticated") && googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_entitlements FROM PUBLIC, anon, authenticated"), 'Google Play raw purchase tokens and entitlement writes are not exposed to browser roles');
 assert.ok(googlePlayLinkMigration.includes('CREATE POLICY "Users read own Google Play entitlements"') && googlePlayLinkMigration.includes("USING ((SELECT auth.uid()) = user_id)"), 'Signed-in users can read only their own Google Play track entitlements');
 assert.ok(googlePlayLinkMigration.includes("SET search_path = ''") && googlePlayLinkMigration.includes("REVOKE ALL ON FUNCTION public.revoke_google_play_entitlements_on_inactive_link() FROM PUBLIC, anon, authenticated"), 'The entitlement-revocation trigger uses a hardened function search path and restricted execution');
-assert.ok(googlePlayLinkMigration.includes("CREATE TRIGGER google_play_link_inactive_revoke_entitlements") && googlePlayLinkMigration.includes("NEW.status <> 'active'") && googlePlayLinkMigration.includes("AND status <> 'revoked'"), 'Marking a verified purchase link inactive revokes all of its track entitlements in the database');
+assert.ok(googlePlayLinkMigration.includes("CREATE TRIGGER google_play_link_inactive_revoke_entitlements") && googlePlayLinkMigration.includes("AFTER UPDATE OF status, expires_at, product_ids") && googlePlayLinkMigration.includes("NEW.status <> 'active'") && googlePlayLinkMigration.includes("AND status <> 'revoked'"), 'Inactive or expired Google Play links revoke all of their track entitlements in the database');
+assert.ok(googlePlayLinkMigration.includes("AND NOT (track_id = ANY(allowed_tracks))") && googlePlayLinkMigration.includes("'hyperion_all_access_pass' = ANY"), 'A changed verified product set atomically retires stale track grants while preserving all-access mapping');
+assert.ok(googlePlaySchema.includes("CREATE TRIGGER google_play_link_inactive_revoke_entitlements") && googlePlaySchema.includes("AFTER UPDATE OF status, expires_at, product_ids") && googlePlaySchema.includes("AND NOT (track_id = ANY(allowed_tracks))"), 'The consolidated local schema includes the same Google Play entitlement reconciliation trigger');
 
 console.log('Release-safety smoke checks passed.');
