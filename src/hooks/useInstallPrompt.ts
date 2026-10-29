@@ -26,6 +26,42 @@ function isAndroid(): boolean {
   return /android/i.test(navigator.userAgent)
 }
 
+/**
+ * Explain the browser's built-in install route when it does not expose
+ * beforeinstallprompt. A website cannot force Chromium to create that event.
+ */
+export function getManualInstallInstructions(): string {
+  if (typeof navigator === 'undefined') {
+    return 'Open your browser menu and look for Install app.'
+  }
+
+  const userAgent = navigator.userAgent
+  const nav = navigator as Navigator & { brave?: unknown }
+
+  if (/android/i.test(userAgent)) {
+    return 'Open the browser menu (⋮) and choose Install app or Add to Home screen.'
+  }
+
+  if (/iphone|ipad|ipod/i.test(userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    return 'In Safari, tap Share, then View More or More if shown, and choose Add to Home Screen.'
+  }
+
+  if (nav.brave || /Brave/i.test(userAgent)) {
+    return 'In Brave, open the top-right menu → Save and Share → Install Hyperion. If it is missing, type brave://apps in the address bar and remove any leftover Hyperion app, then reload this page.'
+  }
+
+  if (/Edg\//i.test(userAgent)) {
+    return 'In Microsoft Edge, open the top-right menu → Apps → Install this site as an app.'
+  }
+
+  if (/Chrome\//i.test(userAgent)) {
+    return 'In Chrome, open the top-right menu → Cast, save and share → Install page as app.'
+  }
+
+  return 'Open the browser menu or the install icon beside the address bar, then choose Install app or Add to Home screen.'
+}
+
 // Capture the browser event at module load instead of waiting for a component
 // effect. Some Chromium browsers fire beforeinstallprompt early in page startup.
 let deferredInstallEvent: BeforeInstallPromptEvent | null = null
