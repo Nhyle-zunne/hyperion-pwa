@@ -103,7 +103,7 @@ const progressPrivilegeMigration = await read('../supabase/migrations/2026102903
 const cancelCheckout = await read('../supabase/functions/cancel-checkout/index.ts');
 const offlineEntitlementCrypto = await read('../src/lib/offlineEntitlementCrypto.mjs');
 const sessionArchive = await read('../src/lib/sessionArchive.ts');
-const { verifyOfflineEntitlementToken } = await import('../src/lib/offlineEntitlementCrypto.mjs');
+const { verifyOfflineEntitlementToken, MAX_OFFLINE_ENTITLEMENT_AGE_MS } = await import('../src/lib/offlineEntitlementCrypto.mjs');
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
 const timestampMatch = webhook.match(/if \(!\/(.+?)\/\.test\(timestamp\)/);
@@ -426,6 +426,28 @@ const validOfflineClaims = await verifyOfflineEntitlementToken(
 );
 assert.equal(validOfflineClaims?.tracks?.DECK_OIC_NW, sampleClaims.tracks.DECK_OIC_NW, 'A valid ECDSA-signed offline lease is accepted');
 assert.equal(await verifyOfflineEntitlementToken(validOfflineToken, 'different-user', cryptoTestNow, ephemeralPublicJwk), null, 'Signed offline leases cannot be replayed across accounts');
+assert.equal(MAX_OFFLINE_ENTITLEMENT_AGE_MS, 72 * 60 * 60 * 1000, 'Offline signed entitlement leases have a bounded 72-hour maximum age');
+const staleClaims = {
+  ...sampleClaims,
+  issuedAt: cryptoTestNow - MAX_OFFLINE_ENTITLEMENT_AGE_MS - 1,
+  tracks: { DECK_OIC_NW: cryptoTestNow + 7 * 24 * 60 * 60 * 1000 }
+};
+const staleToken = await signOfflineClaims(staleClaims);
+assert.equal(
+  await verifyOfflineEntitlementToken(staleToken, sampleClaims.userId, cryptoTestNow, ephemeralPublicJwk),
+  null,
+  'A still-unexpired track expiry cannot be used as an offline lease more than 72 hours after server issuance'
+);
+const boundaryClaims = {
+  ...sampleClaims,
+  issuedAt: cryptoTestNow - MAX_OFFLINE_ENTITLEMENT_AGE_MS,
+  tracks: { DECK_OIC_NW: cryptoTestNow + 60 * 60 * 1000 }
+};
+const boundaryToken = await signOfflineClaims(boundaryClaims);
+assert.ok(
+  await verifyOfflineEntitlementToken(boundaryToken, sampleClaims.userId, cryptoTestNow, ephemeralPublicJwk),
+  'An offline entitlement lease remains valid at the exact maximum-age boundary'
+);
 const [validPayload, validSignature] = validOfflineToken.split('.');
 const alteredClaims = { ...sampleClaims, tracks: { DECK_OIC_NW: cryptoTestNow + 365 * 24 * 60 * 60 * 1000 } };
 const forgedExpiryToken = base64Url(Buffer.from(JSON.stringify(alteredClaims), 'utf8')) + '.' + validSignature;
