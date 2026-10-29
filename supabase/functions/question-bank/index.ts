@@ -171,9 +171,12 @@ function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
 }
 async function loadEntitlement(admin: any, userId: string, track: string) {
   const now = new Date().toISOString();
+  // Keep the latest currently valid license from either checkout/admin grants or Google Play.
+  // Filter and limit database-side so old historical rows cannot make maybeSingle() fail.
   const [website, play] = await Promise.all([
     admin.from("entitlements").select("user_id,track_id,status,expires_at")
-      .eq("user_id", userId).eq("track_id", track).maybeSingle(),
+      .eq("user_id", userId).eq("track_id", track).eq("status", "active").gt("expires_at", now)
+      .order("expires_at", { ascending: false }).limit(1).maybeSingle(),
     admin.from("google_play_entitlements").select("user_id,track_id,status,expires_at")
       .eq("user_id", userId).eq("track_id", track).eq("status", "active").gt("expires_at", now)
       .order("expires_at", { ascending: false }).limit(1).maybeSingle()
@@ -182,7 +185,8 @@ async function loadEntitlement(admin: any, userId: string, track: string) {
   if (website.error || (play.error && !playTableMissing)) throw new Error("Could not verify the license.");
   const candidates = [website.data, playTableMissing ? null : play.data].filter((row: any) =>
     row && row.user_id === userId && row.track_id === track && row.status === "active" &&
-    typeof row.expires_at === "string" && Date.parse(row.expires_at) > Date.now()
+    typeof row.expires_at === "string" && Number.isFinite(Date.parse(row.expires_at)) &&
+    Date.parse(row.expires_at) > Date.now()
   );
   if (!candidates.length) return null;
   return candidates.reduce((latest: any, row: any) =>
