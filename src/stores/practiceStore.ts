@@ -177,11 +177,29 @@ function persistActiveSession(s: PracticeState) {
   if (!snapshot || s.finished) return;
   const answered = s.questions.reduce((count, q) => count + (s.answers[q.id]?.selectedIndex != null ? 1 : 0), 0);
   const correct = s.questions.reduce((count, q) => count + (s.answers[q.id]?.isCorrect ? 1 : 0), 0);
-  void saveSessionSnapshot(snapshot.sessionId, snapshot).catch(() => undefined);
-  useHistoryStore.getState().saveSession({
-    id: snapshot.sessionId, mode: s.mode, track: s.track!, competenceId: s.competenceId,
-    part: s.part, currentIndex: s.currentIndex, total: s.questions.length,
-    answered, correct, startedAt: s.startedAt, savedAt: Date.now(), isFreeSession: s.isFreeSession
+
+  // Write the encrypted question snapshot first; only advertise a resumable History row
+  // after IndexedDB confirms the write succeeded.
+  void saveSessionSnapshot(snapshot.sessionId, snapshot).then(() => {
+    const latest = usePracticeStore.getState();
+    // Avoid resurrecting a History row after this session was reset or finished while saving.
+    if (latest.sessionId !== snapshot.sessionId || latest.finished || latest.questions.length === 0) return;
+    useHistoryStore.getState().saveSession({
+      id: snapshot.sessionId,
+      mode: s.mode,
+      track: s.track!,
+      competenceId: s.competenceId,
+      part: s.part,
+      currentIndex: s.currentIndex,
+      total: s.questions.length,
+      answered,
+      correct,
+      startedAt: s.startedAt,
+      savedAt: Date.now(),
+      isFreeSession: s.isFreeSession
+    });
+  }).catch(() => {
+    // Do not create a History entry when the encrypted question snapshot could not be stored.
   });
 }
 
