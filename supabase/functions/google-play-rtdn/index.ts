@@ -201,13 +201,16 @@ Deno.serve(async (req: Request) => {
   const admin = createClient(url, service, { auth: { persistSession: false } })
   const tokenHash = await sha256Hex(token)
   const { data: link, error: lookupError } = await admin.from('google_play_purchase_links')
-    .select('id,user_id')
+    .select('id,user_id,subscription_state')
     .eq('purchase_token_sha256', tokenHash)
     .maybeSingle()
   if (lookupError) return respond(503, { error: 'Could not look up the linked Google Play subscription.' })
   // Do not associate an RTDN token with an account. Unknown tokens are safely
   // acknowledged; the authenticated Android client must establish ownership.
   if (!link) return respond(204)
+  // Once a verified replacement has retired a predecessor token, late RTDN
+  // notifications must never reactivate the predecessor's grants.
+  if (link.subscription_state === 'SUBSCRIPTION_STATE_REPLACED') return respond(204)
 
   let google: Awaited<ReturnType<typeof readGoogleSubscription>>
   try {
