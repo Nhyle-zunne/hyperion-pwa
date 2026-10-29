@@ -1054,6 +1054,12 @@ async function downloadOfflinePackInternal(
   if (!supabase) throw new Error('Protected question service is not configured.')
   await requestPersistentStorageIfSupported()
 
+  // Capture the bank fingerprint before downloading. We verify it again after all
+  // pages finish so a publication during a download cannot be labelled current.
+  const versionsBefore = await fetchRemoteQuestionBankVersions(track)
+  const fullVersionsBefore = freeOnly ? null : sourceVersionMap(versionsBefore, false)
+  const freeVersionsBefore = sourceVersionMap(versionsBefore, true)
+
   // Asking the protected counts endpoint is also the authorization gate for paid packs.
   const counts = await getQuestionCountsByTrack(track, freeOnly)
   const totalExpected = counts.reduce((sum, item) => sum + item.count, 0)
@@ -1116,11 +1122,32 @@ async function downloadOfflinePackInternal(
   }
 
   if (downloaded !== totalExpected) throw new Error(`Downloaded ${downloaded} of ${totalExpected} expected questions. Retry while online.`)
+  // Ensure the bank did not change while pages were being downloaded.
+  const versionsAfter = await fetchRemoteQuestionBankVersions(track)
+  const freeVersionsAfter = sourceVersionMap(versionsAfter, true)
+  if (changedVersionPaths(freeVersionsBefore, freeVersionsAfter).length > 0) {
+    throw new Error('The question bank changed while downloading. Your previous offline pack is safe; please retry the update.')
+  }
+  let fullVersionsAfter: Record<string, string> | null = null
+  if (!freeOnly) {
+    if (!fullVersionsBefore) throw new Error('Could not verify the full question-bank version.')
+    fullVersionsAfter = sourceVersionMap(versionsAfter, false)
+    if (changedVersionPaths(fullVersionsBefore, fullVersionsAfter).length > 0) {
+      throw new Error('The question bank changed while downloading. Your previous offline pack is safe; please retry the update.')
+    }
+  }
+
   const updates: {
     track: TrackId
     freeOnly: boolean
     groups: { competenceId: string; part: number | null; questions: Question[] }[]
-  }[] = [{ track, freeOnly, groups: writtenGroups }]
+    sourceVersions: Record<string, string>
+  }[] = [{
+    track,
+    freeOnly,
+    groups: writtenGroups,
+    sourceVersions: freeOnly ? freeVersionsBefore : fullVersionsBefore!
+  }]
 
   if (!freeOnly) {
     // Keep the free reviewer available if this subscription expires while the device is offline.
@@ -1134,7 +1161,12 @@ async function downloadOfflinePackInternal(
       sampleGroups.set(key, existing)
     }
     if (!samples.length || !sampleGroups.size) throw new Error('The free reviewer sample could not be prepared. Your previous offline packs are unchanged.')
-    updates.push({ track, freeOnly: true, groups: Array.from(sampleGroups.values()) })
+    updates.push({
+      track,
+      freeOnly: true,
+      groups: Array.from(sampleGroups.values()),
+      sourceVersions: freeVersionsBefore
+    })
   }
 
   await saveOfflineQuestionPackSets(updates)
