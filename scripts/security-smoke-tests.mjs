@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
 import { encryptJsonPayload, decryptJsonPayload } from '../src/lib/jsonPayloadCrypto.mjs';
+import { fingerprintQuestion } from '../src/lib/questionFingerprint.mjs';
 import { createSerialAsyncQueue } from '../src/lib/serializedAsyncQueue.mjs';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
@@ -315,7 +316,28 @@ assert.ok(iosInstallGuide.includes('Keep the name Hyperion.') && iosInstallGuide
 assert.ok(!iosInstallGuide.includes('Keep the app name as Hyperion Maritime.') && !iosInstallGuide.includes('Keep the name Hyperion Maritime.'), 'iOS install instructions do not contradict the requested Hyperion app name');
 
 
-assert.ok(questionBank.includes('if (body.action === "authorize-session")') && questionBank.includes('fingerprints.every(hash => allowedFingerprints.has(hash as string))'), 'Saved-session authorization only accepts the server-defined free sample when the caller lacks a license');
+assert.ok(questionBank.includes('if (body.action === "authorize-session")') && questionBank.includes('fingerprints.every(hash => allowedFingerprints.has(hash as string))'), 'Saved-session authorization verifies the server-defined free sample when the caller lacks a license');
+assert.ok(questionBank.includes('fullQuestionFingerprints') && questionBank.includes('questionIds.every(id => questionIdBelongsToTrack(id, track))'), 'Licensed legacy sessions require private-bank fingerprint matches when old question IDs do not match the current track prefix');
+assert.ok(questionBank.includes('const canonicalOptions') && learningProgressFunction.includes('const canonicalOptions'), 'Question access and cloud-progress filtering use stable option-order-independent fingerprints');
+assert.ok(questionBankClient.includes("saveOfflineEntitlements") && questionBankClient.includes("body: { action: 'offline-license' }") && questionBankClient.includes('await getOfflineEntitlementExpiry(userId, track)'), 'Paid offline-pack downloads save and verify a signed, track-specific offline entitlement lease');
+const originalQuestionFingerprint = await fingerprintQuestion({
+  questionText: 'Which option is correct?',
+  options: ['Alpha', 'Bravo', 'Charlie'],
+  correctAnswerIndex: 1
+});
+const shuffledQuestionFingerprint = await fingerprintQuestion({
+  questionText: 'Which option is correct?',
+  options: ['Charlie', 'Alpha', 'Bravo'],
+  correctAnswerIndex: 2
+});
+const changedAnswerFingerprint = await fingerprintQuestion({
+  questionText: 'Which option is correct?',
+  options: ['Charlie', 'Alpha', 'Bravo'],
+  correctAnswerIndex: 0
+});
+assert.ok(originalQuestionFingerprint && shuffledQuestionFingerprint && changedAnswerFingerprint, 'Stable question fingerprints reject malformed inputs and hash valid saved questions');
+assert.equal(originalQuestionFingerprint, shuffledQuestionFingerprint, 'Shuffling answer options preserves saved-session identity when the correct answer moves with its option');
+assert.notEqual(originalQuestionFingerprint, changedAnswerFingerprint, 'Changing the correct answer does not preserve question identity');
 assert.ok(questionBank.includes('const authHeader = req.headers.get("Authorization")') && questionBank.includes('.auth.getUser()'), 'Question-bank identity comes from a validated Supabase user token, not client metadata');
 assert.ok(licenseStore.includes('return status === 0 || status >= 500'), 'Cached entitlement fallback is limited to genuine connectivity/server failures');
 assert.ok(questionBankClient.includes('userId ? getOfflineEntitlementExpiry(userId, track) : null'), 'Offline entitlement lookup is scoped to the currently signed-in Supabase user');
