@@ -17,6 +17,14 @@ const prices: Record<keyof typeof products, Record<LicenseTerm, number>> = {
 }
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 
+function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { code?: unknown; message?: unknown }
+  if (candidate.code !== 'PGRST205' || typeof candidate.message !== 'string') return false
+  const message = candidate.message.toLowerCase()
+  return message.includes('google_play_entitlements') && message.includes('schema cache')
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
@@ -62,9 +70,12 @@ Deno.serve(async req => {
       .select('id,expires_at').eq('user_id', user.id).eq('product_code', code).eq('status', 'active')
       .gt('expires_at', new Date().toISOString()).limit(1).maybeSingle()
   ])
-  if (activeLicenseResult.error || activePlayResult.error) return json({ error: 'Could not check your existing license. Please try again.' }, 500)
+  const playTableMissing = isMissingGooglePlayEntitlementsTable(activePlayResult.error)
+  if (activeLicenseResult.error || (activePlayResult.error && !playTableMissing)) {
+    return json({ error: 'Could not check your existing license. Please try again.' }, 500)
+  }
   const activeLicense = activeLicenseResult.data
-  const activePlayLicense = activePlayResult.data
+  const activePlayLicense = playTableMissing ? null : activePlayResult.data
   const licenseExpiry = activeLicense?.expires_at ? new Date(activeLicense.expires_at).getTime() : null
   const websiteActive = activeLicense?.status === 'active' && licenseExpiry !== null && licenseExpiry > Date.now()
   const playActive = !!activePlayLicense?.expires_at && new Date(activePlayLicense.expires_at).getTime() > Date.now()
