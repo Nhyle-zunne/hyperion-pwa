@@ -607,11 +607,12 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
   }
 
   if (track === 'DECK_OIC_NW') {
-    const rnd = new JavaRandom(2065);
     const out: Question[] = [];
     for (const [compId, quota] of CRP_DECK_DISTRIBUTION) {
       const comp = byComp.get(compId) ?? [];
-      const picked = CRP_FIXED_ORDER.has(compId) ? comp : javaShuffle(comp, rnd);
+      const picked = CRP_FIXED_ORDER.has(compId)
+        ? comp
+        : javaShuffle(comp, new JavaRandom(2065 + Number(compId.slice(1)) * 31));
       out.push(...picked.slice(0, quota));
     }
     return out;
