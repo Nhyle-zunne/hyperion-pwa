@@ -4,6 +4,7 @@ export interface OfflinePackIntegrityManifest {
   questionCount: number;
   groupCount: number;
   complete: boolean;
+  sampleVersion?: number;
 }
 export interface OfflinePackIntegrityRecord {
   id: string;
