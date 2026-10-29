@@ -9,6 +9,11 @@ export const OFFLINE_ENTITLEMENT_PUBLIC_KEY = Object.freeze({
   key_ops: ['verify']
 });
 
+// A signed lease is intentionally short-lived. Live access is checked against Supabase;
+// this 72-hour cap only protects the browser's offline/network-outage fallback after a
+// revocation or refund, so an old but still-unexpired token cannot extend cached access.
+export const MAX_OFFLINE_ENTITLEMENT_AGE_MS = 72 * 60 * 60 * 1000;
+
 const OFFLINE_TRACK_IDS = new Set([
   'DECK_OIC_NW',
   'GMDSS_GOC',
@@ -94,6 +99,7 @@ export async function verifyOfflineEntitlementToken(
       !Number.isFinite(claims.issuedAt) ||
       claims.issuedAt <= 0 ||
       claims.issuedAt > now + 5 * 60 * 1000 ||
+      now - claims.issuedAt > MAX_OFFLINE_ENTITLEMENT_AGE_MS ||
       !claims.tracks ||
       typeof claims.tracks !== 'object' ||
       Array.isArray(claims.tracks)
