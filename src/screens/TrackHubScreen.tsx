@@ -218,7 +218,6 @@ export default function TrackHubScreen() {
     try {
       const result = await checkOfflineQuestionPackUpdates(info.trackId, !unlocked)
       setOfflineUpdateCheck(result)
-      setOfflineRefreshKey(current => current + 1)
     } finally {
       setCheckingOfflineVersion(false)
     }
