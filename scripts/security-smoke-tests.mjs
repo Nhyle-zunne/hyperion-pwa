@@ -799,7 +799,8 @@ assert.ok(
   googlePlayLinkMigration.includes('last_reconciliation_attempt_at timestamptz NOT NULL DEFAULT now()') &&
     googlePlayLinkMigration.includes('google_play_purchase_links_reconciliation_attempt_idx') &&
     googlePlaySchema.includes('last_reconciliation_attempt_at timestamptz NOT NULL DEFAULT now()') &&
-    functionConfig.includes('[functions.reconcile-google-play-subscriptions]\\nverify_jwt = false'),
+    functionConfig.includes('[functions.reconcile-google-play-subscriptions]') &&
+    functionConfig.slice(functionConfig.indexOf('[functions.reconcile-google-play-subscriptions]')).split(/\r?\n/)[1]?.trim() === 'verify_jwt = false',
   'The reconciler has its fair-scheduling column/index and is configured for private handler-level authentication'
 );
 assert.ok(googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_purchase_links FROM PUBLIC, anon, authenticated") && googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_entitlements FROM PUBLIC, anon, authenticated"), 'Google Play raw purchase tokens and entitlement writes are not exposed to browser roles');
