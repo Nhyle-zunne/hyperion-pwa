@@ -21,6 +21,7 @@ export interface OfflinePackManifest {
   groupCount: number
   savedAt: number
   complete: boolean
+  sampleVersion?: number
 }
 
 export interface OfflineQuestionPackGroup {
@@ -171,7 +172,8 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
       questionCount,
       groupCount: update.groups.length,
       savedAt: Date.now(),
-      complete: true
+      complete: true,
+      ...(update.track === 'DECK_OIC_NW' && update.freeOnly ? { sampleVersion: 2 } : {})
     })
   }
 
