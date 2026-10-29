@@ -766,6 +766,14 @@ assert.ok(functionConfig.includes('[functions.google-play-rtdn]\nverify_jwt = fa
 assert.ok(googlePlayLinkFunction.includes("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON") && googlePlayLinkFunction.includes("purchases/subscriptionsv2/tokens/"), 'Google Play tokens are checked against the Android Publisher API from the server');
 assert.ok(googlePlayLinkFunction.includes("purchase_token_sha256") && googlePlayLinkFunction.includes("existing.user_id !== user.id"), 'Google Play purchase tokens are uniquely fingerprinted and cannot be claimed by a second Hyperion account');
 assert.ok(googlePlayLinkFunction.includes("if (prior && prior.user_id !== user.id)") && googlePlayLinkFunction.includes("p_prior_purchase_link_id: priorPurchaseLink?.id ?? null") && googlePlayLinkMigration.includes("WHERE id = p_prior_purchase_link_id") && googlePlayLinkMigration.includes("AND user_id = p_user_id"), 'Replacement tokens retire prior grants only when the prior link belongs to the same Hyperion account');
+assert.ok(
+  googlePlayLinkMigration.includes("subscription_state = 'SUBSCRIPTION_STATE_REPLACED'") &&
+    googlePlayLinkMigration.includes("A replaced Google Play purchase token cannot be linked again") &&
+    googlePlayLinkFunction.includes("existing?.subscription_state === 'SUBSCRIPTION_STATE_REPLACED'") &&
+    googlePlayRtdnFunction.includes("if (link.subscription_state === 'SUBSCRIPTION_STATE_REPLACED') return respond(204)") &&
+    googlePlayLinkMigration.includes("public.google_play_purchase_links"),
+  'Replaced predecessor tokens cannot be re-linked or reactivated by late RTDN notifications'
+);
 assert.ok(googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_ACTIVE'") && googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_IN_GRACE_PERIOD'") && googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_CANCELED'") && googlePlayLinkFunction.includes("maxExpiry > now"), 'Google Play access is tied to an allowed subscription state and a future verified expiry');
 assert.ok(googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_purchase_links FROM PUBLIC, anon, authenticated") && googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_entitlements FROM PUBLIC, anon, authenticated"), 'Google Play raw purchase tokens and entitlement writes are not exposed to browser roles');
 assert.ok(googlePlayLinkMigration.includes('CREATE POLICY "Users read own Google Play entitlements"') && googlePlayLinkMigration.includes("USING ((SELECT auth.uid()) = user_id)"), 'Signed-in users can read only their own Google Play track entitlements');
