@@ -748,11 +748,29 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   const fingerprints = fingerprintResults as string[];
 
   const matchesCachedPack = async (freeOnly: boolean) => {
-    const cached = await getOfflineQuestionsByTrack(track, freeOnly)
-    if (!cached) return false
-    const cachedFingerprints = await Promise.all(cached.map(fingerprintQuestion))
-    if (cachedFingerprints.some((fingerprint) => fingerprint === null)) return false
-    const allowedFingerprints = new Set(cachedFingerprints as string[])
+    // A resumed free session usually contains one competence (or a small set),
+    // so decrypt only those cached groups rather than the entire free bank.
+    const requestedGroups = new Map<string, { competenceId: string; part?: number }>()
+    for (const question of questions) {
+      if (typeof question.competenceId !== 'string' || !question.competenceId) return false
+      const partMatch = track === 'GMDSS_GOC' ? question.id.match(/-P(\d+)-/) : null
+      const part = partMatch ? Number(partMatch[1]) : undefined
+      const key = `${question.competenceId}:${part ?? 'all'}`
+      requestedGroups.set(key, { competenceId: question.competenceId, part })
+    }
+
+    const cachedGroups = await Promise.all(Array.from(requestedGroups.values(), group =>
+      getOfflineQuestionsByCompetence(track, group.competenceId, group.part, freeOnly)
+    ))
+    if (cachedGroups.some(group => !group)) return false
+    const allowedFingerprints = new Set<string>()
+    for (const group of cachedGroups) {
+      for (const question of group ?? []) {
+        const fingerprint = await fingerprintQuestion(question)
+        if (!fingerprint) return false
+        allowedFingerprints.add(fingerprint)
+      }
+    }
     return fingerprints.every(fingerprint => allowedFingerprints.has(fingerprint))
   }
 
