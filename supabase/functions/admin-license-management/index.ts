@@ -158,22 +158,31 @@ Deno.serve(async req => {
       if (!byUser.has(row.user_id)) byUser.set(row.user_id, new Map())
       const licenses = byUser.get(row.user_id)!
       const previous = licenses.get(row.product_code)
+      const rowActive = effectiveStatus(row, retentionNow) === 'active'
       if (!previous) {
-        licenses.set(row.product_code, row)
+        licenses.set(row.product_code, {
+          ...row,
+          has_active_google_play: row.source === 'google_play' && rowActive
+        })
         continue
       }
-      const previousActive = effectiveStatus(previous, now) === 'active'
-      const rowActive = effectiveStatus(row, now) === 'active'
+      const previousActive = effectiveStatus(previous, retentionNow) === 'active'
+      const hasActiveGooglePlay = previous.has_active_google_play === true ||
+        (row.source === 'google_play' && rowActive)
       const allSources = new Set<string>([
         ...String(previous.source || 'website').split('+'),
         ...String(row.source || 'website').split('+')
       ])
-      if ((rowActive && !previousActive) ||
-          (rowActive === previousActive && Date.parse(row.expires_at || '') > Date.parse(previous.expires_at || ''))) {
-        licenses.set(row.product_code, { ...row, source: Array.from(allSources).sort().join('+') })
-      } else {
-        licenses.set(row.product_code, { ...previous, source: Array.from(allSources).sort().join('+') })
-      }
+      const mergedSource = Array.from(allSources).sort().join('+')
+      const preferredRow = (rowActive && !previousActive) ||
+        (rowActive === previousActive && Date.parse(row.expires_at || '') > Date.parse(previous.expires_at || ''))
+        ? row
+        : previous
+      licenses.set(row.product_code, {
+        ...preferredRow,
+        source: mergedSource,
+        has_active_google_play: hasActiveGooglePlay
+      })
     }
     const now = Date.now()
     const shapedUsers = users.map(account => {
@@ -188,7 +197,8 @@ Deno.serve(async req => {
           product_code: row.product_code, track_id: row.track_id, exists: true,
           status: effectiveStatus(row, now), license_term: row.license_term,
           granted_at: row.granted_at, expires_at: row.expires_at, order_id: row.order_id,
-          source: row.source || 'website'
+          source: row.source || 'website',
+          has_active_google_play: row.has_active_google_play === true
         }]
       }))
 
