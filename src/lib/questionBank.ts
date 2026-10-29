@@ -798,6 +798,17 @@ export async function getFlashcardQuestions(track: TrackId, competenceId?: strin
 }
 
 
+async function requestPersistentStorageIfSupported(): Promise<void> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.persist === 'function') {
+      // Browsers may deny this request or not implement it; never block a download.
+      await navigator.storage.persist()
+    }
+  } catch {
+    // Persistence is best effort; pack integrity checks still detect eviction.
+  }
+}
+
 async function downloadOfflinePackInternal(
   track: TrackId,
   freeOnly: boolean,
@@ -805,6 +816,7 @@ async function downloadOfflinePackInternal(
 ): Promise<{ questionCount: number; groupCount: number }> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect to the internet before downloading an offline pack.')
   if (!supabase) throw new Error('Protected question service is not configured.')
+  await requestPersistentStorageIfSupported()
 
   // Asking the protected counts endpoint is also the authorization gate for paid packs.
   const counts = await getQuestionCountsByTrack(track, freeOnly)
