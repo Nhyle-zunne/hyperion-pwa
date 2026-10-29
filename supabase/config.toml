@@ -1,3 +1,5 @@
+project_id = "hyperion-maritime-local"
+
 [functions.submit-manual-payment]
 verify_jwt = true
 
