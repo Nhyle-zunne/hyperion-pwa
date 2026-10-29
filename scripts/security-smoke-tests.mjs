@@ -74,6 +74,8 @@ const [
 ]);
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
+const googlePlayLinkFunction = await read('../supabase/functions/link-google-play-subscription/index.ts');
+const googlePlayLinkMigration = await read('../supabase/migrations/20261029164000_add_google_play_purchase_links.sql');
 const questionFingerprintSource = await read('../src/lib/questionFingerprint.mjs');
 const offlinePwaConfig = await read('../vite.config.ts');
 const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.ts');
@@ -657,5 +659,15 @@ assert.ok(offlineUpdateButton.includes("'FULLY UPDATED'") && offlineUpdateButton
 assert.ok(offlineUpdateButton.includes("offlineUpdateCheck.status === 'available'") && offlineUpdateButton.includes("void startOfflineDownload()"), 'The question pack download action is only started when the user has no pack or an update is actually available');
 assert.ok(offlineUpdateButton.includes("'UPDATE AVAILABLE · RECONNECT'") && offlineUpdateButton.includes("'FULLY UPDATED · LAST CHECK'"), 'Offline track pages show the last verified state and never offer an update download without connectivity');
 
+
+assert.ok(googlePlayLinkFunction.includes("userClient.auth.getUser()"), 'Google Play purchase linking requires a verified authenticated Hyperion user');
+assert.ok(googlePlayLinkFunction.includes("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON") && googlePlayLinkFunction.includes("purchases/subscriptionsv2/tokens/"), 'Google Play tokens are checked against the Android Publisher API from the server');
+assert.ok(googlePlayLinkFunction.includes("purchase_token_sha256") && googlePlayLinkFunction.includes("existing.user_id !== user.id"), 'Google Play purchase tokens are uniquely fingerprinted and cannot be claimed by a second Hyperion account');
+assert.ok(googlePlayLinkFunction.includes("if (prior && prior.user_id !== user.id)") && googlePlayLinkFunction.includes("priorPurchaseLink.id !== linkId"), 'Replacement purchase tokens cannot retire a prior grant owned by a different account');
+assert.ok(googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_ACTIVE'") && googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_IN_GRACE_PERIOD'") && googlePlayLinkFunction.includes("'SUBSCRIPTION_STATE_CANCELED'") && googlePlayLinkFunction.includes("maxExpiry > now"), 'Google Play access is tied to an allowed subscription state and a future verified expiry');
+assert.ok(googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_purchase_links FROM PUBLIC, anon, authenticated") && googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_play_entitlements FROM PUBLIC, anon, authenticated"), 'Google Play raw purchase tokens and entitlement writes are not exposed to browser roles');
+assert.ok(googlePlayLinkMigration.includes('CREATE POLICY "Users read own Google Play entitlements"') && googlePlayLinkMigration.includes("USING ((SELECT auth.uid()) = user_id)"), 'Signed-in users can read only their own Google Play track entitlements');
+assert.ok(googlePlayLinkMigration.includes("SET search_path = ''") && googlePlayLinkMigration.includes("REVOKE ALL ON FUNCTION public.revoke_google_play_entitlements_on_inactive_link() FROM PUBLIC, anon, authenticated"), 'The entitlement-revocation trigger uses a hardened function search path and restricted execution');
+assert.ok(googlePlayLinkMigration.includes("CREATE TRIGGER google_play_link_inactive_revoke_entitlements") && googlePlayLinkMigration.includes("NEW.status <> 'active'") && googlePlayLinkMigration.includes("AND status <> 'revoked'"), 'Marking a verified purchase link inactive revokes all of its track entitlements in the database');
 
 console.log('Release-safety smoke checks passed.');
