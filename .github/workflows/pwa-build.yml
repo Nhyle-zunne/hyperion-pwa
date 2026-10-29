@@ -31,3 +31,5 @@ jobs:
         run: bun run test:security
       - name: Type-check and build
         run: bun run build
+      - name: Verify generated offline app shell
+        run: bun run test:offline-build
