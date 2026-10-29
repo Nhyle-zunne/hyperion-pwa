@@ -737,6 +737,23 @@ assert.ok(googlePlayLinkMigration.includes("REVOKE ALL ON TABLE public.google_pl
 assert.ok(googlePlayLinkMigration.includes('CREATE POLICY "Users read own Google Play entitlements"') && googlePlayLinkMigration.includes("USING ((SELECT auth.uid()) = user_id)"), 'Signed-in users can read only their own Google Play track entitlements');
 assert.ok(googlePlayLinkMigration.includes("SET search_path = ''") && googlePlayLinkMigration.includes("REVOKE ALL ON FUNCTION public.revoke_google_play_entitlements_on_inactive_link() FROM PUBLIC, anon, authenticated"), 'The entitlement-revocation trigger uses a hardened function search path and restricted execution');
 assert.ok(googlePlayLinkMigration.includes("CREATE TRIGGER google_play_link_inactive_revoke_entitlements") && googlePlayLinkMigration.includes("AFTER UPDATE OF status, expires_at, product_ids") && googlePlayLinkMigration.includes("NEW.status <> 'active'") && googlePlayLinkMigration.includes("AND status <> 'revoked'"), 'Inactive or expired Google Play links revoke all of their track entitlements in the database');
+const adminMergeLoopStart = adminLicenseManagement.indexOf('for (const row of entitlements)')
+const adminMergeLoopEnd = adminLicenseManagement.indexOf('const now = Date.now()', adminMergeLoopStart)
+const adminMergeLoop = adminLicenseManagement.slice(adminMergeLoopStart, adminMergeLoopEnd)
+assert.ok(
+  adminLicenseManagement.indexOf('const retentionNow = Date.now()') >= 0 &&
+    adminLicenseManagement.indexOf('const retentionNow = Date.now()') < adminMergeLoopStart &&
+    adminMergeLoop.includes("effectiveStatus(previous, retentionNow)") &&
+    !adminMergeLoop.includes("effectiveStatus(previous, now)"),
+  'Admin license aggregation uses an initialized timestamp when merging duplicate product rows'
+)
+assert.ok(
+  adminLicenseManagement.includes('has_active_google_play: hasActiveGooglePlay') &&
+    adminLicenseManagement.includes("row.source === 'google_play' && rowActive") &&
+    adminLicenses.includes('!license.has_active_google_play') &&
+    adminLicenses.includes('license.has_active_google_play &&'),
+  'Admin revocation controls are blocked only while a verified active Google Play entitlement exists, not merely because an old Play record exists'
+)
 assert.ok(googlePlayLinkMigration.includes("AND NOT (track_id = ANY(allowed_tracks))") && googlePlayLinkMigration.includes("'hyperion_all_access_pass' = ANY"), 'A changed verified product set atomically retires stale track grants while preserving all-access mapping');
 assert.ok(googlePlaySchema.includes("CREATE TRIGGER google_play_link_inactive_revoke_entitlements") && googlePlaySchema.includes("AFTER UPDATE OF status, expires_at, product_ids") && googlePlaySchema.includes("AND NOT (track_id = ANY(allowed_tracks))"), 'The consolidated local schema includes the same Google Play entitlement reconciliation trigger');
 
