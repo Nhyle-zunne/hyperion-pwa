@@ -699,10 +699,16 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
     if (!(error && canFallbackToOffline(error))) return null;
   }
   try {
-    const freeQuestions = await getQuestionsByTrack(track, true);
-    const freeFingerprints = new Set(await Promise.all(freeQuestions.map(fingerprintQuestion)));
-    if (fingerprints.every(fingerprint => freeFingerprints.has(fingerprint))) return 'free-sample'
+    // Safari/iOS and installed PWAs can report online while the API is unreachable.
+    // Prefer already verified local packs after a genuine network/server failure.
+    if (await matchesCachedPack(true)) return 'free-sample'
     if (await offlineEntitlementExpiry(track) && await matchesCachedPack(false)) return 'licensed'
+
+    const freeQuestions = await getQuestionsByTrack(track, true);
+    const freeFingerprintResults = await Promise.all(freeQuestions.map(fingerprintQuestion));
+    if (freeFingerprintResults.some((fingerprint) => fingerprint === null)) return null;
+    const freeFingerprints = new Set(freeFingerprintResults as string[]);
+    if (fingerprints.every(fingerprint => freeFingerprints.has(fingerprint))) return 'free-sample'
     return null
   } catch {
     return null;
