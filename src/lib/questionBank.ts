@@ -631,7 +631,13 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
       const picked = CRP_FIXED_ORDER.has(compId)
         ? comp
         : javaShuffle(comp, new JavaRandom(2065 + Number(compId.slice(1)) * 31));
-      out.push(...picked.slice(0, quota));
+      // The server assigns IDs after sampling, so re-number the locally generated
+      // sample in the same order. Otherwise a freshly downloaded full bank would
+      // create a free pack whose questions match but whose hashes always differ.
+      out.push(...picked.slice(0, quota).map((question, index) => ({
+        ...question,
+        id: question.id.replace(/-\d+$/, '-' + String(index + 1).padStart(3, '0'))
+      })));
     }
     return out;
   }
