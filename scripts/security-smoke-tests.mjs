@@ -15,7 +15,7 @@ const [
   questionBankClient, adminLicenses, adminPayments, adminQuestionBank,
   practiceConfigScreen, practiceCompetenceScreen, trackHubScreen, drillScreen,
   quickScanCompetenceScreen, quickScanViewerScreen, flashcardsScreen, searchScreen,
-  installPrompt, iosInstallGuide, abandonedCheckoutCleanup, abandonedCheckoutMigration, adminLicenseManagement,
+  appDrawer, installHook, installPrompt, iosInstallGuide, abandonedCheckoutCleanup, abandonedCheckoutMigration, adminLicenseManagement,
   accountActivityFunction, accountRetentionFunction, activityRetentionMigration, scheduleRetentionMigration, retentionReasonMigration, workflow
 ] = await Promise.all([
   read('../src/lib/supabase.ts'),
@@ -58,6 +58,8 @@ const [
   read('../src/screens/QuickScanViewerScreen.tsx'),
   read('../src/screens/FlashcardsScreen.tsx'),
   read('../src/screens/SearchScreen.tsx'),
+  read('../src/components/AppDrawer.tsx'),
+  read('../src/hooks/useInstallPrompt.ts'),
   read('../src/components/InstallPrompt.tsx'),
   read('../src/screens/IOSInstallGuideScreen.tsx'),
   read('../supabase/functions/expire-abandoned-checkouts/index.ts'),
@@ -315,6 +317,9 @@ assert.ok(installPrompt.includes("isIos ? (") && installPrompt.includes('<AppleA
 assert.ok(installPrompt.includes('to="/install/ios"') && installPrompt.includes('onClick={onClick}') && installPrompt.includes("onClick={dismiss}"), 'Apple install badge navigates directly to the iOS setup guide and dismisses the prompt');
 assert.ok(installPrompt.includes('iosOnly = false') && installPrompt.includes('(iosOnly && !isIos)'), 'New entry popup is restricted to iPhone and iPad browsers');
 assert.ok(installPrompt.includes('<GooglePlayBadge />') && installPrompt.includes('ADD HYPERION TO HOME SCREEN'), 'Existing Android Google Play badge and PWA installation action remain intact');
+assert.ok(installHook.includes('export function getManualInstallInstructions()') && installHook.includes('brave://apps') && installHook.includes('Save and Share') && installHook.includes('Install page as app'), 'Install fallback provides browser-specific manual install recovery instructions');
+assert.ok(appDrawer.includes('getManualInstallInstructions()') && appDrawer.includes('desktopInstallNotice'), 'Desktop drawer explains the browser-menu install path when no native prompt is exposed');
+assert.ok(installPrompt.includes('getManualInstallInstructions()') && installPrompt.includes('{installMessage &&'), 'The install card displays manual-install guidance when the native prompt is unavailable');
 assert.ok(iosInstallGuide.includes('Keep the name Hyperion.') && iosInstallGuide.includes('Keep the app name as Hyperion.') && iosInstallGuide.includes('open the new Hyperion icon.'), 'iOS install instructions consistently tell users to name and launch the app as Hyperion');
 assert.ok(!iosInstallGuide.includes('Keep the app name as Hyperion Maritime.') && !iosInstallGuide.includes('Keep the name Hyperion Maritime.'), 'iOS install instructions do not contradict the requested Hyperion app name');
 
