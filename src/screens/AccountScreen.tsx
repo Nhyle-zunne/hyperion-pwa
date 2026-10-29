@@ -214,7 +214,7 @@ export default function AccountScreen() {
     ])
 
     const entitlementError = entitlements.error || playEntitlements.error
-    const now = Date.now()
+    const mergeNow = Date.now()
     const fetchedEntitlements: OwnedTrack[] = [
       ...((entitlements.data ?? []) as Omit<OwnedTrack, 'source'>[]).map(row => ({ ...row, source: 'website' as const })),
       ...((playEntitlements.data ?? []).map(row => ({
@@ -236,8 +236,8 @@ export default function AccountScreen() {
             map.set(row.product_code, row)
             return map
           }
-          const rowIsCurrent = isCurrentLicense(row, now)
-          const previousIsCurrent = isCurrentLicense(previous, now)
+          const rowIsCurrent = isCurrentLicense(row, mergeNow)
+          const previousIsCurrent = isCurrentLicense(previous, mergeNow)
           if ((rowIsCurrent && !previousIsCurrent) ||
               (rowIsCurrent === previousIsCurrent && Date.parse(row.expires_at || '') > Date.parse(previous.expires_at || ''))) {
             map.set(row.product_code, row)
