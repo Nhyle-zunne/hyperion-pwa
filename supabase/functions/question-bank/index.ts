@@ -153,6 +153,13 @@ function isAdminEmail(email: string | undefined) {
   const configured = (Deno.env.get("ADMIN_EMAILS") || "").split(/[;,\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
   return !!email && configured.includes(email.toLowerCase());
 }
+function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  if (candidate.code !== "PGRST205" || typeof candidate.message !== "string") return false;
+  const message = candidate.message.toLowerCase();
+  return message.includes("google_play_entitlements") && message.includes("schema cache");
+}
 async function loadEntitlement(admin: any, userId: string, track: string) {
   const now = new Date().toISOString();
   const [website, play] = await Promise.all([
@@ -162,8 +169,9 @@ async function loadEntitlement(admin: any, userId: string, track: string) {
       .eq("user_id", userId).eq("track_id", track).eq("status", "active").gt("expires_at", now)
       .order("expires_at", { ascending: false }).limit(1).maybeSingle()
   ]);
-  if (website.error || play.error) throw new Error("Could not verify the license.");
-  const candidates = [website.data, play.data].filter((row: any) =>
+  const playTableMissing = isMissingGooglePlayEntitlementsTable(play.error);
+  if (website.error || (play.error && !playTableMissing)) throw new Error("Could not verify the license.");
+  const candidates = [website.data, playTableMissing ? null : play.data].filter((row: any) =>
     row && row.user_id === userId && row.track_id === track && row.status === "active" &&
     typeof row.expires_at === "string" && Date.parse(row.expires_at) > Date.now()
   );
@@ -496,8 +504,9 @@ async function issueOfflineEntitlement(admin: any, user: any, isAdmin: boolean) 
       admin.from("google_play_entitlements").select("track_id,expires_at")
         .eq("user_id", user.id).eq("status", "active").gt("expires_at", new Date(now).toISOString())
     ]);
-    if (website.error || play.error) throw new Error("Could not verify current offline licenses.");
-    for (const row of [...(website.data ?? []), ...(play.data ?? [])]) {
+    const playTableMissing = isMissingGooglePlayEntitlementsTable(play.error);
+    if (website.error || (play.error && !playTableMissing)) throw new Error("Could not verify current offline licenses.");
+    for (const row of [...(website.data ?? []), ...(playTableMissing ? [] : (play.data ?? []))]) {
       if (!OFFLINE_TRACK_IDS.includes(row.track_id)) continue;
       const expiry = Date.parse(row.expires_at);
       if (Number.isFinite(expiry) && expiry > now) {
