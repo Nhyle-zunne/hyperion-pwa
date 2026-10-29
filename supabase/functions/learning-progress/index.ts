@@ -34,7 +34,7 @@ class PayloadTooLargeError extends Error {
 
 async function readRequestBody(req: Request, maxBytes: number): Promise<string> {
   const declaredLength = req.headers.get('content-length')
-  if (declaredLength && /^\\d+$/.test(declaredLength) && Number(declaredLength) > maxBytes) {
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > maxBytes) {
     throw new PayloadTooLargeError()
   }
 
