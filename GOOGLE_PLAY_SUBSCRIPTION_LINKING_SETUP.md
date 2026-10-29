@@ -2,7 +2,7 @@
 
 ## Current release state
 
-Google Play purchase linking is implemented in the Android and PWA feature branches, but it is **not enabled in the production Supabase project**. The production database does not yet have the `google_play_purchase_links` / `google_play_entitlements` migration, and production does not have the `link-google-play-subscription` or `google-play-rtdn` Edge Functions deployed. A missing Google Play entitlement table is handled as an optional data source by the Android client, so existing website-license sync can continue before the backend rollout.
+Google Play purchase linking and the bounded periodic reconciliation worker are implemented in the draft Android/PWA branches, but the feature is **not enabled in the production Supabase project**. The production database does not yet have the `google_play_purchase_links` / `google_play_entitlements` migration, and production does not have the `link-google-play-subscription`, `google-play-rtdn`, or `reconcile-google-play-subscriptions` Edge Functions deployed. The Android client and existing PWA/checkout/admin handlers treat only the confirmed missing optional table as absent; authorization, database, and other server errors still fail closed.
 
 Do not describe Android Google Play purchases as automatically unlocking website/PWA access until the server-side migration, Edge Functions, Google service-account secret, and acceptance tests are complete.
 
@@ -16,8 +16,14 @@ From the repository root, in a local development environment:
 supabase start
 supabase db reset
 deno check --no-lock --node-modules-dir=auto \
+  supabase/functions/question-bank/index.ts \
   supabase/functions/link-google-play-subscription/index.ts \
-  supabase/functions/google-play-rtdn/index.ts
+  supabase/functions/google-play-rtdn/index.ts \
+  supabase/functions/reconcile-google-play-subscriptions/index.ts \
+  supabase/functions/create-checkout/index.ts \
+  supabase/functions/submit-manual-payment/index.ts \
+  supabase/functions/admin-license-management/index.ts \
+  supabase/functions/expire-inactive-accounts/index.ts
 bun run test:security
 bun run build
 bun run test:offline-build
@@ -26,7 +32,7 @@ bun run test:offline-build
 - `supabase db reset` resets and reapplies migrations to the **local** Supabase database. It will erase local test data; it does not affect production unless an explicit remote/linked option is used.
 - Do not run `supabase db reset --linked`, `supabase db push`, or any deploy command while intending only to test locally.
 - For local function testing, use the CLI's `supabase functions serve` with a local-only environment file. Keep service-account JSON and other secrets out of Git, and never use the production service-role key in browser or Android code.
-- The GitHub PWA workflow already checks both Google Play functions with Deno, runs the release-safety smoke tests, builds the PWA, and verifies the generated offline app shell. These checks are useful and free within applicable GitHub Actions limits, but they are **not** a substitute for executing the migration against a local Postgres instance or testing a real Play test purchase.
+- The GitHub PWA workflow checks the modified Edge Functions with Deno, runs the release-safety smoke tests, builds the PWA, verifies the generated offline app shell, and tests the entitlement RPC plus the Vault-gated scheduler against isolated PostgreSQL. These checks do not touch the hosted Supabase project, but they are **not** a substitute for local Supabase-stack validation or testing a real Play test purchase.
 
 Official reference: [Supabase local development is free and does not consume hosted project quota](https://supabase.com/docs/guides/local-development).
 
@@ -56,11 +62,12 @@ Official reference: [Supabase local development is free and does not consume hos
 ## Backend rollout (requires a separate release decision)
 
 1. Complete the no-additional-cost local validation above before considering any hosted changes.
-2. Apply `supabase/migrations/20261029164000_add_google_play_purchase_links.sql` only after confirming the migration has passed against a fresh local database.
-3. Deploy `link-google-play-subscription` with JWT verification enabled and `google-play-rtdn` with Supabase JWT verification disabled (the RTDN handler verifies Google OIDC itself). Set `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `GOOGLE_PLAY_PUBSUB_AUDIENCE`, and `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL` in the relevant Edge Function environment.
-4. Verify the database has the expected tables, unique purchase-token hash, row-level security policy for users' own entitlements, service-role-only token access, and inactive/product-change revocation trigger.
-5. Test the full acceptance checklist below. Keep the change in draft until it passes.
-6. Do not create a hosted Supabase branch, change production secrets, deploy functions, apply a production migration, or switch the PR out of draft without a separate explicit decision from the owner.
+2. Apply `supabase/migrations/20261029164000_add_google_play_purchase_links.sql` and `supabase/migrations/20261030180000_schedule_google_play_reconciliation.sql` only after confirming the migration and scheduler checks pass against the local Supabase stack.
+3. Deploy `link-google-play-subscription` with JWT verification enabled, and `google-play-rtdn` / `reconcile-google-play-subscriptions` with Supabase JWT verification disabled. RTDN validates Google's OIDC token; the reconciliation worker validates a private Vault-backed token through a service-role-only RPC. Set `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `GOOGLE_PLAY_PUBSUB_AUDIENCE`, and `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL` in the relevant Edge Function environment.
+4. Verify the database has the expected tables, unique purchase-token hash, user-scoped entitlement RLS, service-role-only raw-token access, inactive/product-change revocation trigger, and the reconciliation attempt timestamp/index.
+5. The scheduler migration creates the private cron token and a 15-minute job, but also creates the `hyperion_google_play_reconciliation_enabled` Vault flag as `false`. No outbound request is sent by the job until that flag is explicitly changed to `true`. **Keep it disabled** until real Play test purchases, cancellation/expiry behavior, RTDN delivery, and periodic recovery have been accepted.
+6. Test the full acceptance checklist below. Keep both PRs in draft until it passes.
+7. Do not create a hosted Supabase branch, change production secrets, deploy functions, apply a production migration, enable the cron flag, or switch a PR out of draft without a separate explicit decision from the owner.
 
 ## Acceptance checklist
 
@@ -69,7 +76,7 @@ Official reference: [Supabase local development is free and does not consume hos
 - [ ] An active subscription unlocks only its mapped track; all-access maps to all five supported tracks.
 - [ ] The same token can be synced repeatedly for the same account without duplicate entitlements.
 - [ ] A token already linked to another Hyperion account is rejected and does not transfer ownership.
-- [ ] A verified replacement token is accepted only for the same Hyperion account, and its previous token's grants are retired.
+- [ ] A verified replacement token is accepted only for the same Hyperion account, its previous token's grants are retired, and that replaced token can never be re-linked or restored by a late RTDN notification.
 - [ ] Canceled-but-still-valid subscriptions stay entitled only through the verified expiry; expired, pending, on-hold, paused, or otherwise ineligible states do not grant new access.
 - [ ] An unrecognized product, malformed token, invalid JWT, missing service-account secret, or Google API outage fails closed for website/PWA access.
 - [ ] A missing optional Google Play entitlement table does not break website-license sync.
@@ -79,8 +86,18 @@ Official reference: [Supabase local development is free and does not consume hos
 
 ## Subscription lifecycle release gate
 
-The feature branch includes a `google-play-rtdn` handler that verifies the Google Pub/Sub OIDC bearer token (signature, issuer, configured audience and verified service-account email), validates the package name, then re-reads subscription state from Google's Android Publisher API. It ignores unknown tokens rather than creating account links. The handler uses the same database-side atomic entitlement reconciliation function as the signed-in Android linking endpoint.
+The feature branch includes a `google-play-rtdn` handler that verifies the Google Pub/Sub OIDC bearer token (signature, issuer, configured audience and verified service-account email), validates the package name, then re-reads subscription state from Google's Android Publisher API. It ignores unknown tokens rather than creating account links. The signed-in Android linker, RTDN handler, and new periodic worker share the same database-side atomic entitlement reconciliation function. The worker processes up to 20 purchase links per invocation in oldest-attempt-first order, skips replaced predecessors, and records attempts so one bad token does not permanently starve later records.
 
-**The RTDN handler is not configured or deployed in production, and scheduled reconciliation is not yet implemented.** Before presenting cross-platform linking as automatic and production-ready, configure a Pub/Sub push subscription with OIDC audience and service account matching the two RTDN secrets, send Google Play Console test notifications, verify retries and revocations, and add a scheduled reconciliation path as recovery. Neither RTDN message payloads nor client claims may be trusted on their own to grant access.
+**RTDN and periodic reconciliation are not configured or deployed in production.** The schedule is opt-in: the migration creates the cron entry and Vault-backed token but leaves `hyperion_google_play_reconciliation_enabled=false`; the cron sends no HTTP request until an owner explicitly enables it. Before presenting cross-platform linking as automatic and production-ready, configure a Pub/Sub push subscription with OIDC audience and service account matching the RTDN secrets, set the Edge Function service-account secret, test Play purchases and cancellation/expiry behavior, verify RTDN retries and revocations, and only then approve the periodic job. Neither RTDN message payloads nor client claims may be trusted on their own to grant access.
 
 Until these configuration and lifecycle tests pass, do not promise immediate synchronization of cancellation/refund/revocation events between Google Play and the website.
+
+
+## Reconciliation opt-in checklist
+
+- [ ] Deploy the migration and `reconcile-google-play-subscriptions` Edge Function only after reviewing the local regression evidence.
+- [ ] Keep the Vault flag `hyperion_google_play_reconciliation_enabled` at `false` during setup and test calls.
+- [ ] Verify that the `hyperion_google_play_reconciliation_cron_token` exists only in Vault and that the verifier RPC is executable only by `service_role`.
+- [ ] Test the handler with an incorrect token (401), with reconciliation disabled (401), and after enabling only in a non-production environment.
+- [ ] Confirm the 15-minute cron entry performs no outbound request while disabled.
+- [ ] After real test subscriptions cover renewals, canceled-but-valid subscriptions, expiry, on-hold, refunds/revocations, and replacement tokens, obtain the owner's separate approval before enabling the production flag.
