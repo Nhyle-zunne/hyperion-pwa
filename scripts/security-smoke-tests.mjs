@@ -536,7 +536,9 @@ assert.ok(encryptedPersistStorage.includes('export function readEncryptedPersist
 assert.ok(questionBank.includes('authorize-saved-questions') && questionBank.includes('allowedIndexes') && questionBank.includes('freeQuestionFingerprints'), 'Saved question collections can be filtered by current paid access or verified free-sample fingerprints');
 assert.ok(learningProgressFunction.includes("admin.from('user_learning_progress')") && learningProgressFunction.includes("body.action === 'read'") && learningProgressFunction.includes("body.action === 'write'"), 'Progress reads and writes go through an authenticated server function');
 assert.ok(learningProgressFunction.includes("client.functions.invoke('question-bank'") && learningProgressFunction.includes('sanitizeSnapshot'), 'Progress server responses are filtered through the protected question-bank authorization service');
-assert.ok(learningProgressFunction.includes('new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES'), 'Learning progress request limits count UTF-8 bytes rather than UTF-16 code units');
+assert.ok(learningProgressFunction.includes("req.headers.get('content-length')") && learningProgressFunction.includes('Number(declaredLength) > maxBytes'), 'Learning progress rejects oversized declared request bodies before reading them');
+assert.ok(learningProgressFunction.includes('req.body?.getReader()') && learningProgressFunction.includes('totalBytes > maxBytes'), 'Learning progress enforces the UTF-8 byte limit while streaming request data');
+assert.ok(learningProgressFunction.includes('error instanceof PayloadTooLargeError'), 'Oversized streamed payloads return HTTP 413 rather than a generic parsing error');
 assert.ok(progressSyncSource.includes("functions.invoke('learning-progress'") && !progressSyncSource.includes(".from(TABLE)"), 'The browser no longer directly reads or writes user_learning_progress');
 assert.ok(functionConfig.includes('[functions.learning-progress]') && functionConfig.includes('verify_jwt = true'), 'Learning progress endpoint requires a valid JWT');
 
