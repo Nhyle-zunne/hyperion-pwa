@@ -27,10 +27,19 @@ function deriveKeyBytes(): Uint8Array {
   }
   return result;
 }
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
 async function decryptToText(encrypted: Uint8Array): Promise<string> {
   if (encrypted.length < 28) throw new Error("Encrypted asset is too short.");
-  const key = await crypto.subtle.importKey("raw", deriveKeyBytes(), { name: "AES-GCM" }, false, ["decrypt"]);
-  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: encrypted.slice(0, 12), tagLength: 128 }, key, encrypted.slice(12));
+  const key = await crypto.subtle.importKey("raw", toArrayBuffer(deriveKeyBytes()), { name: "AES-GCM" }, false, ["decrypt"]);
+  const plain = await crypto.subtle.decrypt({
+    name: "AES-GCM",
+    iv: toArrayBuffer(encrypted.slice(0, 12)),
+    tagLength: 128
+  }, key, toArrayBuffer(encrypted.slice(12)));
   const bytes = new Uint8Array(plain);
   try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
   catch { return new TextDecoder("windows-1252").decode(bytes); }
@@ -545,7 +554,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceKey) return json(req, { error: "Question service is not configured." }, 503);
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let body: { action?: string; path?: string; csvText?: string; uploadFormat?: string; encryptedBase64?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown };
+  let body: { action?: string; path?: string; csvText?: string; uploadFormat?: string; encryptedBase64?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown; items?: unknown };
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
   let user: any = null, isAdmin = false;
   const authHeader = req.headers.get("Authorization");
@@ -627,12 +636,16 @@ Deno.serve(async (req: Request) => {
     if (backup.error) return json(req, { error: "Could not save a private backup. No file was changed." }, 500);
     try {
       if (body.uploadFormat === "csv") {
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        const key = await crypto.subtle.importKey("raw", deriveKeyBytes(), { name: "AES-GCM" }, false, ["encrypt"]);
-        const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, tagLength: 128 }, key, plainBytes));
-        replacementBytes = new Uint8Array(iv.length + ciphertext.length);
-        replacementBytes.set(iv, 0);
-        replacementBytes.set(ciphertext, iv.length);
+        const ivBytes = crypto.getRandomValues(new Uint8Array(12));
+        const key = await crypto.subtle.importKey("raw", toArrayBuffer(deriveKeyBytes()), { name: "AES-GCM" }, false, ["encrypt"]);
+        const ciphertext = new Uint8Array(await crypto.subtle.encrypt({
+          name: "AES-GCM",
+          iv: toArrayBuffer(ivBytes),
+          tagLength: 128
+        }, key, toArrayBuffer(plainBytes)));
+        replacementBytes = new Uint8Array(ivBytes.length + ciphertext.length);
+        replacementBytes.set(ivBytes, 0);
+        replacementBytes.set(ciphertext, ivBytes.length);
       }
       const upload = await bucket.upload(path, replacementBytes, { contentType: "application/octet-stream", cacheControl: "0", upsert: true });
       if (upload.error) return json(req, { error: "Replacement failed. Previous file backed up at " + backupPath + "." }, 500);
