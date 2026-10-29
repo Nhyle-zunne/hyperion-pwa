@@ -390,6 +390,12 @@ assert.ok(offlineEntitlementCrypto.includes('OFFLINE_ENTITLEMENT_PUBLIC_KEY') &&
 assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes("typeof value.token !== 'string'"), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
 assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(session.user.id, offlineLicense.token)'), 'Online license refresh stores only a server-signed offline token');
 assert.ok(licenseStore.includes('clearOfflineEntitlements(session.user.id)') && licenseStore.includes('await getOfflineEntitledTracks(session.user.id)'), 'Offline fallback verifies signed leases and clears stale leases on online authorization errors');
+assert.ok(
+  licenseStore.includes('MAX_OFFLINE_ENTITLEMENT_AGE_MS') &&
+    licenseStore.includes('MAX_OFFLINE_ENTITLEMENT_AGE_MS - 10 * 60 * 1000') &&
+    licenseStore.includes('expiryValues.length ? [...expiryValues, leaseRefreshAt] : expiryValues'),
+  'The signed offline lease refresh is scheduled before its 72-hour age cap without adding timers for users with no entitlements'
+);
 
 assert.ok(learningProgressTriggerMigration.includes('REVOKE ALL ON FUNCTION public.set_user_learning_progress_updated_at() FROM PUBLIC, anon, authenticated'), 'Trigger-only progress helper cannot be called directly by client roles');
 
