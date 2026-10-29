@@ -19,8 +19,9 @@ $extensions$;
 
 DO $$
 BEGIN
-  -- The project URL is configured separately after the local/hosted migration.
-  -- A missing URL is safe: the scheduled job checks for it and makes no HTTP request.
+  -- The project URL is configured separately after the migration.
+  -- If absent, the cron job remains a no-op until the owner configures it.
+
   IF NOT EXISTS (
     SELECT 1 FROM vault.decrypted_secrets
     WHERE name = 'hyperion_google_play_reconciliation_cron_token'
@@ -96,24 +97,7 @@ BEGIN
         AND EXISTS (
           SELECT 1 FROM vault.decrypted_secrets
           WHERE name = 'hyperion_supabase_project_url'
-            AND decrypted_secret ~ '^https://[^/]+
-          url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'hyperion_supabase_project_url')
-            || '/functions/v1/reconcile-google-play-subscriptions',
-          headers := jsonb_build_object(
-            'Content-Type', 'application/json',
-            'x-hyperion-google-play-reconcile-token',
-            (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'hyperion_google_play_reconciliation_cron_token')
-          ),
-          body := jsonb_build_object('source', 'pg_cron', 'requested_at', now()),
-          timeout_milliseconds := 55000
-        )
-        ELSE NULL::bigint
-      END AS request_id;
-    $job$
-  );
-END;
-$$;
-
+            AND length(decrypted_secret) > 0
         )
         THEN net.http_post(
           url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'hyperion_supabase_project_url')
