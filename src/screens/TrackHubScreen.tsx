@@ -6,7 +6,7 @@ import { useHistoryStore } from '../stores/historyStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useVaultStore } from '../stores/vaultStore'
 import type { TrackId } from '../types/question'
-import { downloadOfflinePack, getQuestionCountsByTrack } from '../lib/questionBank'
+import { downloadOfflinePack, ensureOfflineFreeSamplePack, getQuestionCountsByTrack } from '../lib/questionBank'
 import { getOfflineEntitlementExpiry, getOfflinePackStatus } from '../lib/offlineQuestionCache'
 import { supabase } from '../lib/supabase'
 import './TrackHubScreen.css'
@@ -138,6 +138,7 @@ export default function TrackHubScreen() {
     const loadOfflineState = async () => {
       setOfflineLicenseChecked(false)
       try {
+        if (!unlocked && !online) await ensureOfflineFreeSamplePack(info.trackId)
         const status = await getOfflinePackStatus(info.trackId, !unlocked)
         if (active) setOfflineStatus(status?.complete ? status : null)
       } catch {
