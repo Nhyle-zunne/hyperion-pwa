@@ -665,6 +665,30 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  if (body.action === "authorize-saved-questions") {
+    const track = body.track || "";
+    const items = body.items;
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) {
+      return json(req, { allowedIndexes: [], error: "Invalid track." }, 400);
+    }
+    if (!Array.isArray(items) || items.length < 1 || items.length > 1000 ||
+        items.some(item => !item || typeof item.id !== "string" || item.id.length > 120 ||
+          !questionIdBelongsToTrack(item.id, track) ||
+          typeof item.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(item.fingerprint))) {
+      return json(req, { allowedIndexes: [], error: "Invalid saved question set." }, 400);
+    }
+    try {
+      if (await authorizeTrack(admin, user, isAdmin, track)) {
+        return json(req, { allowedIndexes: items.map((_, index) => index), access: isAdmin ? "admin" : "licensed" });
+      }
+      const allowedFingerprints = await freeQuestionFingerprints(admin, track);
+      const allowedIndexes = items.flatMap((item, index) => allowedFingerprints.has(item.fingerprint) ? [index] : []);
+      return json(req, { allowedIndexes, access: "free-sample" });
+    } catch {
+      return json(req, { error: "Could not verify saved question access." }, 503);
+    }
+  }
+
   if (body.action === "authorize-session") {
     const track = body.track || "";
     const questionIds = body.questionIds;

@@ -33,3 +33,6 @@ verify_jwt = true
 
 [functions.expire-inactive-accounts]
 verify_jwt = false
+
+[functions.learning-progress]
+verify_jwt = true

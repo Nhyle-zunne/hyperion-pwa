@@ -8,7 +8,6 @@ import { usePracticeStore } from '../stores/practiceStore'
 import { supabase } from './supabase'
 import { readEncryptedPersistedValue, removeEncryptedPersistedValue, writeEncryptedPersistedValue } from './encryptedPersistStorage'
 
-const TABLE = 'user_learning_progress'
 const OWNER_KEY = 'hyperion-progress-owner'
 const LOCAL_DIRTY_KEY = 'hyperion-progress-unclaimed-dirty'
 const SESSION_CHANGED_AT_KEY = 'hyperion-progress-session-changed-at'
@@ -537,23 +536,22 @@ async function uploadSnapshot(): Promise<void> {
   try {
     // Merge against the latest cloud record before writing so progress from another
     // device (history, study-time segments, bookmarks, and mistakes) is not discarded.
-    const { data: latestRow, error: readError } = await supabase
-      .from(TABLE)
-      .select('data')
-      .eq('user_id', userId)
-      .maybeSingle()
+    const { data: latestResult, error: readError } = await supabase.functions.invoke('learning-progress', {
+      body: { action: 'read' }
+    })
     if (readError) throw readError
 
-    const latestSnapshot = latestRow?.data && isSnapshot(latestRow.data)
-      ? latestRow.data as LearningProgressSnapshot
+    const latestSnapshot = latestResult?.data && isSnapshot(latestResult.data)
+      ? latestResult.data as LearningProgressSnapshot
       : null
     const snapshotToUpload = latestSnapshot
       ? mergeSnapshots(snapshot, latestSnapshot, snapshot.changedSections, false)
       : snapshot
     snapshotToUpload.changedSections = []
-    const { error } = await supabase
-      .from(TABLE)
-      .upsert({ user_id: userId, data: snapshotToUpload }, { onConflict: 'user_id' })
+    const { data: writeResult, error } = await supabase.functions.invoke('learning-progress', {
+      body: { action: 'write', data: snapshotToUpload }
+    })
+    if (!error && writeResult?.ok !== true) throw new Error('The progress service did not confirm the save.')
 
     if (error) {
       cloudReady = false
@@ -639,13 +637,13 @@ async function initializeUser(userId: string): Promise<void> {
 
   let row: CloudProgressRow | null = null
   try {
-    const { data, error } = await supabase
-      .from(TABLE)
-      .select('data, updated_at')
-      .eq('user_id', userId)
-      .maybeSingle()
+    const { data, error } = await supabase.functions.invoke('learning-progress', {
+      body: { action: 'read' }
+    })
     if (error) throw error
-    row = data as CloudProgressRow | null
+    row = data?.data && isSnapshot(data.data)
+      ? { data: data.data as LearningProgressSnapshot, updated_at: typeof data.updated_at === 'string' ? data.updated_at : '' }
+      : null
   } catch (error) {
     // Do not overwrite a local account's data when the cloud read fails. The user
     // can continue locally; reconnecting or re-authenticating will retry hydration.

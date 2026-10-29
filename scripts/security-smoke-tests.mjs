@@ -85,6 +85,7 @@ const mainEntry = await read('../src/main.tsx');
 const routeErrorBoundary = await read('../src/components/RouteErrorBoundary.tsx');
 const adminPaymentReviewFunction = await read('../supabase/functions/admin-payment-review/index.ts');
 const deleteAccount = await read('../supabase/functions/delete-account/index.ts');
+const learningProgressFunction = await read('../supabase/functions/learning-progress/index.ts');
 const cancelCheckout = await read('../supabase/functions/cancel-checkout/index.ts');
 const offlineEntitlementCrypto = await read('../src/lib/offlineEntitlementCrypto.mjs');
 const sessionArchive = await read('../src/lib/sessionArchive.ts');
@@ -527,5 +528,12 @@ assert.ok(progressSyncSource.includes('await writeEncryptedPersistedValue(key, v
 assert.ok(progressSyncSource.includes('await writeEncryptedPersistedValue(accountCacheKey(ownerBeforeLoad)') && progressSyncSource.includes('await readEncryptedPersistedValue(accountCacheKey(userId))'), 'Account-switch recovery caches are encrypted rather than stored as question text in localStorage');
 assert.ok(progressSyncSource.includes('migrateLegacyProgressCaches') && progressSyncSource.includes("key.startsWith('hyperion-progress-cache:')"), 'Legacy plaintext account progress caches are migrated into encrypted storage');
 assert.ok(encryptedPersistStorage.includes('export function readEncryptedPersistedValue') && encryptedPersistStorage.includes('export function writeEncryptedPersistedValue'), 'Encrypted storage exposes a shared bridge for cloud progress restoration');
+
+
+assert.ok(questionBank.includes('authorize-saved-questions') && questionBank.includes('allowedIndexes') && questionBank.includes('freeQuestionFingerprints'), 'Saved question collections can be filtered by current paid access or verified free-sample fingerprints');
+assert.ok(learningProgressFunction.includes("admin.from('user_learning_progress')") && learningProgressFunction.includes("body.action === 'read'") && learningProgressFunction.includes("body.action === 'write'"), 'Progress reads and writes go through an authenticated server function');
+assert.ok(learningProgressFunction.includes("client.functions.invoke('question-bank'") && learningProgressFunction.includes('sanitizeSnapshot'), 'Progress server responses are filtered through the protected question-bank authorization service');
+assert.ok(progressSyncSource.includes("functions.invoke('learning-progress'") && !progressSyncSource.includes(".from(TABLE)"), 'The browser no longer directly reads or writes user_learning_progress');
+assert.ok(functionConfig.includes('[functions.learning-progress]') && functionConfig.includes('verify_jwt = true'), 'Learning progress endpoint requires a valid JWT');
 
 console.log('Release-safety smoke checks passed.');
