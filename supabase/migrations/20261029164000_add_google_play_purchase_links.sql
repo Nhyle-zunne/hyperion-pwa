@@ -103,3 +103,195 @@ CREATE TRIGGER google_play_link_inactive_revoke_entitlements
 AFTER UPDATE OF status, expires_at, product_ids ON public.google_play_purchase_links
 FOR EACH ROW
 EXECUTE FUNCTION public.revoke_google_play_entitlements_on_inactive_link();
+
+-- Keep subscription-link state and per-track grants in one database transaction.
+-- Only service_role may invoke this RPC. The Edge Function must verify the Google
+-- purchase first and pass the user ID from the authenticated session or existing
+-- token ownership record, never from an RTDN message.
+CREATE OR REPLACE FUNCTION public.sync_google_play_subscription_atomic(
+  p_user_id uuid,
+  p_purchase_token text,
+  p_purchase_token_sha256 text,
+  p_product_ids text[],
+  p_subscription_state text,
+  p_status text,
+  p_expires_at timestamptz,
+  p_entitlements jsonb,
+  p_prior_purchase_link_id uuid DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $
+DECLARE
+  v_link_id uuid;
+  v_now timestamptz := pg_catalog.now();
+  v_status text;
+  v_product_ids text[];
+BEGIN
+  IF p_user_id IS NULL
+     OR p_purchase_token IS NULL
+     OR pg_catalog.btrim(p_purchase_token) = ''
+     OR pg_catalog.char_length(p_purchase_token) > 4096
+     OR p_purchase_token_sha256 !~ '^[0-9a-f]{64}
+
+     OR p_expires_at IS NULL
+     OR p_status IS NULL
+     OR p_status NOT IN ('active', 'inactive')
+     OR p_entitlements IS NULL
+     OR pg_catalog.jsonb_typeof(p_entitlements) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'Invalid Google Play entitlement reconciliation input';
+  END IF;
+
+  IF NOT COALESCE(
+    p_product_ids <@ ARRAY[
+      'hyperion_oic_nw_pass',
+      'hyperion_gmdss_pass',
+      'hyperion_engine_oic_ew_pass',
+      'hyperion_deck_mgt_pass',
+      'hyperion_engine_mgt_pass',
+      'hyperion_all_access_pass'
+    ]::text[],
+    false
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'Unrecognized Google Play product in reconciliation input';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+      FROM pg_catalog.jsonb_array_elements(p_entitlements) AS entry(value)
+     WHERE pg_catalog.jsonb_typeof(entry.value) IS DISTINCT FROM 'object'
+        OR COALESCE(entry.value ->> 'product_code', '') NOT IN ('oic_nw', 'gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt')
+        OR COALESCE(entry.value ->> 'track_id', '') NOT IN ('DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT')
+        OR COALESCE(entry.value ->> 'status', '') NOT IN ('active', 'revoked')
+        OR pg_catalog.jsonb_typeof(entry.value -> 'expires_at') IS DISTINCT FROM 'string'
+        OR COALESCE(entry.value ->> 'expires_at', '') = ''
+        OR NOT (
+          (entry.value ->> 'product_code' = 'oic_nw' AND entry.value ->> 'track_id' = 'DECK_OIC_NW')
+          OR (entry.value ->> 'product_code' = 'gmdss' AND entry.value ->> 'track_id' = 'GMDSS_GOC')
+          OR (entry.value ->> 'product_code' = 'engine_ew' AND entry.value ->> 'track_id' = 'ENGINE_OIC_EW')
+          OR (entry.value ->> 'product_code' = 'deck_mgt' AND entry.value ->> 'track_id' = 'DECK_MGT')
+          OR (entry.value ->> 'product_code' = 'engine_mgt' AND entry.value ->> 'track_id' = 'ENGINE_MGT')
+        )
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'Invalid track entitlement in Google Play reconciliation input';
+  END IF;
+
+  IF EXISTS (
+    SELECT entry.value ->> 'track_id'
+      FROM pg_catalog.jsonb_array_elements(p_entitlements) AS entry(value)
+     GROUP BY entry.value ->> 'track_id'
+    HAVING pg_catalog.count(*) > 1
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'Duplicate track in Google Play reconciliation input';
+  END IF;
+
+  v_status := CASE
+    WHEN p_status = 'active' AND p_expires_at > v_now THEN 'active'
+    ELSE 'inactive'
+  END;
+  v_product_ids := CASE WHEN v_status = 'active' THEN COALESCE(p_product_ids, ARRAY[]::text[]) ELSE ARRAY[]::text[] END;
+
+  INSERT INTO public.google_play_purchase_links (
+    user_id,
+    purchase_token,
+    purchase_token_sha256,
+    product_ids,
+    subscription_state,
+    status,
+    expires_at,
+    last_verified_at,
+    updated_at
+  )
+  VALUES (
+    p_user_id,
+    p_purchase_token,
+    p_purchase_token_sha256,
+    v_product_ids,
+    COALESCE(NULLIF(p_subscription_state, ''), 'SUBSCRIPTION_STATE_UNSPECIFIED'),
+    v_status,
+    p_expires_at,
+    v_now,
+    v_now
+  )
+  ON CONFLICT (purchase_token_sha256) DO UPDATE
+    SET purchase_token = EXCLUDED.purchase_token,
+        product_ids = EXCLUDED.product_ids,
+        subscription_state = EXCLUDED.subscription_state,
+        status = EXCLUDED.status,
+        expires_at = EXCLUDED.expires_at,
+        last_verified_at = EXCLUDED.last_verified_at,
+        updated_at = EXCLUDED.updated_at
+    WHERE public.google_play_purchase_links.user_id = EXCLUDED.user_id
+  RETURNING id INTO v_link_id;
+
+  IF v_link_id IS NULL THEN
+    RAISE EXCEPTION USING ERRCODE = '23505', MESSAGE = 'Google Play purchase token is already linked to another user';
+  END IF;
+
+  IF p_prior_purchase_link_id IS NOT NULL AND p_prior_purchase_link_id <> v_link_id THEN
+    UPDATE public.google_play_purchase_links
+       SET status = 'inactive',
+           product_ids = ARRAY[]::text[],
+           subscription_state = 'SUBSCRIPTION_STATE_REPLACED',
+           expires_at = v_now,
+           last_verified_at = v_now,
+           updated_at = v_now
+     WHERE id = p_prior_purchase_link_id
+       AND user_id = p_user_id;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION USING ERRCODE = '23503', MESSAGE = 'Previous Google Play subscription link is not owned by this user';
+    END IF;
+  END IF;
+
+  INSERT INTO public.google_play_entitlements (
+    user_id,
+    purchase_link_id,
+    product_code,
+    track_id,
+    status,
+    expires_at,
+    updated_at
+  )
+  SELECT
+    p_user_id,
+    v_link_id,
+    entry.value ->> 'product_code',
+    entry.value ->> 'track_id',
+    CASE
+      WHEN v_status = 'active'
+       AND entry.value ->> 'status' = 'active'
+       AND (entry.value ->> 'expires_at')::timestamptz > v_now THEN 'active'
+      ELSE 'revoked'
+    END,
+    (entry.value ->> 'expires_at')::timestamptz,
+    v_now
+  FROM pg_catalog.jsonb_array_elements(p_entitlements) AS entry(value)
+  ON CONFLICT (purchase_link_id, track_id) DO UPDATE
+    SET user_id = EXCLUDED.user_id,
+        product_code = EXCLUDED.product_code,
+        status = EXCLUDED.status,
+        expires_at = EXCLUDED.expires_at,
+        updated_at = EXCLUDED.updated_at;
+
+  -- Retire any old tracks omitted by the freshly verified product set.
+  UPDATE public.google_play_entitlements AS current_entitlement
+     SET status = 'revoked',
+         updated_at = v_now
+   WHERE current_entitlement.purchase_link_id = v_link_id
+     AND current_entitlement.user_id = p_user_id
+     AND current_entitlement.status <> 'revoked'
+     AND NOT EXISTS (
+       SELECT 1
+         FROM pg_catalog.jsonb_array_elements(p_entitlements) AS entry(value)
+        WHERE entry.value ->> 'track_id' = current_entitlement.track_id
+     );
+
+  RETURN v_link_id;
+END;
+$;
+
+REVOKE ALL ON FUNCTION public.sync_google_play_subscription_atomic(uuid, text, text, text[], text, text, timestamptz, jsonb, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_google_play_subscription_atomic(uuid, text, text, text[], text, text, timestamptz, jsonb, uuid) TO service_role;

@@ -33,7 +33,7 @@ Do not describe Android Google Play purchases as automatically unlocking website
 
 1. Use an isolated Supabase test environment before changing production. The Supabase branch resource has an hourly cost; obtain explicit approval for the current quoted cost before creating it.
 2. Apply `supabase/migrations/20261029164000_add_google_play_purchase_links.sql` only to that isolated environment first.
-3. Deploy `link-google-play-subscription` with JWT verification enabled, then set `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` in that environment.
+3. Deploy `link-google-play-subscription` with JWT verification enabled and `google-play-rtdn` with Supabase JWT verification disabled (the RTDN handler verifies Google OIDC itself). Set `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `GOOGLE_PLAY_PUBSUB_AUDIENCE`, and `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL` in that environment.
 4. Verify that the database has the expected tables, unique purchase-token hash, row-level security policy for users' own entitlements, service-role-only token access, and inactive/product-change revocation trigger.
 5. Test the full acceptance checklist below. Keep the change in draft until it passes.
 6. Production deployment, production migration, secrets changes, and switching the PR out of draft require a separate release decision after test evidence is reviewed.
@@ -53,10 +53,10 @@ Do not describe Android Google Play purchases as automatically unlocking website
 - [ ] The offline Android account-license cache is tied to the signed-in Supabase user and respects its bounded offline grace and server-provided expiry.
 - [ ] Logging and errors do not expose raw purchase tokens, service-account keys, access tokens, or question-bank content.
 
-## Subscription lifecycle release blocker
+## Subscription lifecycle release gate
 
-The current linking endpoint checks Google Play when a token is linked or synced. **Real-time Developer Notifications (RTDN) and scheduled reconciliation are not implemented in this feature yet.** That means some changes—such as a refund/revocation or an entitlement change that is not followed by another app sync—may not be reflected immediately in the linked rows.
+The feature branch now includes a `google-play-rtdn` handler that verifies the Google Pub/Sub OIDC bearer token (signature, issuer, configured audience and verified service-account email), validates the package name, then re-reads subscription state from Google's Android Publisher API. It ignores unknown tokens rather than creating account links. The handler uses the same database-side atomic entitlement reconciliation function as the signed-in Android linking endpoint.
 
-Before presenting cross-platform linking as automatic and production-ready, implement and test an authenticated Pub/Sub RTDN handler. It must verify the OIDC push token (signature, issuer, exact audience and expected service-account email), validate the package name, and then re-read the subscription using Google's Android Publisher API as the source of truth. Add a scheduled reconciliation path as a recovery mechanism. Neither endpoint may trust notification payloads alone to grant access.
+**The RTDN handler is not configured or deployed in production, and scheduled reconciliation is not yet implemented.** Before presenting cross-platform linking as automatic and production-ready, configure a Pub/Sub push subscription with OIDC audience and service account matching the two RTDN secrets, send Google Play Console test notifications, verify retries and revocations, and add a scheduled reconciliation path as recovery. Neither RTDN message payloads nor client claims may be trusted on their own to grant access.
 
-Until those lifecycle handlers exist, do not promise immediate synchronization of cancellation/refund/revocation events between Google Play and the website.
+Until these configuration and lifecycle tests pass, do not promise immediate synchronization of cancellation/refund/revocation events between Google Play and the website.

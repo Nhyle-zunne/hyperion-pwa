@@ -75,6 +75,7 @@ const [
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const googlePlayLinkFunction = await read('../supabase/functions/link-google-play-subscription/index.ts');
+const googlePlayRtdnFunction = await read('../supabase/functions/google-play-rtdn/index.ts');
 const googlePlayLinkMigration = await read('../supabase/migrations/20261029164000_add_google_play_purchase_links.sql');
 const googlePlaySchema = await read('../supabase/schema.sql');
 const questionFingerprintSource = await read('../src/lib/questionFingerprint.mjs');
@@ -664,6 +665,18 @@ assert.ok(offlineUpdateButton.includes("'UPDATE AVAILABLE · RECONNECT'") && off
 assert.ok(googlePlayLinkFunction.includes("if (req.method === 'OPTIONS') return json(req, { ok: true })"), 'Google Play linking preflight responses use the same origin-aware CORS helper as normal responses');
 assert.ok(googlePlayLinkFunction.includes("'http://localhost:5173'") && googlePlayLinkFunction.includes("'http://127.0.0.1:5173'"), 'Google Play linking CORS supports the documented local development origins');
 assert.ok(googlePlayLinkFunction.includes("userClient.auth.getUser()"), 'Google Play purchase linking requires a verified authenticated Hyperion user');
+assert.ok(googlePlayLinkFunction.includes("admin.rpc('sync_google_play_subscription_atomic'") && !googlePlayLinkFunction.includes('upsertPlayEntitlement'), 'The verified link endpoint reconciles the whole subscription in one database transaction');
+const atomicRpcStart = googlePlayLinkMigration.indexOf('CREATE OR REPLACE FUNCTION public.sync_google_play_subscription_atomic(');
+const atomicRpcEnd = googlePlayLinkMigration.indexOf('REVOKE ALL ON FUNCTION public.sync_google_play_subscription_atomic(', atomicRpcStart);
+const atomicRpcSource = googlePlayLinkMigration.slice(atomicRpcStart, atomicRpcEnd);
+assert.ok(atomicRpcStart >= 0 && atomicRpcEnd > atomicRpcStart && atomicRpcSource.includes('ON CONFLICT (purchase_token_sha256) DO UPDATE') && atomicRpcSource.includes('user_id = EXCLUDED.user_id'), 'Atomic reconciliation checks token ownership on concurrent account-link attempts');
+assert.ok(atomicRpcSource.includes('jsonb_array_elements(p_entitlements)') && atomicRpcSource.includes('current_entitlement.status = \'revoked\'') && !atomicRpcSource.includes('granted_at'), 'Atomic reconciliation retires stale track grants while preserving original grant timestamps');
+assert.ok(googlePlayRtdnFunction.includes('jwtVerify') && googlePlayRtdnFunction.includes('createRemoteJWKSet') && googlePlayRtdnFunction.includes('https://www.googleapis.com/oauth2/v3/certs'), 'RTDN authenticates Google Pub/Sub push tokens with Google signing keys');
+assert.ok(googlePlayRtdnFunction.includes("GOOGLE_PLAY_PUBSUB_AUDIENCE") && googlePlayRtdnFunction.includes("GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL") && googlePlayRtdnFunction.includes('payload.email_verified === true'), 'RTDN validates the configured exact audience and verified service-account email');
+assert.ok(googlePlayRtdnFunction.includes("notification?.packageName !== PACKAGE_NAME") && googlePlayRtdnFunction.includes('purchases/subscriptionsv2/tokens/'), 'RTDN checks the Android package and rereads current subscription state from Google Play');
+assert.ok(googlePlayRtdnFunction.includes("if (!link) return respond(204)") && googlePlayRtdnFunction.includes("admin.rpc('sync_google_play_subscription_atomic'"), 'RTDN cannot create a new account association and uses the atomic entitlement reconciler for known tokens');
+assert.ok(functionConfig.includes('[functions.google-play-rtdn]\\nverify_jwt = false'), 'RTDN disables Supabase-JWT gateway checks because its handler verifies the Google OIDC bearer token itself');
+
 assert.ok(googlePlayLinkFunction.includes("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON") && googlePlayLinkFunction.includes("purchases/subscriptionsv2/tokens/"), 'Google Play tokens are checked against the Android Publisher API from the server');
 assert.ok(googlePlayLinkFunction.includes("purchase_token_sha256") && googlePlayLinkFunction.includes("existing.user_id !== user.id"), 'Google Play purchase tokens are uniquely fingerprinted and cannot be claimed by a second Hyperion account');
 assert.ok(googlePlayLinkFunction.includes("if (prior && prior.user_id !== user.id)") && googlePlayLinkFunction.includes("priorPurchaseLink.id !== linkId"), 'Replacement purchase tokens cannot retire a prior grant owned by a different account');

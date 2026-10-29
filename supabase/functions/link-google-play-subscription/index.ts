@@ -127,19 +127,6 @@ async function readGoogleSubscription(token: string) {
     lineItems?: Array<{ productId?: string; expiryTime?: string }>
   }
 }
-async function upsertPlayEntitlement(admin: any, linkId: string, userId: string, productCode: string, trackId: string, status: 'active' | 'revoked', expiresAt: string) {
-  const { error } = await admin.from('google_play_entitlements').upsert({
-    user_id: userId,
-    purchase_link_id: linkId,
-    product_code: productCode,
-    track_id: trackId,
-    status,
-    granted_at: new Date().toISOString(),
-    expires_at: expiresAt,
-    updated_at: new Date().toISOString()
-  }, { onConflict: 'purchase_link_id,track_id' })
-  if (error) throw new Error('Could not save the verified Google Play entitlement.')
-}
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return json(req, { ok: true })
   if (req.method !== 'POST') return json(req, { error: 'Method not allowed.' }, 405)
@@ -175,10 +162,8 @@ Deno.serve(async (req: Request) => {
       if (!mapped || !Number.isFinite(expiry)) return []
       return [{ productId, tracks: mapped, expiry }]
     })
-    if (!recognizedItems.length) return json(req, { error: 'This purchase is not a Hyperion subscription.' }, 409)
-
-    const maxExpiry = Math.max(...recognizedItems.map(item => item.expiry))
-    const isEntitledNow = allowedStates.has(google.subscriptionState || '') && maxExpiry > now
+    const maxExpiry = recognizedItems.length ? Math.max(...recognizedItems.map(item => item.expiry)) : now
+    const isEntitledNow = recognizedItems.length > 0 && allowedStates.has(google.subscriptionState || '') && maxExpiry > now
     const entitlementExpiry = new Date(maxExpiry).toISOString()
     const tokenHash = await sha256Hex(token)
     const admin = createClient(url, service, { auth: { persistSession: false } })
@@ -208,95 +193,58 @@ Deno.serve(async (req: Request) => {
       priorPurchaseLink = prior
     }
 
-    let linkId: string
-    const nowIso = new Date(now).toISOString()
-    const linkRecord = {
-      user_id: user.id,
-      purchase_token: token,
-      purchase_token_sha256: tokenHash,
-      product_ids: Array.from(new Set(recognizedItems.map(item => item.productId))),
-      subscription_state: google.subscriptionState || 'SUBSCRIPTION_STATE_UNSPECIFIED',
-      status: isEntitledNow ? 'active' : 'inactive',
-      expires_at: entitlementExpiry,
-      last_verified_at: nowIso,
-      updated_at: nowIso
-    }
-    if (existing) {
-      const { error } = await admin.from('google_play_purchase_links').update(linkRecord).eq('id', existing.id).eq('user_id', user.id)
-      if (error) return json(req, { error: 'Could not update the verified subscription link.' }, 500)
-      linkId = existing.id
-    } else {
-      const { data: inserted, error } = await admin.from('google_play_purchase_links').insert(linkRecord).select('id').single()
-      if (error) {
-        // In a concurrent cross-account link attempt, only the first account may claim the unique token.
-        const { data: raced } = await admin.from('google_play_purchase_links').select('id,user_id').eq('purchase_token_sha256', tokenHash).maybeSingle()
-        if (!raced || raced.user_id !== user.id) {
-          return json(req, { error: 'This Google Play subscription could not be linked to this account.' }, 409)
-        }
-        const { error: updateError } = await admin.from('google_play_purchase_links').update(linkRecord).eq('id', raced.id).eq('user_id', user.id)
-        if (updateError) return json(req, { error: 'Could not update the verified subscription link.' }, 500)
-        linkId = raced.id
-      } else {
-        linkId = inserted.id
-      }
+    if (!recognizedItems.length && !existing && !priorPurchaseLink) {
+      return json(req, { error: 'This purchase is not a Hyperion subscription.' }, 409)
     }
 
-    // Replacements must not leave the previous token's entitlement active.
-    // Ownership was checked above before this request wrote any records.
-    if (priorPurchaseLink?.id && priorPurchaseLink.id !== linkId) {
-      const { error: priorUpdateError } = await admin.from('google_play_purchase_links').update({
-        status: 'inactive',
-        updated_at: nowIso,
-        last_verified_at: nowIso
-      }).eq('id', priorPurchaseLink.id).eq('user_id', user.id)
-      if (priorUpdateError) return json(req, { error: 'Could not retire the previous subscription token.' }, 500)
-      const { error: priorEntitlementError } = await admin.from('google_play_entitlements')
-        .update({ status: 'revoked', updated_at: nowIso })
-        .eq('purchase_link_id', priorPurchaseLink.id).eq('user_id', user.id)
-      if (priorEntitlementError) return json(req, { error: 'Could not retire the previous subscription entitlements.' }, 500)
-    }
-
+    // Build one canonical row per track. The RPC updates the purchase link and
+    // all entitlement rows in one database transaction, preserving original
+    // granted_at timestamps and preventing partial REST writes from leaving stale access.
+    const trackDetails = new Map<string, { productCode: string; expiry: number }>()
     for (const item of recognizedItems) {
       for (const track of item.tracks) {
-        await upsertPlayEntitlement(
-          admin,
-          linkId,
-          user.id,
-          track.productCode,
-          track.trackId,
-          isEntitledNow && item.expiry > now ? 'active' : 'revoked',
-          new Date(item.expiry).toISOString()
-        )
+        const current = trackDetails.get(track.trackId)
+        if (!current || item.expiry > current.expiry) {
+          trackDetails.set(track.trackId, { productCode: track.productCode, expiry: item.expiry })
+        }
       }
     }
+    const entitlementRows = Array.from(trackDetails.entries()).map(([trackId, item]) => ({
+      product_code: item.productCode,
+      track_id: trackId,
+      status: isEntitledNow && item.expiry > now ? 'active' : 'revoked',
+      expires_at: new Date(item.expiry).toISOString()
+    }))
+    const activeProductIds = isEntitledNow
+      ? Array.from(new Set(recognizedItems.filter(item => item.expiry > now).map(item => item.productId)))
+      : []
 
-    // If Google reports a different product set for this same token, retire stale
-    // track grants rather than leaving a previous product's access active.
-    const currentTrackIds = new Set(recognizedItems.flatMap(item => item.tracks.map(track => track.trackId)))
-    const { data: existingEntitlements, error: existingEntitlementsError } = await admin.from('google_play_entitlements')
-      .select('track_id')
-      .eq('purchase_link_id', linkId)
-      .eq('user_id', user.id)
-    if (existingEntitlementsError) return json(req, { error: 'Could not reconcile the subscription tracks.' }, 500)
-    const staleTrackIds = Array.from(new Set((existingEntitlements || [])
-      .map((row: { track_id: string }) => row.track_id)
-      .filter((trackId: string) => !currentTrackIds.has(trackId))))
-    for (const staleTrackId of staleTrackIds) {
-      const { error: staleUpdateError } = await admin.from('google_play_entitlements')
-        .update({ status: 'revoked', updated_at: nowIso })
-        .eq('purchase_link_id', linkId)
-        .eq('user_id', user.id)
-        .eq('track_id', staleTrackId)
-      if (staleUpdateError) return json(req, { error: 'Could not reconcile the subscription tracks.' }, 500)
+    const { data: syncedLinkId, error: syncError } = await admin.rpc('sync_google_play_subscription_atomic', {
+      p_user_id: user.id,
+      p_purchase_token: token,
+      p_purchase_token_sha256: tokenHash,
+      p_product_ids: activeProductIds,
+      p_subscription_state: google.subscriptionState || 'SUBSCRIPTION_STATE_UNSPECIFIED',
+      p_status: isEntitledNow ? 'active' : 'inactive',
+      p_expires_at: entitlementExpiry,
+      p_entitlements: entitlementRows,
+      p_prior_purchase_link_id: priorPurchaseLink?.id ?? null
+    })
+    if (syncError) {
+      if (String(syncError.message || '').includes('already linked to another user')) {
+        return json(req, { error: 'This Google Play subscription is already linked to another Hyperion account. Contact support if you believe this is incorrect.' }, 409)
+      }
+      throw new Error('Could not atomically reconcile the verified Google Play subscription.')
+    }
+    if (typeof syncedLinkId !== 'string' || !syncedLinkId) {
+      throw new Error('The server did not confirm the Google Play subscription link.')
     }
 
     return json(req, {
       linked: true,
       active: isEntitledNow,
       productIds: Array.from(new Set(recognizedItems.map(item => item.productId))),
-      activeTracks: isEntitledNow
-        ? Array.from(new Set(recognizedItems.filter(item => item.expiry > now).flatMap(item => item.tracks.map(track => track.trackId))))
-        : [],
+      activeTracks: entitlementRows.filter(item => item.status === 'active').map(item => item.track_id),
       expiresAt: entitlementExpiry
     })
   } catch (error) {
