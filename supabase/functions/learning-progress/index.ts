@@ -25,6 +25,50 @@ function json(req: Request, body: unknown, status = 200) {
   })
 }
 
+class PayloadTooLargeError extends Error {
+  constructor() {
+    super('Request payload exceeds the configured limit.')
+    this.name = 'PayloadTooLargeError'
+  }
+}
+
+async function readRequestBody(req: Request, maxBytes: number): Promise<string> {
+  const declaredLength = req.headers.get('content-length')
+  if (declaredLength && /^\\d+$/.test(declaredLength) && Number(declaredLength) > maxBytes) {
+    throw new PayloadTooLargeError()
+  }
+
+  const reader = req.body?.getReader()
+  if (!reader) return ''
+
+  const chunks: Uint8Array[] = []
+  let totalBytes = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value) continue
+
+      totalBytes += value.byteLength
+      if (totalBytes > maxBytes) {
+        try { await reader.cancel() } catch { /* The request is already being rejected. */ }
+        throw new PayloadTooLargeError()
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  const bytes = new Uint8Array(totalBytes)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(bytes)
+}
+
 function isRecord(value: unknown): value is JsonRecord {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
@@ -242,12 +286,14 @@ Deno.serve(async req => {
   let body: JsonRecord
   let rawBody: string
   try {
-    rawBody = await req.text()
-    if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES) return json(req, { error: 'Progress payload is too large.' }, 413)
+    rawBody = await readRequestBody(req, MAX_REQUEST_BYTES)
     const parsed = JSON.parse(rawBody)
     if (!isRecord(parsed)) return json(req, { error: 'Invalid request.' }, 400)
     body = parsed
-  } catch {
+  } catch (error) {
+    if (error instanceof PayloadTooLargeError) {
+      return json(req, { error: 'Progress payload is too large.' }, 413)
+    }
     return json(req, { error: 'Invalid request.' }, 400)
   }
 
