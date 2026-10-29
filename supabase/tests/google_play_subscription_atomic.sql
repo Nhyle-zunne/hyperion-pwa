@@ -177,7 +177,7 @@ BEGIN
     RAISE EXCEPTION 'Failed cross-account replacement left a partial purchase-link row';
   END IF;
   IF (SELECT status FROM public.google_play_purchase_links WHERE id = v_user_two_link) <> 'active' THEN
-    RAISE EXCEPTION 'Cross-account replacement modified the other user\'s link';
+    RAISE EXCEPTION 'Cross-account replacement modified the other account link';
   END IF;
 
   -- Duplicate track rows and malformed token hashes are rejected before writes.
