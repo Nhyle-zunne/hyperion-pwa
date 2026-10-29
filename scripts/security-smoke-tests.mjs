@@ -511,6 +511,10 @@ assert.ok(practiceStore.includes('Avoid resurrecting a History row after this se
 
 assert.ok(practiceStore.includes('await deleteSessionSnapshot(snapshot.sessionId).catch(() => undefined)'), 'A session snapshot is removed if its History metadata cannot be saved');
 assert.ok(practiceQuizScreen.includes('saved = await saveProgress()') && practiceQuizScreen.includes('Your session is still open') && practiceQuizScreen.includes('disabled={savingProgress}'), 'Save failure keeps the user in the session and prevents duplicate save requests');
+assert.ok(!practiceQuizScreen.includes('aria-label="Back">← Back'), 'The question screen has no redundant second Back button inside the question content');
+assert.ok(app.includes('<path d="M6.75 4.25A1.75 1.75') && app.includes('aria-pressed={bookmarked}'), 'The question header uses a clean accessible outline bookmark SVG');
+assert.ok(app.includes('viewBox="0 0 24 24" width="27" height="27" fill="currentColor"') && app.includes('aria-expanded={settingsOpen}'), 'The question header uses a clean accessible gear SVG for settings');
+assert.ok(!app.includes("'♧'") && !app.includes('>⚙</button>'), 'Emoji-like bookmark and gear glyphs are not used in the question header');
 assert.ok(vaultScreen.includes('const saved = await usePracticeStore.getState().saveProgress()') && vaultScreen.includes('Could not save this drill on the device'), 'Mistakes Vault drills do not navigate as though a failed save succeeded');
 assert.ok(!practiceStore.includes("localStorage.setItem('hyperion-saved-practice'") && practiceStore.includes('migrateLegacyLocalStorageSavedPractice') && practiceStore.includes('never load it directly'), 'Question-containing session snapshots are removed from new localStorage writes and legacy copies are migrated before restore');
 assert.ok(practiceStore.includes('The saved question snapshot is unavailable'), 'Resume fails clearly when no encrypted session snapshot is available instead of loading raw question text');
