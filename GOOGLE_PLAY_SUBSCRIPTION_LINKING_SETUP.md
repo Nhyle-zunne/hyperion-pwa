@@ -4,7 +4,7 @@
 
 The two Google Play migrations have been applied to the hosted Supabase project, and these Edge Functions are deployed: `link-google-play-subscription` (JWT verification enabled), `google-play-rtdn` (Google OIDC verification in the handler), and `reconcile-google-play-subscriptions` (private token verification in the handler). The purchase-link/entitlement tables are empty as of rollout verification. RLS is enabled, client roles cannot read raw purchase tokens or invoke the atomic entitlement RPC, and the reconciliation Vault flag is confirmed to be `false`.
 
-**The integration is not yet end-to-end ready.** This rollout did not configure or verify `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `GOOGLE_PLAY_PUBSUB_AUDIENCE`, or `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL`; these must be configured securely in Supabase Edge Function secrets. The Android CI Web OAuth client secret and its signing-certificate registration must also be verified before sign-in is expected to work in the test APK.
+**The integration is not yet end-to-end ready.** This rollout did not configure or verify `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `GOOGLE_PLAY_PUBSUB_AUDIENCE`, or `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL`; these must be configured securely in Supabase Edge Function secrets. The Android CI Web OAuth client ID and its signing-certificate registration must also be verified before sign-in is expected to work in the test APK.
 
 Do not describe Android Google Play purchases as automatically unlocking website/PWA access until those credentials are configured and real Play test-subscription acceptance tests pass.
 
