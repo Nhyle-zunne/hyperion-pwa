@@ -238,6 +238,7 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
     for (const id of existingIds) {
       if (typeof id === 'string' && id.startsWith(prefix)) {
         await Promise.all([packsStore.delete(id), metadataStore.delete(id)])
+        decryptedPackCache.delete(id)
       }
     }
   }
