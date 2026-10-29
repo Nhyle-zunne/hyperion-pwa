@@ -33,11 +33,20 @@ export function questionFingerprintPayload(question) {
   return JSON.stringify([question.questionText, canonicalOptions]);
 }
 
-/** @param {FingerprintableQuestion} question */
+// Saved sessions and downloaded packs repeatedly validate the same in-memory
+// question objects. Cache by object identity and canonical payload so the first
+// integrity check remains cryptographic, while repeated checks avoid re-hashing.
+const fingerprintCache = new WeakMap();
+
+ /** @param {FingerprintableQuestion} question */
 export async function fingerprintQuestion(question) {
   const canonical = questionFingerprintPayload(question);
   if (canonical === null) return null;
+  const cached = fingerprintCache.get(question);
+  if (cached && cached.canonical === canonical) return cached.hash;
   const payload = new TextEncoder().encode(canonical);
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', payload));
-  return Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  const hex = Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  fingerprintCache.set(question, { canonical, hash: hex });
+  return hex;
 }
