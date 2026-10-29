@@ -74,6 +74,7 @@ const [
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const questionFingerprintSource = await read('../src/lib/questionFingerprint.mjs');
 const offlinePwaConfig = await read('../vite.config.ts');
+const topLoadingIndicator = await read('../src/components/TopLoadingIndicator.tsx');
 const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.ts');
 const progressSyncSource = await read('../src/lib/progressSync.ts');
 const bookmarksStore = await read('../src/stores/bookmarksStore.ts');
@@ -633,6 +634,7 @@ assert.ok(fallbackBlock.indexOf('hasValidOfflineTrackLease(track)') >= 0 && fall
 assert.ok(questionBankClient.includes('new JavaRandom(2065 + Number(compId.slice(1)) * 31)') && questionBank.includes('javaShuffle(valid, 2065 + Number(comp) * 31)'), 'Locally retained Deck OIC-NW free samples use the same deterministic per-competence selection as the protected server bank');
 assert.ok(questionBankClient.includes("id: question.id.replace(/-\\d+$/") && questionBankClient.includes("String(index + 1).padStart(3, '0')"), 'Locally generated shuffled Deck OIC-NW free samples receive the same sequential question IDs as the protected server sample');
 assert.ok(offlinePwaConfig.includes('jpg,jpeg,webp,avif') && offlinePwaConfig.includes('google-fonts-webfonts'), 'The service worker precaches bundled image formats and caches webfont assets for offline screens');
+assert.ok(topLoadingIndicator.includes('src="/logo.png"') && !topLoadingIndicator.includes('/logo.png?'), 'The loading indicator uses the exact local image URL that the service worker precaches');
 assert.ok(app.includes('OFFLINE MODE') && app.includes('Only downloaded question packs and saved sessions are available'), 'All routes clearly explain what remains available without a connection');
 assert.ok(searchScreen.includes('Download the full question bank for this track before using Search offline') || questionBankClient.includes('Download the full question bank for this track before using Search offline'), 'Offline Search gives a clear download requirement instead of reporting a false zero-result search');
 assert.ok(flashcardsScreen.includes('Download the full question bank for this track before using flashcards offline') || questionBankClient.includes('Download the full question bank for this track before using flashcards offline'), 'Offline Flashcards explains when the full bank must be downloaded first');
