@@ -220,7 +220,17 @@ export async function getOfflinePackManifest(track: TrackId, freeOnly: boolean) 
 }
 
 export async function getOfflinePackStatus(track: TrackId, freeOnly: boolean) {
-  return getOfflinePackManifest(track, freeOnly)
+  try {
+    const db = await database()
+    const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
+    if (!manifest) return null
+    const stored = (await db.getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    const savedKey = await db.get('keys', 'device-key')
+    if (!savedKey?.key || !isOfflinePackSetComplete(manifest, stored)) return null
+    return manifest
+  } catch {
+    return null
+  }
 }
 
 export async function getOfflineQuestionPacks(track: TrackId, freeOnly: boolean) {
@@ -270,13 +280,21 @@ export async function getOfflineQuestionsByTrack(track: TrackId, freeOnly: boole
 }
 
 export async function getOfflineQuestionCounts(track: TrackId, freeOnly: boolean) {
-  const packs = await getOfflineQuestionPacks(track, freeOnly)
-  if (!packs) return null
-  return packs.map(pack => ({
-    competenceId: pack.competenceId,
-    part: pack.part,
-    count: pack.questions.length
-  }))
+  try {
+    const db = await database()
+    const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
+    if (!manifest) return null
+    const stored = (await db.getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    const savedKey = await db.get('keys', 'device-key')
+    if (!savedKey?.key || !isOfflinePackSetComplete(manifest, stored)) return null
+    return stored.map(pack => ({
+      competenceId: pack.competenceId,
+      part: pack.part,
+      count: pack.questionCount
+    }))
+  } catch {
+    return null
+  }
 }
 
 interface StoredOfflineEntitlements {
