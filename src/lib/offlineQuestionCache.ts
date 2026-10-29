@@ -369,16 +369,19 @@ export async function getOfflineQuestionPacks(track: TrackId, freeOnly: boolean)
     if (!isOfflinePackSetComplete(manifest, metadata)) return null
     const savedKey = await db.get('keys', 'device-key')
     if (!savedKey?.key) return null
-    const decrypted: OfflineQuestionPack[] = []
-    for (const meta of metadata) {
+    // Full-track modes need every group. Read/decrypt groups concurrently and
+    // reuse already decrypted entries, instead of serially waiting for each AES-GCM
+    // operation. Competence modes use the targeted reader below and decrypt one group.
+    return await Promise.all(metadata.map(async meta => {
       const pack = await db.get('packs', meta.id)
-      if (!pack) return null
+      if (!pack) throw new Error('An offline question group is missing.')
       const decoded = await getCachedDecryptedPack(savedKey.key, pack)
-      if (decoded.questions.length !== meta.questionCount) return null
-      if (track === 'GMDSS_GOC' && freeOnly && decoded.questions.some(question => !isGmdssFreeSampleQuestion(question))) return null
-      decrypted.push(decoded)
-    }
-    return decrypted
+      if (decoded.questions.length !== meta.questionCount) throw new Error('Offline question count mismatch.')
+      if (track === 'GMDSS_GOC' && freeOnly && decoded.questions.some(question => !isGmdssFreeSampleQuestion(question))) {
+        throw new Error('Offline free question pack contains items outside the official sample.')
+      }
+      return decoded
+    }))
   } catch {
     // A missing device key or damaged/incomplete ciphertext requires a fresh online download.
     return null
