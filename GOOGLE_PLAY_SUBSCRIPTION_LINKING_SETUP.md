@@ -1,10 +1,12 @@
 # Google Play subscription linking: release checklist
 
-## Current release state
+## Current test rollout state
 
-Google Play purchase linking and the bounded periodic reconciliation worker are implemented in the draft Android/PWA branches, but the feature is **not enabled in the production Supabase project**. The production database does not yet have the `google_play_purchase_links` / `google_play_entitlements` migration, and production does not have the `link-google-play-subscription`, `google-play-rtdn`, or `reconcile-google-play-subscriptions` Edge Functions deployed. The Android client and existing PWA/checkout/admin handlers treat only the confirmed missing optional table as absent; authorization, database, and other server errors still fail closed.
+The two Google Play migrations have been applied to the hosted Supabase project, and these Edge Functions are deployed: `link-google-play-subscription` (JWT verification enabled), `google-play-rtdn` (Google OIDC verification in the handler), and `reconcile-google-play-subscriptions` (private token verification in the handler). The purchase-link/entitlement tables are empty as of rollout verification. RLS is enabled, client roles cannot read raw purchase tokens or invoke the atomic entitlement RPC, and the reconciliation Vault flag is confirmed to be `false`.
 
-Do not describe Android Google Play purchases as automatically unlocking website/PWA access until the server-side migration, Edge Functions, Google service-account secret, and acceptance tests are complete.
+**The integration is not yet end-to-end ready.** This rollout did not configure or verify `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `GOOGLE_PLAY_PUBSUB_AUDIENCE`, or `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL`; these must be configured securely in Supabase Edge Function secrets. The Android CI Web OAuth client secret and its signing-certificate registration must also be verified before sign-in is expected to work in the test APK.
+
+Do not describe Android Google Play purchases as automatically unlocking website/PWA access until those credentials are configured and real Play test-subscription acceptance tests pass.
 
 ## No-additional-cost validation (preferred)
 
@@ -59,15 +61,15 @@ Official reference: [Supabase local development is free and does not consume hos
 3. Set `HYPERION_GOOGLE_WEB_CLIENT_ID` as a Gradle property or CI secret. It is a client ID, not a client secret.
 4. Sign-in remains optional. Existing Google Play Billing access and the existing device-bound/offline license mechanisms must keep working when a user does not sign in.
 
-## Backend rollout (requires a separate release decision)
+## Remaining setup and test rollout
 
-1. Complete the no-additional-cost local validation above before considering any hosted changes.
-2. Apply `supabase/migrations/20261029164000_add_google_play_purchase_links.sql` and `supabase/migrations/20261030180000_schedule_google_play_reconciliation.sql` only after confirming the migration and scheduler checks pass against the local Supabase stack.
-3. Deploy `link-google-play-subscription` with JWT verification enabled, and `google-play-rtdn` / `reconcile-google-play-subscriptions` with Supabase JWT verification disabled. RTDN validates Google's OIDC token; the reconciliation worker validates a private Vault-backed token through a service-role-only RPC. Set `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `GOOGLE_PLAY_PUBSUB_AUDIENCE`, and `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL` in the relevant Edge Function environment.
-4. Verify the database has the expected tables, unique purchase-token hash, user-scoped entitlement RLS, service-role-only raw-token access, inactive/product-change revocation trigger, and the reconciliation attempt timestamp/index.
-5. The scheduler migration creates the private cron token and a 15-minute job, but also creates the `hyperion_google_play_reconciliation_enabled` Vault flag as `false`. The project URL Vault secret `hyperion_supabase_project_url` must be configured before the job can send requests. If the flag is false or the URL secret is missing/invalid, the job is a no-op. **Keep it disabled** until real Play test purchases, cancellation/expiry behavior, RTDN delivery, and periodic recovery have been accepted.
-6. Test the full acceptance checklist below. Keep both PRs in draft until it passes.
-7. Do not create a hosted Supabase branch, change production secrets, deploy functions, apply a production migration, enable the cron flag, or switch a PR out of draft without a separate explicit decision from the owner.
+1. The no-additional-cost local Supabase-stack validation has passed in GitHub Actions, including full migration replay, the Google Play atomic entitlement regression tests, scheduler/security assertions, and database lint.
+2. The purchase-link and scheduler migrations are already applied to the hosted Supabase project. The three Edge Functions listed above are deployed.
+3. In Supabase Dashboard → Edge Functions → Secrets, configure `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` with a service-account JSON authorized for the Android Publisher API in Play Console. Never commit the JSON/private key or expose it to the Android/PWA client.
+4. Configure `GOOGLE_PLAY_PUBSUB_AUDIENCE` and `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL` to match the Google Pub/Sub push subscription's OIDC settings before testing RTDN. The service-account secret is also required for the linker and reconciler to read subscription state from Google.
+5. Verify the Android Google Web OAuth client ID and register the test APK's signing certificate SHA-1 in the Android OAuth client. Set GitHub Actions secret `HYPERION_GOOGLE_WEB_CLIENT_ID` to the Web OAuth client ID (not its client secret).
+6. The scheduler migration creates the private cron token and a 15-minute job, but `hyperion_google_play_reconciliation_enabled` remains `false`. Keep it disabled until real Play test purchases, cancellation/expiry, RTDN delivery, and periodic recovery have been accepted. The scheduler's project URL secret must also be correct before enabling it.
+7. Keep the PRs in draft until the acceptance checklist passes. Do not enable the reconciliation flag based only on compile or schema tests.
 
 ## Acceptance checklist
 
@@ -86,11 +88,11 @@ Official reference: [Supabase local development is free and does not consume hos
 
 ## Subscription lifecycle release gate
 
-The feature branch includes a `google-play-rtdn` handler that verifies the Google Pub/Sub OIDC bearer token (signature, issuer, configured audience and verified service-account email), validates the package name, then re-reads subscription state from Google's Android Publisher API. It ignores unknown tokens rather than creating account links. The signed-in Android linker, RTDN handler, and new periodic worker share the same database-side atomic entitlement reconciliation function. The worker processes up to 20 purchase links per invocation in oldest-attempt-first order, skips replaced predecessors, and records attempts so one bad token does not permanently starve later records.
+The deployed `google-play-rtdn` handler that verifies the Google Pub/Sub OIDC bearer token (signature, issuer, configured audience and verified service-account email), validates the package name, then re-reads subscription state from Google's Android Publisher API. It ignores unknown tokens rather than creating account links. The signed-in Android linker, RTDN handler, and new periodic worker share the same database-side atomic entitlement reconciliation function. The worker processes up to 20 purchase links per invocation in oldest-attempt-first order, skips replaced predecessors, and records attempts so one bad token does not permanently starve later records.
 
-**RTDN and periodic reconciliation are not configured or deployed in production.** The schedule is opt-in: the migration creates the cron entry and Vault-backed token but leaves `hyperion_google_play_reconciliation_enabled=false`; the cron sends no HTTP request until an owner explicitly enables it. Before presenting cross-platform linking as automatic and production-ready, configure a Pub/Sub push subscription with OIDC audience and service account matching the RTDN secrets, set the Edge Function service-account secret, test Play purchases and cancellation/expiry behavior, verify RTDN retries and revocations, and only then approve the periodic job. Neither RTDN message payloads nor client claims may be trusted on their own to grant access.
+**RTDN delivery and periodic reconciliation are not yet fully configured for end-to-end use.** The functions and opt-in schedule are deployed, but: the migration creates the cron entry and Vault-backed token but leaves `hyperion_google_play_reconciliation_enabled=false`; the cron sends no HTTP request until an owner explicitly enables it. Before presenting cross-platform linking as automatic and production-ready, configure a Pub/Sub push subscription with OIDC audience and service account matching the RTDN secrets, set the Edge Function service-account secret, test Play purchases and cancellation/expiry behavior, verify RTDN retries and revocations, and only then approve the periodic job. Neither RTDN message payloads nor client claims may be trusted on their own to grant access.
 
-Until these configuration and lifecycle tests pass, do not promise immediate synchronization of cancellation/refund/revocation events between Google Play and the website.
+Until these credentials, RTDN delivery settings, and lifecycle tests pass, do not promise immediate synchronization of cancellation/refund/revocation events between Google Play and the website.
 
 
 ## Reconciliation opt-in checklist
