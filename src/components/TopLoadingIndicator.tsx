@@ -55,7 +55,7 @@ export default function TopLoadingIndicator() {
         <span className="hyperion-top-loader__pulse hyperion-top-loader__pulse--one" />
         <span className="hyperion-top-loader__pulse hyperion-top-loader__pulse--two" />
         <span className="hyperion-top-loader__pulse hyperion-top-loader__pulse--three" />
-        <img className="hyperion-top-loader__logo" src="/logo.png?v=2" alt="" />
+        <img className="hyperion-top-loader__logo" src="/logo.png" alt="" />
       </span>
       <span className="hyperion-top-loader__sr-only">{label}</span>
     </div>
