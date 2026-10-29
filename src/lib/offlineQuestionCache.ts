@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Question, TrackId } from '../types/question'
 import { verifyOfflineEntitlementToken } from './offlineEntitlementCrypto.mjs'
+import { isOfflinePackSetComplete } from './offlinePackIntegrity.mjs'
 
 export interface OfflineQuestionPack {
   id: string
@@ -20,6 +21,18 @@ export interface OfflinePackManifest {
   groupCount: number
   savedAt: number
   complete: boolean
+}
+
+export interface OfflineQuestionPackGroup {
+  competenceId: string
+  part: number | null
+  questions: Question[]
+}
+
+export interface OfflineQuestionPackSetUpdate {
+  track: TrackId
+  freeOnly: boolean
+  groups: OfflineQuestionPackGroup[]
 }
 
 interface StoredOfflineQuestionPack {
@@ -101,6 +114,83 @@ export async function saveOfflineQuestionPack(pack: Omit<OfflineQuestionPack, 'i
   await db.put('packs', record)
 }
 
+/**
+ * Encrypt all replacement packs before touching the current complete pack, then
+ * switch pack records and manifests in one IndexedDB transaction. A cancelled
+ * download or quota error therefore leaves the previous complete pack usable.
+ */
+export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSetUpdate[]) {
+  if (!updates.length) throw new Error('No offline question packs were supplied.')
+
+  const targetSets = new Set<string>()
+  for (const update of updates) {
+    const target = offlineManifestId(update.track, update.freeOnly)
+    if (targetSets.has(target)) throw new Error('An offline pack set was supplied more than once.')
+    targetSets.add(target)
+    if (!update.groups.length || update.groups.some(group => !group.questions.length)) {
+      throw new Error('An offline pack set is incomplete.')
+    }
+    const groupIds = update.groups.map(group => offlinePackId(update.track, group.competenceId, group.part, update.freeOnly))
+    if (new Set(groupIds).size !== groupIds.length) throw new Error('An offline pack set contains duplicate groups.')
+  }
+
+  const db = await database()
+  const key = await deviceStorageKey(db)
+  const records: StoredOfflineQuestionPack[] = []
+  const manifests: OfflinePackManifest[] = []
+
+  // Run cryptography before opening the write transaction so IDB cannot auto-commit
+  // while a crypto operation is pending.
+  for (const update of updates) {
+    let questionCount = 0
+    for (const group of update.groups) {
+      if (group.questions.some(question => question.track !== update.track || question.competenceId !== group.competenceId)) {
+        throw new Error('Question pack metadata does not match its questions.')
+      }
+      const id = offlinePackId(update.track, group.competenceId, group.part, update.freeOnly)
+      const iv = crypto.getRandomValues(new Uint8Array(12))
+      const plaintext = new TextEncoder().encode(JSON.stringify(group.questions))
+      const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
+      records.push({
+        id,
+        track: update.track,
+        competenceId: group.competenceId,
+        part: group.part,
+        freeOnly: update.freeOnly,
+        questionCount: group.questions.length,
+        savedAt: Date.now(),
+        iv,
+        ciphertext: new Uint8Array(encrypted)
+      })
+      questionCount += group.questions.length
+    }
+    manifests.push({
+      id: offlineManifestId(update.track, update.freeOnly),
+      track: update.track,
+      freeOnly: update.freeOnly,
+      questionCount,
+      groupCount: update.groups.length,
+      savedAt: Date.now(),
+      complete: true
+    })
+  }
+
+  const tx = db.transaction(['packs', 'manifests'], 'readwrite')
+  const packsStore = tx.objectStore('packs')
+  const existing = await packsStore.getAll()
+  for (const update of updates) {
+    for (const pack of existing) {
+      if (pack.track === update.track && pack.freeOnly === update.freeOnly) {
+        await packsStore.delete(pack.id)
+      }
+    }
+  }
+  for (const record of records) await packsStore.put(record)
+  const manifestsStore = tx.objectStore('manifests')
+  for (const manifest of manifests) await manifestsStore.put(manifest)
+  await tx.done
+}
+
 async function decryptOfflineQuestionPack(
   key: CryptoKey,
   pack: StoredOfflineQuestionPack
@@ -138,15 +228,20 @@ export async function getOfflineQuestionPacks(track: TrackId, freeOnly: boolean)
   try {
     const db = await database()
     const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
-    if (!manifest?.complete) return null
+    if (!manifest) return null
     const stored = (await db.getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
+    if (!isOfflinePackSetComplete(manifest, stored)) return null
     const savedKey = await db.get('keys', 'device-key')
     if (!savedKey?.key) return null
     const decrypted: OfflineQuestionPack[] = []
-    for (const pack of stored) decrypted.push(await decryptOfflineQuestionPack(savedKey.key, pack))
+    for (const pack of stored) {
+      const decoded = await decryptOfflineQuestionPack(savedKey.key, pack)
+      if (decoded.questions.length !== pack.questionCount) return null
+      decrypted.push(decoded)
+    }
     return decrypted
   } catch {
-    // A missing device key or damaged ciphertext requires a fresh online download.
+    // A missing device key or damaged/incomplete ciphertext requires a fresh online download.
     return null
   }
 }
@@ -176,22 +271,13 @@ export async function getOfflineQuestionsByTrack(track: TrackId, freeOnly: boole
 }
 
 export async function getOfflineQuestionCounts(track: TrackId, freeOnly: boolean) {
-  const manifest = await getOfflinePackManifest(track, freeOnly)
-  if (!manifest?.complete) return null
-  try {
-    const db = await database()
-    const savedKey = await db.get('keys', 'device-key')
-    if (!savedKey?.key) return null
-    const stored = (await db.getAll('packs')).filter(pack => pack.track === track && pack.freeOnly === freeOnly)
-    if (!stored.length || stored.reduce((sum, pack) => sum + pack.questionCount, 0) !== manifest.questionCount) return null
-    return stored.map(pack => ({
-      competenceId: pack.competenceId,
-      part: pack.part,
-      count: pack.questionCount
-    }))
-  } catch {
-    return null
-  }
+  const packs = await getOfflineQuestionPacks(track, freeOnly)
+  if (!packs) return null
+  return packs.map(pack => ({
+    competenceId: pack.competenceId,
+    part: pack.part,
+    count: pack.questions.length
+  }))
 }
 
 interface StoredOfflineEntitlements {
