@@ -244,19 +244,17 @@ async function offlineEntitlementExpiry(track: TrackId): Promise<number | null> 
 }
 
 /**
- * Offline paid-session recovery is gated by two independent checks:
- * (1) a server-signed, unexpired lease for this exact account and track, and
- * (2) a complete, decryptable local full-bank pack for that track.
+ * A saved session already contains its encrypted local question snapshot. To resume
+ * that snapshot offline, require the server-signed, unexpired lease for the same
+ * account and track, but do not require an identical full-bank cache or identical
+ * fingerprints from the current question-bank version.
  *
- * Do not require every historical session question's fingerprint to match the
- * newest pack. A legitimate saved session can outlive a question-bank refresh,
- * parser/ID-prefix change, or an older mobile bundle.
+ * Starting NEW offline sessions remains stricter: getCachedCompetenceRange and the
+ * question-count path still require an integrity-checked downloaded pack.
  */
-async function hasLicensedOfflineBank(track: TrackId): Promise<boolean> {
+async function hasValidOfflineTrackLease(track: TrackId): Promise<boolean> {
   const expiry = await offlineEntitlementExpiry(track)
-  if (!expiry || expiry <= Date.now()) return false
-  const cachedFullBank = await getOfflineQuestionsByTrack(track, false)
-  return Array.isArray(cachedFullBank) && cachedFullBank.length > 0
+  return typeof expiry === 'number' && Number.isFinite(expiry) && expiry > Date.now()
 }
 
 async function mayUseOfflineTrack(track: TrackId, freeOnly: boolean): Promise<boolean> {
@@ -741,7 +739,7 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     // Paid access is based on the signed offline lease and the integrity-checked
     // full pack. Saved question fingerprints may be from an older bank version.
-    if (await hasLicensedOfflineBank(track)) return 'licensed'
+    if (await hasValidOfflineTrackLease(track)) return 'licensed'
 
     // Non-paying users are restricted to the exact downloaded official free sample.
     await ensureOfflineFreeSamplePack(track)
@@ -762,7 +760,7 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   try {
     // Safari/iOS and installed PWAs can report online while the API is unreachable.
     // Prefer already verified local packs after a genuine network/server failure.
-    if (await hasLicensedOfflineBank(track)) return 'licensed'
+    if (await hasValidOfflineTrackLease(track)) return 'licensed'
     await ensureOfflineFreeSamplePack(track)
     if (await matchesCachedPack(true)) return 'free-sample'
 
