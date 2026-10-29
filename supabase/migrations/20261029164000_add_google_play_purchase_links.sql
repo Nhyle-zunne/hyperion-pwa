@@ -45,3 +45,32 @@ CREATE POLICY "Users read own Google Play entitlements" ON public.google_play_en
 CREATE INDEX IF NOT EXISTS google_play_entitlements_user_track_expiry_idx
   ON public.google_play_entitlements (user_id, track_id, expires_at DESC)
   WHERE status = 'active';
+
+-- Revoking an entire subscription must not depend on a series of separate
+-- Edge Function REST writes succeeding one at a time. When the verified link
+-- becomes inactive (or its expiry is moved into the past), revoke all existing
+-- track grants in the same database transaction as the link-state update.
+CREATE OR REPLACE FUNCTION public.revoke_google_play_entitlements_on_inactive_link()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.status <> 'active' OR NEW.expires_at <= pg_catalog.now() THEN
+    UPDATE public.google_play_entitlements
+       SET status = 'revoked',
+           updated_at = pg_catalog.now()
+     WHERE purchase_link_id = NEW.id
+       AND status <> 'revoked';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.revoke_google_play_entitlements_on_inactive_link() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS google_play_link_inactive_revoke_entitlements ON public.google_play_purchase_links;
+CREATE TRIGGER google_play_link_inactive_revoke_entitlements
+AFTER UPDATE OF status, expires_at ON public.google_play_purchase_links
+FOR EACH ROW
+EXECUTE FUNCTION public.revoke_google_play_entitlements_on_inactive_link();
