@@ -663,6 +663,18 @@ assert.ok(offlineUpdateButton.includes("'UPDATE AVAILABLE · RECONNECT'") && off
 
 
 assert.ok(
+  checkout.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
+    checkout.includes("if (website.error || (play.error && !playTableMissing))") &&
+    checkout.includes("!playTableMissing && play.data?.status === 'active'"),
+  'PayMongo checkout remains usable before the Play migration while still rejecting other license-query errors'
+);
+assert.ok(
+  manualPayment.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
+    manualPayment.includes("activePlayResult.error && !playTableMissing") &&
+    manualPayment.includes("playTableMissing ? null : activePlayResult.data"),
+  'Manual-payment submissions remain usable before the Play migration while still rejecting other license-query errors'
+);
+assert.ok(
   licenseStore.includes("candidate.code !== 'PGRST205'") &&
     licenseStore.includes("message.includes('google_play_entitlements')") &&
     licenseStore.includes("message.includes('schema cache')"),
