@@ -7,6 +7,9 @@ export function isOfflinePackSetComplete(manifest, packs) {
   if (!Number.isSafeInteger(manifest.questionCount) || manifest.questionCount < 1) return false;
   if (!Number.isSafeInteger(manifest.groupCount) || manifest.groupCount < 1) return false;
   if (packs.length !== manifest.groupCount) return false;
+  // Deck OIC-NW's local free-sample selection changed to match the protected server.
+  // Old unversioned packs cannot be trusted as the current free-reviewer sample.
+  if (manifest.track === 'DECK_OIC_NW' && manifest.freeOnly === true && manifest.sampleVersion !== 2) return false;
 
   let count = 0;
   const seen = new Set();
