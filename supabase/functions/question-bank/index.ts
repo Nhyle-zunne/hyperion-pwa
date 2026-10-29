@@ -154,13 +154,23 @@ function isAdminEmail(email: string | undefined) {
   return !!email && configured.includes(email.toLowerCase());
 }
 async function loadEntitlement(admin: any, userId: string, track: string) {
-  const result = await admin.from("entitlements")
-    .select("user_id,track_id,status,expires_at")
-    .eq("user_id", userId)
-    .eq("track_id", track)
-    .maybeSingle();
-  if (result.error) throw new Error("Could not verify the license.");
-  return result.data;
+  const now = new Date().toISOString();
+  const [website, play] = await Promise.all([
+    admin.from("entitlements").select("user_id,track_id,status,expires_at")
+      .eq("user_id", userId).eq("track_id", track).maybeSingle(),
+    admin.from("google_play_entitlements").select("user_id,track_id,status,expires_at")
+      .eq("user_id", userId).eq("track_id", track).eq("status", "active").gt("expires_at", now)
+      .order("expires_at", { ascending: false }).limit(1).maybeSingle()
+  ]);
+  if (website.error || play.error) throw new Error("Could not verify the license.");
+  const candidates = [website.data, play.data].filter((row: any) =>
+    row && row.user_id === userId && row.track_id === track && row.status === "active" &&
+    typeof row.expires_at === "string" && Date.parse(row.expires_at) > Date.now()
+  );
+  if (!candidates.length) return null;
+  return candidates.reduce((latest: any, row: any) =>
+    Date.parse(row.expires_at) > Date.parse(latest.expires_at) ? row : latest
+  );
 }
 async function migrationState(admin: any) {
   const result = await admin.from("question_bank_migration_state").select("status,asset_count,error_summary,updated_at").eq("id", 1).single();
@@ -480,13 +490,14 @@ async function issueOfflineEntitlement(admin: any, user: any, isAdmin: boolean) 
     const offlineAdminExpiry = now + 7 * 24 * 60 * 60 * 1000;
     for (const track of OFFLINE_TRACK_IDS) tracks[track] = offlineAdminExpiry;
   } else {
-    const entitlements = await admin.from("entitlements")
-      .select("track_id,expires_at")
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .gt("expires_at", new Date(now).toISOString());
-    if (entitlements.error) throw new Error("Could not verify current offline licenses.");
-    for (const row of entitlements.data ?? []) {
+    const [website, play] = await Promise.all([
+      admin.from("entitlements").select("track_id,expires_at")
+        .eq("user_id", user.id).eq("status", "active").gt("expires_at", new Date(now).toISOString()),
+      admin.from("google_play_entitlements").select("track_id,expires_at")
+        .eq("user_id", user.id).eq("status", "active").gt("expires_at", new Date(now).toISOString())
+    ]);
+    if (website.error || play.error) throw new Error("Could not verify current offline licenses.");
+    for (const row of [...(website.data ?? []), ...(play.data ?? [])]) {
       if (!OFFLINE_TRACK_IDS.includes(row.track_id)) continue;
       const expiry = Date.parse(row.expires_at);
       if (Number.isFinite(expiry) && expiry > now) {

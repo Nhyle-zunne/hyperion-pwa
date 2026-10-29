@@ -36,3 +36,6 @@ verify_jwt = false
 
 [functions.learning-progress]
 verify_jwt = true
+
+[functions.link-google-play-subscription]
+verify_jwt = true

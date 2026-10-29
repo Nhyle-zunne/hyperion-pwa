@@ -147,12 +147,19 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('entitlements')
-        .select('track_id, expires_at')
-        .eq('user_id', session.user.id)
-        .eq('status', 'active')
-        .gt('expires_at', new Date().toISOString());
+      const [websiteResult, playResult] = await Promise.all([
+        supabase.from('entitlements')
+          .select('track_id, expires_at')
+          .eq('user_id', session.user.id)
+          .eq('status', 'active')
+          .gt('expires_at', new Date().toISOString()),
+        supabase.from('google_play_entitlements')
+          .select('track_id, expires_at')
+          .eq('user_id', session.user.id)
+          .eq('status', 'active')
+          .gt('expires_at', new Date().toISOString())
+      ]);
+      const error = websiteResult.error || playResult.error;
       if (error) {
         // Fail closed for 4xx authorization/client errors. Only a network failure or
         // server outage may use a still-valid signed lease cached for this same account.
@@ -172,7 +179,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
         set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
         return;
       }
-      const rows = data ?? [];
+      const rows = [...(websiteResult.data ?? []), ...(playResult.data ?? [])];
       const ids = Array.from(new Set(rows.map((row) => row.track_id as string)));
 
       // Replace any old signed lease with a fresh server-signed version of the current
