@@ -101,7 +101,23 @@ Deno.serve(async req => {
         .range(offset, offset + 999)
       if (result.error) return json(req, { error: 'Could not load current license statuses.' }, 500)
       const rows = result.data || []
-      entitlements.push(...rows)
+      entitlements.push(...rows.map((row: any) => ({ ...row, source: 'website' })))
+      if (rows.length < 1000) break
+    }
+    for (let offset = 0; ; offset += 1000) {
+      const result = await admin.from('google_play_entitlements')
+        .select('id,user_id,product_code,track_id,status,granted_at,expires_at,updated_at')
+        .order('updated_at', { ascending: false })
+        .range(offset, offset + 999)
+      if (result.error) return json(req, { error: 'Could not load Google Play license statuses.' }, 500)
+      const rows = result.data || []
+      entitlements.push(...rows.map((row: any) => ({
+        ...row,
+        order_id: null,
+        license_term: null,
+        renewed_at: row.updated_at,
+        source: 'google_play'
+      })))
       if (rows.length < 1000) break
     }
 
@@ -142,7 +158,22 @@ Deno.serve(async req => {
       if (!byUser.has(row.user_id)) byUser.set(row.user_id, new Map())
       const licenses = byUser.get(row.user_id)!
       const previous = licenses.get(row.product_code)
-      if (!previous || new Date(row.granted_at).getTime() > new Date(previous.granted_at).getTime()) licenses.set(row.product_code, row)
+      if (!previous) {
+        licenses.set(row.product_code, row)
+        continue
+      }
+      const previousActive = effectiveStatus(previous, now) === 'active'
+      const rowActive = effectiveStatus(row, now) === 'active'
+      const allSources = new Set<string>([
+        ...String(previous.source || 'website').split('+'),
+        ...String(row.source || 'website').split('+')
+      ])
+      if ((rowActive && !previousActive) ||
+          (rowActive === previousActive && Date.parse(row.expires_at || '') > Date.parse(previous.expires_at || ''))) {
+        licenses.set(row.product_code, { ...row, source: Array.from(allSources).sort().join('+') })
+      } else {
+        licenses.set(row.product_code, { ...previous, source: Array.from(allSources).sort().join('+') })
+      }
     }
     const now = Date.now()
     const shapedUsers = users.map(account => {
@@ -156,7 +187,8 @@ Deno.serve(async req => {
         return [product.code, {
           product_code: row.product_code, track_id: row.track_id, exists: true,
           status: effectiveStatus(row, now), license_term: row.license_term,
-          granted_at: row.granted_at, expires_at: row.expires_at, order_id: row.order_id
+          granted_at: row.granted_at, expires_at: row.expires_at, order_id: row.order_id,
+          source: row.source || 'website'
         }]
       }))
 
@@ -246,6 +278,11 @@ Deno.serve(async req => {
   const nowIso = now.toISOString()
 
   if (body.action === 'revoke') {
+    const { data: activePlay, error: playError } = await admin.from('google_play_entitlements')
+      .select('id,expires_at').eq('user_id', body.userId).eq('product_code', product.code)
+      .eq('status', 'active').gt('expires_at', nowIso).limit(1).maybeSingle()
+    if (playError) return json(req, { error: 'Could not verify Google Play subscription state.' }, 500)
+    if (activePlay) return json(req, { error: 'This track has an active Google Play subscription. Cancel or revoke it through Google Play first; access remains active while Google Play confirms the subscription is entitled.' }, 409)
     if (!existing) return json(req, { error: 'This user has no license record for the selected track.' }, 404)
     if (existing.status === 'revoked') return json(req, { ok: true, alreadyRevoked: true, status: 'revoked' })
     const { error: updateError } = await admin.from('entitlements').update({ status: 'revoked' }).eq('id', existing.id)
