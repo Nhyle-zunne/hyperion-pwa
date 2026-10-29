@@ -612,10 +612,10 @@ assert.ok(offlineQuestionCache.includes('saveOfflineQuestionPackSets') && offlin
 assert.ok(questionBankClient.includes('await saveOfflineQuestionPackSets(updates)') && questionBankClient.includes('Keep any existing complete pack usable'), 'Failed offline downloads preserve the last complete question pack until an atomic replacement is ready');
 assert.ok(questionBankClient.includes('export async function ensureOfflineFreeSamplePack') && questionBankClient.includes('const fullBank = await getOfflineQuestionsByTrack(track, false)') && questionBankClient.includes('freeSample(fullBank, track)'), 'An old Deck OIC offline free sample is repaired only from the complete cached bank and the current server-matched sampler');
 assert.ok(questionBankClient.includes('async function hasValidOfflineTrackLease(track: TrackId): Promise<boolean>') && questionBankClient.includes('const expiry = await offlineEntitlementExpiry(track)') && questionBankClient.includes('expiry > Date.now()'), 'Saved paid-session recovery requires an unexpired server-signed lease for the same user and track');
-const offlineAuthStart = questionBankClient.indexOf("if (typeof navigator !== 'undefined' && navigator.onLine === false)", questionBankClient.indexOf('export async function authorizeQuestionSetAccess'));
-const offlineAuthEnd = questionBankClient.indexOf('\n  if (supabase)', offlineAuthStart);
-const offlineAuthBlock = questionBankClient.slice(offlineAuthStart, offlineAuthEnd);
 const accessQuestionSetStart = questionBankClient.indexOf('export async function authorizeQuestionSetAccess');
+const offlineAuthStart = questionBankClient.indexOf('if (offline) {', accessQuestionSetStart);
+const offlineAuthEnd = questionBankClient.indexOf('\n\n  if (supabase)', offlineAuthStart);
+const offlineAuthBlock = questionBankClient.slice(offlineAuthStart, offlineAuthEnd);
 const paidLeaseFastPath = questionBankClient.indexOf('if (offline && await hasValidOfflineTrackLease(track)) return \'licensed\'', accessQuestionSetStart);
 const fingerprintWorkStart = questionBankClient.indexOf('const fingerprintResults = await Promise.all(questions.map(fingerprintQuestion))', accessQuestionSetStart);
 assert.ok(paidLeaseFastPath > accessQuestionSetStart && fingerprintWorkStart > paidLeaseFastPath && offlineAuthBlock.includes('matchesCachedPack(true)'), 'Paid offline sessions check the signed lease before expensive hashing, while unlicensed sessions are still matched to the official free sample');
