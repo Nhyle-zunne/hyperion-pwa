@@ -101,11 +101,9 @@ Deno.serve(async (req) => {
     return new Response('Stale webhook', { status: 401 })
   }
 
-  // Authenticate the untouched body before parsing any untrusted payload fields.
-  // PayMongo's setup guide documents HMAC(timestamp + "." + raw body), while
-  // another official best-practices example describes raw-body HMAC. Evaluate
-  // both for diagnostics, but continue accepting only the timestamp-bound form
-  // until the actual endpoint behavior is confirmed.
+  // PayMongo's webhook setup documentation specifies HMAC-SHA256 over
+  // timestamp + "." + the untouched raw body. Alternate calculations below are
+  // diagnostic only; they must never be accepted as valid signatures.
   const isLive = expectedMode === 'true'
   const suppliedSignature = isLive ? parts.li : parts.te
   const expectedSignature = await hmacHex(webhookSecret, `${timestamp}.${raw}`)
@@ -296,6 +294,7 @@ Deno.serve(async (req) => {
     order.product_code !== sessionAttrs?.metadata?.product_code ||
     order.user_id !== sessionAttrs?.metadata?.user_id ||
     order.id !== sessionAttrs?.metadata?.order_id ||
+    (typeof sessionAttrs?.livemode === 'boolean' && sessionAttrs.livemode !== isLive) ||
     (sessionAttrs?.metadata?.license_term && sessionAttrs.metadata.license_term !== (order.license_term || 'year'))
   ) return new Response('Order metadata mismatch', { status: 400 })
 
