@@ -840,6 +840,9 @@ async function downloadOfflinePackInternal(
   const writtenGroups: { competenceId: string; part: number | null; questions: Question[] }[] = []
 
   for (const group of counts) {
+    // Some banks can include a registered competence with no published questions.
+    // Do not create empty pack records for those entries.
+    if (group.count <= 0) continue
     const questions: Question[] = []
     for (let offset = 0; offset < group.count; offset += 200) {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connection lost. Reconnect and retry the offline download.')
