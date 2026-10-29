@@ -192,6 +192,22 @@ Deno.serve(async (req: Request) => {
       return json(req, { error: 'This Google Play subscription is already linked to another Hyperion account. Contact support if you believe this is incorrect.' }, 409)
     }
 
+    // Validate the verified replacement relationship before writing anything. A token
+    // replacement must never let one Hyperion account revoke another account's grant.
+    let priorPurchaseLink: { id: string; user_id: string } | null = null
+    if (google.linkedPurchaseToken) {
+      const priorHash = await sha256Hex(google.linkedPurchaseToken)
+      const { data: prior, error: priorLookupError } = await admin.from('google_play_purchase_links')
+        .select('id,user_id')
+        .eq('purchase_token_sha256', priorHash)
+        .maybeSingle()
+      if (priorLookupError) return json(req, { error: 'Could not validate the previous subscription link.' }, 500)
+      if (prior && prior.user_id !== user.id) {
+        return json(req, { error: 'This replacement subscription is associated with a different Hyperion account. Contact support to resolve the account link.' }, 409)
+      }
+      priorPurchaseLink = prior
+    }
+
     let linkId: string
     const nowIso = new Date(now).toISOString()
     const linkRecord = {
@@ -226,21 +242,18 @@ Deno.serve(async (req: Request) => {
     }
 
     // Replacements must not leave the previous token's entitlement active.
-    if (google.linkedPurchaseToken) {
-      const priorHash = await sha256Hex(google.linkedPurchaseToken)
-      const { data: prior } = await admin.from('google_play_purchase_links')
-        .select('id')
-        .eq('purchase_token_sha256', priorHash)
-        .maybeSingle()
-      if (prior?.id && prior.id !== linkId) {
-        await admin.from('google_play_purchase_links').update({
-          status: 'inactive',
-          updated_at: nowIso,
-          last_verified_at: nowIso
-        }).eq('id', prior.id)
-        await admin.from('google_play_entitlements').update({ status: 'revoked', updated_at: nowIso })
-          .eq('purchase_link_id', prior.id)
-      }
+    // Ownership was checked above before this request wrote any records.
+    if (priorPurchaseLink?.id && priorPurchaseLink.id !== linkId) {
+      const { error: priorUpdateError } = await admin.from('google_play_purchase_links').update({
+        status: 'inactive',
+        updated_at: nowIso,
+        last_verified_at: nowIso
+      }).eq('id', priorPurchaseLink.id).eq('user_id', user.id)
+      if (priorUpdateError) return json(req, { error: 'Could not retire the previous subscription token.' }, 500)
+      const { error: priorEntitlementError } = await admin.from('google_play_entitlements')
+        .update({ status: 'revoked', updated_at: nowIso })
+        .eq('purchase_link_id', priorPurchaseLink.id).eq('user_id', user.id)
+      if (priorEntitlementError) return json(req, { error: 'Could not retire the previous subscription entitlements.' }, 500)
     }
 
     for (const item of recognizedItems) {
@@ -255,6 +268,26 @@ Deno.serve(async (req: Request) => {
           new Date(item.expiry).toISOString()
         )
       }
+    }
+
+    // If Google reports a different product set for this same token, retire stale
+    // track grants rather than leaving a previous product's access active.
+    const currentTrackIds = new Set(recognizedItems.flatMap(item => item.tracks.map(track => track.trackId)))
+    const { data: existingEntitlements, error: existingEntitlementsError } = await admin.from('google_play_entitlements')
+      .select('track_id')
+      .eq('purchase_link_id', linkId)
+      .eq('user_id', user.id)
+    if (existingEntitlementsError) return json(req, { error: 'Could not reconcile the subscription tracks.' }, 500)
+    const staleTrackIds = Array.from(new Set((existingEntitlements || [])
+      .map((row: { track_id: string }) => row.track_id)
+      .filter((trackId: string) => !currentTrackIds.has(trackId))))
+    for (const staleTrackId of staleTrackIds) {
+      const { error: staleUpdateError } = await admin.from('google_play_entitlements')
+        .update({ status: 'revoked', updated_at: nowIso })
+        .eq('purchase_link_id', linkId)
+        .eq('user_id', user.id)
+        .eq('track_id', staleTrackId)
+      if (staleUpdateError) return json(req, { error: 'Could not reconcile the subscription tracks.' }, 500)
     }
 
     return json(req, {
