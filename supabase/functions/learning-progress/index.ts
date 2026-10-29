@@ -243,7 +243,7 @@ Deno.serve(async req => {
   let rawBody: string
   try {
     rawBody = await req.text()
-    if (rawBody.length > MAX_REQUEST_BYTES) return json(req, { error: 'Progress payload is too large.' }, 413)
+    if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES) return json(req, { error: 'Progress payload is too large.' }, 413)
     const parsed = JSON.parse(rawBody)
     if (!isRecord(parsed)) return json(req, { error: 'Invalid request.' }, 400)
     body = parsed
