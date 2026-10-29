@@ -66,6 +66,67 @@ function removeLegacyValue(name: string) {
   }
 }
 
+
+async function writeEncryptedValueUnlocked(name: string, value: string): Promise<void> {
+  const db = await database()
+  const key = await getOrCreateKey(db)
+  const encrypted = await encryptJsonPayload(value, key)
+  await db.put('entries', { id: name, ...encrypted })
+  // Keep migration and export paths from leaving a cleartext copy behind.
+  removeLegacyValue(name)
+}
+
+async function readEncryptedValueUnlocked(name: string): Promise<string | null> {
+  let db: IDBPDatabase<EncryptedStateDatabase>
+  try {
+    db = await database()
+  } catch {
+    return getLegacyValue(name)
+  }
+  try {
+    const saved = await db.get('entries', name)
+    if (saved) {
+      const key = await getOrCreateKey(db)
+      const value = await decryptJsonPayload<unknown>(saved.iv, saved.ciphertext, key)
+      return typeof value === 'string' ? value : null
+    }
+  } catch {
+    return null
+  }
+
+  const legacy = getLegacyValue(name)
+  if (legacy == null) return null
+  try {
+    await writeEncryptedValueUnlocked(name, legacy)
+    return legacy
+  } catch {
+    // Preserve a previous-version value if encrypted migration is unavailable.
+    return legacy
+  }
+}
+
+/** Read one encrypted Zustand-storage payload (or migrate its legacy localStorage value). */
+export function readEncryptedPersistedValue(name: string): Promise<string | null> {
+  return queueStorageOperation(() => readEncryptedValueUnlocked(name))
+}
+
+/** Write a Zustand-storage payload to encrypted IndexedDB, removing legacy plaintext only after success. */
+export function writeEncryptedPersistedValue(name: string, value: string): Promise<void> {
+  return queueStorageOperation(() => writeEncryptedValueUnlocked(name, value))
+}
+
+/** Remove a persisted payload from encrypted IndexedDB and any legacy localStorage key. */
+export function removeEncryptedPersistedValue(name: string): Promise<void> {
+  return queueStorageOperation(async () => {
+    try {
+      const db = await database()
+      await db.delete('entries', name)
+    } finally {
+      removeLegacyValue(name)
+    }
+  })
+}
+
 export const encryptedPersistStorage: StateStorage = {
   getItem: (name) => queueStorageOperation(async () => {
     let db: IDBPDatabase<EncryptedStateDatabase>
