@@ -352,6 +352,15 @@ BEGIN
     RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'Duplicate track in Google Play reconciliation input';
   END IF;
 
+  IF EXISTS (
+    SELECT 1
+      FROM public.google_play_purchase_links
+     WHERE purchase_token_sha256 = p_purchase_token_sha256
+       AND subscription_state = 'SUBSCRIPTION_STATE_REPLACED'
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = '23514', MESSAGE = 'A replaced Google Play purchase token cannot be linked again';
+  END IF;
+
   v_status := CASE
     WHEN p_status = 'active' AND p_expires_at > v_now THEN 'active'
     ELSE 'inactive'
