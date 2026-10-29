@@ -25,7 +25,7 @@ type Order = {
   admin_note: string | null
   checkout_batch_id: string | null
 }
-type OwnedTrack = { product_code: string; order_id: string; license_term: LicenseTerm; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null }
+type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
 function safeAccountError(error: unknown, fallback: string) {
@@ -199,9 +199,12 @@ export default function AccountScreen() {
     const loadAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setInactiveLicenses([]); setOrders([]); setRenewalGraceUntil(null); return }
     const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note,checkout_batch_id'
-    const [entitlements, orderResult] = await Promise.all([
+    const [entitlements, playEntitlements, orderResult] = await Promise.all([
       supabase.from('entitlements')
         .select('product_code,order_id,license_term,status,granted_at,expires_at,renewed_at')
+        .eq('user_id', session.user.id),
+      supabase.from('google_play_entitlements')
+        .select('product_code,status,granted_at,expires_at,updated_at')
         .eq('user_id', session.user.id),
       supabase.from('orders')
         .select(orderColumns)
@@ -210,9 +213,36 @@ export default function AccountScreen() {
         .limit(50),
     ])
 
-    // Preserve the last known license display during network outages, then re-evaluate expiry locally.
-    const entitlementRows = !entitlements.error
-      ? (entitlements.data ?? []) as OwnedTrack[]
+    const entitlementError = entitlements.error || playEntitlements.error
+    const now = Date.now()
+    const fetchedEntitlements: OwnedTrack[] = [
+      ...((entitlements.data ?? []) as Omit<OwnedTrack, 'source'>[]).map(row => ({ ...row, source: 'website' as const })),
+      ...((playEntitlements.data ?? []).map(row => ({
+        product_code: row.product_code,
+        order_id: null,
+        license_term: null,
+        status: row.status,
+        granted_at: row.granted_at,
+        expires_at: row.expires_at,
+        renewed_at: row.updated_at,
+        source: 'google_play' as const,
+      })))
+    ]
+    const entitlementRows = !entitlementError
+      ? Array.from(fetchedEntitlements.reduce((map, row) => {
+          const previous = map.get(row.product_code)
+          if (!previous) {
+            map.set(row.product_code, row)
+            return map
+          }
+          const rowIsCurrent = isCurrentLicense(row, now)
+          const previousIsCurrent = isCurrentLicense(previous, now)
+          if ((rowIsCurrent && !previousIsCurrent) ||
+              (rowIsCurrent === previousIsCurrent && Date.parse(row.expires_at || '') > Date.parse(previous.expires_at || ''))) {
+            map.set(row.product_code, row)
+          }
+          return map
+        }, new Map<string, OwnedTrack>()).values())
       : [...owned, ...inactiveLicenses]
     const now = Date.now()
     const activeLicenses = entitlementRows.filter(item => isCurrentLicense(item, now))
@@ -228,7 +258,7 @@ export default function AccountScreen() {
     setRenewalGraceUntil(activeLicenses.length === 0 && latestExpiredAt > 0 && graceUntil > now ? new Date(graceUntil).toISOString() : null)
     setOwned(activeLicenses)
     setInactiveLicenses(pastLicenses)
-    if (entitlements.error) {
+    if (entitlementError) {
       setMessage('Unable to refresh account details. Please try again.')
     }
 
@@ -627,12 +657,12 @@ export default function AccountScreen() {
                   <strong>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code}</strong>
                   <span style={{ color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 850 }}>{expiringSoon ? 'EXPIRING SOON' : 'ACTIVE'}</span>
                 </div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>{item.license_term === 'week' ? 'Weekly' : item.license_term === 'month' ? 'Monthly' : 'Yearly'} access · Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>{item.source === 'google_play' ? 'Google Play subscription' : (item.license_term === 'week' ? 'Weekly' : item.license_term === 'month' ? 'Monthly' : 'Yearly') + ' website access'} · Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
                 <div role="status" style={{ marginTop: '.45rem', padding: '.55rem .7rem', borderRadius: 8, background: expiringSoon ? 'var(--bg-elevated)' : 'transparent', border: expiringSoon ? '1px solid var(--border)' : '1px solid transparent', color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--text-muted)', fontSize: '.84rem', fontWeight: expiringSoon ? 800 : 600 }}>
                   {expiry.label}{expiringSoon ? ' · You can purchase access again after this license expires.' : ''}
                 </div>
                 <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
-                  <strong style={{ display: 'block', marginBottom: '.25rem' }}>Transaction details</strong>
+                  <strong style={{ display: 'block', marginBottom: '.25rem' }}>{item.source === 'google_play' ? 'Subscription details' : 'Transaction details'}</strong>
                   {transaction ? <>
                     {transaction.customer_name && <div>Customer name: {transaction.customer_name}</div>}
                     <div>Access duration: {transaction.license_term === 'week' ? 'Weekly' : transaction.license_term === 'month' ? 'Monthly' : 'Yearly'}</div>
@@ -643,7 +673,11 @@ export default function AccountScreen() {
                     <div style={{ fontSize: '.8rem', overflowWrap: 'anywhere' }}>Order ID: {transaction.id}</div>
                     {transaction.customer_company && <div>Company: {transaction.customer_company}</div>}
                     {transaction.customer_school && <div>School: {transaction.customer_school}</div>}
-                  </> : <div style={{ color: 'var(--text-muted)' }}>Order reference: {item.order_id}</div>}
+                  </> : item.source === 'google_play' ? <>
+                    <div>Source: Google Play</div>
+                    <div>Subscription state: checked against Google Play during the last account sync</div>
+                    <div>Access expiry: {item.expires_at ? new Date(item.expires_at).toLocaleString() : 'Unavailable'}</div>
+                  </> : <div style={{ color: 'var(--text-muted)' }}>Order reference: {item.order_id || 'Not recorded'}</div>}
                 </div>
               </div>
             }) : <p style={{ color: 'var(--text-muted)' }}>No active licenses are linked to this account yet. Any previous licenses appear below.</p>}

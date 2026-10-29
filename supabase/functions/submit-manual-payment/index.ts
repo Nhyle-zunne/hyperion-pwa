@@ -55,11 +55,20 @@ Deno.serve(async req => {
   if (!customerName) return json({ error: 'Please add your full name to your account before submitting payment details.' }, 400)
 
   const admin = createClient(url, service, { auth: { persistSession: false } })
-  const { data: activeLicense, error: licenseError } = await admin.from('entitlements')
-    .select('id,expires_at').eq('user_id', user.id).eq('product_code', code).eq('status', 'active').maybeSingle()
-  if (licenseError) return json({ error: 'Could not check your existing license. Please try again.' }, 500)
+  const [activeLicenseResult, activePlayResult] = await Promise.all([
+    admin.from('entitlements')
+      .select('id,expires_at,status').eq('user_id', user.id).eq('product_code', code).eq('status', 'active').maybeSingle(),
+    admin.from('google_play_entitlements')
+      .select('id,expires_at').eq('user_id', user.id).eq('product_code', code).eq('status', 'active')
+      .gt('expires_at', new Date().toISOString()).limit(1).maybeSingle()
+  ])
+  if (activeLicenseResult.error || activePlayResult.error) return json({ error: 'Could not check your existing license. Please try again.' }, 500)
+  const activeLicense = activeLicenseResult.data
+  const activePlayLicense = activePlayResult.data
   const licenseExpiry = activeLicense?.expires_at ? new Date(activeLicense.expires_at).getTime() : null
-  if (activeLicense && (licenseExpiry === null || licenseExpiry > Date.now())) {
+  const websiteActive = activeLicense?.status === 'active' && licenseExpiry !== null && licenseExpiry > Date.now()
+  const playActive = !!activePlayLicense?.expires_at && new Date(activePlayLicense.expires_at).getTime() > Date.now()
+  if (websiteActive || playActive) {
     return json({ error: 'This license is already active for your account. You do not need to purchase this track again.' }, 409)
   }
 

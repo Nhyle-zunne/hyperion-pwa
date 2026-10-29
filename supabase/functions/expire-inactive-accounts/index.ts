@@ -98,6 +98,14 @@ Deno.serve(async req => {
       entitlements.push(...rows)
       if (rows.length < PAGE_SIZE) break
     }
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const result = await admin.from('google_play_entitlements').select('user_id,status,expires_at')
+        .in('user_id', userIds).range(offset, offset + PAGE_SIZE - 1)
+      if (result.error) return json({ error: 'Could not read Google Play licenses; no accounts were deleted in this batch.', processed: totalUsers - users.length }, 500)
+      const rows = (result.data || []) as Entitlement[]
+      entitlements.push(...rows)
+      if (rows.length < PAGE_SIZE) break
+    }
     const entitlementMap = new Map<string, Entitlement[]>()
     for (const row of entitlements) {
       const group = entitlementMap.get(row.user_id) || []
@@ -194,15 +202,16 @@ Deno.serve(async req => {
 
       // Recheck mutable conditions just before deletion, so a renewal, new payment,
       // or fresh website visit racing the daily job cannot cause an account to be deleted.
-      const [freshEntitlements, freshActivity, freshPendingOrders, freshFailedCheckout, freshPendingBatch, freshAdminAudit] = await Promise.all([
+      const [freshEntitlements, freshPlayEntitlements, freshActivity, freshPendingOrders, freshFailedCheckout, freshPendingBatch, freshAdminAudit] = await Promise.all([
         admin.from('entitlements').select('status,expires_at').eq('user_id', user.id),
+        admin.from('google_play_entitlements').select('status,expires_at').eq('user_id', user.id),
         admin.from('user_activity').select('last_accessed_at').eq('user_id', user.id).maybeSingle(),
         admin.from('orders').select('id').eq('user_id', user.id).in('status', ['pending', 'submitted']).limit(1),
         admin.from('orders').select('id').eq('user_id', user.id).eq('status', 'failed').eq('payment_method', 'PayMongo Checkout').not('paymongo_checkout_session_id', 'is', null).limit(1),
         admin.from('checkout_batches').select('id').eq('user_id', user.id).eq('status', 'pending').limit(1),
         admin.from('license_admin_audit').select('id').eq('admin_user_id', user.id).limit(1)
       ])
-      if (freshEntitlements.error || freshActivity.error || freshPendingOrders.error || freshFailedCheckout.error || freshPendingBatch.error || freshAdminAudit.error) {
+      if (freshEntitlements.error || freshPlayEntitlements.error || freshActivity.error || freshPendingOrders.error || freshFailedCheckout.error || freshPendingBatch.error || freshAdminAudit.error) {
         failed++
         continue
       }
@@ -216,7 +225,10 @@ Deno.serve(async req => {
       }
 
       const currentTime = Date.now()
-      const currentEntitlements = (freshEntitlements.data || []) as Entitlement[]
+      const currentEntitlements = [
+        ...((freshEntitlements.data || []) as Entitlement[]),
+        ...((freshPlayEntitlements.data || []) as Entitlement[])
+      ]
       if (currentEntitlements.some(row => row.status === 'active' && parseDate(row.expires_at) > currentTime)) {
         skippedActiveLicense++
         continue
