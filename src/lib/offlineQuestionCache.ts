@@ -177,12 +177,11 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
 
   const tx = db.transaction(['packs', 'manifests'], 'readwrite')
   const packsStore = tx.objectStore('packs')
-  const existing = await packsStore.getAll()
+  const existingIds = await packsStore.getAllKeys()
   for (const update of updates) {
-    for (const pack of existing) {
-      if (pack.track === update.track && pack.freeOnly === update.freeOnly) {
-        await packsStore.delete(pack.id)
-      }
+    const prefix = `${update.track}:${update.freeOnly ? 'free' : 'licensed'}:`
+    for (const id of existingIds) {
+      if (typeof id === 'string' && id.startsWith(prefix)) await packsStore.delete(id)
     }
   }
   for (const record of records) await packsStore.put(record)
