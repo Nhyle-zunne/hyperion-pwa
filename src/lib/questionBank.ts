@@ -645,7 +645,7 @@ export function freeSample(list: Question[], track: TrackId): Question[] {
  * If the full bank is unavailable, fail closed and ask the user to refresh online.
  */
 export async function ensureOfflineFreeSamplePack(track: TrackId): Promise<void> {
-  if (track !== 'DECK_OIC_NW') return;
+  if (track !== 'DECK_OIC_NW' && track !== 'GMDSS_GOC') return;
   const current = await getOfflineQuestionsByTrack(track, true);
   if (current?.length) return;
 
