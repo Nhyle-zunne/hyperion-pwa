@@ -700,7 +700,17 @@ async function initializeUser(userId: string): Promise<void> {
     shouldUpload = true
   }
 
-  await applySnapshot(snapshotToApply)
+  try {
+    await applySnapshot(snapshotToApply)
+  } catch (error) {
+    // Keep this device usable, but never silently mark failed encrypted restoration
+    // as complete. A later retry can recover the cloud snapshot safely.
+    console.warn('[Hyperion progress sync] Encrypted progress restore failed.', error)
+    window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
+    if (retryTimer) clearTimeout(retryTimer)
+    if (navigator.onLine !== false) retryTimer = setTimeout(() => { void initializeUser(userId) }, 8000)
+    return
+  }
   if (generation !== currentGeneration) return
 
   try {
