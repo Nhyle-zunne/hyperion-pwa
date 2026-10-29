@@ -6,6 +6,7 @@ import { useVaultStore } from '../stores/vaultStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { supabase } from './supabase'
+import { readEncryptedPersistedValue, removeEncryptedPersistedValue, writeEncryptedPersistedValue } from './encryptedPersistStorage'
 
 const TABLE = 'user_learning_progress'
 const OWNER_KEY = 'hyperion-progress-owner'
@@ -97,6 +98,16 @@ function readLocalStorage(): Record<ProgressStorageKey, string | null> {
   for (const key of STORAGE_KEYS) {
     try { storage[key] = localStorage.getItem(key) } catch { storage[key] = null }
   }
+  // These two stores now live in encrypted IndexedDB. Serialize their live Zustand
+  // state into the same versioned envelope used by cloud progress snapshots.
+  storage['hyperion-bookmarks'] = JSON.stringify({
+    state: { items: useBookmarksStore.getState().items },
+    version: 0
+  })
+  storage['hyperion-vault'] = JSON.stringify({
+    state: { items: useVaultStore.getState().items },
+    version: 0
+  })
   return storage
 }
 
@@ -413,6 +424,18 @@ async function applySnapshot(snapshot: LearningProgressSnapshot): Promise<void> 
     } catch { /* ignore storage errors */ }
     for (const key of STORAGE_KEYS) {
       const value = snapshot.storage[key]
+      if (key === 'hyperion-bookmarks' || key === 'hyperion-vault') {
+        try {
+          if (value == null) await removeEncryptedPersistedValue(key)
+          else await writeEncryptedPersistedValue(key, value)
+          try { localStorage.removeItem(key) } catch { /* remove previous-version cleartext only after encrypted write succeeds */ }
+        } catch (error) {
+          // Do not apply another account's stale encrypted state if restoring cloud
+          // progress into encrypted storage failed.
+          throw new Error(`Could not restore encrypted progress collection ${key}: ${error instanceof Error ? error.name : 'StorageError'}`)
+        }
+        continue
+      }
       try {
         if (value == null) localStorage.removeItem(key)
         else localStorage.setItem(key, value)
@@ -564,8 +587,35 @@ async function uploadSnapshot(): Promise<void> {
   }
 }
 
+let legacyProgressCacheMigration: Promise<void> | null = null
+
+async function migrateLegacyProgressCaches(): Promise<void> {
+  if (!legacyProgressCacheMigration) {
+    legacyProgressCacheMigration = (async () => {
+      let keys: string[] = []
+      try {
+        keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+          .filter((key): key is string => typeof key === 'string' && key.startsWith('hyperion-progress-cache:'))
+      } catch {
+        return
+      }
+      for (const key of keys) {
+        const raw = (() => { try { return localStorage.getItem(key) } catch { return null } })()
+        if (!raw) continue
+        try {
+          await writeEncryptedPersistedValue(key, raw)
+        } catch {
+          // Keep a previous-version cache if encrypted migration is not possible.
+        }
+      }
+    })().finally(() => { legacyProgressCacheMigration = null })
+  }
+  await legacyProgressCacheMigration
+}
+
 async function initializeUser(userId: string): Promise<void> {
   if (!supabase) return
+  await migrateLegacyProgressCaches()
   const { data: sessionData } = await supabase.auth.getSession()
   if (!sessionData.session?.user || sessionData.session.user.id !== userId) return
   if (cloudReady && activeUserId === userId) return
@@ -579,7 +629,9 @@ async function initializeUser(userId: string): Promise<void> {
     activeUserId = null
     // Keep an account-keyed recovery copy for offline work, but remove its live
     // stores from the browser before hydrating the new account.
-    try { localStorage.setItem(accountCacheKey(ownerBeforeLoad), JSON.stringify(captureSnapshot())) } catch { /* best effort local recovery */ }
+    try {
+      await writeEncryptedPersistedValue(accountCacheKey(ownerBeforeLoad), JSON.stringify(captureSnapshot()))
+    } catch { /* encrypted recovery cache is best effort; never create a new plaintext cache */ }
     await clearLocalProgress()
     try { localStorage.removeItem(OWNER_KEY) } catch { /* ignore storage errors */ }
     if (generation !== currentGeneration) return
@@ -608,12 +660,12 @@ async function initializeUser(userId: string): Promise<void> {
   if (generation !== currentGeneration) return
 
   const owner = (() => { try { return localStorage.getItem(OWNER_KEY) } catch { return null } })()
-  const cachedSnapshot = (() => {
-    try {
-      const cached = parseJson<LearningProgressSnapshot>(localStorage.getItem(accountCacheKey(userId)))
-      return cached && isSnapshot(cached) ? cached : null
-    } catch { return null }
-  })()
+  let cachedSnapshot: LearningProgressSnapshot | null = null
+  try {
+    const cachedRaw = await readEncryptedPersistedValue(accountCacheKey(userId))
+    const cached = parseJson<LearningProgressSnapshot>(cachedRaw)
+    cachedSnapshot = cached && isSnapshot(cached) ? cached : null
+  } catch { /* encrypted recovery cache is optional */ }
   const localDirty = (() => {
     try {
       return localStorage.getItem(dirtyKey(userId)) != null
@@ -648,11 +700,21 @@ async function initializeUser(userId: string): Promise<void> {
     shouldUpload = true
   }
 
-  await applySnapshot(snapshotToApply)
+  try {
+    await applySnapshot(snapshotToApply)
+  } catch (error) {
+    // Keep this device usable, but never silently mark failed encrypted restoration
+    // as complete. A later retry can recover the cloud snapshot safely.
+    console.warn('[Hyperion progress sync] Encrypted progress restore failed.', error)
+    window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
+    if (retryTimer) clearTimeout(retryTimer)
+    if (navigator.onLine !== false) retryTimer = setTimeout(() => { void initializeUser(userId) }, 8000)
+    return
+  }
   if (generation !== currentGeneration) return
 
   try {
-    localStorage.removeItem(accountCacheKey(userId))
+    await removeEncryptedPersistedValue(accountCacheKey(userId))
     localStorage.setItem(OWNER_KEY, userId)
     if (!shouldUpload) {
       localStorage.removeItem(dirtyKey(userId))

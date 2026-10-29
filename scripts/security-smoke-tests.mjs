@@ -71,6 +71,7 @@ const [
 
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const encryptedPersistStorage = await read('../src/lib/encryptedPersistStorage.ts');
+const progressSyncSource = await read('../src/lib/progressSync.ts');
 const bookmarksStore = await read('../src/stores/bookmarksStore.ts');
 const vaultStore = await read('../src/stores/vaultStore.ts');
 const vaultScreen = await read('../src/screens/VaultScreen.tsx');
@@ -518,5 +519,12 @@ await Promise.all([queuedFirst, queuedSecond, queuedFailure, queuedAfterFailure]
 assert.deepEqual(queueOrder, ['first-start', 'first-end', 'second', 'after-failure'], 'Encrypted state operations preserve invocation order and continue after a failed operation');
 assert.ok(encryptedPersistStorage.includes('createSerialAsyncQueue') && encryptedPersistStorage.includes('queueStorageOperation(async () =>'), 'Encrypted IndexedDB reads, writes, and removals share a serialized operation queue');
 
+
+
+assert.ok(progressSyncSource.includes("storage['hyperion-bookmarks'] = JSON.stringify") && progressSyncSource.includes("storage['hyperion-vault'] = JSON.stringify"), 'Cloud progress snapshots include live bookmarks and mistakes from encrypted IndexedDB-backed stores');
+assert.ok(progressSyncSource.includes('await writeEncryptedPersistedValue(key, value)') && progressSyncSource.includes('await removeEncryptedPersistedValue(key)'), 'Cloud restore writes bookmarks and mistakes back to encrypted IndexedDB before rehydrating stores');
+assert.ok(progressSyncSource.includes('await writeEncryptedPersistedValue(accountCacheKey(ownerBeforeLoad)') && progressSyncSource.includes('await readEncryptedPersistedValue(accountCacheKey(userId))'), 'Account-switch recovery caches are encrypted rather than stored as question text in localStorage');
+assert.ok(progressSyncSource.includes('migrateLegacyProgressCaches') && progressSyncSource.includes("key.startsWith('hyperion-progress-cache:')"), 'Legacy plaintext account progress caches are migrated into encrypted storage');
+assert.ok(encryptedPersistStorage.includes('export function readEncryptedPersistedValue') && encryptedPersistStorage.includes('export function writeEncryptedPersistedValue'), 'Encrypted storage exposes a shared bridge for cloud progress restoration');
 
 console.log('Release-safety smoke checks passed.');
