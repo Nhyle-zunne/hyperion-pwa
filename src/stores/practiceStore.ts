@@ -590,7 +590,13 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     if (selectedSaved) {
       const snapshot = await getSessionSnapshot(selectedSaved.id);
       if (snapshot && snapshot.questions.length > 0 && snapshot.track) {
-        await useLicenseStore.getState().refreshCloudEntitlements();
+        // A full entitlement refresh makes multiple network requests and can stall
+        // indefinitely while Airplane Mode is enabled. Offline authorization below
+        // verifies the signed local lease; online authorization is checked directly
+        // by the protected question-bank endpoint.
+        if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+          await useLicenseStore.getState().refreshCloudEntitlements();
+        }
         const access = await authorizeQuestionSetAccess(snapshot.track, snapshot.questions);
         if (!access) {
           set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample.' });
