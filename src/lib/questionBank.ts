@@ -243,6 +243,22 @@ async function offlineEntitlementExpiry(track: TrackId): Promise<number | null> 
   }
 }
 
+/**
+ * Offline paid-session recovery is gated by two independent checks:
+ * (1) a server-signed, unexpired lease for this exact account and track, and
+ * (2) a complete, decryptable local full-bank pack for that track.
+ *
+ * Do not require every historical session question's fingerprint to match the
+ * newest pack. A legitimate saved session can outlive a question-bank refresh,
+ * parser/ID-prefix change, or an older mobile bundle.
+ */
+async function hasLicensedOfflineBank(track: TrackId): Promise<boolean> {
+  const expiry = await offlineEntitlementExpiry(track)
+  if (!expiry || expiry <= Date.now()) return false
+  const cachedFullBank = await getOfflineQuestionsByTrack(track, false)
+  return Array.isArray(cachedFullBank) && cachedFullBank.length > 0
+}
+
 async function mayUseOfflineTrack(track: TrackId, freeOnly: boolean): Promise<boolean> {
   return freeOnly || (await offlineEntitlementExpiry(track)) !== null
 }
@@ -723,9 +739,13 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   }
 
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    // Paid access is based on the signed offline lease and the integrity-checked
+    // full pack. Saved question fingerprints may be from an older bank version.
+    if (await hasLicensedOfflineBank(track)) return 'licensed'
+
+    // Non-paying users are restricted to the exact downloaded official free sample.
     await ensureOfflineFreeSamplePack(track)
     if (await matchesCachedPack(true)) return 'free-sample'
-    if ((await offlineEntitlementExpiry(track)) && await matchesCachedPack(false)) return 'licensed'
     return null
   }
 
@@ -742,9 +762,9 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   try {
     // Safari/iOS and installed PWAs can report online while the API is unreachable.
     // Prefer already verified local packs after a genuine network/server failure.
+    if (await hasLicensedOfflineBank(track)) return 'licensed'
     await ensureOfflineFreeSamplePack(track)
     if (await matchesCachedPack(true)) return 'free-sample'
-    if (await offlineEntitlementExpiry(track) && await matchesCachedPack(false)) return 'licensed'
 
     const freeQuestions = await getQuestionsByTrack(track, true);
     const freeFingerprintResults = await Promise.all(freeQuestions.map(fingerprintQuestion));
