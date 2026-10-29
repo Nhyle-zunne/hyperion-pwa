@@ -54,6 +54,13 @@ function effectiveStatus(row: any, now = Date.now()): 'active' | 'expired' | 're
   if (!Number.isFinite(expiry) || expiry <= now) return 'expired'
   return 'active'
 }
+function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { code?: unknown; message?: unknown }
+  if (candidate.code !== 'PGRST205' || typeof candidate.message !== 'string') return false
+  const message = candidate.message.toLowerCase()
+  return message.includes('google_play_entitlements') && message.includes('schema cache')
+}
 function profileName(user: any): string | null {
   const metadata = user.user_metadata || {}
   const given = [metadata.given_name, metadata.family_name].filter((value: unknown) => typeof value === 'string' && value.trim()).join(' ')
@@ -109,8 +116,11 @@ Deno.serve(async req => {
         .select('id,user_id,product_code,track_id,status,granted_at,expires_at,updated_at')
         .order('updated_at', { ascending: false })
         .range(offset, offset + 999)
-      if (result.error) return json(req, { error: 'Could not load Google Play license statuses.' }, 500)
-      const rows = result.data || []
+      const playTableMissing = isMissingGooglePlayEntitlementsTable(result.error)
+      if (result.error && !playTableMissing) {
+        return json(req, { error: 'Could not load Google Play license statuses.' }, 500)
+      }
+      const rows = playTableMissing ? [] : (result.data || [])
       entitlements.push(...rows.map((row: any) => ({
         ...row,
         order_id: null,
@@ -118,7 +128,7 @@ Deno.serve(async req => {
         renewed_at: row.updated_at,
         source: 'google_play'
       })))
-      if (rows.length < 1000) break
+      if (playTableMissing || rows.length < 1000) break
     }
 
     // Load last real website activity and payment/admin dependencies in bounded account batches.
@@ -291,7 +301,9 @@ Deno.serve(async req => {
     const { data: activePlay, error: playError } = await admin.from('google_play_entitlements')
       .select('id,expires_at').eq('user_id', body.userId).eq('product_code', product.code)
       .eq('status', 'active').gt('expires_at', nowIso).limit(1).maybeSingle()
-    if (playError) return json(req, { error: 'Could not verify Google Play subscription state.' }, 500)
+    if (playError && !isMissingGooglePlayEntitlementsTable(playError)) {
+      return json(req, { error: 'Could not verify Google Play subscription state.' }, 500)
+    }
     if (activePlay) return json(req, { error: 'This track has an active Google Play subscription. Cancel or revoke it through Google Play first; access remains active while Google Play confirms the subscription is entitled.' }, 409)
     if (!existing) return json(req, { error: 'This user has no license record for the selected track.' }, 404)
     if (existing.status === 'revoked') return json(req, { ok: true, alreadyRevoked: true, status: 'revoked' })
