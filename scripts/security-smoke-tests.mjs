@@ -105,6 +105,8 @@ assert.ok(webhook.includes("const suppliedSignature = isLive ? parts.li : parts.
 assert.ok(webhook.includes("Deno.env.get('PAYMONGO_TEST_WEBHOOK_SECRET')") && webhook.includes("Deno.env.get('PAYMONGO_LIVE_WEBHOOK_SECRET')"), 'Webhook supports dedicated test and live signing secrets');
 assert.ok(webhook.includes(")?.trim()"), 'Webhook signing secret is whitespace-normalized');
 assert.ok(webhook.includes('equalConstantTime(expectedSignature, suppliedSignature)'), 'Webhook uses a constant-time signature comparison');
+const singleWebhookValidation = webhook.slice(webhook.indexOf("if (\n    order.product_code !=="));
+assert.ok(singleWebhookValidation.includes("(typeof sessionAttrs?.livemode === 'boolean' && sessionAttrs.livemode !== isLive)"), 'Single-track webhook rejects a checkout session whose mode conflicts with the configured environment');
 assert.ok(webhook.includes("Math.abs(Date.now() / 1000 - Number(timestamp)) > 300"), 'Webhook rejects stale signed requests');
 
 const terms = [
