@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS public.google_play_purchase_links (
   status text NOT NULL DEFAULT 'inactive' CHECK (status IN ('active','inactive')),
   expires_at timestamptz NOT NULL,
   last_verified_at timestamptz NOT NULL DEFAULT now(),
+  last_reconciliation_attempt_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -16,8 +17,13 @@ CREATE TABLE IF NOT EXISTS public.google_play_purchase_links (
 ALTER TABLE public.google_play_purchase_links ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.google_play_purchase_links FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.google_play_purchase_links TO service_role;
+ALTER TABLE public.google_play_purchase_links
+  ADD COLUMN IF NOT EXISTS last_reconciliation_attempt_at timestamptz NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS google_play_purchase_links_user_status_idx
   ON public.google_play_purchase_links (user_id, status, expires_at DESC);
+CREATE INDEX IF NOT EXISTS google_play_purchase_links_reconciliation_attempt_idx
+  ON public.google_play_purchase_links (last_reconciliation_attempt_at, id)
+  WHERE subscription_state <> 'SUBSCRIPTION_STATE_REPLACED';
 
 CREATE TABLE IF NOT EXISTS public.google_play_entitlements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
