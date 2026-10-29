@@ -29,8 +29,8 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Type-check Google Play subscription Edge Function
-        run: deno check --no-lock --node-modules-dir=auto supabase/functions/link-google-play-subscription/index.ts supabase/functions/google-play-rtdn/index.ts
+      - name: Type-check protected question-bank and Google Play subscription functions
+        run: deno check --no-lock --node-modules-dir=auto supabase/functions/question-bank/index.ts supabase/functions/link-google-play-subscription/index.ts supabase/functions/google-play-rtdn/index.ts
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
       - name: Release-safety smoke checks
