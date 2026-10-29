@@ -671,8 +671,10 @@ assert.ok(
 assert.ok(
   licenseStore.includes('const errorStatus = websiteResult.error ? websiteResult.status : playResult.status') &&
     licenseStore.includes('canUseOfflineEntitlementsAfterError(error, errorStatus)') &&
-    licenseStore.includes("if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false"),
-  'Cached offline license fallback does not treat coded authorization/database errors as network failures'
+    licenseStore.includes("if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false") &&
+    licenseStore.indexOf("if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false") <
+      licenseStore.indexOf("if (typeof navigator !== 'undefined' && navigator.onLine === false)"),
+  'Coded authorization/database errors fail closed before offline fallback is considered'
 );
 assert.ok(
   licenseStore.includes('const error = websiteResult.error || (playTableMissing ? null : playResult.error)') &&
