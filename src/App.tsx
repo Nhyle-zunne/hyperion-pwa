@@ -62,6 +62,7 @@ export default function App() {
   const navigate = useNavigate()
   const [resumeSession, setResumeSession] = useState<{ mode: 'PRACTICE' | 'DRILL' | 'MOCK'; track: string | null; competenceId: string | null } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine)
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
   const q = usePracticeStore((s) => s.questions[s.currentIndex])
@@ -115,6 +116,16 @@ export default function App() {
   }, [refreshCloudEntitlements])
 
   useEffect(() => startLearningProgressSync(), [])
+
+  useEffect(() => {
+    const updateConnectionState = () => setIsOnline(navigator.onLine)
+    window.addEventListener('online', updateConnectionState)
+    window.addEventListener('offline', updateConnectionState)
+    return () => {
+      window.removeEventListener('online', updateConnectionState)
+      window.removeEventListener('offline', updateConnectionState)
+    }
+  }, [])
 
   useEffect(() => {
     const client = supabase
@@ -361,6 +372,24 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <TopLoadingIndicator />
+      {!isOnline && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            padding: '0.45rem 1rem',
+            textAlign: 'center',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-card)',
+            color: 'var(--warning, #b45309)',
+            fontSize: '0.78rem',
+            lineHeight: 1.45
+          }}
+        >
+          <strong>OFFLINE MODE</strong>
+          {' · '}Only downloaded question packs and saved sessions are available. New sign-ins, checkout, license changes, and cloud sync need an internet connection.
+        </div>
+      )}
       {isQuestionRunner && (
         <header
           aria-label="Question navigation"
