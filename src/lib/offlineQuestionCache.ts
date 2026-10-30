@@ -519,8 +519,11 @@ async function verifyStoredOfflineEntitlements(stored: StoredOfflineEntitlements
   }
   const claims = await verifyOfflineEntitlementToken(stored.token, userId, effectiveNow)
   if (!claims) return { claims: null, effectiveNow, clockRollback: false }
-  persistOfflineEntitlementHighWaterMark(stored, effectiveNow)
-  return { claims, effectiveNow, clockRollback: false }
+  // The signed issuedAt claim is server-authored. Include it in the high-water
+  // mark so a device clock that is slightly behind server time cannot lag it.
+  const trustedNow = Math.max(effectiveNow, claims.issuedAt)
+  persistOfflineEntitlementHighWaterMark(stored, trustedNow)
+  return { claims, effectiveNow: trustedNow, clockRollback: false }
 }
 
 export async function saveOfflineEntitlements(userId: string, token: string): Promise<boolean> {
@@ -533,15 +536,20 @@ export async function saveOfflineEntitlements(userId: string, token: string): Pr
   // A clock rollback must not replace a newer lease with one verified against an older time.
   if (effectiveNow === null) return false
   const claims = await verifyOfflineEntitlementToken(token, userId, effectiveNow)
-  if (!claims || !Object.values(claims.tracks).some(expiresAt => expiresAt > effectiveNow)) {
+  if (!claims) {
+    clearOfflineEntitlements(userId)
+    return false
+  }
+  const trustedNow = Math.max(effectiveNow, claims.issuedAt)
+  if (!Object.values(claims.tracks).some(expiresAt => expiresAt > trustedNow)) {
     clearOfflineEntitlements(userId)
     return false
   }
   try {
     const value: StoredOfflineEntitlements = {
       userId,
-      savedAt: effectiveNow,
-      lastVerifiedAt: effectiveNow,
+      savedAt: trustedNow,
+      lastVerifiedAt: trustedNow,
       token
     }
     localStorage.setItem(ENTITLEMENTS_KEY, JSON.stringify(value))
