@@ -207,8 +207,10 @@ assert.ok(
   app.includes("withPageLoading('Checking licenses and access'") &&
   app.includes('void refresh(true, true)') &&
   app.includes('minimumRefreshIntervalMs = 2 * 60 * 1000') &&
-  app.includes('if (refreshInFlight) return refreshInFlight'),
-  'Initial entitlement checks keep the top loader active while background refreshes are throttled and deduplicated'
+  app.includes('if (refreshInFlight)') &&
+  app.includes('let forcedRefreshQueued = false') &&
+  app.includes('if (force) forcedRefreshQueued = true'),
+  'Entitlement refreshes are throttled, deduplicated, and re-run after an in-flight account change'
 );
 assert.ok(topLoadingIndicator.includes('location.pathname') && topLoadingIndicator.includes('location.search') && topLoadingIndicator.includes('ROUTE_TRANSITION_MS = 480'), 'Top loader activates on page and query-string navigation');
 assert.ok(topLoadingIndicator.includes('src="/logo.png"') && !topLoadingIndicator.includes('/logo.png?') && topLoadingIndicator.includes('hyperion-top-loader__logo'), 'Top loader uses the exact precached local Hyperion logo URL as its animated symbol');
