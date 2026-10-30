@@ -172,10 +172,7 @@ jobs:
                 JOIN pg_catalog.pg_namespace n ON n.oid = d.defaclnamespace
                 CROSS JOIN LATERAL pg_catalog.aclexplode(d.defaclacl) acl
                WHERE n.nspname = 'public'
-                 AND d.defaclrole IN (
-                   SELECT oid FROM pg_catalog.pg_roles
-                    WHERE rolname IN ('postgres', 'supabase_admin')
-                 )
+                 AND d.defaclrole = 'postgres'::regrole
                  AND (
                    acl.grantee = 0
                    OR acl.grantee IN (
