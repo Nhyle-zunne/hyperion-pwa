@@ -534,31 +534,58 @@ async function uploadSnapshot(): Promise<void> {
   const snapshot = captureSnapshot()
 
   try {
-    // Merge against the latest cloud record before writing so progress from another
-    // device (history, study-time segments, bookmarks, and mistakes) is not discarded.
-    const { data: latestResult, error: readError } = await supabase.functions.invoke('learning-progress', {
+    // The service uses optimistic concurrency on updated_at. If another device
+    // wins a write between our read and save, re-read and merge before retrying.
+    let { data: latestResult, error: readError } = await supabase.functions.invoke('learning-progress', {
       body: { action: 'read' }
     })
     if (readError) throw readError
 
-    const latestSnapshot = latestResult?.data && isSnapshot(latestResult.data)
+    let expectedUpdatedAt: string | null = typeof latestResult?.updated_at === 'string'
+      ? latestResult.updated_at
+      : null
+    let latestSnapshot = latestResult?.data && isSnapshot(latestResult.data)
       ? latestResult.data as LearningProgressSnapshot
       : null
-    const snapshotToUpload = latestSnapshot
-      ? mergeSnapshots(snapshot, latestSnapshot, snapshot.changedSections, false)
-      : snapshot
-    snapshotToUpload.changedSections = []
-    const { data: writeResult, error } = await supabase.functions.invoke('learning-progress', {
-      body: { action: 'write', data: snapshotToUpload }
-    })
-    if (!error && writeResult?.ok !== true) throw new Error('The progress service did not confirm the save.')
+    let saved = false
 
-    if (error) {
-      cloudReady = false
-      // Keep the dirty marker for retry when the connection/API is available again.
-      if (navigator.onLine !== false) retryTimer = setTimeout(() => { void initializeUser(userId) }, 5000)
-      return
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const snapshotToUpload = latestSnapshot
+        ? mergeSnapshots(snapshot, latestSnapshot, snapshot.changedSections, false)
+        : snapshot
+      snapshotToUpload.changedSections = []
+      const { data: writeResult, error: writeError } = await supabase.functions.invoke('learning-progress', {
+        body: {
+          action: 'write',
+          data: snapshotToUpload,
+          expected_updated_at: expectedUpdatedAt
+        }
+      })
+
+      if (!writeError && writeResult?.ok === true) {
+        saved = true
+        break
+      }
+      if (!writeError) throw new Error('The progress service did not confirm the save.')
+
+      const status = (writeError as { context?: { status?: number } }).context?.status
+      const isConflict = status === 409 || /\\b409\\b/.test(writeError.message || '')
+      if (!isConflict || attempt === 2) throw writeError
+
+      const refreshed = await supabase.functions.invoke('learning-progress', {
+        body: { action: 'read' }
+      })
+      if (refreshed.error) throw refreshed.error
+      latestResult = refreshed.data
+      expectedUpdatedAt = typeof latestResult?.updated_at === 'string'
+        ? latestResult.updated_at
+        : null
+      latestSnapshot = latestResult?.data && isSnapshot(latestResult.data)
+        ? latestResult.data as LearningProgressSnapshot
+        : null
     }
+
+    if (!saved) throw new Error('Study progress changed repeatedly on another device. It remains saved locally and will retry.')
 
     if (activeUserId !== userId) return
     try {
