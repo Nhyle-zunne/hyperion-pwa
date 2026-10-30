@@ -55,15 +55,15 @@ export default function AboutScreen() {
           <p style={paragraphStyle}><strong>Android sign-in is optional.</strong> You can use local study features and make Google Play purchases without signing in to a Hyperion account. Signing in with Google allows the app to connect to your Hyperion account.</p>
           <p style={paragraphStyle}><strong>Website/PWA accounts.</strong> Sign-in is used for website account features, checkout, license management, and supported cloud learning-progress synchronization.</p>
           <p style={paragraphStyle}><strong>License synchronization.</strong> When you sign in to both platforms using the same Hyperion account and synchronization succeeds, eligible active website licenses and Google Play entitlements may be recognized across Android and the website. This is entitlement synchronization; it does not copy Android study history to the website or website study progress to Android.</p>
-          <p style={{ ...paragraphStyle, marginBottom: 0 }}>Using the same email address alone does not link purchases. You must sign in to the same Hyperion account. Google Play continues to bill and manage its subscriptions, while website purchases continue to be handled through website checkout and PayMongo. Their billing, cancellations, and refund processes remain separate.</p>
+          <p style={{ ...paragraphStyle, marginBottom: 0 }}>Using the same email address alone does not link purchases. You must sign in to the same Hyperion account. This does not mean a purchase can be transferred or combined automatically. Google Play continues to bill and manage its subscriptions, while website purchases continue to be handled through website checkout and PayMongo. Their billing, cancellations, and refund processes remain separate.</p>
         </div>
       </section>
 
       <section style={sectionStyle}>
         <h2 style={headingStyle}>Access and payments</h2>
         <div className="card" style={{ lineHeight: 1.7 }}>
-          <p style={paragraphStyle}><strong>Google Play:</strong> Android subscriptions are purchased, billed, renewed, and cancelled through Google Play using the Google account that made the purchase. Check the offer shown by Google Play for the exact price, duration, and renewal terms.</p>
-          <p style={paragraphStyle}><strong>Website/PWA:</strong> website licenses are purchased through the Bond Store and Checkout. PayMongo handles hosted checkout; manual QR-payment submissions require verification and approval before access is activated. Website plans are fixed-term for the duration displayed at purchase and do not automatically renew unless an offer expressly says otherwise.</p>
+          <p style={paragraphStyle}><strong>Google Play subscriptions:</strong> Android subscriptions are purchased, billed, renewed, and cancelled through Google Play using the Google account that made the purchase. Check the offer shown by Google Play for the exact price, duration, and renewal terms.</p>
+          <p style={paragraphStyle}><strong>Website/PWA licenses:</strong> website licenses are purchased through the Bond Store and Checkout. PayMongo handles hosted checkout; manual QR-payment submissions require verification and approval before access is activated. Website plans are fixed-term for the duration displayed at purchase and do not automatically renew unless an offer expressly says otherwise.</p>
           <p style={{ ...paragraphStyle, marginBottom: 0 }}>Offline activation passes, where offered, are separate device-bound licenses. Before purchasing, confirm the platform, track, duration, price, and terms displayed in the relevant checkout.</p>
         </div>
       </section>
