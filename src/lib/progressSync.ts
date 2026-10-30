@@ -28,7 +28,7 @@ const STORAGE_KEYS = [
 
 type ProgressStorageKey = typeof STORAGE_KEYS[number]
 type ProgressSection = 'history' | 'studyTime' | 'vault' | 'bookmarks' | 'practice' | 'mockPlan' | 'attempts' | 'deletions' | 'other'
-const ALL_PROGRESS_SECTIONS: ProgressSection[] = ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan', 'attempts']
+const ALL_PROGRESS_SECTIONS: ProgressSection[] = ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan', 'attempts', 'deletions']
 
 interface ActiveSessionSnapshot {
   questions: Question[]
