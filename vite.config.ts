@@ -15,7 +15,7 @@ export default defineConfig({
         'pwa-512x512.png'
       ],
       manifest: {
-        name: 'Hyperion',
+        name: 'Hyperion Maritime',
         short_name: 'Hyperion',
         description:
           'Maritime Licensure Reviewer for OIC-NW, GMDSS, Engine and Management tracks',
@@ -87,7 +87,7 @@ export default defineConfig({
         // Keep large, stable dependencies outside the entry chunk so repeat visits can
         // reuse them and the entry bundle stays smaller on mobile connections.
         manualChunks(id) {
-          const normalized = id.replace(/\\/g, '/')
+          const normalized = id.replace(/\\\\/g, '/')
           if (normalized.includes('/node_modules/react/') ||
               normalized.includes('/node_modules/react-dom/') ||
               normalized.includes('/node_modules/scheduler/')) {
