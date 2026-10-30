@@ -7,6 +7,7 @@ import { useBookmarksStore } from '../stores/bookmarksStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { supabase } from './supabase'
 import { readEncryptedPersistedValue, removeEncryptedPersistedValue, writeEncryptedPersistedValue } from './encryptedPersistStorage'
+import { filterProgressCollection, mergeProgressDeletionLedgers } from './progressDeletionLedger'
 
 const OWNER_KEY = 'hyperion-progress-owner'
 const LOCAL_DIRTY_KEY = 'hyperion-progress-unclaimed-dirty'
@@ -21,11 +22,12 @@ const STORAGE_KEYS = [
   'hyperion-bookmarks',
   'hyperion-saved-practice',
   'hyperion-mock-exam-plan-v1',
-  'hyperion-question-attempt-history'
+  'hyperion-question-attempt-history',
+  'hyperion-progress-deletions'
 ] as const
 
 type ProgressStorageKey = typeof STORAGE_KEYS[number]
-type ProgressSection = 'history' | 'studyTime' | 'vault' | 'bookmarks' | 'practice' | 'mockPlan' | 'attempts' | 'other'
+type ProgressSection = 'history' | 'studyTime' | 'vault' | 'bookmarks' | 'practice' | 'mockPlan' | 'attempts' | 'deletions' | 'other'
 const ALL_PROGRESS_SECTIONS: ProgressSection[] = ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan', 'attempts']
 
 interface ActiveSessionSnapshot {
@@ -77,7 +79,7 @@ function readDirtySections(): ProgressSection[] {
     const parsed = JSON.parse(localStorage.getItem(DIRTY_SECTIONS_KEY) || '[]') as unknown
     if (!Array.isArray(parsed)) return []
     return parsed.filter((item): item is ProgressSection =>
-      ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan', 'attempts', 'other'].includes(item)
+      ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan', 'attempts', 'deletions', 'other'].includes(item)
     )
   } catch { return [] }
 }
@@ -91,6 +93,7 @@ function sectionForStorageKey(key: ProgressStorageKey): ProgressSection {
     case 'hyperion-saved-practice': return 'practice'
     case 'hyperion-mock-exam-plan-v1': return 'mockPlan'
     case 'hyperion-question-attempt-history': return 'attempts'
+    case 'hyperion-progress-deletions': return 'deletions'
   }
 }
 
@@ -226,6 +229,9 @@ function mergePersistedStore(
   preferLocalSection: boolean,
   allowMigrationMerge: boolean
 ): string | null {
+  if (key === 'hyperion-progress-deletions') {
+    return mergeProgressDeletionLedgers(localRaw, remoteRaw)
+  }
   if (!localRaw) return remoteRaw
   if (!remoteRaw) return localRaw
 
@@ -280,6 +286,8 @@ function mergePersistedStore(
     && key !== 'hyperion-mock-exam-plan-v1'
     && key !== 'hyperion-history'
     && key !== 'hyperion-study-time'
+    && key !== 'hyperion-vault'
+    && key !== 'hyperion-bookmarks'
   ) return localRaw
   if (!allowMigrationMerge && !preferLocalSection) return remoteRaw
   const local = parseJson<{ state?: Record<string, unknown>; version?: number }>(localRaw)
@@ -385,6 +393,16 @@ function mergeSnapshots(
       allowMigrationMerge
     )
   }
+
+  // Apply the merged deletion ledger after unioning collection rows. This lets a
+  // newer re-bookmark/re-mistake restore an item without resurrecting stale copies.
+  const deletionLedger = storage['hyperion-progress-deletions']
+  storage['hyperion-bookmarks'] = filterProgressCollection(
+    storage['hyperion-bookmarks'], deletionLedger, 'bookmarks', 'savedAt'
+  )
+  storage['hyperion-vault'] = filterProgressCollection(
+    storage['hyperion-vault'], deletionLedger, 'vault', 'lastWrongAt'
+  )
 
   const localSessionChanged = (local.activeSessionChangedAt ?? 0) > (remote.activeSessionChangedAt ?? 0)
   const preferLocalSession = !allowMigrationMerge && prefer.has('practice')
