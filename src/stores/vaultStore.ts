@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { encryptedPersistStorage } from '../lib/encryptedPersistStorage';
+import { markProgressItemDeleted, markProgressItemRestored } from '../lib/progressDeletionLedger';
 import type { Question, TrackId } from '../types/question';
 
 export interface VaultItem {
@@ -36,6 +37,7 @@ export const useVaultStore = create<VaultState>()(
       items: [],
 
       addMistake: (q, selectedIndex, isFreeSession = false) => {
+        markProgressItemRestored('vault', q.id);
         const existing = get().items.find((i) => i.id === q.id);
         if (existing) {
           set({
@@ -78,9 +80,15 @@ export const useVaultStore = create<VaultState>()(
         set((state) => ({ items: state.items.filter(item => !denied.has(item.track) || item.isFreeSession === true) }));
       },
 
-      remove: (id) => set({ items: get().items.filter((i) => i.id !== id) }),
+      remove: (id) => {
+        if (get().items.some(item => item.id === id)) markProgressItemDeleted('vault', id);
+        set({ items: get().items.filter((i) => i.id !== id) });
+      },
 
-      clear: () => set({ items: [] }),
+      clear: () => {
+        get().items.forEach(item => markProgressItemDeleted('vault', item.id));
+        set({ items: [] });
+      },
 
       asQuestions: () =>
         get().items.map((i) => ({
