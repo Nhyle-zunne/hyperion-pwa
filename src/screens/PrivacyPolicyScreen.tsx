@@ -90,7 +90,7 @@ export default function PrivacyPolicyScreen() {
 
       <section style={sectionStyle}>
         <h2 style={headingStyle}>6. Advertising, Analytics, and Tracking</h2>
-        <p style={paragraphStyle}>Hyperion does not display third-party advertisements and does not sell personal information for advertising. The Android app removes the Google advertising ID permission. The current Android source includes Firebase Remote Config for promo-code and activation-status checks and uses Google Firestore for certain activation records. The Android build has no Firebase Analytics SDK dependency after October 30, 2026, and no Hyperion analytics event collection is intended by the current app code. Website browser storage and service-worker caches are used for authentication, settings, progress, offline support, and security; hosting and security providers may process technical request logs.</p>
+        <p style={paragraphStyle}>Hyperion does not display third-party advertisements. We do not sell personal information for advertising. The Android app removes the Google advertising ID permission. The current Android source includes Firebase Remote Config for promo-code and activation-status checks and uses Google Firestore for certain activation records. The Android build has no Firebase Analytics SDK dependency after October 30, 2026, and no Hyperion analytics event collection is intended by the current app code. Website browser storage and service-worker caches are used for authentication, settings, progress, offline support, and security; hosting and security providers may process technical request logs.</p>
       </section>
 
       <section style={sectionStyle}>
