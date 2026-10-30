@@ -20,12 +20,13 @@ const STORAGE_KEYS = [
   'hyperion-vault',
   'hyperion-bookmarks',
   'hyperion-saved-practice',
-  'hyperion-mock-exam-plan-v1'
+  'hyperion-mock-exam-plan-v1',
+  'hyperion-question-attempt-history'
 ] as const
 
 type ProgressStorageKey = typeof STORAGE_KEYS[number]
-type ProgressSection = 'history' | 'studyTime' | 'vault' | 'bookmarks' | 'practice' | 'mockPlan' | 'other'
-const ALL_PROGRESS_SECTIONS: ProgressSection[] = ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan']
+type ProgressSection = 'history' | 'studyTime' | 'vault' | 'bookmarks' | 'practice' | 'mockPlan' | 'attempts' | 'other'
+const ALL_PROGRESS_SECTIONS: ProgressSection[] = ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan', 'attempts']
 
 interface ActiveSessionSnapshot {
   questions: Question[]
@@ -76,7 +77,7 @@ function readDirtySections(): ProgressSection[] {
     const parsed = JSON.parse(localStorage.getItem(DIRTY_SECTIONS_KEY) || '[]') as unknown
     if (!Array.isArray(parsed)) return []
     return parsed.filter((item): item is ProgressSection =>
-      ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan', 'other'].includes(item)
+      ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan', 'attempts', 'other'].includes(item)
     )
   } catch { return [] }
 }
@@ -89,6 +90,7 @@ function sectionForStorageKey(key: ProgressStorageKey): ProgressSection {
     case 'hyperion-bookmarks': return 'bookmarks'
     case 'hyperion-saved-practice': return 'practice'
     case 'hyperion-mock-exam-plan-v1': return 'mockPlan'
+    case 'hyperion-question-attempt-history': return 'attempts'
   }
 }
 
@@ -226,6 +228,49 @@ function mergePersistedStore(
 ): string | null {
   if (!localRaw) return remoteRaw
   if (!remoteRaw) return localRaw
+
+  if (key === 'hyperion-question-attempt-history') {
+    const local = parseJson<{ version?: number; state?: { entries?: Record<string, Record<string, unknown>> } }>(localRaw)
+    const remote = parseJson<{ version?: number; state?: { entries?: Record<string, Record<string, unknown>> } }>(remoteRaw)
+    if (!local || !remote) return remoteRaw
+    const localEntries = local.state?.entries ?? {}
+    const remoteEntries = remote.state?.entries ?? {}
+    const keys = new Set([...Object.keys(remoteEntries), ...Object.keys(localEntries)])
+    const entries: Record<string, Record<string, unknown>> = {}
+    for (const entryKey of keys) {
+      const localEntry = localEntries[entryKey] ?? {}
+      const remoteEntry = remoteEntries[entryKey] ?? {}
+      const attempts = new Map<string, Record<string, unknown>>()
+      for (const rawAttempt of [
+        ...(Array.isArray(remoteEntry.attempts) ? remoteEntry.attempts as Record<string, unknown>[] : []),
+        ...(Array.isArray(localEntry.attempts) ? localEntry.attempts as Record<string, unknown>[] : [])
+      ]) {
+        const timestamp = Number(rawAttempt.timestamp ?? 0)
+        const correct = rawAttempt.isCorrect === true
+        const id = typeof rawAttempt.id === 'string' && rawAttempt.id
+          ? rawAttempt.id
+          : `${timestamp}:${correct ? 'correct' : 'incorrect'}`
+        attempts.set(id, { ...rawAttempt, id, timestamp, isCorrect: correct })
+      }
+      const mergedAttempts = [...attempts.values()].sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
+      const attemptCorrect = mergedAttempts.filter(item => item.isCorrect === true).length
+      const attemptIncorrect = mergedAttempts.length - attemptCorrect
+      entries[entryKey] = {
+        ...remoteEntry,
+        ...localEntry,
+        attempts: mergedAttempts,
+        allTimeCorrect: Math.max(Number(remoteEntry.allTimeCorrect ?? 0), Number(localEntry.allTimeCorrect ?? 0), attemptCorrect),
+        allTimeIncorrect: Math.max(Number(remoteEntry.allTimeIncorrect ?? 0), Number(localEntry.allTimeIncorrect ?? 0), attemptIncorrect)
+      }
+    }
+    return JSON.stringify({
+      ...remote,
+      ...local,
+      version: local.version ?? remote.version ?? 1,
+      state: { ...(remote.state ?? {}), ...(local.state ?? {}), entries }
+    })
+  }
+
   // History entries and study-time segments are append-only records, so merge
   // them across devices even when this device changed that section. For collections
   // users can delete (bookmarks, vault items, saved-practice payloads), honor the
