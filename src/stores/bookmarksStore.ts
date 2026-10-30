@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { encryptedPersistStorage } from '../lib/encryptedPersistStorage';
+import { markProgressItemDeleted, markProgressItemRestored } from '../lib/progressDeletionLedger';
 import type { Question, TrackId } from '../types/question';
 
 export interface BookmarkedQuestion {
@@ -39,8 +40,10 @@ export const useBookmarksStore = create<BookmarksState>()(
       toggle: (q, paidAtSave = true) => {
         const exists = get().items.some((i) => i.id === q.id);
         if (exists) {
+          markProgressItemDeleted('bookmarks', q.id);
           set({ items: get().items.filter((i) => i.id !== q.id) });
         } else {
+          markProgressItemRestored('bookmarks', q.id);
           const entry: BookmarkedQuestion = {
             id: q.id,
             track: q.track,
@@ -59,14 +62,20 @@ export const useBookmarksStore = create<BookmarksState>()(
         }
       },
 
-      remove: (id) => set({ items: get().items.filter((i) => i.id !== id) }),
+      remove: (id) => {
+        if (get().items.some(item => item.id === id)) markProgressItemDeleted('bookmarks', id);
+        set({ items: get().items.filter((i) => i.id !== id) });
+      },
 
       purgePaidForTracks: (tracks) => {
         const denied = new Set(tracks);
         set((state) => ({ items: state.items.filter(item => !denied.has(item.track) || item.paidAtSave === false) }));
       },
 
-      clear: () => set({ items: [] }),
+      clear: () => {
+        get().items.forEach(item => markProgressItemDeleted('bookmarks', item.id));
+        set({ items: [] });
+      },
 
       asQuestions: () =>
         get().items.map((i) => ({
