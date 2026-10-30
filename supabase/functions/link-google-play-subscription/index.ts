@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
   matchesObfuscatedHyperionAccount,
   obfuscatedHyperionAccountId
-} from '../_shared/google-play-account-binding.ts'
+} from './account-binding.ts'
 
 const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
