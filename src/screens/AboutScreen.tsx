@@ -79,8 +79,9 @@ export default function AboutScreen() {
       <section style={sectionStyle}>
         <h2 style={headingStyle}>Privacy and account deletion</h2>
         <div className="card" style={{ lineHeight: 1.7 }}>
-          <p style={paragraphStyle}>Android study progress is stored locally. Supported website/PWA learning progress can be synchronized with your signed-in Hyperion account. Account license synchronization is separate from study-progress synchronization.</p>
+          <p style={paragraphStyle}>Android study records are saved locally first. When you sign in and have internet access, supported records such as bookmarks, mistakes, question-attempt history, study-time entries, and completed sessions can also synchronize to your Hyperion account. Other device-only records remain on the device. Website/PWA learning progress has its own supported account synchronization. License synchronization is separate from study-progress synchronization.</p>
           <p style={paragraphStyle}>You can start permanent account deletion from the website Account area or the Android app's My Hyperion Account dialog. Deleting your Hyperion account removes account-linked licenses and data but does not cancel a Google Play subscription or erase local Android study data. Read the full Privacy Policy before proceeding.</p>
+          <p style={paragraphStyle}>For a Google Play refund, use Google Play's purchase support and refund process. For a website order, email <a href="mailto:hyperionmaritimex@gmail.com">hyperionmaritimex@gmail.com</a> with your order reference. Requests are reviewed under applicable law and the purchase terms; deleting an account does not automatically issue a refund.</p>
           <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => navigate('/privacy-policy')}>Read Privacy Policy</button>
         </div>
       </section>
