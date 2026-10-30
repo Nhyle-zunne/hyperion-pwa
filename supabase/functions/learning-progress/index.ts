@@ -318,13 +318,47 @@ Deno.serve(async req => {
   }
 
   if (body.action === 'write') {
+    // Version-checked writes prevent two devices from silently overwriting each
+    // other's entire JSON snapshot. Clients must re-read, merge, and retry on 409.
+    if (!Object.prototype.hasOwnProperty.call(body, 'expected_updated_at')) {
+      return json(req, { error: 'The progress version is required. Refresh the app and retry.' }, 428)
+    }
+    const expectedUpdatedAt = body.expected_updated_at
+    if (
+      expectedUpdatedAt !== null
+      && (typeof expectedUpdatedAt !== 'string' || !Number.isFinite(Date.parse(expectedUpdatedAt)))
+    ) {
+      return json(req, { error: 'The progress version is invalid.' }, 400)
+    }
+
     try {
       const sanitized = await sanitizeSnapshot(client, body.data, allowedTracks)
+      if (expectedUpdatedAt === null) {
+        // First writer inserts; a competing first writer receives a conflict.
+        const { data, error } = await admin.from('user_learning_progress')
+          .insert({ user_id: user.id, data: sanitized })
+          .select('updated_at')
+          .maybeSingle()
+        if (error) {
+          if (error.code === '23505' || error.code === '409') {
+            return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
+          }
+          return json(req, { error: 'Could not save progress.' }, 500)
+        }
+        return json(req, { ok: true, updated_at: data?.updated_at ?? null })
+      }
+
       const { data, error } = await admin.from('user_learning_progress')
-        .upsert({ user_id: user.id, data: sanitized }, { onConflict: 'user_id' })
+        .update({ data: sanitized })
+        .eq('user_id', user.id)
+        .eq('updated_at', expectedUpdatedAt)
         .select('updated_at')
-        .single()
+        .maybeSingle()
+
       if (error) return json(req, { error: 'Could not save progress.' }, 500)
+      if (!data) {
+        return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
+      }
       return json(req, { ok: true, updated_at: data.updated_at })
     } catch {
       // Do not persist unsanitized question-bearing progress when access verification fails.
