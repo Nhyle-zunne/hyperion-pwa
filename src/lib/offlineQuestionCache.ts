@@ -1,6 +1,10 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Question, TrackId } from '../types/question'
-import { verifyOfflineEntitlementToken } from './offlineEntitlementCrypto.mjs'
+import {
+  verifyOfflineEntitlementToken,
+  effectiveOfflineEntitlementNow,
+  OFFLINE_CLOCK_PERSIST_INTERVAL_MS
+} from './offlineEntitlementCrypto.mjs'
 import { isGmdssFreeSampleQuestion, isOfflinePackSetComplete } from './offlinePackIntegrity.mjs'
 
 export interface OfflineQuestionPack {
@@ -451,6 +455,7 @@ export async function getOfflineQuestionCounts(track: TrackId, freeOnly: boolean
 interface StoredOfflineEntitlements {
   userId: string
   savedAt: number
+  lastVerifiedAt: number
   token: string
 }
 
@@ -461,9 +466,17 @@ function readStoredOfflineEntitlements(): StoredOfflineEntitlements | null {
       !value ||
       typeof value.userId !== 'string' ||
       typeof value.savedAt !== 'number' ||
+      !Number.isFinite(value.savedAt) ||
+      value.savedAt <= 0 ||
       typeof value.token !== 'string'
     ) return null
-    return { userId: value.userId, savedAt: value.savedAt, token: value.token }
+    // Older leases predate the high-water field. Their original save time is the
+    // safest available migration anchor; new saves persist lastVerifiedAt explicitly.
+    const lastVerifiedAt = typeof value.lastVerifiedAt === 'number' &&
+      Number.isFinite(value.lastVerifiedAt) && value.lastVerifiedAt >= value.savedAt
+      ? value.lastVerifiedAt
+      : value.savedAt
+    return { userId: value.userId, savedAt: value.savedAt, lastVerifiedAt, token: value.token }
   } catch {
     return null
   }
@@ -481,14 +494,64 @@ export function clearOfflineEntitlements(userId?: string) {
   }
 }
 
+function persistOfflineEntitlementHighWaterMark(stored: StoredOfflineEntitlements, effectiveNow: number) {
+  if (effectiveNow - stored.lastVerifiedAt < OFFLINE_CLOCK_PERSIST_INTERVAL_MS) return
+  try {
+    const current = readStoredOfflineEntitlements()
+    if (!current || current.userId !== stored.userId || current.token !== stored.token) return
+    const latest = Math.max(current.lastVerifiedAt, effectiveNow)
+    if (latest <= current.lastVerifiedAt) return
+    localStorage.setItem(ENTITLEMENTS_KEY, JSON.stringify({ ...current, lastVerifiedAt: latest }))
+  } catch {
+    // If storage is unavailable, the existing signed lease remains bounded by issuedAt.
+  }
+}
+
+async function verifyStoredOfflineEntitlements(stored: StoredOfflineEntitlements, userId: string) {
+  if (stored.userId !== userId) {
+    return { claims: null, effectiveNow: null, clockRollback: false }
+  }
+  const effectiveNow = effectiveOfflineEntitlementNow(Date.now(), stored.lastVerifiedAt)
+  if (effectiveNow === null) {
+    // Preserve the lease so restoring the device clock can restore offline use;
+    // access is denied until the clock is within the tolerated skew again.
+    return { claims: null, effectiveNow: null, clockRollback: true }
+  }
+  const claims = await verifyOfflineEntitlementToken(stored.token, userId, effectiveNow)
+  if (!claims) return { claims: null, effectiveNow, clockRollback: false }
+  // The signed issuedAt claim is server-authored. Include it in the high-water
+  // mark so a device clock that is slightly behind server time cannot lag it.
+  const trustedNow = Math.max(effectiveNow, claims.issuedAt)
+  persistOfflineEntitlementHighWaterMark(stored, trustedNow)
+  return { claims, effectiveNow: trustedNow, clockRollback: false }
+}
+
 export async function saveOfflineEntitlements(userId: string, token: string): Promise<boolean> {
-  const claims = await verifyOfflineEntitlementToken(token, userId)
-  if (!claims || !Object.values(claims.tracks).some(expiresAt => expiresAt > Date.now())) {
+  const previous = readStoredOfflineEntitlements()
+  const priorHighWater = previous?.userId === userId ? previous.lastVerifiedAt : 0
+  const now = Date.now()
+  const effectiveNow = priorHighWater > 0
+    ? effectiveOfflineEntitlementNow(now, priorHighWater)
+    : now
+  // A clock rollback must not replace a newer lease with one verified against an older time.
+  if (effectiveNow === null) return false
+  const claims = await verifyOfflineEntitlementToken(token, userId, effectiveNow)
+  if (!claims) {
+    clearOfflineEntitlements(userId)
+    return false
+  }
+  const trustedNow = Math.max(effectiveNow, claims.issuedAt)
+  if (!Object.values(claims.tracks).some(expiresAt => expiresAt > trustedNow)) {
     clearOfflineEntitlements(userId)
     return false
   }
   try {
-    const value: StoredOfflineEntitlements = { userId, savedAt: Date.now(), token }
+    const value: StoredOfflineEntitlements = {
+      userId,
+      savedAt: trustedNow,
+      lastVerifiedAt: trustedNow,
+      token
+    }
     localStorage.setItem(ENTITLEMENTS_KEY, JSON.stringify(value))
     return true
   } catch {
@@ -500,13 +563,13 @@ export async function saveOfflineEntitlements(userId: string, token: string): Pr
 export async function getOfflineEntitlementExpiry(userId: string, track: TrackId): Promise<number | null> {
   const stored = readStoredOfflineEntitlements()
   if (!stored || stored.userId !== userId) return null
-  const claims = await verifyOfflineEntitlementToken(stored.token, userId)
-  if (!claims) {
-    clearOfflineEntitlements(userId)
+  const verified = await verifyStoredOfflineEntitlements(stored, userId)
+  if (!verified.claims || verified.effectiveNow === null) {
+    if (!verified.clockRollback) clearOfflineEntitlements(userId)
     return null
   }
-  const expiresAt = claims.tracks[track]
-  return typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt > Date.now()
+  const expiresAt = verified.claims.tracks[track]
+  return typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt > verified.effectiveNow
     ? expiresAt
     : null
 }
@@ -514,13 +577,13 @@ export async function getOfflineEntitlementExpiry(userId: string, track: TrackId
 export async function getOfflineEntitledTracks(userId: string): Promise<string[]> {
   const stored = readStoredOfflineEntitlements()
   if (!stored || stored.userId !== userId) return []
-  const claims = await verifyOfflineEntitlementToken(stored.token, userId)
-  if (!claims) {
-    clearOfflineEntitlements(userId)
+  const verified = await verifyStoredOfflineEntitlements(stored, userId)
+  if (!verified.claims || verified.effectiveNow === null) {
+    if (!verified.clockRollback) clearOfflineEntitlements(userId)
     return []
   }
-  return Object.entries(claims.tracks)
-    .filter(([, expiresAt]) => expiresAt > Date.now())
+  return Object.entries(verified.claims.tracks)
+    .filter(([, expiresAt]) => expiresAt > verified.effectiveNow)
     .map(([track]) => track)
 }
 

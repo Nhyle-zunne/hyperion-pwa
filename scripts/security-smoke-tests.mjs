@@ -103,7 +103,12 @@ const progressPrivilegeMigration = await read('../supabase/migrations/2026102903
 const cancelCheckout = await read('../supabase/functions/cancel-checkout/index.ts');
 const offlineEntitlementCrypto = await read('../src/lib/offlineEntitlementCrypto.mjs');
 const sessionArchive = await read('../src/lib/sessionArchive.ts');
-const { verifyOfflineEntitlementToken, MAX_OFFLINE_ENTITLEMENT_AGE_MS } = await import('../src/lib/offlineEntitlementCrypto.mjs');
+const {
+  verifyOfflineEntitlementToken,
+  MAX_OFFLINE_ENTITLEMENT_AGE_MS,
+  effectiveOfflineEntitlementNow,
+  OFFLINE_CLOCK_ROLLBACK_TOLERANCE_MS
+} = await import('../src/lib/offlineEntitlementCrypto.mjs');
 
 // A regression test for webhook timestamp parsing: a numeric timestamp must match.
 const timestampMatch = webhook.match(/if \(!\/(.+?)\/\.test\(timestamp\)/);
@@ -360,7 +365,7 @@ assert.notEqual(originalQuestionFingerprint, changedAnswerFingerprint, 'Changing
 assert.ok(questionBank.includes('const authHeader = req.headers.get("Authorization")') && questionBank.includes('.auth.getUser()'), 'Question-bank identity comes from a validated Supabase user token, not client metadata');
 assert.ok(licenseStore.includes('return status === 0 || status >= 500'), 'Cached entitlement fallback is limited to genuine connectivity/server failures');
 assert.ok(questionBankClient.includes('userId ? getOfflineEntitlementExpiry(userId, track) : null'), 'Offline entitlement lookup is scoped to the currently signed-in Supabase user');
-assert.ok(offlineQuestionCache.includes('if (!stored || stored.userId !== userId) return null') && offlineQuestionCache.includes('expiresAt > Date.now()') && offlineEntitlementCrypto.includes('crypto.subtle.verify'), 'Offline entitlement cache requires a valid signature, matching account, and unexpired track lease');
+assert.ok(offlineQuestionCache.includes('if (!stored || stored.userId !== userId) return null') && offlineQuestionCache.includes('expiresAt > verified.effectiveNow') && offlineEntitlementCrypto.includes('crypto.subtle.verify'), 'Offline entitlement cache requires a valid signature, matching account, and unexpired track lease using the persisted high-water time');
 assert.ok(questionBankClient.includes('if (error && canFallbackToOffline(error) && await offlineEntitlementExpiry(track))'), 'Online question fallback only consults saved paid packs after a network/server failure plus a valid local expiry');
 assert.ok(questionBank.includes('body.freeOnly !== true') && questionBank.includes('Raw paid-bank delivery is disabled. Use paginated question delivery.'), 'Legacy raw-file endpoint cannot be used to retrieve paid-bank assets');
 
@@ -387,6 +392,8 @@ assert.ok(offlineEntitlementSigningMigration.includes('REVOKE ALL ON TABLE publi
 
 
 assert.ok(offlineEntitlementCrypto.includes('OFFLINE_ENTITLEMENT_PUBLIC_KEY') && offlineEntitlementCrypto.includes('claims.userId !== expectedUserId') && offlineEntitlementCrypto.includes('signature.length !== 64'), 'Offline entitlement verifier pins the public key, account identity, and ECDSA signature size');
+assert.ok(offlineEntitlementCrypto.includes('effectiveOfflineEntitlementNow') && offlineEntitlementCrypto.includes('OFFLINE_CLOCK_ROLLBACK_TOLERANCE_MS'), 'Offline entitlement validation exposes a bounded wall-clock rollback guard');
+assert.ok(offlineQuestionCache.includes('lastVerifiedAt') && offlineQuestionCache.includes('persistOfflineEntitlementHighWaterMark') && offlineQuestionCache.includes('effectiveOfflineEntitlementNow(Date.now(), stored.lastVerifiedAt)'), 'PWA offline grants persist a high-water mark and reject a rolled-back browser clock');
 assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes("typeof value.token !== 'string'"), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
 assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(session.user.id, offlineLicense.token)'), 'Online license refresh stores only a server-signed offline token');
 assert.ok(licenseStore.includes('clearOfflineEntitlements(session.user.id)') && licenseStore.includes('await getOfflineEntitledTracks(session.user.id)'), 'Offline fallback verifies signed leases and clears stale leases on online authorization errors');
@@ -435,6 +442,33 @@ const validOfflineClaims = await verifyOfflineEntitlementToken(
 assert.equal(validOfflineClaims?.tracks?.DECK_OIC_NW, sampleClaims.tracks.DECK_OIC_NW, 'A valid ECDSA-signed offline lease is accepted');
 assert.equal(await verifyOfflineEntitlementToken(validOfflineToken, 'different-user', cryptoTestNow, ephemeralPublicJwk), null, 'Signed offline leases cannot be replayed across accounts');
 assert.equal(MAX_OFFLINE_ENTITLEMENT_AGE_MS, 72 * 60 * 60 * 1000, 'Offline signed entitlement leases have a bounded 72-hour maximum age');
+assert.equal(OFFLINE_CLOCK_ROLLBACK_TOLERANCE_MS, 5 * 60 * 1000, 'Offline lease validation allows no more than five minutes of clock skew');
+assert.equal(
+  effectiveOfflineEntitlementNow(cryptoTestNow - 2 * 60 * 1000, cryptoTestNow),
+  cryptoTestNow,
+  'A small clock rollback cannot move the effective lease time backwards'
+);
+assert.equal(
+  effectiveOfflineEntitlementNow(cryptoTestNow - 6 * 60 * 1000, cryptoTestNow),
+  null,
+  'A material device-clock rollback rejects cached offline access'
+);
+const smallRollbackEffectiveNow = effectiveOfflineEntitlementNow(cryptoTestNow - 2 * 60 * 1000, cryptoTestNow);
+assert.ok(
+  await verifyOfflineEntitlementToken(validOfflineToken, sampleClaims.userId, smallRollbackEffectiveNow, ephemeralPublicJwk),
+  'A small device-clock rollback verifies a signed lease against the last observed time'
+);
+assert.equal(
+  effectiveOfflineEntitlementNow(cryptoTestNow + 2 * 60 * 1000, cryptoTestNow),
+  cryptoTestNow + 2 * 60 * 1000,
+  'A forward-moving device clock advances the offline lease high-water mark'
+);
+assert.equal(
+  effectiveOfflineEntitlementNow(Number.NaN, cryptoTestNow),
+  null,
+  'Invalid device time cannot validate an offline entitlement'
+);
+
 const staleClaims = {
   ...sampleClaims,
   issuedAt: cryptoTestNow - MAX_OFFLINE_ENTITLEMENT_AGE_MS - 1,
