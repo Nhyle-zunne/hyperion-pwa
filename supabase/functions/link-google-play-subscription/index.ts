@@ -1,4 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import {
+  matchesObfuscatedHyperionAccount,
+  obfuscatedHyperionAccountId
+} from '../_shared/google-play-account-binding.ts'
 
 const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -135,6 +139,7 @@ async function readGoogleSubscription(token: string) {
     if (response.ok) return payload as {
       subscriptionState?: string
       linkedPurchaseToken?: string
+      externalAccountIdentifiers?: { obfuscatedExternalAccountId?: string }
       lineItems?: Array<{ productId?: string; expiryTime?: string }>
     }
     if ((response.status === 401 || response.status === 403) && attempt === 0) {
@@ -235,6 +240,19 @@ Deno.serve(async (req: Request) => {
 
   try {
     const google = await readGoogleSubscription(token)
+
+    // For purchases created after account binding was added, the Google Play purchase
+    // must belong to the same authenticated Hyperion account attempting to link it.
+    // Purchases without this optional field are legacy purchases and retain the existing
+    // first-link flow; the unique token-owner check below still prevents reassignment.
+    const expectedAccountId = await obfuscatedHyperionAccountId(user.id)
+    const observedAccountId = google.externalAccountIdentifiers?.obfuscatedExternalAccountId
+    if (!matchesObfuscatedHyperionAccount(observedAccountId, expectedAccountId)) {
+      return json(req, {
+        error: 'This Google Play subscription was purchased under a different Hyperion account. Sign in with the original account to sync it.'
+      }, 409)
+    }
+
     const now = Date.now()
     const lineItems = Array.isArray(google.lineItems) ? google.lineItems : []
     const recognizedItems = lineItems.flatMap(item => {
