@@ -16,7 +16,7 @@ export default function TermsScreen() {
       <p className="subtitle">Hyperion Maritime Reviewer · Android, Website and PWA</p>
 
       <div className="card" style={{ marginBottom: '1rem', lineHeight: 1.65 }}>
-        <p style={paragraphStyle}><strong>Effective Date:</strong> October 30, 2026 · <strong>Last Updated:</strong> October 30, 2026</p>
+        <p style={paragraphStyle}><strong>Effective Date:</strong> October 30, 2026 · <strong>Last Updated:</strong> October 31, 2026</p>
         <p style={paragraphStyle}><strong>Developer:</strong> Hyperion Maritime</p>
         <p style={paragraphStyle}><strong>Website:</strong> <a href="https://hyperionmaritime.org">https://hyperionmaritime.org</a></p>
         <p style={paragraphStyle}><strong>Contact:</strong> <a href="mailto:hyperionmaritimex@gmail.com">hyperionmaritimex@gmail.com</a></p>
@@ -85,9 +85,10 @@ export default function TermsScreen() {
 
       <section style={sectionStyle}>
         <h2 style={headingStyle}>6. Study Data, Offline Use, and Synchronization</h2>
-        <p style={paragraphStyle}>The Android app stores study progress and preferences locally on the device. That local study history is not uploaded to or merged with the website account. Clearing app storage or uninstalling Android may permanently remove local study records and offline app data.</p>
-        <p style={paragraphStyle}>The website/PWA uses browser storage and service-worker caches for local state and offline operation. When you are signed in and online, supported website learning data may be synchronized with your Hyperion account. Not every browser-local item, cache, setting, or device-specific record is necessarily synchronized or recoverable. Clearing browser storage can remove local-only data or require you to sign in again.</p>
-        <p style={{ ...paragraphStyle, marginBottom: 0 }}>Account license synchronization between Android and the website is distinct from study-progress synchronization. It does not mean Android study history is copied to the website or vice versa.</p>
+        <p style={paragraphStyle}>The Android app stores study activity locally first and continues to work offline. Google sign-in is optional. When you sign in to the same Hyperion account used by the website/PWA, supported Android records—bookmarks, mistakes/review records, study-time segments, completed session history, and question-level attempt history—are synchronized with that account when an internet connection is available. Changes made offline remain on the device until a later successful synchronization.</p>
+        <p style={paragraphStyle}>Android active or resumable sessions, app preferences, and other unsupported or device-specific records are not currently part of cross-platform progress synchronization. Records that have not synchronized remain device-local and may be lost if you clear app storage or uninstall the app. Account deletion removes the linked cloud copy but does not erase Android records remaining on the device.</p>
+        <p style={paragraphStyle}>The website/PWA also uses browser storage and service-worker caches for local state and offline operation. When signed in and online, supported website learning data—including supported history, bookmarks, mistakes, study-time records, and website session progress—may be synchronized with your Hyperion account. Not every browser-local item, cache, setting, or device-specific record is necessarily synchronized or recoverable. Clearing browser storage can remove local-only data or require you to sign in again.</p>
+        <p style={{ ...paragraphStyle, marginBottom: 0 }}>License synchronization and study-progress synchronization are separate services. Progress synchronization is limited to the supported records described above; it does not transfer every Android or browser-local record, active session, preference, or offline cache between platforms.</p>
       </section>
 
       <section style={sectionStyle}>
