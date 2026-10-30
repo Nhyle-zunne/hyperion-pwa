@@ -203,7 +203,13 @@ assert.ok(privacyScreen.includes('does not cancel a Google Play subscription') &
 assert.ok(privacyScreen.includes('href="/account?tab=delete"') && !privacyScreen.includes('hyperionmaritime.org/delete-account'), 'Privacy policy links to the real in-app website account-deletion route');
 assert.ok(privacyScreen.includes('October 31, 2026'), 'Privacy policy updated date matches the latest substantive revision');
 assert.ok(app.includes("import TopLoadingIndicator from './components/TopLoadingIndicator'") && app.includes('<TopLoadingIndicator />'), 'Global top loader is mounted for every app route');
-assert.ok(app.includes("withPageLoading('Checking licenses and access'") && app.includes('void refresh(true)'), 'Initial entitlement checks keep the top loader active until access state is hydrated');
+assert.ok(
+  app.includes("withPageLoading('Checking licenses and access'") &&
+  app.includes('void refresh(true, true)') &&
+  app.includes('minimumRefreshIntervalMs = 2 * 60 * 1000') &&
+  app.includes('if (refreshInFlight) return refreshInFlight'),
+  'Initial entitlement checks keep the top loader active while background refreshes are throttled and deduplicated'
+);
 assert.ok(topLoadingIndicator.includes('location.pathname') && topLoadingIndicator.includes('location.search') && topLoadingIndicator.includes('ROUTE_TRANSITION_MS = 480'), 'Top loader activates on page and query-string navigation');
 assert.ok(topLoadingIndicator.includes('src="/logo.png"') && !topLoadingIndicator.includes('/logo.png?') && topLoadingIndicator.includes('hyperion-top-loader__logo'), 'Top loader uses the exact precached local Hyperion logo URL as its animated symbol');
 assert.ok(indexCss.includes('.hyperion-top-loader__progress') && indexCss.includes('@keyframes hyperion-loader-sweep') && indexCss.includes('@keyframes hyperion-loader-ripple'), 'Top loader has animated progress and MARINA-style expanding rings');
