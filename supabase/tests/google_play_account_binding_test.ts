@@ -1,7 +1,7 @@
 import {
   matchesObfuscatedHyperionAccount,
   obfuscatedHyperionAccountId
-} from '../functions/_shared/google-play-account-binding.ts'
+} from '../functions/link-google-play-subscription/account-binding.ts'
 
 Deno.test('Hyperion Play account identifiers are stable, distinct, and non-PII hashes', async () => {
   const accountA = await obfuscatedHyperionAccountId('account-a-user-uuid')
