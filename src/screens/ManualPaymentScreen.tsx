@@ -56,6 +56,7 @@ export default function ManualPaymentScreen() {
   const [school, setSchool] = useState('')
   const [reference, setReference] = useState('')
   const [note, setNote] = useState('')
+  const [legalAcknowledged, setLegalAcknowledged] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
   const [owned, setOwned] = useState<Entitlement[]>([])
   const [busy, setBusy] = useState(false)
@@ -142,6 +143,11 @@ export default function ManualPaymentScreen() {
   const submitPaymentInternal = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!supabase || !session || !product) return
+    if (!legalAcknowledged) {
+      setIsError(true)
+      setMessage('Please review and acknowledge the Terms of Use and Privacy Policy before submitting payment details.')
+      return
+    }
     if (!fullName.trim()) {
       setIsError(true)
       setMessage('Please add your full name in Your profile before submitting payment details.')
@@ -304,7 +310,11 @@ export default function ManualPaymentScreen() {
                 <label style={label}>School (optional)<input maxLength={160} value={school} onChange={e => setSchool(e.target.value)} style={field} /></label>
                 <label style={label}>Transaction/reference number<input required maxLength={160} value={reference} onChange={e => setReference(e.target.value)} style={field} /></label>
                 <label style={label}>Additional notes (optional)<textarea maxLength={1000} rows={3} value={note} onChange={e => setNote(e.target.value)} style={field} /></label>
-                <button type="submit" className="btn btn-primary" disabled={busy || !supabaseConfigured || !reference.trim() || !fullName.trim()} style={{ width: '100%', marginTop: '.8rem' }}>{busy ? 'Submitting…' : 'SUBMIT FOR MANUAL REVIEW'}</button>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '.6rem', marginTop: '1rem', color: 'var(--text-muted)', fontSize: '.84rem', lineHeight: 1.5 }}>
+                  <input type="checkbox" checked={legalAcknowledged} onChange={e => setLegalAcknowledged(e.target.checked)} required style={{ marginTop: '.2rem', flex: '0 0 auto', width: '1rem', height: '1rem', accentColor: 'var(--accent)' }} />
+                  <span>I have read and agree to the <a href="/terms" target="_blank" rel="noopener noreferrer">Terms of Use</a> and acknowledge the <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>, including how my payment and account details are used to review this submission.</span>
+                </label>
+                <button type="submit" className="btn btn-primary" disabled={busy || !supabaseConfigured || !reference.trim() || !fullName.trim() || !legalAcknowledged} style={{ width: '100%', marginTop: '.8rem' }}>{busy ? 'Submitting…' : 'SUBMIT FOR MANUAL REVIEW'}</button>
               </form>
             </aside>
           </div>}
