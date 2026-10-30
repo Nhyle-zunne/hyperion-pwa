@@ -144,6 +144,58 @@ jobs:
                ) THEN
               RAISE EXCEPTION 'Cron-token verifier is not service-role-only';
             END IF;
+            IF NOT pg_catalog.has_table_privilege('anon', 'public.payment_settings', 'SELECT')
+               OR NOT pg_catalog.has_table_privilege('authenticated', 'public.payment_settings', 'SELECT') THEN
+              RAISE EXCEPTION 'Public payment instructions must remain readable';
+            END IF;
+
+            IF pg_catalog.has_table_privilege('anon', 'public.payment_settings', 'INSERT')
+               OR pg_catalog.has_table_privilege('anon', 'public.payment_settings', 'UPDATE')
+               OR pg_catalog.has_table_privilege('anon', 'public.payment_settings', 'DELETE')
+               OR pg_catalog.has_table_privilege('anon', 'public.payment_settings', 'TRUNCATE')
+               OR pg_catalog.has_table_privilege('anon', 'public.payment_settings', 'REFERENCES')
+               OR pg_catalog.has_table_privilege('anon', 'public.payment_settings', 'TRIGGER')
+               OR pg_catalog.has_table_privilege('anon', 'public.payment_settings', 'MAINTAIN')
+               OR pg_catalog.has_table_privilege('authenticated', 'public.payment_settings', 'INSERT')
+               OR pg_catalog.has_table_privilege('authenticated', 'public.payment_settings', 'UPDATE')
+               OR pg_catalog.has_table_privilege('authenticated', 'public.payment_settings', 'DELETE')
+               OR pg_catalog.has_table_privilege('authenticated', 'public.payment_settings', 'TRUNCATE')
+               OR pg_catalog.has_table_privilege('authenticated', 'public.payment_settings', 'REFERENCES')
+               OR pg_catalog.has_table_privilege('authenticated', 'public.payment_settings', 'TRIGGER')
+               OR pg_catalog.has_table_privilege('authenticated', 'public.payment_settings', 'MAINTAIN') THEN
+              RAISE EXCEPTION 'Payment settings must remain read-only for browser roles';
+            END IF;
+
+            IF EXISTS (
+              SELECT 1
+                FROM pg_catalog.pg_default_acl d
+                JOIN pg_catalog.pg_namespace n ON n.oid = d.defaclnamespace
+                CROSS JOIN LATERAL pg_catalog.aclexplode(d.defaclacl) acl
+               WHERE n.nspname = 'public'
+                 AND d.defaclrole IN (
+                   SELECT oid FROM pg_catalog.pg_roles
+                    WHERE rolname IN ('postgres', 'supabase_admin')
+                 )
+                 AND (
+                   acl.grantee = 0
+                   OR acl.grantee IN (
+                     SELECT oid FROM pg_catalog.pg_roles
+                      WHERE rolname IN ('anon', 'authenticated')
+                   )
+                 )
+                 AND (
+                   (d.defaclobjtype = 'r' AND acl.privilege_type IN (
+                     'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE',
+                     'REFERENCES', 'TRIGGER', 'MAINTAIN'
+                   ))
+                   OR (d.defaclobjtype = 'S' AND acl.privilege_type IN (
+                     'USAGE', 'SELECT', 'UPDATE'
+                   ))
+                   OR (d.defaclobjtype = 'f' AND acl.privilege_type = 'EXECUTE')
+                 )
+            ) THEN
+              RAISE EXCEPTION 'New public objects still have default browser-role privileges';
+            END IF;
           END;
           $checks$;
           SQL
