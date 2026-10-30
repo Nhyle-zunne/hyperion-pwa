@@ -6,6 +6,10 @@ export interface OfflineEntitlementClaims {
 }
 
 export const MAX_OFFLINE_ENTITLEMENT_AGE_MS: number;
+export const OFFLINE_CLOCK_ROLLBACK_TOLERANCE_MS: number;
+export const OFFLINE_CLOCK_PERSIST_INTERVAL_MS: number;
+
+export function effectiveOfflineEntitlementNow(now: number, lastVerifiedAt: number): number | null;
 
 export const OFFLINE_ENTITLEMENT_PUBLIC_KEY: JsonWebKey;
 
