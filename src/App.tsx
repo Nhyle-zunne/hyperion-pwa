@@ -84,33 +84,59 @@ export default function App() {
   const lastCloudTrackIds = useRef<string[]>([])
   useEffect(() => {
     let alive = true
-    const refresh = async (showLoadingIndicator = false) => {
-      if (showLoadingIndicator) {
-        await withPageLoading('Checking licenses and access', () => refreshCloudEntitlements())
-      } else {
-        await refreshCloudEntitlements()
+    let lastRefreshAt = 0
+    let refreshInFlight: Promise<void> | null = null
+    const minimumRefreshIntervalMs = 2 * 60 * 1000
+
+    const refresh = async (showLoadingIndicator = false, force = false) => {
+      // Focus and visibility events often fire together. Share one request and avoid
+      // repeatedly querying entitlements while the app is already active.
+      if (refreshInFlight) return refreshInFlight
+      if (!force && Date.now() - lastRefreshAt < minimumRefreshIntervalMs) return
+
+      const task = (async () => {
+        try {
+          if (showLoadingIndicator) {
+            await withPageLoading('Checking licenses and access', () => refreshCloudEntitlements())
+          } else {
+            await refreshCloudEntitlements()
+          }
+          if (alive) setEntitlementsChecked(true)
+        } finally {
+          lastRefreshAt = Date.now()
+        }
+      })()
+      refreshInFlight = task
+      try {
+        await task
+      } finally {
+        if (refreshInFlight === task) refreshInFlight = null
       }
-      if (alive) setEntitlementsChecked(true)
     }
-    void refresh(true)
+
+    void refresh(true, true)
     const authListener = supabase?.auth.onAuthStateChange(() => {
       clearPaidQuestionCache()
       setEntitlementsChecked(false)
-      window.setTimeout(() => { void refresh() }, 0)
+      window.setTimeout(() => { void refresh(false, true) }, 0)
     })
     const refreshOnWake = () => {
       if (document.visibilityState === 'visible') void refresh()
     }
+    // A two-minute safety refresh still detects server-side revocations during a
+    // continuously open session without the previous 30-second request churn.
     const interval = window.setInterval(() => {
       if (document.visibilityState === 'visible') void refresh()
-    }, 30_000)
+    }, minimumRefreshIntervalMs)
     window.addEventListener('focus', refreshOnWake)
     document.addEventListener('visibilitychange', refreshOnWake)
+    window.addEventListener('online', refreshOnWake)
     return () => {
       alive = false
       window.clearInterval(interval)
       window.removeEventListener('focus', refreshOnWake)
       document.removeEventListener('visibilitychange', refreshOnWake)
+      window.removeEventListener('online', refreshOnWake)
       authListener?.data.subscription.unsubscribe()
     }
   }, [refreshCloudEntitlements])
