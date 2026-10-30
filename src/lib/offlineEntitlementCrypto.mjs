@@ -13,6 +13,23 @@ export const OFFLINE_ENTITLEMENT_PUBLIC_KEY = Object.freeze({
 // this 72-hour cap only protects the browser's offline/network-outage fallback after a
 // revocation or refund, so an old but still-unexpired token cannot extend cached access.
 export const MAX_OFFLINE_ENTITLEMENT_AGE_MS = 72 * 60 * 60 * 1000;
+export const OFFLINE_CLOCK_ROLLBACK_TOLERANCE_MS = 5 * 60 * 1000;
+export const OFFLINE_CLOCK_PERSIST_INTERVAL_MS = 60 * 1000;
+
+/**
+ * Uses a persisted wall-clock high-water mark so ordinary device-clock rollback
+ * cannot extend a signed offline lease. This is best-effort client protection;
+ * the server remains authoritative whenever a connection is available.
+ */
+export function effectiveOfflineEntitlementNow(now, lastVerifiedAt) {
+  if (
+    !Number.isFinite(now) ||
+    !Number.isFinite(lastVerifiedAt) ||
+    lastVerifiedAt <= 0 ||
+    now < lastVerifiedAt - OFFLINE_CLOCK_ROLLBACK_TOLERANCE_MS
+  ) return null;
+  return Math.max(now, lastVerifiedAt);
+}
 
 const OFFLINE_TRACK_IDS = new Set([
   'DECK_OIC_NW',
