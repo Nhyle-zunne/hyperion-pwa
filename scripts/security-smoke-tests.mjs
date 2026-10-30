@@ -365,7 +365,7 @@ assert.notEqual(originalQuestionFingerprint, changedAnswerFingerprint, 'Changing
 assert.ok(questionBank.includes('const authHeader = req.headers.get("Authorization")') && questionBank.includes('.auth.getUser()'), 'Question-bank identity comes from a validated Supabase user token, not client metadata');
 assert.ok(licenseStore.includes('return status === 0 || status >= 500'), 'Cached entitlement fallback is limited to genuine connectivity/server failures');
 assert.ok(questionBankClient.includes('userId ? getOfflineEntitlementExpiry(userId, track) : null'), 'Offline entitlement lookup is scoped to the currently signed-in Supabase user');
-assert.ok(offlineQuestionCache.includes('if (!stored || stored.userId !== userId) return null') && offlineQuestionCache.includes('expiresAt > Date.now()') && offlineEntitlementCrypto.includes('crypto.subtle.verify'), 'Offline entitlement cache requires a valid signature, matching account, and unexpired track lease');
+assert.ok(offlineQuestionCache.includes('if (!stored || stored.userId !== userId) return null') && offlineQuestionCache.includes('expiresAt > verified.effectiveNow') && offlineEntitlementCrypto.includes('crypto.subtle.verify'), 'Offline entitlement cache requires a valid signature, matching account, and unexpired track lease using the persisted high-water time');
 assert.ok(questionBankClient.includes('if (error && canFallbackToOffline(error) && await offlineEntitlementExpiry(track))'), 'Online question fallback only consults saved paid packs after a network/server failure plus a valid local expiry');
 assert.ok(questionBank.includes('body.freeOnly !== true') && questionBank.includes('Raw paid-bank delivery is disabled. Use paginated question delivery.'), 'Legacy raw-file endpoint cannot be used to retrieve paid-bank assets');
 
@@ -452,6 +452,11 @@ assert.equal(
   effectiveOfflineEntitlementNow(cryptoTestNow - 6 * 60 * 1000, cryptoTestNow),
   null,
   'A material device-clock rollback rejects cached offline access'
+);
+const smallRollbackEffectiveNow = effectiveOfflineEntitlementNow(cryptoTestNow - 2 * 60 * 1000, cryptoTestNow);
+assert.ok(
+  await verifyOfflineEntitlementToken(validOfflineToken, sampleClaims.userId, smallRollbackEffectiveNow, ephemeralPublicJwk),
+  'A small device-clock rollback verifies a signed lease against the last observed time'
 );
 assert.equal(
   effectiveOfflineEntitlementNow(cryptoTestNow + 2 * 60 * 1000, cryptoTestNow),
