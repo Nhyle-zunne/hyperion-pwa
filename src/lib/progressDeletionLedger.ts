@@ -38,6 +38,16 @@ function parseLedger(raw: string | null | undefined): ProgressDeletionLedger {
   }
 }
 
+function loadLedgerFromStorage(): ProgressDeletionLedger {
+  try {
+    return parseLedger(
+      typeof localStorage === 'undefined' ? null : localStorage.getItem(PROGRESS_DELETIONS_KEY)
+    )
+  } catch {
+    return emptyLedger()
+  }
+}
+
 function persistLedger(ledger: ProgressDeletionLedger): void {
   try {
     if (typeof localStorage !== 'undefined') {
@@ -50,9 +60,7 @@ function persistLedger(ledger: ProgressDeletionLedger): void {
 
 export function markProgressItemDeleted(collection: ProgressDeletionCollection, id: string): void {
   if (!id) return
-  const ledger = parseLedger(
-    typeof localStorage === 'undefined' ? null : localStorage.getItem(PROGRESS_DELETIONS_KEY)
-  )
+  const ledger = loadLedgerFromStorage()
   const previous = ledger[collection][id]
   const at = Math.max(Date.now(), (previous?.at ?? 0) + 1)
   ledger[collection][id] = { at, deleted: true }
@@ -61,9 +69,7 @@ export function markProgressItemDeleted(collection: ProgressDeletionCollection, 
 
 export function markProgressItemRestored(collection: ProgressDeletionCollection, id: string): void {
   if (!id) return
-  const ledger = parseLedger(
-    typeof localStorage === 'undefined' ? null : localStorage.getItem(PROGRESS_DELETIONS_KEY)
-  )
+  const ledger = loadLedgerFromStorage()
   const previous = ledger[collection][id]
   if (!previous?.deleted) return
   ledger[collection][id] = { at: Math.max(Date.now(), previous.at + 1), deleted: false }
