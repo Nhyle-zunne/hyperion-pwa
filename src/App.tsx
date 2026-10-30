@@ -86,12 +86,18 @@ export default function App() {
     let alive = true
     let lastRefreshAt = 0
     let refreshInFlight: Promise<void> | null = null
+    let forcedRefreshQueued = false
     const minimumRefreshIntervalMs = 2 * 60 * 1000
 
     const refresh = async (showLoadingIndicator = false, force = false) => {
       // Focus and visibility events often fire together. Share one request and avoid
       // repeatedly querying entitlements while the app is already active.
-      if (refreshInFlight) return refreshInFlight
+      if (refreshInFlight) {
+        // If the signed-in account changes during a request, run one fresh check
+        // after the current request finishes so an old account cannot win the race.
+        if (force) forcedRefreshQueued = true
+        return refreshInFlight
+      }
       if (!force && Date.now() - lastRefreshAt < minimumRefreshIntervalMs) return
 
       const task = (async () => {
@@ -111,6 +117,10 @@ export default function App() {
         await task
       } finally {
         if (refreshInFlight === task) refreshInFlight = null
+        if (forcedRefreshQueued && alive) {
+          forcedRefreshQueued = false
+          void refresh(false, true)
+        }
       }
     }
 
