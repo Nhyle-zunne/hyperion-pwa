@@ -150,13 +150,18 @@ for (const [code, weekly, monthly, yearly] of terms) {
 }
 
 assert.match(questionBankMigration, /values\s*\('question-banks',\s*'question-banks',\s*false/i, 'Question bank bucket is private');
-assert.match(questionBank, /\.auth\.getUser\(\)/, 'Question-bank endpoint validates authenticated users');
+assert.ok(
+  questionBank.includes('verifiedUserFromGateway(req)') &&
+  questionBank.includes("result.data.user.id !== user.id") &&
+  questionBank.includes('loadEntitlement'),
+  'Question-bank trusts only gateway-verified user claims, revalidates admin identity, and checks current paid entitlements'
+);
 assert.match(questionBank, /FREE_FINGERPRINT_CACHE_TTL_MS/, 'Free-question authorization fingerprints expire or invalidate');
 assert.match(finalizerMigration, /search_path|SECURITY DEFINER/i, 'Finalizer migration defines a database function');
 assert.match(finalizerMigration, /service_role/i, 'Finalizer migration restricts execution to the service role');
 assert.match(priceCorrectionMigration, /month.*then 40/i, 'GMDSS monthly price correction is tracked in a separate migration');
 assert.match(functionConfig, /\[functions\.paymongo-webhook\]\s*verify_jwt = false/, 'Webhook uses provider signature verification, not Supabase user JWT');
-assert.match(functionConfig, /\[functions\.question-bank\]\s*verify_jwt = false/, 'Question bank performs application-level authorization');
+assert.match(functionConfig, /\[functions\.question-bank\]\s*verify_jwt = true/, 'Question bank requires gateway JWT verification before reading trusted claims');
 assert.match(functionConfig, /\[functions\.create-checkout\]\s*verify_jwt = true/, 'Checkout requires an authenticated Hyperion session');
 assert.ok(checkout.includes("body.action === 'status'"), 'Checkout endpoint exposes only a non-secret availability status action');
 assert.ok(checkout.includes("const enabled = checkoutEnabled && Boolean(serviceKey) && keyMatchesMode"), 'Checkout status fails closed unless enabled and correctly configured');
