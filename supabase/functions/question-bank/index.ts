@@ -5,6 +5,7 @@ const SOURCE_ASSETS: string[] = ["deck/oic_nw_c1.csv.enc","deck/oic_nw_c10.csv.e
 const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
   "Vary": "Origin",
 };
 const a = [186,37,40,56,208,70,77,77,49,140,108,238,27,237,38,131];
