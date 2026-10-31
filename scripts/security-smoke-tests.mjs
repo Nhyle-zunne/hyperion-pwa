@@ -1004,7 +1004,7 @@ assert.ok(app.includes("const VaultScreen = lazy(() => import('./screens/VaultSc
 assert.ok(app.includes('<Route path="/vault" element={<VaultScreen />} />'), 'Mistakes notebook has a real application route');
 assert.ok(app.includes("currentMode === 'PRACTICE'") && !app.includes("currentMode === 'PRACTICE' || currentMode === 'DRILL'"), 'Free practice remains available but free-sample mistake drills require a license');
 assert.ok(appDrawer.includes('Mistakes notebook') && appDrawer.includes('path="/vault"'), 'Mistakes notebook is available from the app drawer');
-assert.ok(trackHubScreen.includes('navigate(`/vault?track=${key}`)'), 'Each track hub opens its scoped mistakes notebook');
+assert.ok(trackHubScreen.includes("gated('Mistakes Notebook'") && trackHubScreen.includes('`/vault?track=${key}`'), 'Each track hub opens its scoped mistakes notebook through the license gate');
 assert.ok(vaultScreen.includes('useSearchParams') && vaultScreen.includes('scopedItems'), 'Mistakes notebook supports global and track-scoped views');
 assert.ok(vaultScreen.includes('hasAnyActiveLicense') && vaultScreen.includes('An active license is required') && vaultScreen.includes('isTrackUnlocked(item.track)'), 'Mistakes notebook is locked without a license and filters mistakes to their active licensed track');
 assert.ok(!vaultScreen.includes('verifiedFreeItems') && !vaultScreen.includes('authorizeQuestionSet'), 'Free-sample mistakes cannot bypass the Mistakes Notebook license gate');
