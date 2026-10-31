@@ -583,7 +583,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceKey) return json(req, { error: "Question service is not configured." }, 503);
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let body: { action?: string; path?: string; csvText?: string; uploadFormat?: string; encryptedBase64?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown; items?: unknown };
+  let body: { action?: string; path?: string; csvText?: string; uploadFormat?: string; encryptedBase64?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown; items?: unknown; paths?: unknown };
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
   let user: any = null, isAdmin = false;
   const authHeader = req.headers.get("Authorization");
@@ -1142,7 +1142,17 @@ Deno.serve(async (req: Request) => {
 
     // This route exposes only the existing official free sample. One compressed
     // response replaces one Edge Function invocation per source CSV file.
-    const paths = SOURCE_ASSETS.filter(path => trackForPath(path) === track);
+    const trackPaths = SOURCE_ASSETS.filter(path => trackForPath(path) === track);
+    let paths = trackPaths;
+    if (body.paths !== undefined) {
+      if (!Array.isArray(body.paths) || body.paths.length < 1 ||
+          body.paths.length > trackPaths.length ||
+          body.paths.some((path: unknown) => typeof path !== "string" || !trackPaths.includes(path)) ||
+          new Set(body.paths).size !== body.paths.length) {
+        return json(req, { error: "Choose valid question files for this track." }, 400);
+      }
+      paths = body.paths as string[];
+    }
     const files: { path: string; text: string }[] = [];
     try {
       for (let offset = 0; offset < paths.length; offset += 4) {
