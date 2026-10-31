@@ -17,7 +17,20 @@ function headers(req: Request) {
   return { ...corsHeaders, "Access-Control-Allow-Origin": allowed.includes(origin) ? origin : "https://hyperionmaritime.org" };
 }
 function json(req: Request, body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...headers(req), "Content-Type": "application/json", "Cache-Control": "no-store, private" } });
+  const serialized = JSON.stringify(body);
+  const responseHeaders = new Headers({
+    ...headers(req),
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store, private"
+  });
+  const acceptsGzip = /(?:^|,)\\s*gzip\\s*(?:,|$)/i.test(req.headers.get("accept-encoding") || "");
+  if (acceptsGzip && new TextEncoder().encode(serialized).byteLength >= 4096) {
+    responseHeaders.set("Content-Encoding", "gzip");
+    responseHeaders.set("Vary", "Origin, Accept-Encoding");
+    const compressed = new Blob([serialized]).stream().pipeThrough(new CompressionStream("gzip"));
+    return new Response(compressed, { status, headers: responseHeaders });
+  }
+  return new Response(serialized, { status, headers: responseHeaders });
 }
 function deriveKeyBytes(): Uint8Array {
   const all = [...a, ...b];
