@@ -240,6 +240,15 @@ const onlineQuestionPageCache = new Map<string, { questions: Question[]; cachedA
 const onlineQuestionCountsCache = new Map<string, { counts: QuestionBankCount[]; cachedAt: number }>();
 
 function clearOnlineQuestionCacheForTrack(track: TrackId, includeFree = true) {
+  // Also discard the parsed per-source cache. Otherwise an admin publication could
+  // be detected correctly while an already-loaded free/full source remained stale
+  // in this browser until its page was reloaded.
+  for (const key of cache.keys()) {
+    const isFreeSource = key.endsWith(':free')
+    const path = isFreeSource ? key.slice(0, -':free'.length) : key
+    const source = SOURCES.find(item => item.path === path)
+    if (source?.track === track && (includeFree || !isFreeSource)) cache.delete(key)
+  }
   for (const key of onlineQuestionPageCache.keys()) {
     if (key.startsWith(`${track}:`) && (includeFree || key.startsWith(`${track}:full:`))) {
       onlineQuestionPageCache.delete(key);
