@@ -255,10 +255,12 @@ async function sanitizeSnapshot(
   return snapshot
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+function canonicalJson(value: unknown, snapshotRoot = false): string {
+  if (Array.isArray(value)) return `[${value.map(item => canonicalJson(item)).join(',')}]`
   if (isRecord(value)) {
-    const keys = Object.keys(value).filter(key => key !== 'savedAt' && key !== 'changedSections').sort()
+    const keys = Object.keys(value)
+      .filter(key => !snapshotRoot || (key !== 'savedAt' && key !== 'changedSections'))
+      .sort()
     return `{${keys.map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`
   }
   return JSON.stringify(value) ?? 'null'
@@ -268,7 +270,7 @@ function equivalentProgressSnapshots(left: unknown, right: unknown): boolean {
   return isRecord(left) && isRecord(right)
     && left.version === 1 && right.version === 1
     && isRecord(left.storage) && isRecord(right.storage)
-    && canonicalJson(left) === canonicalJson(right)
+    && canonicalJson(left, true) === canonicalJson(right, true)
 }
 
 async function loadAllowedTracks(
