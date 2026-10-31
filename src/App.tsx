@@ -88,7 +88,7 @@ export default function App() {
     let lastRefreshAt = 0
     let refreshInFlight: Promise<void> | null = null
     let forcedRefreshQueued = false
-    const minimumRefreshIntervalMs = 5 * 60 * 1000
+    const minimumRefreshIntervalMs = 10 * 60 * 1000
 
     const refresh = async (showLoadingIndicator = false, force = false) => {
       // Focus and visibility events often fire together. Share one request and avoid
@@ -134,7 +134,7 @@ export default function App() {
     const refreshOnWake = () => {
       if (document.visibilityState === 'visible') void refresh()
     }
-    // A five-minute safety refresh keeps access reasonably fresh without repeatedly
+    // A ten-minute safety refresh keeps access reasonably fresh without repeatedly
     // querying entitlements while users remain in a long study session.
     const interval = window.setInterval(() => {
       if (document.visibilityState === 'visible') void refresh()
