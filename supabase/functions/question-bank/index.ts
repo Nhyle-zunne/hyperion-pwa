@@ -270,6 +270,10 @@ function sourceInfo(path: string): SourceInfo | null {
   return { track, competenceId, part, format: track === "GMDSS_GOC" ? "gmdss" : "standard", functionId, idPrefix };
 }
 async function privateText(admin: any, path: string): Promise<string> {
+  // Ensure the isolate has loaded the shared publication epoch before consulting
+  // its local cache. Without this, a cold isolate would have an empty epoch and
+  // would unnecessarily download every encrypted source file on every request.
+  await cachedMigrationState(admin);
   const bankEpoch = currentQuestionBankEpoch();
   const cached = privateTextCache.get(path);
   if (bankEpoch && cached &&
