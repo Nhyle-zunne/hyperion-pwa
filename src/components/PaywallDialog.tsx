@@ -22,7 +22,6 @@ export default function PaywallDialog() {
       const next = new URLSearchParams(current)
       next.set('purchase', '1')
       next.set('purchase_product', purchaseCode)
-      next.set('purchase_term', next.get('purchase_term') || 'year')
       return next
     }, { replace: true })
     closePaywall()

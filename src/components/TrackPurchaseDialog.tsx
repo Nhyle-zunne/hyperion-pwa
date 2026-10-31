@@ -78,8 +78,16 @@ export default function TrackPurchaseDialog() {
   }, [])
 
   useEffect(() => {
-    setTerm(validTerm(params.get('purchase_term')))
-  }, [params])
+    const requestedTerm = params.get('purchase_term')
+    if (requestedTerm === 'week' || requestedTerm === 'month' || requestedTerm === 'year') {
+      setTerm(requestedTerm)
+      return
+    }
+    const savedPlan = productCode
+      ? savedBasket().find(item => item.code === productCode)
+      : undefined
+    setTerm(savedPlan?.term ?? 'year')
+  }, [params, productCode])
 
   useEffect(() => {
     if (!supabase) {
