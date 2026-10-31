@@ -6,6 +6,21 @@ type JsonRecord = Record<string, unknown>
 const TRACKS = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'] as const
 const QUESTION_STORAGE_KEYS = ['hyperion-bookmarks', 'hyperion-vault'] as const
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024
+const PROGRESS_ROW_CACHE_TTL_MS = 45_000
+const PROGRESS_ROW_CACHE_MAX_ENTRIES = 16
+type ProgressRowCacheEntry = { data: unknown; updatedAt: string; cachedAt: number }
+const progressRowCache = new Map<string, ProgressRowCacheEntry>()
+
+function rememberProgressRow(userId: string, data: unknown, updatedAt: string): void {
+  progressRowCache.delete(userId)
+  progressRowCache.set(userId, { data, updatedAt, cachedAt: Date.now() })
+  while (progressRowCache.size > PROGRESS_ROW_CACHE_MAX_ENTRIES) {
+    const oldestUserId = progressRowCache.keys().next().value
+    if (!oldestUserId) break
+    progressRowCache.delete(oldestUserId)
+  }
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -323,15 +338,53 @@ Deno.serve(async req => {
     } catch {
       return json(req, { error: 'Current license access could not be verified.' }, 503)
     }
-    const { data, error } = await admin.from('user_learning_progress')
-      .select('data,updated_at')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    if (error) return json(req, { error: 'Could not load progress.' }, 500)
-    if (!data) return json(req, { data: null, updated_at: null })
+    let snapshotData: unknown = null
+    let snapshotUpdatedAt: string | null = null
+    let haveSnapshot = false
+
+    // Keep a small, per-isolate copy of recently read snapshots. We still check
+    // the authoritative updated_at on every read, and re-run entitlement/snapshot
+    // sanitization below, but avoid returning the large JSONB column from Postgres
+    // when the row has not changed since the last read in this warm isolate.
+    const cached = progressRowCache.get(user.id)
+    if (cached && Date.now() - cached.cachedAt < PROGRESS_ROW_CACHE_TTL_MS) {
+      const { data: revision, error: revisionError } = await admin.from('user_learning_progress')
+        .select('updated_at')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (revisionError) return json(req, { error: 'Could not check the progress version.' }, 500)
+      if (!revision) {
+        progressRowCache.delete(user.id)
+        return json(req, { data: null, updated_at: null })
+      }
+      if (revision.updated_at === cached.updatedAt) {
+        snapshotData = cached.data
+        snapshotUpdatedAt = cached.updatedAt
+        haveSnapshot = true
+        rememberProgressRow(user.id, cached.data, cached.updatedAt)
+      } else {
+        progressRowCache.delete(user.id)
+      }
+    }
+
+    if (!haveSnapshot) {
+      const { data: row, error } = await admin.from('user_learning_progress')
+        .select('data,updated_at')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (error) return json(req, { error: 'Could not load progress.' }, 500)
+      if (!row) {
+        progressRowCache.delete(user.id)
+        return json(req, { data: null, updated_at: null })
+      }
+      snapshotData = row.data
+      snapshotUpdatedAt = row.updated_at
+      rememberProgressRow(user.id, row.data, row.updated_at)
+    }
+
     try {
-      const sanitized = await sanitizeSnapshot(client, data.data, allowedTracks)
-      return json(req, { data: sanitized, updated_at: data.updated_at })
+      const sanitized = await sanitizeSnapshot(client, snapshotData, allowedTracks)
+      return json(req, { data: sanitized, updated_at: snapshotUpdatedAt })
     } catch {
       return json(req, { error: 'Could not safely verify saved question access.' }, 503)
     }
@@ -365,6 +418,7 @@ Deno.serve(async req => {
       )
       if (comparisonError) return json(req, { error: 'Could not check the progress version.' }, 500)
       if (comparison === 'conflict') {
+        progressRowCache.delete(user.id)
         return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
       }
       if (comparison === 'unchanged') {
@@ -391,9 +445,13 @@ Deno.serve(async req => {
           .maybeSingle()
         if (error) {
           if (error.code === '23505' || error.code === '409') {
+            progressRowCache.delete(user.id)
             return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
           }
           return json(req, { error: 'Could not save progress.' }, 500)
+        }
+        if (typeof data?.updated_at === 'string') {
+          rememberProgressRow(user.id, sanitized, data.updated_at)
         }
         return json(req, {
           ok: true,
@@ -411,8 +469,10 @@ Deno.serve(async req => {
 
       if (error) return json(req, { error: 'Could not save progress.' }, 500)
       if (!data) {
+        progressRowCache.delete(user.id)
         return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
       }
+      rememberProgressRow(user.id, sanitized, data.updated_at)
       return json(req, {
         ok: true,
         updated_at: data.updated_at,
