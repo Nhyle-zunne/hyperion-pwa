@@ -1047,9 +1047,32 @@ async function compareLegacyPackToCurrent(
  * local question lists first, so unchanged legacy downloads can be marked current
  * without forcing a needless full re-download.
  */
+const offlineQuestionVersionChecksInFlight = new Map<string, Promise<OfflinePackUpdateCheck>>()
+const QUESTION_BANK_VERSION_CHECK_COOLDOWN_MS = 5 * 60 * 1000
+
 export async function checkOfflineQuestionPackUpdates(
   track: TrackId,
-  freeOnly: boolean
+  freeOnly: boolean,
+  force = false
+): Promise<OfflinePackUpdateCheck> {
+  const key = `${track}:${freeOnly ? 'free' : 'full'}`
+  const existing = offlineQuestionVersionChecksInFlight.get(key)
+  if (existing) return existing
+  const pending = performOfflineQuestionPackUpdateCheck(track, freeOnly, force)
+  offlineQuestionVersionChecksInFlight.set(key, pending)
+  try {
+    return await pending
+  } finally {
+    if (offlineQuestionVersionChecksInFlight.get(key) === pending) {
+      offlineQuestionVersionChecksInFlight.delete(key)
+    }
+  }
+}
+
+async function performOfflineQuestionPackUpdateCheck(
+  track: TrackId,
+  freeOnly: boolean,
+  force: boolean
 ): Promise<OfflinePackUpdateCheck> {
   const manifest = await getOfflinePackManifest(track, freeOnly)
   if (!manifest?.complete) {
@@ -1077,6 +1100,25 @@ export async function checkOfflineQuestionPackUpdates(
       changedCompetences: describeChangedCompetences(changedPaths),
       checkedAt: manifest.lastCheckedAt ?? null,
       lastKnownState: 'available',
+      savedAt: manifest.savedAt
+    }
+  }
+
+  // Focus and visibilitychange frequently fire together. Reuse the persisted
+  // result for five minutes instead of making another Storage metadata request
+  // every time the user returns to an already-open reviewer tab.
+  if (
+    !force &&
+    manifest.lastCheckedAt &&
+    manifest.lastKnownUpdateState &&
+    Date.now() - manifest.lastCheckedAt < QUESTION_BANK_VERSION_CHECK_COOLDOWN_MS
+  ) {
+    const changedPaths = manifest.availableSources ?? []
+    return {
+      status: manifest.lastKnownUpdateState,
+      changedCompetences: describeChangedCompetences(changedPaths),
+      checkedAt: manifest.lastCheckedAt,
+      lastKnownState: manifest.lastKnownUpdateState,
       savedAt: manifest.savedAt
     }
   }
