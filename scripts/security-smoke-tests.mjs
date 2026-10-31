@@ -743,6 +743,27 @@ assert.equal(isOfflinePackSetComplete(completePackManifest, [completePackRecords
 assert.ok(offlineQuestionCache.includes('isOfflinePackSetComplete(manifest, metadata)'), 'Offline reads verify that manifest totals and lightweight pack metadata still agree after storage eviction');
 assert.ok(offlineQuestionCache.includes('saveOfflineQuestionPackSets') && offlineQuestionCache.includes("db.transaction(['packs', 'packMeta', 'manifests'], 'readwrite')"), 'Question packs, their lightweight metadata, and manifests commit in one IndexedDB transaction');
 assert.ok(questionBankClient.includes('await saveOfflineQuestionPackSets(updates)') && questionBankClient.includes('Keep any existing complete pack usable'), 'Failed offline downloads preserve the last complete question pack until an atomic replacement is ready');
+const offlineDownloadStart = questionBankClient.indexOf('async function downloadOfflinePackInternal');
+const offlineDownloadSessionGate = questionBankClient.indexOf('await supabase.auth.getSession()', offlineDownloadStart);
+const offlineDownloadLicenseGate = questionBankClient.indexOf("body: { action: 'offline-license' }", offlineDownloadStart);
+const offlineDownloadVersionRequest = questionBankClient.indexOf('const versionsBefore = await fetchRemoteQuestionBankVersions(track)', offlineDownloadStart);
+const offlineDownloadCountsRequest = questionBankClient.indexOf('const counts = await getQuestionCountsByTrack(track, false)', offlineDownloadStart);
+assert.ok(
+  offlineDownloadStart >= 0 &&
+  questionBankClient.includes("if (freeOnly) throw new Error('Offline downloads require an active license for this track.')") &&
+  offlineDownloadSessionGate > offlineDownloadStart &&
+  offlineDownloadLicenseGate > offlineDownloadSessionGate &&
+  questionBankClient.includes('!offlineLicense.trackIds.includes(track)') &&
+  offlineDownloadVersionRequest > offlineDownloadLicenseGate &&
+  offlineDownloadCountsRequest > offlineDownloadVersionRequest,
+  'Offline pack downloads reject free packs and verify a server-signed entitlement for the selected track before requesting bank metadata or question counts'
+);
+assert.ok(
+  trackHubScreen.includes("if (!unlocked) {") &&
+  trackHubScreen.includes("openPaywall(`${info.title} · Offline Access`)") &&
+  trackHubScreen.includes('ACTIVATE A LICENSE TO DOWNLOAD'),
+  'Track hub sends unlicensed download attempts to the license prompt instead of starting a download'
+);
 assert.ok(questionBankClient.includes('export async function ensureOfflineFreeSamplePack') && questionBankClient.includes('const fullBank = await getOfflineQuestionsByTrack(track, false)') && questionBankClient.includes('freeSample(fullBank, track)'), 'An old Deck OIC offline free sample is repaired only from the complete cached bank and the current server-matched sampler');
 assert.ok(questionBankClient.includes('async function hasValidOfflineTrackLease(track: TrackId): Promise<boolean>') && questionBankClient.includes('const expiry = await offlineEntitlementExpiry(track)') && questionBankClient.includes('expiry > Date.now()'), 'Saved paid-session recovery requires an unexpired server-signed lease for the same user and track');
 const accessQuestionSetStart = questionBankClient.indexOf('export async function authorizeQuestionSetAccess');
