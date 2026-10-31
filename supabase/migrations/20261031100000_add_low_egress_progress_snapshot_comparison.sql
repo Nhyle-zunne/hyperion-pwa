@@ -1,3 +1,6 @@
+-- Remove the short-lived prototype helper used during development, if present.
+DROP FUNCTION IF EXISTS public.user_learning_progress_matches(uuid, timestamptz, jsonb);
+
 -- Avoid returning the full JSONB progress snapshot to Edge Functions on every
 -- unchanged write. JSONB equality ignores object key order (like the edge
 -- canonicalizer), while preserving array order and all meaningful nested data.
