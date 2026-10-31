@@ -34,21 +34,16 @@ export default function AdminPaymentsScreen() {
   const load = useCallback(async (force = false) => {
     if (loadInFlight.current) return loadInFlight.current
     // Focus and visibilitychange can fire together, and multiple admin tabs may
-    // be open. Share a single request pair and throttle background refreshes.
+    // be open. Share one request and throttle background refreshes.
     if (!force && Date.now() - lastAutoLoadAt.current < 120_000) return
     lastAutoLoadAt.current = Date.now()
     const task = (async () => {
       try {
         const result = await call({ action: 'list' })
         setOrders(result.orders || [])
+        setReconciliationAlerts(Array.isArray(result.alerts) ? result.alerts : [])
+        setAlertLoadWarning(Array.isArray(result.alerts) ? '' : 'Could not load PayMongo reconciliation alerts. Check the function logs before marking any duplicate payment resolved.')
         setAuthorized(true)
-        try {
-          const reconciliation = await call({ action: 'reconciliation-alerts' })
-          setReconciliationAlerts(reconciliation.alerts || [])
-          setAlertLoadWarning('')
-        } catch {
-          setAlertLoadWarning('Could not load PayMongo reconciliation alerts. Check the function logs before marking any duplicate payment resolved.')
-        }
       } catch (e) { setAuthorized(false); setMessage(safeAdminError(e, 'Unable to load payment submissions. Please retry.')) }
     })()
     loadInFlight.current = task
@@ -59,7 +54,7 @@ export default function AdminPaymentsScreen() {
     }
   }, [call])
   // Webhooks deliver payment status changes; manual refresh remains available
-  // while background polling is intentionally limited to one request pair / 2 min.
+  // while background polling is intentionally limited to one request / 2 min.
   useEffect(() => {
     void withPageLoading('Loading payment submissions', () => load(true))
     const refreshIfVisible = () => {
