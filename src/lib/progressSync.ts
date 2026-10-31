@@ -627,13 +627,19 @@ async function uploadSnapshot(): Promise<void> {
   // clear this redundant dirty marker without generating another Edge invocation.
   if (lastUploadedUserId === userId && lastUploadedSignature === snapshotSignature) {
     uploadInFlight = false
-    try {
-      if (localStorage.getItem(key) === dirtyAtStart) {
-        localStorage.removeItem(key)
-        localStorage.removeItem(LOCAL_DIRTY_KEY)
-        localStorage.setItem(DIRTY_SECTIONS_KEY, '[]')
-      }
-    } catch { /* local-only mode remains available */ }
+    const stillUnchanged = progressSignature(captureSnapshot()) === snapshotSignature
+    if (stillUnchanged && !uploadQueued) {
+      try {
+        if (localStorage.getItem(key) === dirtyAtStart) {
+          localStorage.removeItem(key)
+          localStorage.removeItem(LOCAL_DIRTY_KEY)
+          localStorage.setItem(DIRTY_SECTIONS_KEY, '[]')
+        }
+      } catch { /* local-only mode remains available */ }
+    } else {
+      uploadQueued = false
+      scheduleUpload(150)
+    }
     return
   }
 
