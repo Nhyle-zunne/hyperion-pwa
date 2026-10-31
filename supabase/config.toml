@@ -25,7 +25,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.question-bank]
-verify_jwt = false
+verify_jwt = true
 
 [functions.admin-license-management]
 verify_jwt = true
