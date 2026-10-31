@@ -265,7 +265,7 @@ export default function HistoryScreen() {
       const allowed = await authorizeQuestionSet(snapshot.track, snapshot.questions)
       if (cancelled || allowed) return
       setReview(null)
-      navigate(`/track?track=${TRACK_KEYS[review.snapshot.track]}`)
+      navigate(`/track?track=${TRACK_KEYS[snapshot.track]}`)
       openPaywall('This saved question review is no longer available without an active track license.')
     })()
     return () => { cancelled = true }
