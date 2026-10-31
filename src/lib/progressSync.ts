@@ -680,35 +680,56 @@ async function uploadSnapshot(): Promise<void> {
     uploadQueued = true
     return
   }
+
+  const userId = expectedUserId
+  const lock = await acquireProgressSyncLock(userId)
+  if (!lock) {
+    // Another tab is already syncing this same account. Retry later; the
+    // shared persisted signature will let us skip if its upload covers our state.
+    scheduleUpload(MIN_UPLOAD_INTERVAL_MS)
+    return
+  }
+  if (activeUserId !== userId || !cloudReady || hydrating) {
+    lock.release()
+    return
+  }
+
   uploadInFlight = true
-  const userId = activeUserId
   const key = dirtyKey(userId)
   const dirtyAtStart = (() => { try { return localStorage.getItem(key) } catch { return null } })()
   const snapshot = captureSnapshot()
   const snapshotSignature = progressSignature(snapshot)
 
-  // Store subscribers can fire for presentation-only updates or repeated timer
-  // ticks. If the study payload exactly matches the last server-confirmed snapshot,
-  // clear this redundant dirty marker without generating another Edge invocation.
-  if (lastUploadedUserId === userId && lastUploadedSignature === snapshotSignature) {
-    uploadInFlight = false
-    const stillUnchanged = progressSignature(captureSnapshot()) === snapshotSignature
-    if (stillUnchanged && !uploadQueued) {
-      try {
-        if (localStorage.getItem(key) === dirtyAtStart) {
-          localStorage.removeItem(key)
-          localStorage.removeItem(LOCAL_DIRTY_KEY)
-          localStorage.setItem(DIRTY_SECTIONS_KEY, '[]')
-        }
-      } catch { /* local-only mode remains available */ }
-    } else {
-      uploadQueued = false
-      scheduleUpload(150)
-    }
-    return
-  }
-
   try {
+    const signatureHash = await hashProgressSignature(snapshotSignature)
+    const sharedSignature = (() => {
+      try { return localStorage.getItem(persistedSignatureKey(userId)) } catch { return null }
+    })()
+
+    // A second tab can now recognize a cloud save completed by the first tab.
+    // This prevents every open tab from re-uploading the same full snapshot.
+    if (
+      (lastUploadedUserId === userId && lastUploadedSignature === snapshotSignature) ||
+      sharedSignature === signatureHash
+    ) {
+      lastUploadedUserId = userId
+      lastUploadedSignature = snapshotSignature
+      const stillUnchanged = progressSignature(captureSnapshot()) === snapshotSignature
+      if (stillUnchanged && !uploadQueued) {
+        try {
+          if (localStorage.getItem(key) === dirtyAtStart) {
+            localStorage.removeItem(key)
+            localStorage.removeItem(LOCAL_DIRTY_KEY)
+            localStorage.setItem(DIRTY_SECTIONS_KEY, '[]')
+          }
+        } catch { /* local-only mode remains available */ }
+      } else {
+        uploadQueued = false
+        scheduleUpload(150)
+      }
+      return
+    }
+
     // Reuse the version captured during hydration or the previous successful
     // write. A read is only needed when the version is unknown or a conflict occurs.
     let expectedUpdatedAt = cloudVersionLoaded ? cloudUpdatedAt : null
@@ -748,9 +769,8 @@ async function uploadSnapshot(): Promise<void> {
         lastUploadAt = Date.now()
         cloudSnapshot = snapshotToUpload
         lastUploadedUserId = userId
-        // Compare against the unchanged local capture; cloudSnapshot separately
-        // retains any remote-only data merged into the successful write.
         lastUploadedSignature = snapshotSignature
+        try { localStorage.setItem(persistedSignatureKey(userId), signatureHash) } catch { /* cross-tab hint is optional */ }
         saved = true
         break
       }
@@ -795,6 +815,7 @@ async function uploadSnapshot(): Promise<void> {
     if (navigator.onLine !== false) retryTimer = setTimeout(() => { void initializeUser(userId) }, 5000)
   } finally {
     uploadInFlight = false
+    lock.release()
     if (uploadQueued && activeUserId === userId) {
       uploadQueued = false
       scheduleUpload(150)
@@ -966,6 +987,12 @@ async function initializeUserInternal(userId: string): Promise<void> {
     cloudSnapshot = snapshotToApply
     lastUploadedUserId = userId
     lastUploadedSignature = progressSignature(captureSnapshot())
+    try {
+      localStorage.setItem(
+        persistedSignatureKey(userId),
+        await hashProgressSignature(lastUploadedSignature)
+      )
+    } catch { /* cross-tab hint is optional */ }
   }
   cloudReady = true
   if (shouldUpload) {
