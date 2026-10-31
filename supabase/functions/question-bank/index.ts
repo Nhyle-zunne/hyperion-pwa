@@ -301,6 +301,112 @@ function validGmdssRows(text: string): string[][] {
   }
   return chunks;
 }
+type QuestionAssetVersion = {
+  path: string;
+  updatedAt: string;
+  etag: string;
+  size: number;
+};
+
+async function trackAssetVersions(admin: any, track: string): Promise<QuestionAssetVersion[]> {
+  const paths = SOURCE_ASSETS.filter(path => trackForPath(path) === track);
+  if (!paths.length) throw new Error("Question track has no source assets.");
+  const { data, error } = await admin.rpc("get_question_bank_object_versions", { p_names: paths });
+  if (error || !Array.isArray(data)) throw new Error("Question-bank source versions are unavailable.");
+  const byName = new Map<string, any>(data.map((item: any) => [String(item.name), item]));
+  return paths.map(path => {
+    const item = byName.get(path);
+    const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
+    const etag = typeof item?.etag === "string" ? item.etag : "";
+    const size = Number(item?.size);
+    if (!updatedAt || !etag || !Number.isFinite(size) || size <= 0) {
+      throw new Error("Question-bank source version metadata is incomplete.");
+    }
+    return { path, updatedAt, etag, size };
+  });
+}
+
+function assetVersionPayload(versions: QuestionAssetVersion[]) {
+  return versions.map(({ path, etag, size }) => ({ path, etag, size }));
+}
+
+function sameAssetVersions(cached: unknown, current: QuestionAssetVersion[]): boolean {
+  if (!Array.isArray(cached) || cached.length !== current.length) return false;
+  return current.every((version, index) => {
+    const item = cached[index] as any;
+    return item?.path === version.path &&
+      item?.etag === version.etag &&
+      Number(item?.size) === version.size;
+  });
+}
+
+async function cachedQuestionCounts(admin: any, track: string) {
+  const versions = await trackAssetVersions(admin, track);
+  const paths = versions.map(version => version.path);
+  const { data, error } = await admin
+    .from("question_bank_asset_counts")
+    .select("asset_path,source_updated_at,source_etag,source_size,full_count,free_count")
+    .in("asset_path", paths);
+  if (error || !Array.isArray(data)) throw new Error("Question-bank count cache is unavailable.");
+
+  const cachedByPath = new Map<string, any>(data.map((item: any) => [String(item.asset_path), item]));
+  const rowsToUpsert: Record<string, unknown>[] = [];
+  const counts: { competenceId: string; part: number; fullCount: number; freeCount: number }[] = [];
+
+  for (const version of versions) {
+    const info = sourceInfo(version.path);
+    if (!info) continue;
+    const cached = cachedByPath.get(version.path);
+    const versionMatches = cached &&
+      Date.parse(String(cached.source_updated_at)) === Date.parse(version.updatedAt) &&
+      cached.source_etag === version.etag &&
+      Number(cached.source_size) === version.size;
+
+    let fullCount: number;
+    let freeCount: number;
+    if (versionMatches && Number.isInteger(Number(cached.full_count)) && Number.isInteger(Number(cached.free_count))) {
+      fullCount = Number(cached.full_count);
+      freeCount = Number(cached.free_count);
+    } else {
+      const text = await privateText(admin, version.path);
+      fullCount = validQuestionCount(version.path, text, false);
+      freeCount = validQuestionCount(version.path, text, true);
+      rowsToUpsert.push({
+        asset_path: version.path,
+        source_updated_at: version.updatedAt,
+        source_etag: version.etag,
+        source_size: version.size,
+        full_count: fullCount,
+        free_count: freeCount
+      });
+    }
+    counts.push({
+      competenceId: info.competenceId,
+      part: info.part,
+      fullCount,
+      freeCount
+    });
+  }
+
+  if (rowsToUpsert.length) {
+    const { error: upsertError } = await admin
+      .from("question_bank_asset_counts")
+      .upsert(rowsToUpsert, { onConflict: "asset_path" });
+    if (upsertError) throw new Error("Could not persist question-bank count cache.");
+  }
+  return counts;
+}
+
+async function loadTrackFingerprintCache(admin: any, track: string) {
+  const { data, error } = await admin
+    .from("question_bank_track_free_fingerprints")
+    .select("asset_versions,fingerprints,full_fingerprints")
+    .eq("track_id", track)
+    .maybeSingle();
+  if (error) throw new Error("Question-bank fingerprint cache is unavailable.");
+  return data;
+}
+
 function validQuestionCount(path: string, text: string, freeOnly: boolean): number {
   let count = 0;
   const info = sourceInfo(path);
@@ -472,14 +578,24 @@ async function questionFingerprint(question: { questionText: string; options: st
   return Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("");
 }
 async function freeQuestionFingerprints(admin: any, track: string): Promise<Set<string>> {
-  const bankEpoch = currentQuestionBankEpoch();
-  const cached = freeQuestionFingerprintCache.get(track);
-  if (bankEpoch && cached && cached.bankEpoch === bankEpoch &&
-      Date.now() - cached.cachedAt < FREE_FINGERPRINT_CACHE_TTL_MS) return cached.fingerprints;
+  const versions = await trackAssetVersions(admin, track);
+  const bankEpoch = JSON.stringify(assetVersionPayload(versions));
+  const cachedMemory = freeQuestionFingerprintCache.get(track);
+  if (cachedMemory && cachedMemory.bankEpoch === bankEpoch &&
+      Date.now() - cachedMemory.cachedAt < FREE_FINGERPRINT_CACHE_TTL_MS) return cachedMemory.fingerprints;
+
+  const cachedRow = await loadTrackFingerprintCache(admin, track);
+  const versionsMatch = sameAssetVersions(cachedRow?.asset_versions, versions);
+  if (versionsMatch && Array.isArray(cachedRow?.fingerprints)) {
+    const fingerprints = new Set<string>(cachedRow.fingerprints.filter((value: unknown) => typeof value === "string"));
+    freeQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now(), bankEpoch });
+    return fingerprints;
+  }
+
   const fingerprints = new Set<string>();
-  for (const path of SOURCE_ASSETS.filter(item => trackForPath(item) === track)) {
-    const sample = sampleFreeCsv(path, await privateText(admin, path));
-    const questions = toSearchQuestions(path, sample);
+  for (const version of versions) {
+    const sample = sampleFreeCsv(version.path, await privateText(admin, version.path));
+    const questions = toSearchQuestions(version.path, sample);
     const hashes = await Promise.all(questions.map(question => questionFingerprint({
       questionText: String(question.questionText),
       options: question.options as string[],
@@ -487,17 +603,37 @@ async function freeQuestionFingerprints(admin: any, track: string): Promise<Set<
     })));
     hashes.forEach(hash => fingerprints.add(hash));
   }
+
+  const { error } = await admin.from("question_bank_track_free_fingerprints").upsert({
+    track_id: track,
+    asset_versions: assetVersionPayload(versions),
+    fingerprints: Array.from(fingerprints),
+    full_fingerprints: versionsMatch && Array.isArray(cachedRow?.full_fingerprints)
+      ? cachedRow.full_fingerprints
+      : null
+  }, { onConflict: "track_id" });
+  if (error) throw new Error("Could not persist free question fingerprints.");
   freeQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now(), bankEpoch });
   return fingerprints;
 }
 async function fullQuestionFingerprints(admin: any, track: string): Promise<Set<string>> {
-  const bankEpoch = currentQuestionBankEpoch();
-  const cached = fullQuestionFingerprintCache.get(track);
-  if (bankEpoch && cached && cached.bankEpoch === bankEpoch &&
-      Date.now() - cached.cachedAt < FREE_FINGERPRINT_CACHE_TTL_MS) return cached.fingerprints;
+  const versions = await trackAssetVersions(admin, track);
+  const bankEpoch = JSON.stringify(assetVersionPayload(versions));
+  const cachedMemory = fullQuestionFingerprintCache.get(track);
+  if (cachedMemory && cachedMemory.bankEpoch === bankEpoch &&
+      Date.now() - cachedMemory.cachedAt < FREE_FINGERPRINT_CACHE_TTL_MS) return cachedMemory.fingerprints;
+
+  const cachedRow = await loadTrackFingerprintCache(admin, track);
+  const versionsMatch = sameAssetVersions(cachedRow?.asset_versions, versions);
+  if (versionsMatch && Array.isArray(cachedRow?.full_fingerprints)) {
+    const fingerprints = new Set<string>(cachedRow.full_fingerprints.filter((value: unknown) => typeof value === "string"));
+    fullQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now(), bankEpoch });
+    return fingerprints;
+  }
+
   const fingerprints = new Set<string>();
-  for (const path of SOURCE_ASSETS.filter(item => trackForPath(item) === track)) {
-    const questions = toSearchQuestions(path, await privateText(admin, path));
+  for (const version of versions) {
+    const questions = toSearchQuestions(version.path, await privateText(admin, version.path));
     const hashes = await Promise.all(questions.map(question => questionFingerprint({
       questionText: String(question.questionText),
       options: question.options as string[],
@@ -505,6 +641,16 @@ async function fullQuestionFingerprints(admin: any, track: string): Promise<Set<
     })));
     hashes.forEach(hash => fingerprints.add(hash));
   }
+
+  const { error } = await admin.from("question_bank_track_free_fingerprints").upsert({
+    track_id: track,
+    asset_versions: assetVersionPayload(versions),
+    fingerprints: versionsMatch && Array.isArray(cachedRow?.fingerprints)
+      ? cachedRow.fingerprints
+      : [],
+    full_fingerprints: Array.from(fingerprints)
+  }, { onConflict: "track_id" });
+  if (error) throw new Error("Could not persist full question fingerprints.");
   fullQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now(), bankEpoch });
   return fingerprints;
 }
@@ -1150,14 +1296,12 @@ Deno.serve(async (req: Request) => {
       } catch { return json(req, { error: "Could not verify your license. Please refresh and try again." }, 503); }
     }
     try {
-      const paths = SOURCE_ASSETS.filter(path => trackForPath(path) === track);
-      const counts = [];
-      for (const assetPath of paths) {
-        const info = sourceInfo(assetPath);
-        if (!info) continue;
-        const text = await privateText(admin, assetPath);
-        counts.push({ competenceId: info.competenceId, part: info.part, count: validQuestionCount(assetPath, text, freeOnly) });
-      }
+      const cachedCounts = await cachedQuestionCounts(admin, track);
+      const counts = cachedCounts.map(item => ({
+        competenceId: item.competenceId,
+        part: item.part,
+        count: freeOnly ? item.freeCount : item.fullCount
+      }));
       return json(req, { counts, access: freeOnly ? "free-sample-counts" : isAdmin ? "admin" : "licensed" });
     } catch {
       return json(req, { error: "Could not read question metadata from private storage." }, 503);
