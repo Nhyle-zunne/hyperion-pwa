@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userError } = await authClient.auth.getUser()
   if (userError || !user) return json({ error: 'Your session is invalid. Please sign in again.' }, 401)
 
-  let body: { action?: string; productCode?: string; productCodes?: unknown; items?: unknown }
+  let body: { action?: string; productCode?: string; productCodes?: unknown; items?: unknown; returnTo?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid request body.' }, 400) }
 
   const modeIsValid = expectedLiveMode === 'true' || expectedLiveMode === 'false'
@@ -297,6 +297,18 @@ Deno.serve(async (req) => {
       return json({ error: 'The app return URL must use HTTPS.' }, 503)
     }
 
+    const returnPath = typeof body.returnTo === 'string' && body.returnTo.startsWith('/practice') && !body.returnTo.startsWith('//') && !body.returnTo.includes('\\\\')
+      ? body.returnTo
+      : '/checkout'
+    const buildReturnUrl = (payment: 'success' | 'cancelled') => {
+      const target = new URL(returnPath, configuredBase)
+      if (target.origin !== appUrl.origin || target.pathname !== '/practice') return new URL(`/checkout?payment=${payment}&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`, configuredBase).toString()
+      target.searchParams.set('payment', payment)
+      target.searchParams.set('order_id', order.id)
+      target.searchParams.set('product_code', code)
+      return target.toString()
+    }
+
     const payload = {
       data: {
         attributes: {
@@ -306,8 +318,8 @@ Deno.serve(async (req) => {
             ...(user.email ? { email: user.email } : {})
           },
           payment_method_types: ['gcash', 'paymaya', 'qrph', 'card'],
-          success_url: `${configuredBase}/checkout?payment=success&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
-          cancel_url: `${configuredBase}/checkout?payment=cancelled&order_id=${encodeURIComponent(order.id)}&product_code=${encodeURIComponent(code)}`,
+          success_url: buildReturnUrl('success'),
+          cancel_url: buildReturnUrl('cancelled'),
           reference_number: order.id,
           send_email_receipt: true,
           metadata: { order_id: order.id, user_id: user.id, product_code: code, license_term: termsByCode[code] }
