@@ -65,13 +65,12 @@ let activeUserId: string | null = null
 let cloudReady = false
 let uploadTimer: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let currentGeneration = 0
 let cloudUpdatedAt: string | null = null
 let cloudVersionLoaded = false
 let lastUploadAt = 0
 let uploadInFlight = false
-const MIN_UPLOAD_INTERVAL_MS = 15_000
+const MIN_UPLOAD_INTERVAL_MS = 30_000
 let uploadQueued = false
 let unsubscribeStores: (() => void)[] = []
 let authSubscription: { unsubscribe: () => void } | null = null
@@ -158,6 +157,21 @@ function isSnapshot(value: unknown): value is LearningProgressSnapshot {
     && !!candidate.storage
     && typeof candidate.storage === 'object'
 }
+
+// Exclude transport metadata that changes on every capture, but retain all actual
+// study data, including the active-session resume position and changed-at watermark.
+function progressSignature(snapshot: LearningProgressSnapshot): string {
+  return JSON.stringify({
+    version: snapshot.version,
+    activeSessionChangedAt: snapshot.activeSessionChangedAt,
+    storage: snapshot.storage,
+    activeSession: snapshot.activeSession
+  })
+}
+
+let lastUploadedUserId: string | null = null
+let lastUploadedSignature: string | null = null
+
 
 function parseJson<T>(raw: string | null): T | null {
   if (!raw) return null
@@ -605,6 +619,21 @@ async function uploadSnapshot(): Promise<void> {
   const key = dirtyKey(userId)
   const dirtyAtStart = (() => { try { return localStorage.getItem(key) } catch { return null } })()
   const snapshot = captureSnapshot()
+  const snapshotSignature = progressSignature(snapshot)
+
+  // Store subscribers can fire for presentation-only updates or repeated timer
+  // ticks. If the study payload exactly matches the last server-confirmed snapshot,
+  // clear this redundant dirty marker without generating another Edge invocation.
+  if (lastUploadedUserId === userId && lastUploadedSignature === snapshotSignature) {
+    try {
+      if (localStorage.getItem(key) === dirtyAtStart) {
+        localStorage.removeItem(key)
+        localStorage.removeItem(LOCAL_DIRTY_KEY)
+        localStorage.setItem(DIRTY_SECTIONS_KEY, '[]')
+      }
+    } catch { /* local-only mode remains available */ }
+    return
+  }
 
   try {
     // Reuse the version captured during hydration or the previous successful
@@ -643,6 +672,8 @@ async function uploadSnapshot(): Promise<void> {
         cloudUpdatedAt = expectedUpdatedAt
         cloudVersionLoaded = true
         lastUploadAt = Date.now()
+        lastUploadedUserId = userId
+        lastUploadedSignature = progressSignature(snapshotToUpload)
         saved = true
         break
       }
@@ -849,6 +880,13 @@ async function initializeUserInternal(userId: string): Promise<void> {
   } catch { /* sync remains best effort */ }
 
   activeUserId = userId
+  if (!shouldUpload) {
+    lastUploadedUserId = userId
+    lastUploadedSignature = progressSignature(captureSnapshot())
+  } else if (lastUploadedUserId !== userId) {
+    lastUploadedUserId = null
+    lastUploadedSignature = null
+  }
   cloudReady = true
   if (shouldUpload) {
     try {
@@ -885,12 +923,8 @@ function observeStoreChanges(): void {
     })
   ]
 
-  // Keep cross-device resume timers reasonably fresh without the old 10-second
-  // full-snapshot upload loop. Meaningful answer/position changes still sync sooner.
-  heartbeatTimer = setInterval(() => {
-    const state = usePracticeStore.getState()
-    if (state.questions.length && !state.finished) noteLocalChange('practice')
-  }, 60_000)
+  // Progress sync is driven by meaningful store mutations. No periodic full-snapshot
+  // heartbeat is needed while a user is merely reading a question.
 }
 
 export function startLearningProgressSync(): () => void {
@@ -926,6 +960,8 @@ export function startLearningProgressSync(): () => void {
         cloudUpdatedAt = null
         cloudVersionLoaded = false
         lastUploadAt = 0
+        lastUploadedUserId = null
+        lastUploadedSignature = null
         if (uploadTimer) { clearTimeout(uploadTimer); uploadTimer = null }
         return
       }
@@ -944,8 +980,9 @@ export function startLearningProgressSync(): () => void {
     cloudReady = false
     if (uploadTimer) clearTimeout(uploadTimer)
     if (retryTimer) clearTimeout(retryTimer)
-    if (heartbeatTimer) clearInterval(heartbeatTimer)
     cloudUpdatedAt = null
+    lastUploadedUserId = null
+    lastUploadedSignature = null
     cloudVersionLoaded = false
     lastUploadAt = 0
     window.removeEventListener('online', onOnline)
