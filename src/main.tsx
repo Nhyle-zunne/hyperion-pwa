@@ -13,8 +13,29 @@ if (window.location.hostname === 'hyperion-pwa.zagfunne.workers.dev') {
 
 initTheme()
 
-// Ensure installed iOS/Android PWAs activate new deployed UI automatically.
-registerSW({ immediate: true })
+// Ensure installed PWAs and long-lived browser tabs pick up deployments.
+// Auto-update reloads clients after a new worker activates; explicit checks on
+// startup, focus and a low-frequency visible-tab interval prevent old tabs from
+// staying on a stale bundle for hours.
+registerSW({
+  immediate: true,
+  onRegisteredSW: (_swUrl, registration) => {
+    if (!registration) return
+    let lastUpdateCheck = 0
+    const checkForUpdate = () => {
+      if (document.visibilityState !== 'visible') return
+      if (Date.now() - lastUpdateCheck < 5 * 60 * 1000) return
+      lastUpdateCheck = Date.now()
+      void registration.update().catch(() => {
+        // A temporary network failure must never interrupt local/offline study.
+      })
+    }
+    window.setTimeout(checkForUpdate, 5_000)
+    window.setInterval(checkForUpdate, 15 * 60 * 1000)
+    window.addEventListener('focus', checkForUpdate)
+    document.addEventListener('visibilitychange', checkForUpdate)
+  }
+})
 
 // Remove the legacy offline cache of publicly served encrypted question banks.
 // New question delivery uses the protected Supabase endpoint and must not reuse that cache.
