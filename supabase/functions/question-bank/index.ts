@@ -308,13 +308,32 @@ type QuestionAssetVersion = {
   size: number;
 };
 
+const TRACK_ASSET_VERSION_CACHE_TTL_MS = 5 * 60_000;
+const trackAssetVersionCache = new Map<string, {
+  versions: QuestionAssetVersion[];
+  cachedAt: number;
+  bankEpoch: string;
+}>();
+
 async function trackAssetVersions(admin: any, track: string): Promise<QuestionAssetVersion[]> {
   const paths = SOURCE_ASSETS.filter(path => trackForPath(path) === track);
   if (!paths.length) throw new Error("Question track has no source assets.");
+
+  // The shared migration timestamp is advanced by every supported admin publish.
+  // Cache only metadata, never access decisions; authorizeTrack still runs per request.
+  await cachedMigrationState(admin);
+  const bankEpoch = currentQuestionBankEpoch();
+  const cached = trackAssetVersionCache.get(track);
+  if (bankEpoch && cached &&
+      cached.bankEpoch === bankEpoch &&
+      Date.now() - cached.cachedAt < TRACK_ASSET_VERSION_CACHE_TTL_MS) {
+    return cached.versions;
+  }
+
   const { data, error } = await admin.rpc("get_question_bank_object_versions", { p_names: paths });
   if (error || !Array.isArray(data)) throw new Error("Question-bank source versions are unavailable.");
   const byName = new Map<string, any>(data.map((item: any) => [String(item.name), item]));
-  return paths.map(path => {
+  const versions = paths.map(path => {
     const item = byName.get(path);
     const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
     const etag = typeof item?.etag === "string" ? item.etag : "";
@@ -324,6 +343,10 @@ async function trackAssetVersions(admin: any, track: string): Promise<QuestionAs
     }
     return { path, updatedAt, etag, size };
   });
+  if (bankEpoch) {
+    trackAssetVersionCache.set(track, { versions, cachedAt: Date.now(), bankEpoch });
+  }
+  return versions;
 }
 
 function assetVersionPayload(versions: QuestionAssetVersion[]) {
@@ -936,20 +959,15 @@ Deno.serve(async (req: Request) => {
           ((left.info!.part ?? 0) - (right.info!.part ?? 0))
         );
 
-      // A question-bank update changes the Storage object's ETag/updated_at.
-      // Use that metadata as a stable version marker instead of downloading and
-      // hashing every encrypted file on every client's periodic update check.
-      const { data: objects, error: objectError } = await admin.rpc("get_question_bank_object_versions", {
-        p_names: sources.map(source => source.path)
-      });
-      if (objectError || !Array.isArray(objects)) throw new Error("Question-bank object metadata is unavailable.");
-
-      const byName = new Map<string, any>(objects.map((item: any) => [String(item.name), item]));
+      // Reuse the same publication-aware metadata cache used by count checks.
+      // Track access is still authorized above on every request.
+      const objects = await trackAssetVersions(admin, track);
+      const byName = new Map<string, QuestionAssetVersion>(objects.map(item => [item.path, item]));
       const versions = [];
       for (const source of sources) {
         const object = byName.get(source.path);
         const etag = typeof object?.etag === "string" ? object.etag : "";
-        const updatedAt = typeof object?.updated_at === "string" ? object.updated_at : "";
+        const updatedAt = typeof object?.updatedAt === "string" ? object.updatedAt : "";
         const size = Number(object?.size);
         if (!etag || !updatedAt || !Number.isFinite(size) || size <= 0) {
           throw new Error("A question-bank source is missing version metadata.");
