@@ -65,9 +65,12 @@ let activeUserId: string | null = null
 let cloudReady = false
 let uploadTimer: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let currentGeneration = 0
+let cloudUpdatedAt: string | null = null
+let cloudVersionLoaded = false
+let lastUploadAt = 0
 let uploadInFlight = false
+const MIN_UPLOAD_INTERVAL_MS = 15_000
 let uploadQueued = false
 let unsubscribeStores: (() => void)[] = []
 let authSubscription: { unsubscribe: () => void } | null = null
@@ -577,8 +580,14 @@ function noteLocalChange(section: ProgressSection = 'other'): void {
 function scheduleUpload(delay = 800): void {
   if (!activeUserId || !cloudReady || hydrating) return
   try { localStorage.setItem(dirtyKey(activeUserId), String(Date.now())) } catch { /* progress remains local */ }
-  if (uploadTimer) clearTimeout(uploadTimer)
-  uploadTimer = setTimeout(() => { void uploadSnapshot() }, delay)
+  // Coalesce frequent store updates into one write. The snapshot is captured when
+  // the timer fires, so it includes the latest local state without repeated resets.
+  if (uploadTimer) return
+  const remaining = Math.max(0, MIN_UPLOAD_INTERVAL_MS - (Date.now() - lastUploadAt))
+  uploadTimer = setTimeout(() => {
+    uploadTimer = null
+    void uploadSnapshot()
+  }, Math.max(delay, remaining))
 }
 
 async function uploadSnapshot(): Promise<void> {
@@ -597,19 +606,22 @@ async function uploadSnapshot(): Promise<void> {
   const snapshot = captureSnapshot()
 
   try {
-    // The service uses optimistic concurrency on updated_at. If another device
-    // wins a write between our read and save, re-read and merge before retrying.
-    let { data: latestResult, error: readError } = await supabase.functions.invoke('learning-progress', {
-      body: { action: 'read' }
-    })
-    if (readError) throw readError
-
-    let expectedUpdatedAt: string | null = typeof latestResult?.updated_at === 'string'
-      ? latestResult.updated_at
-      : null
-    let latestSnapshot = latestResult?.data && isSnapshot(latestResult.data)
-      ? latestResult.data as LearningProgressSnapshot
-      : null
+    // Reuse the version captured during hydration or the previous successful
+    // write. A read is only needed when the version is unknown or a conflict occurs.
+    let expectedUpdatedAt = cloudVersionLoaded ? cloudUpdatedAt : null
+    let latestSnapshot: LearningProgressSnapshot | null = null
+    if (!cloudVersionLoaded) {
+      const { data: latestResult, error: readError } = await supabase.functions.invoke('learning-progress', {
+        body: { action: 'read' }
+      })
+      if (readError) throw readError
+      expectedUpdatedAt = typeof latestResult?.updated_at === 'string' ? latestResult.updated_at : null
+      latestSnapshot = latestResult?.data && isSnapshot(latestResult.data)
+        ? latestResult.data as LearningProgressSnapshot
+        : null
+      cloudUpdatedAt = expectedUpdatedAt
+      cloudVersionLoaded = true
+    }
     let saved = false
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -626,6 +638,10 @@ async function uploadSnapshot(): Promise<void> {
       })
 
       if (!writeError && writeResult?.ok === true) {
+        expectedUpdatedAt = typeof writeResult.updated_at === 'string' ? writeResult.updated_at : expectedUpdatedAt
+        cloudUpdatedAt = expectedUpdatedAt
+        cloudVersionLoaded = true
+        lastUploadAt = Date.now()
         saved = true
         break
       }
@@ -639,13 +655,14 @@ async function uploadSnapshot(): Promise<void> {
         body: { action: 'read' }
       })
       if (refreshed.error) throw refreshed.error
-      latestResult = refreshed.data
-      expectedUpdatedAt = typeof latestResult?.updated_at === 'string'
-        ? latestResult.updated_at
+      expectedUpdatedAt = typeof refreshed.data?.updated_at === 'string'
+        ? refreshed.data.updated_at
         : null
-      latestSnapshot = latestResult?.data && isSnapshot(latestResult.data)
-        ? latestResult.data as LearningProgressSnapshot
+      latestSnapshot = refreshed.data?.data && isSnapshot(refreshed.data.data)
+        ? refreshed.data.data as LearningProgressSnapshot
         : null
+      cloudUpdatedAt = expectedUpdatedAt
+      cloudVersionLoaded = true
     }
 
     if (!saved) throw new Error('Study progress changed repeatedly on another device. It remains saved locally and will retry.')
@@ -746,6 +763,9 @@ async function initializeUser(userId: string): Promise<void> {
     return
   }
   if (generation !== currentGeneration) return
+  cloudUpdatedAt = row?.updated_at ?? null
+  cloudVersionLoaded = true
+  if (activeUserId !== userId) lastUploadAt = 0
 
   const owner = (() => { try { return localStorage.getItem(OWNER_KEY) } catch { return null } })()
   let cachedSnapshot: LearningProgressSnapshot | null = null
@@ -847,10 +867,8 @@ function observeStoreChanges(): void {
     })
   ]
 
-  heartbeatTimer = setInterval(() => {
-    const s = usePracticeStore.getState()
-    if (s.questions.length && !s.finished) noteLocalChange('practice')
-  }, 10000)
+  // Active-session state is synced when answers, position, or session metadata
+  // actually changes. Do not upload a full snapshot on a timer-only heartbeat.
 }
 
 export function startLearningProgressSync(): () => void {
@@ -883,6 +901,9 @@ export function startLearningProgressSync(): () => void {
         currentGeneration++
         activeUserId = null
         cloudReady = false
+        cloudUpdatedAt = null
+        cloudVersionLoaded = false
+        lastUploadAt = 0
         if (uploadTimer) { clearTimeout(uploadTimer); uploadTimer = null }
         return
       }
@@ -901,7 +922,9 @@ export function startLearningProgressSync(): () => void {
     cloudReady = false
     if (uploadTimer) clearTimeout(uploadTimer)
     if (retryTimer) clearTimeout(retryTimer)
-    if (heartbeatTimer) clearInterval(heartbeatTimer)
+    cloudUpdatedAt = null
+    cloudVersionLoaded = false
+    lastUploadAt = 0
     window.removeEventListener('online', onOnline)
     window.removeEventListener('hyperion:progress-local-change', handleMockPlanChange)
     window.removeEventListener('hyperion:practice-progress-saved', handleSavedPracticeChange)
