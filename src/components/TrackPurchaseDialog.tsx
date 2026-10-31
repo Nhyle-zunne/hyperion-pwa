@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js'
 import { LICENSE_TERMS, PAID_PRODUCTS, paidProductCodeForTrackId, priceForTerm, supabase, supabaseConfigured } from '../lib/supabase'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
+import './TrackPurchaseDialog.css'
 
 function isPaidTrack(value: string | null): value is PaidTrack {
   return Boolean(value && PAID_PRODUCTS.some(item => item.code === value))
@@ -52,6 +53,16 @@ export default function TrackPurchaseDialog() {
   const [message, setMessage] = useState('')
   const [basketItems, setBasketItems] = useState(() => savedBasket())
   const autoCheckoutRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const syncBasket = () => setBasketItems(savedBasket())
+    window.addEventListener('storage', syncBasket)
+    window.addEventListener('focus', syncBasket)
+    return () => {
+      window.removeEventListener('storage', syncBasket)
+      window.removeEventListener('focus', syncBasket)
+    }
+  }, [])
 
   const requestedProduct = params.get('purchase_product')
   const productCode = isPaidTrack(requestedProduct)
@@ -139,6 +150,7 @@ export default function TrackPurchaseDialog() {
       try {
         localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(nextBasket))
         setBasketItems(nextBasket)
+        setBasketItems(nextBasket)
       } catch {
         setMessage('Your purchase could not be saved on this device. Please enable browser storage and try again.')
         return
@@ -196,6 +208,8 @@ export default function TrackPurchaseDialog() {
   if (!isOpen || !product) return null
 
   const description = productDescription(product.code)
+  const isInBasket = basketItems.some(item => item.code === product.code)
+  const selectedTermDetails = LICENSE_TERMS.find(option => option.code === term)
   const handleBuyNow = () => {
     if (!session?.user) {
       void signIn()
@@ -205,31 +219,31 @@ export default function TrackPurchaseDialog() {
   }
 
   return (
-    <div
-      role="presentation"
-      onClick={() => { if (!busy) close() }}
-      style={{ position: 'fixed', inset: 0, zIndex: 12000, display: 'grid', placeItems: 'center', padding: '1rem', background: 'rgba(0,0,0,.76)', overflowY: 'auto' }}
-    >
+    <div className="track-purchase-modal" role="presentation" onClick={() => { if (!busy) close() }}>
       <section
+        className="track-purchase-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="track-purchase-title"
         onClick={event => event.stopPropagation()}
-        style={{ width: 'min(100%, 480px)', maxHeight: 'min(90vh, 760px)', overflowY: 'auto', boxSizing: 'border-box', padding: '1rem', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 24px 70px rgba(0,0,0,.45)' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.6rem', marginBottom: '.65rem' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '.7rem', fontWeight: 900, letterSpacing: '.12em' }}>HYPERION BOND STORE</div>
-          <button type="button" aria-label="Close purchase dialog" disabled={busy} onClick={close} style={{ border: 0, background: 'transparent', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1, padding: '.1rem .25rem' }}>×</button>
+        <div className="track-purchase-header">
+          <div className="track-purchase-eyebrow">HYPERION BOND STORE</div>
+          <button type="button" className="track-purchase-close" aria-label="Close purchase dialog" disabled={busy} onClick={close}>×</button>
         </div>
-        <article className="account-product-card" style={{ width: '100%', boxSizing: 'border-box' }}>
-          <div className="product-art">
+
+        <article className="track-purchase-card">
+          <div className="track-purchase-art">
             <div aria-hidden="true">{product.code === 'gmdss' ? '📡' : product.code === 'engine_ew' || product.code === 'engine_mgt' ? '⚙️' : '⚓'}</div>
-            <span>HYPERION REVIEWER</span>
+            <span className="track-purchase-art-label">HYPERION REVIEWER</span>
           </div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>CHOOSE ACCESS DURATION</div>
-          <h2 id="track-purchase-title" style={{ margin: '.35rem 0 0', fontSize: '1.03rem', minHeight: '2.4em', lineHeight: 1.2 }}>{product.label}</h2>
-          <div className="product-price">₱{selectedPrice}<span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 650 }}> / {term}</span></div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '.35rem', marginTop: '.6rem' }}>
+
+          <div className="track-purchase-label">CHOOSE ACCESS DURATION</div>
+          <h2 id="track-purchase-title" className="track-purchase-title">{product.label}</h2>
+          <div className="track-purchase-price">₱{selectedPrice}<small> / {term}</small></div>
+          <div className="track-purchase-term-note">{selectedTermDetails?.durationLabel ?? 'Full track'} of full track access</div>
+
+          <div className="track-purchase-plans" role="group" aria-label="Choose license duration">
             {LICENSE_TERMS.map(option => {
               const price = priceForTerm(product, option.code)
               const selected = term === option.code
@@ -237,7 +251,9 @@ export default function TrackPurchaseDialog() {
                 <button
                   key={option.code}
                   type="button"
+                  className="track-purchase-plan"
                   aria-pressed={selected}
+                  aria-label={option.label + ', ' + option.durationLabel + ', ₱' + price + (selected ? ', selected' : '')}
                   disabled={busy}
                   onClick={() => {
                     setTerm(option.code)
@@ -249,24 +265,32 @@ export default function TrackPurchaseDialog() {
                       return next
                     }, { replace: true })
                   }}
-                  style={{ border: '1px solid ' + (selected ? 'var(--accent)' : 'var(--border)'), borderRadius: 7, padding: '.45rem .2rem', background: selected ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)', fontSize: '.72rem', fontWeight: 800, cursor: busy ? 'not-allowed' : 'pointer' }}
                 >
-                  <span style={{ display: 'block' }}>{option.label}</span>
-                  <span style={{ display: 'block', marginTop: '.15rem' }}>₱{price}</span>
+                  {selected && <span className="track-purchase-plan-check" aria-hidden="true">✓</span>}
+                  <span>{option.label}</span>
+                  <span className="track-purchase-plan-price">₱{price}</span>
                 </button>
               )
             })}
           </div>
-          <div className="product-meta">{description}</div>
-          <div className="product-card-spacer" />
-          <span className="product-status">AVAILABLE</span>
-          <button type="button" className="btn btn-primary" disabled={!sessionChecked || !supabaseConfigured || busy} onClick={handleBuyNow} style={{ width: '100%', marginTop: '.8rem', minHeight: 46, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff' }}>
-            {!sessionChecked ? 'PLEASE WAIT…' : busy ? 'PLEASE WAIT…' : 'BUY NOW'}
+
+          <div className="track-purchase-description">{description}</div>
+          <span className={'track-purchase-status' + (isInBasket ? ' is-in-basket' : '')} aria-live="polite">
+            {isInBasket ? '✓ IN YOUR BASKET' : 'AVAILABLE'}
+          </span>
+          <button
+            type="button"
+            className="btn btn-primary track-purchase-buy"
+            disabled={!sessionChecked || !supabaseConfigured || busy}
+            onClick={handleBuyNow}
+          >
+            {!sessionChecked ? 'PLEASE WAIT…' : busy ? 'CHECKING LICENSE…' : isInBasket ? 'CONTINUE TO CHECKOUT' : 'BUY NOW'}
           </button>
         </article>
-        {message && <div role="status" aria-live="polite" style={{ marginTop: '.8rem', padding: '.7rem', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.85rem', lineHeight: 1.5 }}>{message}</div>}
-        {!session?.user && <p style={{ margin: '.75rem .15rem 0', color: 'var(--text-muted)', fontSize: '.8rem', lineHeight: 1.5, textAlign: 'center' }}>Sign in with Google when you press BUY NOW. Your selected track and duration will be kept, then you will go directly to Checkout.</p>}
-        <p style={{ margin: '.75rem .15rem 0', color: 'var(--text-muted)', fontSize: '.72rem', lineHeight: 1.45, textAlign: 'center' }}>Secure payment is completed in Hyperion Checkout. Your license activates only after payment is verified.</p>
+
+        {message && <div className="track-purchase-message" role="status" aria-live="polite">{message}</div>}
+        {!session?.user && <p className="track-purchase-footnote">Sign in with Google when you press BUY NOW. Your selected track and duration will be kept, then you will go directly to Checkout.</p>}
+        <p className="track-purchase-footnote">Secure payment is completed in Hyperion Checkout. Your license activates only after payment is verified.</p>
       </section>
     </div>
   )
