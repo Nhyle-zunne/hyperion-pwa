@@ -2,6 +2,7 @@
 # Prefer Cloudflare Pages with deploy command left empty (build output = dist).
 name = "hyperion-pwa"
 compatibility_date = "2025-01-01"
+keep_vars = true
 
 # Required by Cloudflare Workers Builds for branch/PR preview deployments.
 # This static PWA has no preview-specific runtime bindings.
