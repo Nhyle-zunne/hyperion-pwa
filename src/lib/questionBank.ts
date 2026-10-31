@@ -235,7 +235,7 @@ const SOURCES: BankSource[] = [
 
 type LoadedSource = { questions: Question[]; sampledByServer: boolean };
 const cache = new Map<string, LoadedSource>();
-const ONLINE_QUESTION_CACHE_TTL_MS = 60_000;
+const ONLINE_QUESTION_CACHE_TTL_MS = 5 * 60 * 1000;
 const onlineQuestionPageCache = new Map<string, { questions: Question[]; cachedAt: number }>();
 const onlineQuestionCountsCache = new Map<string, { counts: QuestionBankCount[]; cachedAt: number }>();
 
@@ -910,6 +910,7 @@ interface RemoteQuestionSourceVersion {
 interface RemoteQuestionBankVersions {
   track: TrackId
   versions: RemoteQuestionSourceVersion[]
+  versionFormat: 'content-sha256-v1' | 'storage-metadata-v1'
   checkedAt: number
 }
 
@@ -921,14 +922,16 @@ export interface OfflinePackUpdateCheck {
   savedAt?: number
 }
 
-async function fetchRemoteQuestionBankVersions(track: TrackId): Promise<RemoteQuestionBankVersions> {
+async function fetchRemoteQuestionBankVersions(track: TrackId, legacyContentHashes = false): Promise<RemoteQuestionBankVersions> {
   if (!supabase) throw new Error('Protected question service is not configured.')
   const { data, error } = await supabase.functions.invoke('question-bank', {
-    body: { action: 'content-versions', track }
+    body: { action: legacyContentHashes ? 'content-versions-legacy' : 'content-versions', track }
   })
   if (error || data?.track !== track || !Array.isArray(data?.versions)) {
     throw error || new Error(data?.error || 'Question-bank versions are unavailable.')
   }
+  const expectedFormat = legacyContentHashes ? 'content-sha256-v1' : 'storage-metadata-v1'
+  if (data.versionFormat !== expectedFormat) throw new Error('The server returned an unsupported question-bank version format.')
   const versions = data.versions as RemoteQuestionSourceVersion[]
   if (versions.some(item =>
     typeof item.path !== 'string' ||
@@ -937,7 +940,7 @@ async function fetchRemoteQuestionBankVersions(track: TrackId): Promise<RemoteQu
     typeof item.freeHash !== 'string' || !/^[a-f0-9]{64}$/.test(item.freeHash) ||
     (item.fullHash != null && (typeof item.fullHash !== 'string' || !/^[a-f0-9]{64}$/.test(item.fullHash)))
   )) throw new Error('The server returned invalid question-bank version metadata.')
-  return { track, versions, checkedAt: Number(data.checkedAt) || Date.now() }
+  return { track, versions, versionFormat: expectedFormat, checkedAt: Number(data.checkedAt) || Date.now() }
 }
 
 function sourceVersionMap(remote: RemoteQuestionBankVersions, freeOnly: boolean): Record<string, string> {
@@ -1032,16 +1035,46 @@ export async function checkOfflineQuestionPackUpdates(
     }
   }
 
+  // Once a legacy pack is known to be outdated, don't repeatedly download
+  // and hash all its old source files while the user is still studying online.
+  // A successful pack update resets this flag and captures metadata versions.
+  if (manifest.legacyVersionMigrationChecked && manifest.lastKnownUpdateState === 'available') {
+    const changedPaths = manifest.availableSources ?? []
+    return {
+      status: 'available',
+      changedCompetences: describeChangedCompetences(changedPaths),
+      checkedAt: manifest.lastCheckedAt ?? null,
+      lastKnownState: 'available',
+      savedAt: manifest.savedAt
+    }
+  }
+
   try {
     const remote = await fetchRemoteQuestionBankVersions(track)
     const currentVersions = sourceVersionMap(remote, freeOnly)
     let changedPaths: string[] = []
+    let legacyVersionMigrationChecked = false
+    let storedVersionFormat = manifest.sourceVersionFormat
 
-    if (manifest.sourceVersions && Object.keys(manifest.sourceVersions).length) {
-      changedPaths = changedVersionPaths(manifest.sourceVersions, currentVersions)
+    if (manifest.sourceVersionFormat === 'storage-metadata-v1') {
+      changedPaths = manifest.sourceVersions && Object.keys(manifest.sourceVersions).length
+        ? changedVersionPaths(manifest.sourceVersions, currentVersions)
+        : remote.versions.map(item => item.path)
     } else {
-      const localPacks = await getOfflineQuestionPacks(track, freeOnly)
-      changedPaths = await compareLegacyPackToCurrent(track, freeOnly, localPacks, remote)
+      // Existing devices recorded content hashes. Compare those once against the
+      // old content-hash route, then rebase current packs to cheap object metadata.
+      const legacyRemote = await fetchRemoteQuestionBankVersions(track, true)
+      if (manifest.sourceVersions && Object.keys(manifest.sourceVersions).length) {
+        changedPaths = changedVersionPaths(
+          manifest.sourceVersions,
+          sourceVersionMap(legacyRemote, freeOnly)
+        )
+      } else {
+        const localPacks = await getOfflineQuestionPacks(track, freeOnly)
+        changedPaths = await compareLegacyPackToCurrent(track, freeOnly, localPacks, legacyRemote)
+      }
+      legacyVersionMigrationChecked = true
+      storedVersionFormat = changedPaths.length ? manifest.sourceVersionFormat : 'storage-metadata-v1'
     }
 
     const checkedAt = Date.now()
@@ -1050,7 +1083,13 @@ export async function checkOfflineQuestionPackUpdates(
     await recordOfflinePackVersionCheck(track, freeOnly, {
       checkedAt,
       state,
-      ...(state === 'current' ? { sourceVersions: currentVersions } : {}),
+      ...(state === 'current' ? {
+        sourceVersions: currentVersions,
+        sourceVersionFormat: 'storage-metadata-v1'
+      } : {
+        ...(storedVersionFormat ? { sourceVersionFormat: storedVersionFormat } : {}),
+        ...(legacyVersionMigrationChecked ? { legacyVersionMigrationChecked: true } : {})
+      }),
       availableSources: changedPaths
     })
     return {
@@ -1071,7 +1110,7 @@ export async function checkOfflineQuestionPackUpdates(
   }
 }
 
-const OFFLINE_PACK_VERSION_CHECK_TTL_MS = 5 * 60 * 1000
+const OFFLINE_PACK_VERSION_CHECK_TTL_MS = 10 * 60 * 1000
 
 async function hasFreshCurrentOfflinePack(track: TrackId, freeOnly: boolean): Promise<boolean> {
   const manifest = await getOfflinePackManifest(track, freeOnly)
@@ -1270,11 +1309,13 @@ async function downloadOfflinePackInternal(
     freeOnly: boolean
     groups: { competenceId: string; part: number | null; questions: Question[] }[]
     sourceVersions: Record<string, string>
+    sourceVersionFormat: 'storage-metadata-v1'
   }[] = [{
     track,
     freeOnly,
     groups: writtenGroups,
-    sourceVersions: freeOnly ? freeVersionsBefore : fullVersionsBefore!
+    sourceVersions: freeOnly ? freeVersionsBefore : fullVersionsBefore!,
+    sourceVersionFormat: 'storage-metadata-v1'
   }]
 
   if (!freeOnly) {
@@ -1293,7 +1334,8 @@ async function downloadOfflinePackInternal(
       track,
       freeOnly: true,
       groups: Array.from(sampleGroups.values()),
-      sourceVersions: freeVersionsBefore
+      sourceVersions: freeVersionsBefore,
+      sourceVersionFormat: 'storage-metadata-v1'
     })
   }
 
