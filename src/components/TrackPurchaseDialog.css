@@ -1,0 +1,31 @@
+.track-purchase-modal{position:fixed;inset:0;z-index:12000;display:grid;place-items:center;padding:clamp(12px,4vw,20px);box-sizing:border-box;background:radial-gradient(ellipse at 50% 32%,rgba(34,197,94,.11),transparent 48%),rgba(2,8,23,.76);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);overflow-y:auto;animation:track-purchase-fade-in .2s ease-out both}
+.track-purchase-panel{width:min(100%,460px);max-height:min(90vh,780px);max-height:min(90dvh,780px);overflow-y:auto;box-sizing:border-box;padding:14px;border:1px solid var(--border);border-radius:16px;background:var(--bg-card);color:var(--text);box-shadow:0 26px 80px rgba(0,0,0,.42);animation:track-purchase-card-in .28s cubic-bezier(.18,.89,.32,1.12) both}
+.track-purchase-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;padding:2px 2px 8px}
+.track-purchase-eyebrow{color:var(--text-muted);font-size:.7rem;font-weight:950;letter-spacing:.14em}
+.track-purchase-close{display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--border);border-radius:10px;background:var(--bg-elevated);color:var(--text);font-size:1.35rem;line-height:1;cursor:pointer}
+.track-purchase-card{min-width:0;display:flex;flex-direction:column;padding:14px;border:1px solid var(--border);border-radius:13px;background:var(--bg-card);transition:border-color .16s ease,box-shadow .16s ease}
+.track-purchase-card:hover{border-color:var(--accent);box-shadow:0 7px 20px rgba(4,35,83,.08)}
+.track-purchase-art{display:grid;place-items:center;min-height:112px;border-radius:10px;background:linear-gradient(135deg,#042353,#0d376b);color:#4ade80;font-size:2.5rem;margin-bottom:14px;position:relative;overflow:hidden}
+.track-purchase-art:after{content:"";position:absolute;width:150px;height:150px;border:1px solid rgba(34,197,94,.3);border-radius:50%;right:-38px;top:-72px;pointer-events:none}
+.track-purchase-art-label{position:absolute;bottom:10px;left:12px;color:#fff;font-size:.68rem;font-weight:950;letter-spacing:.14em}
+.track-purchase-label{color:var(--text-muted);font-size:.68rem;font-weight:950;letter-spacing:.13em}
+.track-purchase-title{margin:5px 0 0;font-size:1.12rem;line-height:1.3;font-weight:900}
+.track-purchase-price{margin:12px 0 5px;font-size:1.8rem;line-height:1.05;font-weight:950;color:var(--text);font-variant-numeric:tabular-nums}
+.track-purchase-price small{font-size:.75rem;color:var(--text-muted);font-weight:700}
+.track-purchase-term-note{min-height:1.2em;color:var(--text-muted);font-size:.76rem}
+.track-purchase-plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:12px}
+.track-purchase-plan{position:relative;display:grid;gap:4px;min-width:0;min-height:64px;align-content:center;padding:8px 4px;border:1px solid var(--border);border-radius:10px;background:var(--bg-elevated);color:var(--text);font-size:.76rem;font-weight:850;cursor:pointer;transition:transform .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease}
+.track-purchase-plan:active{transform:scale(.97)}
+.track-purchase-plan[aria-pressed="true"]{border:2px solid var(--accent);padding:7px 3px;background:var(--accent-soft,rgba(34,197,94,.11));box-shadow:0 0 0 2px rgba(34,197,94,.08)}
+.track-purchase-plan-price{font-size:.84rem;font-weight:950}
+.track-purchase-plan-check{position:absolute;top:4px;right:5px;font-size:.62rem;color:var(--accent)}
+.track-purchase-description{margin-top:12px;color:var(--text-muted);font-size:.8rem;line-height:1.5}
+.track-purchase-status{display:inline-flex;align-self:flex-start;margin-top:12px;padding:5px 9px;border:1px solid var(--border);border-radius:999px;background:var(--bg-elevated);color:var(--text-muted);font-size:.68rem;font-weight:900;letter-spacing:.04em}
+.track-purchase-status.is-in-basket{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.1);color:var(--success,#16834a)}
+.track-purchase-buy{width:100%;min-height:50px;margin-top:12px;border-radius:10px!important;background:#3abfc0!important;border-color:#3abfc0!important;color:#fff!important;font-weight:950!important;letter-spacing:.025em;box-shadow:0 6px 16px rgba(58,191,192,.2);transition:transform .14s ease,filter .14s ease}
+.track-purchase-buy:not(:disabled):active{transform:translateY(1px) scale(.99);filter:brightness(.94)}
+.track-purchase-footnote{margin:12px 4px 2px;color:var(--text-muted);font-size:.72rem;line-height:1.5;text-align:center}
+.track-purchase-message{margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-elevated);color:var(--text);font-size:.82rem;line-height:1.5}
+@keyframes track-purchase-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes track-purchase-card-in{from{opacity:0;transform:translateY(13px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.track-purchase-modal,.track-purchase-panel{animation-duration:.01ms!important}.track-purchase-plan,.track-purchase-buy{transition:none!important}}

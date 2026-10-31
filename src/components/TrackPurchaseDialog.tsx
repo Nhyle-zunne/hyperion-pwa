@@ -61,6 +61,10 @@ export default function TrackPurchaseDialog() {
   const selectedPrice = product ? priceForTerm(product, term) : 0
 
   useEffect(() => {
+    if (isOpen) setBasketItems(savedBasket())
+  }, [isOpen])
+
+  useEffect(() => {
     setTerm(validTerm(params.get('purchase_term')))
   }, [params])
 
