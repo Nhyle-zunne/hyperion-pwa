@@ -43,12 +43,20 @@ export default function AdminPaymentsScreen() {
       }
     } catch (e) { setAuthorized(false); setMessage(safeAdminError(e, 'Unable to load payment submissions. Please retry.')) }
   }, [call])
-  // Keep the admin view current when webhook delivery or customer-side verification
-  // updates a PayMongo order, without requiring manual refreshes.
+  // Refresh periodically while the admin page is visible. A 60-second cadence
+  // is sufficient for webhook-driven updates and avoids polling both admin lists
+  // every 10 seconds when the page is left open in a tab.
   useEffect(() => {
     void withPageLoading('Loading payment submissions', () => load())
-    const timer = window.setInterval(() => { void load() }, 10000)
-    return () => window.clearInterval(timer)
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+    const timer = window.setInterval(refreshIfVisible, 60_000)
+    document.addEventListener('visibilitychange', refreshIfVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshIfVisible)
+    }
   }, [load])
   const review = async (orderId: string, decision: 'approve'|'reject') => {
     setBusy(true); setMessage('')
