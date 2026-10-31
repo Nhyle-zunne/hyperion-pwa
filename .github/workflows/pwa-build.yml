@@ -41,6 +41,14 @@ jobs:
         run: bun run build
       - name: Verify generated offline app shell
         run: bun run test:offline-build
+      - name: Retain the verified production bundle for Cloudflare deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyperion-pwa-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
 
   google-play-migration-regression:
     runs-on: ubuntu-latest
