@@ -4,6 +4,7 @@ import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import InstallPrompt from './components/InstallPrompt'
 import RouteErrorBoundary from './components/RouteErrorBoundary'
 import PaywallDialog from './components/PaywallDialog'
+import TrackPurchaseDialog from './components/TrackPurchaseDialog'
 import BottomNav from './components/BottomNav'
 import TopLoadingIndicator from './components/TopLoadingIndicator'
 import { useUIStore } from './stores/uiStore'
@@ -565,6 +566,7 @@ export default function App() {
         </section>
       </div>}
       {showPaywall && <PaywallDialog />}
+      <TrackPurchaseDialog />
     </div>
   )
 }
