@@ -759,10 +759,10 @@ assert.ok(
   'Offline pack downloads reject free packs and verify a server-signed entitlement for the selected track before requesting bank metadata or question counts'
 );
 assert.ok(
-  trackHubScreen.includes("if (!unlocked) {") &&
-  trackHubScreen.includes("openPaywall(`${info.title} · Offline Access`)") &&
-  trackHubScreen.includes('ACTIVATE A LICENSE TO DOWNLOAD'),
-  'Track hub sends unlicensed download attempts to the license prompt instead of starting a download'
+  trackHubScreen.includes('{unlocked && (') &&
+  trackHubScreen.includes("'DOWNLOAD FULL BANK FOR OFFLINE'") &&
+  !trackHubScreen.includes('ACTIVATE A LICENSE TO DOWNLOAD'),
+  'Track hub hides the offline question-bank download control entirely when the selected track is not licensed'
 );
 assert.ok(questionBankClient.includes('export async function ensureOfflineFreeSamplePack') && questionBankClient.includes('const fullBank = await getOfflineQuestionsByTrack(track, false)') && questionBankClient.includes('freeSample(fullBank, track)'), 'An old Deck OIC offline free sample is repaired only from the complete cached bank and the current server-matched sampler');
 assert.ok(questionBankClient.includes('async function hasValidOfflineTrackLease(track: TrackId): Promise<boolean>') && questionBankClient.includes('const expiry = await offlineEntitlementExpiry(track)') && questionBankClient.includes('expiry > Date.now()'), 'Saved paid-session recovery requires an unexpired server-signed lease for the same user and track');
