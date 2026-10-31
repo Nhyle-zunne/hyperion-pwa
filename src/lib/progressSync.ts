@@ -68,6 +68,7 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null
 let currentGeneration = 0
 let cloudUpdatedAt: string | null = null
 let cloudVersionLoaded = false
+let cloudSnapshot: LearningProgressSnapshot | null = null
 let lastUploadAt = 0
 let uploadInFlight = false
 const MIN_UPLOAD_INTERVAL_MS = 30_000
@@ -625,6 +626,7 @@ async function uploadSnapshot(): Promise<void> {
   // ticks. If the study payload exactly matches the last server-confirmed snapshot,
   // clear this redundant dirty marker without generating another Edge invocation.
   if (lastUploadedUserId === userId && lastUploadedSignature === snapshotSignature) {
+    uploadInFlight = false
     try {
       if (localStorage.getItem(key) === dirtyAtStart) {
         localStorage.removeItem(key)
@@ -639,7 +641,7 @@ async function uploadSnapshot(): Promise<void> {
     // Reuse the version captured during hydration or the previous successful
     // write. A read is only needed when the version is unknown or a conflict occurs.
     let expectedUpdatedAt = cloudVersionLoaded ? cloudUpdatedAt : null
-    let latestSnapshot: LearningProgressSnapshot | null = null
+    let latestSnapshot: LearningProgressSnapshot | null = cloudSnapshot
     if (!cloudVersionLoaded) {
       const { data: latestResult, error: readError } = await supabase.functions.invoke('learning-progress', {
         body: { action: 'read' }
@@ -651,6 +653,7 @@ async function uploadSnapshot(): Promise<void> {
         : null
       cloudUpdatedAt = expectedUpdatedAt
       cloudVersionLoaded = true
+      cloudSnapshot = latestSnapshot
     }
     let saved = false
 
@@ -672,8 +675,11 @@ async function uploadSnapshot(): Promise<void> {
         cloudUpdatedAt = expectedUpdatedAt
         cloudVersionLoaded = true
         lastUploadAt = Date.now()
+        cloudSnapshot = snapshotToUpload
         lastUploadedUserId = userId
-        lastUploadedSignature = progressSignature(snapshotToUpload)
+        // Compare against the unchanged local capture; cloudSnapshot separately
+        // retains any remote-only data merged into the successful write.
+        lastUploadedSignature = snapshotSignature
         saved = true
         break
       }
@@ -695,6 +701,7 @@ async function uploadSnapshot(): Promise<void> {
         : null
       cloudUpdatedAt = expectedUpdatedAt
       cloudVersionLoaded = true
+      cloudSnapshot = latestSnapshot
     }
 
     if (!saved) throw new Error('Study progress changed repeatedly on another device. It remains saved locally and will retry.')
@@ -776,6 +783,9 @@ async function initializeUserInternal(userId: string): Promise<void> {
   cloudReady = false
   cloudUpdatedAt = null
   cloudVersionLoaded = false
+  cloudSnapshot = null
+  lastUploadedUserId = null
+  lastUploadedSignature = null
 
   let ownerBeforeLoad: string | null = null
   try { ownerBeforeLoad = localStorage.getItem(OWNER_KEY) } catch { /* storage may be unavailable */ }
@@ -832,6 +842,7 @@ async function initializeUserInternal(userId: string): Promise<void> {
   })()
   const localSnapshot = cachedSnapshot && owner !== userId ? cachedSnapshot : captureSnapshot()
   const remoteSnapshot = row && isSnapshot(row.data) ? row.data : null
+  cloudSnapshot = remoteSnapshot
   let shouldUpload = false
   let snapshotToApply: LearningProgressSnapshot
 
@@ -881,11 +892,9 @@ async function initializeUserInternal(userId: string): Promise<void> {
 
   activeUserId = userId
   if (!shouldUpload) {
+    cloudSnapshot = snapshotToApply
     lastUploadedUserId = userId
     lastUploadedSignature = progressSignature(captureSnapshot())
-  } else if (lastUploadedUserId !== userId) {
-    lastUploadedUserId = null
-    lastUploadedSignature = null
   }
   cloudReady = true
   if (shouldUpload) {
@@ -962,6 +971,7 @@ export function startLearningProgressSync(): () => void {
         lastUploadAt = 0
         lastUploadedUserId = null
         lastUploadedSignature = null
+        cloudSnapshot = null
         if (uploadTimer) { clearTimeout(uploadTimer); uploadTimer = null }
         return
       }
@@ -983,6 +993,7 @@ export function startLearningProgressSync(): () => void {
     cloudUpdatedAt = null
     lastUploadedUserId = null
     lastUploadedSignature = null
+    cloudSnapshot = null
     cloudVersionLoaded = false
     lastUploadAt = 0
     window.removeEventListener('online', onOnline)
