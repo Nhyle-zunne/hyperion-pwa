@@ -26,7 +26,6 @@ export default function VaultScreen() {
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
   const cloudTrackIds = useLicenseStore((s) => s.cloudTrackIds)
-  const [validatingVault] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const hasAnyActiveLicense = entitlementsVerified && (
