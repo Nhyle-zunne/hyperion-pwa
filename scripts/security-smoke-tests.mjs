@@ -74,6 +74,7 @@ const [
   read('../.github/workflows/pwa-build.yml')
 ]);
 
+const trackPurchaseDialog = await read('../src/components/TrackPurchaseDialog.tsx');
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const submitManualPaymentFunction = await read('../supabase/functions/submit-manual-payment/index.ts');
 const googlePlayLinkFunction = await read('../supabase/functions/link-google-play-subscription/index.ts');
@@ -758,6 +759,30 @@ assert.ok(
   offlineDownloadCountsRequest > offlineDownloadVersionRequest,
   'Offline pack downloads reject free packs and verify a server-signed entitlement for the selected track before requesting bank metadata or question counts'
 );
+assert.ok(
+  practiceConfigScreen.includes("next.set('purchase', '1')") && practiceConfigScreen.includes("next.set('purchase_term'"),
+  'Unlicensed Practice All Questions opens a track purchase dialog instead of navigating to the locked Account page'
+);
+assert.ok(
+  app.includes("import TrackPurchaseDialog from './components/TrackPurchaseDialog'") && app.includes('<TrackPurchaseDialog />'),
+  'Track purchase dialog is mounted globally so it survives the OAuth callback return to practice'
+);
+assert.ok(
+  trackPurchaseDialog.includes('LICENSE_TERMS') &&
+  trackPurchaseDialog.includes('priceForTerm(product, term)') &&
+  trackPurchaseDialog.includes("provider: 'google'") &&
+  trackPurchaseDialog.includes("body: { items: [{ productCode: product.code, term }], returnTo }") &&
+  trackPurchaseDialog.includes("verify-checkout"),
+  'Track purchase dialog offers the selected track plans, signs guests in, starts the existing secure checkout, and verifies payment on return'
+);
+assert.ok(
+  checkout.includes('body.returnTo') &&
+  checkout.includes("target.pathname !== '/practice'") &&
+  checkout.includes("buildReturnUrl('success')") &&
+  checkout.includes("buildReturnUrl('cancelled')"),
+  'Single-track checkout returns to the originating practice purchase dialog only for a validated same-app practice path'
+);
+
 assert.ok(
   trackHubScreen.includes('{unlocked && (') &&
   trackHubScreen.includes("'DOWNLOAD FULL BANK FOR OFFLINE'") &&
