@@ -32,3 +32,10 @@ export const PAID_PRODUCTS: { code: PaidTrack; label: string; trackLabel: string
   { code: 'deck_mgt', label: 'Deck Management', trackLabel: 'DECK_MGT', weeklyPrice: 40, monthlyPrice: 100, annualPrice: 700 },
   { code: 'engine_mgt', label: 'Engine Management', trackLabel: 'ENGINE_MGT', weeklyPrice: 40, monthlyPrice: 100, annualPrice: 700 },
 ]
+
+export function paidProductCodeForTrackId(trackId: string): PaidTrack | null {
+  const normalized = trackId.trim().toLowerCase()
+  return PAID_PRODUCTS.find(item =>
+    item.code === normalized || item.trackLabel.toLowerCase() === normalized
+  )?.code ?? null
+}
