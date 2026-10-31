@@ -28,8 +28,7 @@ export default function PracticeQuizScreen() {
     score,
     reset,
     saveProgress,
-    restoreSavedProgress,
-    next
+    restoreSavedProgress
   } = usePracticeStore()
 
   const [showExitDialog, setShowExitDialog] = useState(false)
