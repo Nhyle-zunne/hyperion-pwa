@@ -1295,40 +1295,44 @@ async function downloadOfflinePackInternal(
   if (freeOnly) throw new Error('Offline downloads require an active license for this track.')
   if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect to the internet before downloading an offline pack.')
   if (!supabase) throw new Error('Protected question service is not configured.')
+
+  // Confirm the signed-in account and obtain a server-signed entitlement for this
+  // exact track before requesting bank metadata or question pages. This makes an
+  // unlicensed download fail fast instead of spending requests on version/count APIs.
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  const userId = sessionData.session?.user?.id
+  if (sessionError || !userId) {
+    throw new Error('Sign in again before preparing a licensed offline pack.')
+  }
+  const { data: offlineLicense, error: offlineLicenseError } = await supabase.functions.invoke('question-bank', {
+    body: { action: 'offline-license' }
+  })
+  if (
+    offlineLicenseError ||
+    typeof offlineLicense?.token !== 'string' ||
+    !Array.isArray(offlineLicense?.trackIds) ||
+    !offlineLicense.trackIds.includes(track)
+  ) {
+    throw new Error('An active license for this track is required to download its offline question bank.')
+  }
+  const savedLease = await saveOfflineEntitlements(userId, offlineLicense.token)
+  const expiry = savedLease ? await getOfflineEntitlementExpiry(userId, track) : null
+  if (!expiry) {
+    throw new Error('Your questions were not prepared for offline access because this device could not verify the track license. Reconnect and retry.')
+  }
+
   await requestPersistentStorageIfSupported()
 
-  // Capture the bank fingerprint before downloading. We verify it again after all
+  // Capture the bank fingerprint only after the server has confirmed this
+  // account's entitlement for the selected track. We verify it again after all
   // pages finish so a publication during a download cannot be labelled current.
   const versionsBefore = await fetchRemoteQuestionBankVersions(track)
-  const fullVersionsBefore = freeOnly ? null : sourceVersionMap(versionsBefore, false)
+  const fullVersionsBefore = sourceVersionMap(versionsBefore, false)
   const freeVersionsBefore = sourceVersionMap(versionsBefore, true)
 
-  // Asking the protected counts endpoint is also the authorization gate for paid packs.
-  const counts = await getQuestionCountsByTrack(track, freeOnly)
+  const counts = await getQuestionCountsByTrack(track, false)
   const totalExpected = counts.reduce((sum, item) => sum + item.count, 0)
   if (!counts.length || totalExpected <= 0) throw new Error('No questions are available to download for this track.')
-
-  // A paid offline pack is only useful if this same device has a current,
-  // server-signed offline entitlement lease. Acquire and verify it before marking
-  // the existing pack incomplete, so a lease failure does not damage a previous pack.
-  if (!freeOnly) {
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-    const userId = sessionData.session?.user?.id
-    if (sessionError || !userId) {
-      throw new Error('Sign in again before preparing a licensed offline pack.')
-    }
-    const { data: offlineLicense, error: offlineLicenseError } = await supabase.functions.invoke('question-bank', {
-      body: { action: 'offline-license' }
-    })
-    if (offlineLicenseError || typeof offlineLicense?.token !== 'string') {
-      throw new Error('Your questions were not prepared for offline access because the secure license could not be verified. Reconnect and retry.')
-    }
-    const savedLease = await saveOfflineEntitlements(userId, offlineLicense.token)
-    const expiry = savedLease ? await getOfflineEntitlementExpiry(userId, track) : null
-    if (!expiry) {
-      throw new Error('Your questions were not prepared for offline access because this device could not verify the track license. Reconnect and retry.')
-    }
-  }
 
   // Keep any existing complete pack usable until the entire replacement has
   // downloaded, passed count checks, been encrypted, and can be committed atomically.
