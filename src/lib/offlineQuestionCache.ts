@@ -26,8 +26,11 @@ export interface OfflinePackManifest {
   savedAt: number
   complete: boolean
   sampleVersion?: number
-  /** Content hashes captured at download time, keyed by private source asset path. */
+  /** Version identifiers captured at download time, keyed by private source asset path. */
   sourceVersions?: Record<string, string>
+  sourceVersionFormat?: 'content-sha256-v1' | 'storage-metadata-v1'
+  /** Prevents repeatedly downloading legacy source files while an update is already known. */
+  legacyVersionMigrationChecked?: boolean
   lastCheckedAt?: number
   lastKnownUpdateState?: 'current' | 'available'
   availableSources?: string[]
@@ -44,6 +47,7 @@ export interface OfflineQuestionPackSetUpdate {
   freeOnly: boolean
   groups: OfflineQuestionPackGroup[]
   sourceVersions?: Record<string, string>
+  sourceVersionFormat?: OfflinePackManifest['sourceVersionFormat']
 }
 
 interface StoredOfflineQuestionPack {
@@ -228,6 +232,8 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
       ...((update.track === 'DECK_OIC_NW' || update.track === 'GMDSS_GOC') && update.freeOnly ? { sampleVersion: 2 } : {}),
       ...(update.sourceVersions ? {
         sourceVersions: update.sourceVersions,
+        ...(update.sourceVersionFormat ? { sourceVersionFormat: update.sourceVersionFormat } : {}),
+        legacyVersionMigrationChecked: true,
         lastCheckedAt: Date.now(),
         lastKnownUpdateState: 'current' as const,
         availableSources: []
@@ -337,6 +343,8 @@ export async function recordOfflinePackVersionCheck(
     state: 'current' | 'available'
     sourceVersions?: Record<string, string>
     availableSources: string[]
+    sourceVersionFormat?: OfflinePackManifest['sourceVersionFormat']
+    legacyVersionMigrationChecked?: boolean
   }
 ) {
   const db = await database()
@@ -346,6 +354,8 @@ export async function recordOfflinePackVersionCheck(
   await db.put('manifests', {
     ...existing,
     ...(result.sourceVersions ? { sourceVersions: result.sourceVersions } : {}),
+    ...(result.sourceVersionFormat ? { sourceVersionFormat: result.sourceVersionFormat } : {}),
+    ...(result.legacyVersionMigrationChecked !== undefined ? { legacyVersionMigrationChecked: result.legacyVersionMigrationChecked } : {}),
     lastCheckedAt: result.checkedAt,
     lastKnownUpdateState: result.state,
     availableSources: result.availableSources
