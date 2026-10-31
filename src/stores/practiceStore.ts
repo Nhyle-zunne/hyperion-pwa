@@ -209,8 +209,10 @@ function recordHistory(get: () => PracticeState) {
   let correct = 0;
   for (const q of s.questions) {
     const answer = s.answers[q.id];
-    if (answer?.isCorrect) correct++;
-    else if (s.mode === 'MOCK' && answer && answer.selectedIndex != null && !answer.isCorrect) {
+    if (answer?.isCorrect) {
+      correct++;
+      if (s.mode === 'MOCK') useVaultStore.getState().recordCorrectAttempt(q.id);
+    } else if (s.mode === 'MOCK' && answer && answer.selectedIndex != null) {
       useVaultStore.getState().addMistake(q, answer.selectedIndex, s.isFreeSession);
     }
   }
@@ -400,7 +402,8 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     if (mode === 'DRILL' || mode === 'PRACTICE') {
       nextStreak = isCorrect ? streak + 1 : 0;
       nextBest = Math.max(bestStreak, nextStreak);
-      if (!isCorrect) useVaultStore.getState().addMistake(q, index, isFreeSession);
+      if (isCorrect) useVaultStore.getState().recordCorrectAttempt(q.id);
+      else useVaultStore.getState().addMistake(q, index, isFreeSession);
     }
 
     set({
