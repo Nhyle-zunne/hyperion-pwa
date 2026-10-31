@@ -203,7 +203,12 @@ export default function PracticeConfigScreen() {
         return
       }
       if (!freeMode && !hasLicense) {
-        openPaywall('Practice')
+        setSearchParams(current => {
+          const next = new URLSearchParams(current)
+          next.set('purchase', '1')
+          next.set('purchase_term', next.get('purchase_term') || 'year')
+          return next
+        }, { replace: true })
         return
       }
 
