@@ -360,7 +360,7 @@ export default function App() {
     if (allowed) return
     const isPermittedFreeRunner = isFreeSession && (
       (isMockRunner && currentMode === 'MOCK') ||
-      (isPracticeQuiz && (currentMode === 'PRACTICE' || currentMode === 'DRILL'))
+      (isPracticeQuiz && currentMode === 'PRACTICE')
     )
     if (isQuestionRunner && isPermittedFreeRunner) return
     const trackParam: Record<string, string> = {
