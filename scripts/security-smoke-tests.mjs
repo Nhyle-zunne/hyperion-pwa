@@ -907,4 +907,11 @@ assert.ok(
 assert.ok(googlePlayLinkMigration.includes("AND NOT (track_id = ANY(allowed_tracks))") && googlePlayLinkMigration.includes("'hyperion_all_access_pass' = ANY"), 'A changed verified product set atomically retires stale track grants while preserving all-access mapping');
 assert.ok(googlePlaySchema.includes("CREATE TRIGGER google_play_link_inactive_revoke_entitlements") && googlePlaySchema.includes("AFTER UPDATE OF status, expires_at, product_ids") && googlePlaySchema.includes("AND NOT (track_id = ANY(allowed_tracks))"), 'The consolidated local schema includes the same Google Play entitlement reconciliation trigger');
 
+// Mistakes notebook navigation and access regression coverage.
+assert.ok(app.includes("const VaultScreen = lazy(() => import('./screens/VaultScreen'))"), 'Mistakes notebook screen is lazy-loaded');
+assert.ok(app.includes('<Route path="/vault" element={<VaultScreen />} />'), 'Mistakes notebook has a real application route');
+assert.ok(app.includes("currentMode === 'PRACTICE' || currentMode === 'DRILL'"), 'Authorized free-sample mistake drills are not redirected by the paid-runner guard');
+assert.ok(appDrawer.includes('Mistakes notebook') && appDrawer.includes('path="/vault"'), 'Mistakes notebook is available from the app drawer');
+assert.ok(trackHubScreen.includes('navigate(`/vault?track=${key}`)'), 'Each track hub opens its scoped mistakes notebook');
+assert.ok(vaultScreen.includes('useSearchParams') && vaultScreen.includes('scopedItems'), 'Mistakes notebook supports global and track-scoped views');
 console.log('Release-safety smoke checks passed.');
