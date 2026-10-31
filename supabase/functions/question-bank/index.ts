@@ -580,6 +580,122 @@ Deno.serve(async (req: Request) => {
     if (!result.error && result.data.user) { user = result.data.user; isAdmin = isAdminEmail(user.email); }
   }
 
+  if (body.action === "optimize-storage-cache") {
+    if (!user || !isAdmin) return json(req, { error: "Forbidden." }, 403);
+
+    let state: any;
+    try { state = await cachedMigrationState(admin); } catch {
+      return json(req, { error: "Could not verify the private question bank before cache optimization." }, 503);
+    }
+    if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) {
+      return json(req, { error: "The private question bank is not fully verified. No cache settings were changed." }, 409);
+    }
+
+    const { data: controls, error: controlsError } = await admin.rpc("get_question_bank_object_cache_controls", {
+      p_names: SOURCE_ASSETS
+    });
+    if (controlsError || !Array.isArray(controls)) {
+      return json(req, { error: "Could not read question-bank cache settings." }, 503);
+    }
+    const controlByName = new Map<string, string>(
+      controls.map((item: any) => [String(item.name), String(item.cache_control ?? "")])
+    );
+    const toUpdate = SOURCE_ASSETS.filter(path => controlByName.get(path) !== "max-age=3600");
+    const skipped = SOURCE_ASSETS.length - toUpdate.length;
+    const beforeResult = await admin.rpc("get_question_bank_object_versions", { p_names: toUpdate });
+    if (beforeResult.error || !Array.isArray(beforeResult.data)) {
+      return json(req, { error: "Could not verify source files before cache optimization." }, 503);
+    }
+    const beforeByName = new Map<string, { etag: string; size: number }>(
+      beforeResult.data.map((item: any) => [String(item.name), {
+        etag: String(item.etag ?? ""),
+        size: Number(item.size)
+      }])
+    );
+    const failures: string[] = [];
+    let updated = 0;
+    const bucket = admin.storage.from("question-banks");
+
+    for (let offset = 0; offset < toUpdate.length; offset += 4) {
+      const group = toUpdate.slice(offset, offset + 4);
+      const results = await Promise.all(group.map(async path => {
+        try {
+          const existing = await bucket.download(path);
+          if (existing.error || !existing.data) throw new Error("private download failed");
+          const bytes = new Uint8Array(await existing.data.arrayBuffer());
+          const prior = beforeByName.get(path);
+          if (!prior || !prior.etag || !Number.isFinite(prior.size) || bytes.byteLength !== prior.size) {
+            throw new Error("source size or version verification failed");
+          }
+          const uploaded = await bucket.upload(path, bytes, {
+            contentType: "application/octet-stream",
+            cacheControl: "3600",
+            upsert: true
+          });
+          if (uploaded.error) throw new Error("cache header update failed");
+          privateTextCache.delete(path);
+          const track = trackForPath(path);
+          if (track) {
+            freeQuestionFingerprintCache.delete(track);
+            fullQuestionFingerprintCache.delete(track);
+          }
+          return { path, ok: true };
+        } catch {
+          return { path, ok: false };
+        }
+      }));
+      updated += results.filter(item => item.ok).length;
+      failures.push(...results.filter(item => !item.ok).map(item => item.path));
+    }
+
+    const [afterControls, afterVersions] = await Promise.all([
+      admin.rpc("get_question_bank_object_cache_controls", { p_names: SOURCE_ASSETS }),
+      admin.rpc("get_question_bank_object_versions", { p_names: toUpdate })
+    ]);
+    if (afterControls.error || !Array.isArray(afterControls.data) ||
+        afterVersions.error || !Array.isArray(afterVersions.data)) {
+      return json(req, { error: "Cache policy updates ran, but final verification could not be completed.", updated, skipped, failed: failures.length }, 503);
+    }
+
+    const finalControls = new Map<string, string>(
+      afterControls.data.map((item: any) => [String(item.name), String(item.cache_control ?? "")])
+    );
+    const afterByName = new Map<string, { etag: string; size: number }>(
+      afterVersions.data.map((item: any) => [String(item.name), {
+        etag: String(item.etag ?? ""),
+        size: Number(item.size)
+      }])
+    );
+    const contentChanged = toUpdate.filter(path => {
+      const before = beforeByName.get(path);
+      const after = afterByName.get(path);
+      return !before || !after || before.etag !== after.etag || before.size !== after.size;
+    });
+    const notOptimized = SOURCE_ASSETS.filter(path => finalControls.get(path) !== "max-age=3600");
+    if (contentChanged.length || notOptimized.length || failures.length) {
+      return json(req, {
+        error: "Cache optimization did not pass final verification. The existing encrypted files remain private.",
+        updated,
+        skipped,
+        failed: failures.length,
+        failedAssets: failures.slice(0, 12),
+        contentChangedAssets: contentChanged.slice(0, 12),
+        remainingAssets: notOptimized.slice(0, 12)
+      }, 503);
+    }
+
+    return json(req, {
+      ok: true,
+      cacheControl: "max-age=3600",
+      assetCount: SOURCE_ASSETS.length,
+      updated,
+      skipped,
+      failed: 0,
+      contentChanged: 0,
+      bucketPrivate: true
+    });
+  }
+
   if (body.action === "list-update-assets") {
     if (!user || !isAdmin) return json(req, { error: "Forbidden." }, 403);
     const labels: Record<string, string> = {
@@ -663,7 +779,7 @@ Deno.serve(async (req: Request) => {
         replacementBytes.set(ivBytes, 0);
         replacementBytes.set(ciphertext, ivBytes.length);
       }
-      const upload = await bucket.upload(path, replacementBytes, { contentType: "application/octet-stream", cacheControl: "0", upsert: true });
+      const upload = await bucket.upload(path, replacementBytes, { contentType: "application/octet-stream", cacheControl: "3600", upsert: true });
       if (upload.error) return json(req, { error: "Replacement failed. Previous file backed up at " + backupPath + "." }, 500);
       privateTextCache.delete(path);
       const updatedTrack = trackForPath(path);
@@ -695,7 +811,7 @@ Deno.serve(async (req: Request) => {
           if (type.includes("text/html")) throw new Error("source returned HTML, not an asset");
           const buffer = new Uint8Array(await response.arrayBuffer());
           if (buffer.length < 28 || buffer.length > 1024 * 1024) throw new Error("asset size was invalid");
-          const result = await admin.storage.from("question-banks").upload(assetPath, buffer, { contentType: "application/octet-stream", cacheControl: "0", upsert: true });
+          const result = await admin.storage.from("question-banks").upload(assetPath, buffer, { contentType: "application/octet-stream", cacheControl: "3600", upsert: true });
           if (result.error) throw new Error("private storage upload failed");
           return { assetPath, ok: true };
         } catch (error) {
@@ -753,7 +869,9 @@ Deno.serve(async (req: Request) => {
         if (!etag || !updatedAt || !Number.isFinite(size) || size <= 0) {
           throw new Error("A question-bank source is missing version metadata.");
         }
-        const versionBytes = new TextEncoder().encode(JSON.stringify([source.path, updatedAt, etag, size]));
+        // ETag + size identify the object content. Exclude updated_at because a
+        // cache-header-only metadata refresh must not mark every offline pack stale.
+        const versionBytes = new TextEncoder().encode(JSON.stringify([source.path, etag, size]));
         const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", versionBytes));
         const sourceVersion = Array.from(digest, value => value.toString(16).padStart(2, "0")).join("");
         versions.push({
