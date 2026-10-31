@@ -149,7 +149,7 @@ async function fingerprintSessionCandidate(track: unknown, questions: unknown): 
 }
 
 async function sanitizeSnapshot(
-  client: ReturnType<typeof createClient>,
+  client: any,
   input: unknown,
   allowedTracks: Set<TrackId>
 ): Promise<JsonRecord> {
@@ -179,7 +179,7 @@ async function sanitizeSnapshot(
         continue
       }
       const fingerprint = await fingerprintQuestion(item)
-      if (fingerprint) candidates.push({ index, track: item.track, id: item.id, fingerprint })
+      if (fingerprint) candidates.push({ index, track: item.track, id: item.id as string, fingerprint })
     }
     collections.set(key, { ...parsed, keep })
   }
@@ -287,7 +287,7 @@ function equivalentProgressSnapshots(left: unknown, right: unknown): boolean {
 }
 
 async function loadAllowedTracks(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   user: { id: string; email?: string }
 ): Promise<Set<TrackId>> {
   const adminEmails = (Deno.env.get('ADMIN_EMAILS') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean)
@@ -299,7 +299,8 @@ async function loadAllowedTracks(
     .eq('status', 'active')
     .gt('expires_at', new Date().toISOString())
   if (error) throw new Error('Current entitlements could not be verified.')
-  return new Set((data || []).map(row => row.track_id).filter(isTrackId))
+  const rows = (data ?? []) as { track_id?: unknown }[]
+  return new Set(rows.map(row => row.track_id).filter(isTrackId))
 }
 
 Deno.serve(async req => {
