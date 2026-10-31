@@ -207,7 +207,7 @@ assert.ok(app.includes("import TopLoadingIndicator from './components/TopLoading
 assert.ok(
   app.includes("withPageLoading('Checking licenses and access'") &&
   app.includes('void refresh(true, true)') &&
-  app.includes('minimumRefreshIntervalMs = 2 * 60 * 1000') &&
+  app.includes('minimumRefreshIntervalMs = 5 * 60 * 1000') &&
   app.includes('if (refreshInFlight)') &&
   app.includes('let forcedRefreshQueued = false') &&
   app.includes('if (force) forcedRefreshQueued = true'),
