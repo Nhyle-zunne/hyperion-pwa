@@ -523,6 +523,59 @@ async function loadSource(src: BankSource, freeOnly = false): Promise<LoadedSour
   }
 }
 
+async function loadFreeTrackSourcesByBatch(
+  track: TrackId,
+  sources: BankSource[]
+): Promise<LoadedSource[]> {
+  const missing = sources.filter(source => !cache.has(source.path + ':free'))
+  if (missing.length) {
+    if (!supabase) throw new Error('Protected question service is not configured.')
+    const { data, error } = await supabase.functions.invoke('question-bank', {
+      body: { action: 'free-track-files', track, paths: missing.map(source => source.path) }
+    })
+    if (error || data?.track !== track || data?.access !== 'free-sample' || !Array.isArray(data?.files)) {
+      throw error || new Error(data?.error || 'The protected free question sample could not be loaded.')
+    }
+
+    const files = new Map<string, string>()
+    for (const item of data.files as unknown[]) {
+      if (
+        !item || typeof item !== 'object' ||
+        typeof (item as { path?: unknown }).path !== 'string' ||
+        typeof (item as { text?: unknown }).text !== 'string'
+      ) throw new Error('The server returned an invalid free question file.')
+      const path = (item as { path: string }).path
+      if (!missing.some(source => source.path === path) || files.has(path)) {
+        throw new Error('The server returned an unexpected or duplicate free question file.')
+      }
+      files.set(path, (item as { text: string }).text)
+    }
+    if (files.size !== missing.length) throw new Error('The server returned an incomplete free question sample.')
+
+    for (const source of missing) {
+      const text = files.get(source.path)
+      if (typeof text !== 'string') throw new Error('A free question file was missing from the server response.')
+      const rows = parseCsvText(text)
+      let loaded: LoadedSource
+      if (rows.length <= 1 && source.format !== 'gmdss') {
+        loaded = { questions: [], sampledByServer: true }
+      } else {
+        const headerIdx = findHeaderRow(rows, source.format)
+        const questions = source.format === 'gmdss'
+          ? parseGmdssRows(rows, headerIdx, source)
+          : parseStandardRows(rows, headerIdx, source)
+        loaded = { questions, sampledByServer: true }
+      }
+      cache.set(source.path + ':free', loaded)
+    }
+  }
+
+  return sources.map(source => cache.get(source.path + ':free') ?? {
+    questions: [],
+    sampledByServer: false
+  })
+}
+
 async function loadQuestionsByCompetenceInternal(
   track: TrackId,
   competenceId: string,
@@ -755,11 +808,18 @@ async function loadQuestionsByTrackInternal(track: TrackId, freeOnly = false): P
     if (cached) return cached
     throw new Error('Full-track question preloading is disabled. Select a competence or download an offline pack.')
   }
-  const sources = SOURCES.filter((s) => s.track === track);
-  const results = await Promise.all(sources.map(src => loadSource(src, true)));
-  const allQuestions = results.flatMap(item => item.questions);
-  if (!results.every(item => item.sampledByServer)) return freeSample(allQuestions, track);
-  return allQuestions;
+  // A verified downloaded free pack is already the exact official sample.
+  // Reuse it online as well so a track revisit does not re-fetch every CSV.
+  if (await hasFreshCurrentOfflinePack(track, true)) {
+    const cached = await getOfflineQuestionsByTrack(track, true)
+    if (cached) return cached
+  }
+
+  const sources = SOURCES.filter((source) => source.track === track)
+  const results = await loadFreeTrackSourcesByBatch(track, sources)
+  const allQuestions = results.flatMap(item => item.questions)
+  if (!results.every(item => item.sampledByServer)) return freeSample(allQuestions, track)
+  return allQuestions
 }
 
 export async function getQuestionsByTrack(track: TrackId, freeOnly = false): Promise<Question[]> {
