@@ -225,8 +225,16 @@ async function cachedMigrationState(admin: any) {
 }
 
 type SourceInfo = { track: string; competenceId: string; part: number | null; format: "standard" | "gmdss"; functionId: string; idPrefix: string };
-const PRIVATE_TEXT_CACHE_TTL_MS = 60_000;
-const privateTextCache = new Map<string, { text: string; cachedAt: number }>();
+// Cached question text is reusable across requests in a warm Edge isolate. The
+// migration-state timestamp is a cross-isolate content epoch: successful admin
+// publications bump it, so a long cache lifetime does not delay updated questions.
+const PRIVATE_TEXT_CACHE_TTL_MS = 15 * 60_000;
+const privateTextCache = new Map<string, { text: string; cachedAt: number; bankEpoch: string }>();
+function currentQuestionBankEpoch(): string {
+  return typeof migrationStateCache?.data?.updated_at === "string"
+    ? migrationStateCache.data.updated_at
+    : "";
+}
 function sourceInfo(path: string): SourceInfo | null {
   const track = trackForPath(path);
   if (!track) return null;
@@ -262,12 +270,15 @@ function sourceInfo(path: string): SourceInfo | null {
   return { track, competenceId, part, format: track === "GMDSS_GOC" ? "gmdss" : "standard", functionId, idPrefix };
 }
 async function privateText(admin: any, path: string): Promise<string> {
+  const bankEpoch = currentQuestionBankEpoch();
   const cached = privateTextCache.get(path);
-  if (cached && Date.now() - cached.cachedAt < PRIVATE_TEXT_CACHE_TTL_MS) return cached.text;
+  if (bankEpoch && cached &&
+      cached.bankEpoch === bankEpoch &&
+      Date.now() - cached.cachedAt < PRIVATE_TEXT_CACHE_TTL_MS) return cached.text;
   const result = await admin.storage.from("question-banks").download(path);
   if (result.error || !result.data) throw new Error("Question asset is not available in private storage.");
   const text = await decryptToText(new Uint8Array(await result.data.arrayBuffer()));
-  privateTextCache.set(path, { text, cachedAt: Date.now() });
+  privateTextCache.set(path, { text, cachedAt: Date.now(), bankEpoch });
   return text;
 }
 function validGmdssRows(text: string): string[][] {
@@ -428,9 +439,9 @@ async function authorizeTrack(admin: any, user: any, isAdmin: boolean, track: st
   const entitlement = await loadEntitlement(admin, user.id, track);
   return canAccessPaidTrack({ userId: user.id, isAdmin: false, entitlement, track });
 }
-const FREE_FINGERPRINT_CACHE_TTL_MS = 30_000;
-const freeQuestionFingerprintCache = new Map<string, { fingerprints: Set<string>; cachedAt: number }>();
-const fullQuestionFingerprintCache = new Map<string, { fingerprints: Set<string>; cachedAt: number }>();
+const FREE_FINGERPRINT_CACHE_TTL_MS = 15 * 60_000;
+const freeQuestionFingerprintCache = new Map<string, { fingerprints: Set<string>; cachedAt: number; bankEpoch: string }>();
+const fullQuestionFingerprintCache = new Map<string, { fingerprints: Set<string>; cachedAt: number; bankEpoch: string }>();
 function questionIdBelongsToTrack(id: string, track: string) {
   if (track === "DECK_OIC_NW") return id.startsWith("D-");
   if (track === "GMDSS_GOC") return id.startsWith("G-");
@@ -457,8 +468,10 @@ async function questionFingerprint(question: { questionText: string; options: st
   return Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("");
 }
 async function freeQuestionFingerprints(admin: any, track: string): Promise<Set<string>> {
+  const bankEpoch = currentQuestionBankEpoch();
   const cached = freeQuestionFingerprintCache.get(track);
-  if (cached && Date.now() - cached.cachedAt < FREE_FINGERPRINT_CACHE_TTL_MS) return cached.fingerprints;
+  if (bankEpoch && cached && cached.bankEpoch === bankEpoch &&
+      Date.now() - cached.cachedAt < FREE_FINGERPRINT_CACHE_TTL_MS) return cached.fingerprints;
   const fingerprints = new Set<string>();
   for (const path of SOURCE_ASSETS.filter(item => trackForPath(item) === track)) {
     const sample = sampleFreeCsv(path, await privateText(admin, path));
@@ -470,12 +483,14 @@ async function freeQuestionFingerprints(admin: any, track: string): Promise<Set<
     })));
     hashes.forEach(hash => fingerprints.add(hash));
   }
-  freeQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now() });
+  freeQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now(), bankEpoch });
   return fingerprints;
 }
 async function fullQuestionFingerprints(admin: any, track: string): Promise<Set<string>> {
+  const bankEpoch = currentQuestionBankEpoch();
   const cached = fullQuestionFingerprintCache.get(track);
-  if (cached && Date.now() - cached.cachedAt < FREE_FINGERPRINT_CACHE_TTL_MS) return cached.fingerprints;
+  if (bankEpoch && cached && cached.bankEpoch === bankEpoch &&
+      Date.now() - cached.cachedAt < FREE_FINGERPRINT_CACHE_TTL_MS) return cached.fingerprints;
   const fingerprints = new Set<string>();
   for (const path of SOURCE_ASSETS.filter(item => trackForPath(item) === track)) {
     const questions = toSearchQuestions(path, await privateText(admin, path));
@@ -486,7 +501,7 @@ async function fullQuestionFingerprints(admin: any, track: string): Promise<Set<
     })));
     hashes.forEach(hash => fingerprints.add(hash));
   }
-  fullQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now() });
+  fullQuestionFingerprintCache.set(track, { fingerprints, cachedAt: Date.now(), bankEpoch });
   return fingerprints;
 }
 
