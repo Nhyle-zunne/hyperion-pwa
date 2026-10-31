@@ -287,9 +287,9 @@ export default function TrackHubScreen() {
     {
       title: 'MISTAKES NOTEBOOK',
       desc: `${trackMistakes.length} questions to review. Track your wrong answers.`,
-      badge: trackMistakes.length ? `${trackMistakes.length} SAVED` : 'EMPTY',
+      badge: !unlocked ? 'LICENSE REQUIRED' : trackMistakes.length ? `${trackMistakes.length} SAVED` : 'EMPTY',
       icon: '✧',
-      locked: false,
+      locked: !unlocked,
       onClick: () => navigate(`/vault?track=${key}`)
     },
     {
