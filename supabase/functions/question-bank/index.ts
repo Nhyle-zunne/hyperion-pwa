@@ -351,7 +351,7 @@ async function cachedQuestionCounts(admin: any, track: string) {
 
   const cachedByPath = new Map<string, any>(data.map((item: any) => [String(item.asset_path), item]));
   const rowsToUpsert: Record<string, unknown>[] = [];
-  const counts: { competenceId: string; part: number; fullCount: number; freeCount: number }[] = [];
+  const counts: { competenceId: string; part: number | null; fullCount: number; freeCount: number }[] = [];
 
   for (const version of versions) {
     const info = sourceInfo(version.path);
