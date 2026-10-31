@@ -152,7 +152,7 @@ export default function AdminPaymentsScreen() {
     <h1 className="page-title">Payment Submissions</h1>
     <p className="subtitle">Review manual payment submissions here. License activation, extension, and revocation are managed separately in User Licenses.</p>
     {message && <div role="status" style={card}>{/supabase/i.test(message) ? 'Payment administration is temporarily unavailable. Please try again later.' : message}</div>}
-    {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void withPageLoading('Refreshing payment submissions', () => load())}>Retry</button></section> : <>
+    {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void withPageLoading('Refreshing payment submissions', () => load(true))}>Retry</button></section> : <>
       {alertLoadWarning && <div role="alert" style={{ ...card, borderColor: 'var(--danger, #dc2626)' }}>{alertLoadWarning}</div>}
       {reconciliationAlerts.length > 0 && <section style={{ ...card, borderColor: 'var(--danger, #dc2626)', borderWidth: 2 }}>
         <h2 style={{ marginTop: 0, color: 'var(--danger, #dc2626)' }}>PayMongo reconciliation required ({reconciliationAlerts.length})</h2>
@@ -173,7 +173,7 @@ export default function AdminPaymentsScreen() {
       </section>}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap', marginBottom:'.65rem' }}>
         <h2 style={{ margin:0 }}>Payment submissions ({orders.length})</h2>
-        <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void withPageLoading('Refreshing payment submissions', () => load())} style={{ padding:'.55rem .8rem' }}>Refresh submissions</button>
+        <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void withPageLoading('Refreshing payment submissions', () => load(true))} style={{ padding:'.55rem .8rem' }}>Refresh submissions</button>
       </div>
       <div className="admin-payment-status-tabs" role="tablist" aria-label="Filter payment submissions by status">
         {([
