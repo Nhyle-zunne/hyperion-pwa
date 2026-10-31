@@ -128,7 +128,7 @@ export default function TermsScreen() {
 
       <section style={sectionStyle}>
         <h2 style={headingStyle}>11. Third-Party Services</h2>
-        <p style={paragraphStyle}>Hyperion relies on third-party services including Google and Google Play (Google sign-in, Android billing, and purchase verification), Firebase Remote Config and Google Cloud Firestore (certain Android activation and promo-code functions), Supabase (authentication, database, and backend functions), PayMongo (website checkout and payment processing), Cloudflare (website hosting, delivery, and security), and Meta/Facebook or email providers when you choose to contact support through those channels. Their services are governed by their own terms and privacy policies. We do not control their independent systems, billing decisions, or retention rules, except that our own use of those services remains subject to applicable law.</p>
+        <p style={paragraphStyle}>Hyperion relies on Google and Google Play (Google sign-in, Android billing, and purchase verification), Firebase Remote Config (Android promo-code and activation-status configuration), Supabase (authentication, database, and backend functions), PayMongo (website checkout and payment processing), Cloudflare (website hosting, delivery, and security), and Meta/Facebook or email providers when you choose to contact support through those channels. The current Android app version does not use Cloud Firestore for promo-code activation. These providers' services are governed by their own terms and privacy policies. We do not control their independent systems, billing decisions, or retention rules, except that our own use of those services remains subject to applicable law.</p>
       </section>
 
       <section style={sectionStyle}>
@@ -137,7 +137,12 @@ export default function TermsScreen() {
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={headingStyle}>13. Governing Law and Contact</h2>
+        <h2 style={headingStyle}>13. Consumer Complaints and Internal Redress</h2>
+        <p style={paragraphStyle}>To raise a complaint about a website/PWA purchase, license, or digital service, email <a href="mailto:hyperionmaritimex@gmail.com">hyperionmaritimex@gmail.com</a> using the email associated with your Hyperion account. Include your order reference (if applicable), the relevant dates, and a clear description of the issue. Do not send passwords, one-time codes, or full payment-card details. We will review the complaint through this internal redress channel and communicate using the contact details you provide. Under Section 24 of the Philippine Internet Transactions Act of 2023, the internal redress mechanism is deemed exhausted if the complaint remains unresolved after seven (7) calendar days from filing. This does not waive any rights or remedies available under applicable law. Google Play billing complaints for Android purchases must also be raised through the relevant Google Play support process.</p>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={headingStyle}>14. Governing Law and Contact</h2>
         <p style={paragraphStyle}>These Terms are intended to be interpreted consistently with applicable laws of the Philippines, without removing any mandatory rights that may apply to you under the laws of your place of residence. Any dispute will be handled by a competent forum under applicable law.</p>
         <p style={paragraphStyle}><strong>Service / Developer:</strong> Hyperion Maritime</p>
         <p style={paragraphStyle}><strong>Email:</strong> <a href="mailto:hyperionmaritimex@gmail.com">hyperionmaritimex@gmail.com</a></p>
