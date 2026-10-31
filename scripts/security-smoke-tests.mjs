@@ -88,6 +88,7 @@ const progressSyncSource = await read('../src/lib/progressSync.ts');
 const bookmarksStore = await read('../src/stores/bookmarksStore.ts');
 const vaultStore = await read('../src/stores/vaultStore.ts');
 const vaultScreen = await read('../src/screens/VaultScreen.tsx');
+const bookmarksScreen = await read('../src/screens/BookmarksScreen.tsx');
 const practiceQuizScreen = await read('../src/screens/PracticeQuizScreen.tsx');
 const questionBankAccessModule = await read('../supabase/functions/question-bank/access.mjs');
 const { canAccessPaidTrack } = await import('../supabase/functions/question-bank/access.mjs');
@@ -917,4 +918,7 @@ assert.ok(vaultScreen.includes('useSearchParams') && vaultScreen.includes('scope
 assert.ok(vaultScreen.includes('hasAnyActiveLicense') && vaultScreen.includes('An active license is required') && vaultScreen.includes('isTrackUnlocked(item.track)'), 'Mistakes notebook is locked without a license and filters mistakes to their active licensed track');
 assert.ok(!vaultScreen.includes('verifiedFreeItems') && !vaultScreen.includes('authorizeQuestionSet'), 'Free-sample mistakes cannot bypass the Mistakes Notebook license gate');
 assert.ok(trackHubScreen.includes("badge: !unlocked ? 'LICENSE REQUIRED'"), 'Track hub clearly marks the notebook as license-required for unlicensed tracks');
+assert.ok(vaultScreen.includes('Mistakes by track & competence') && vaultScreen.includes('Search results') && vaultScreen.includes('Practice track') && vaultScreen.includes('expandedCompetencies'), 'Mistakes notebook groups by track and competence, supports searchable results, and offers scoped drills');
+assert.ok(bookmarksScreen.includes('Bookmarks by track & competence') && bookmarksScreen.includes('Search results') && bookmarksScreen.includes('Practice track') && bookmarksScreen.includes('expandedCompetencies'), 'Bookmarks group by track and competence, support searchable results, and offer scoped practice');
+assert.ok(bookmarksScreen.includes('q.functionId') && bookmarksScreen.includes('q.explanation') && vaultScreen.includes('item.functionId') && vaultScreen.includes('item.explanation'), 'Saved-question search covers function and explanation metadata as well as question text');
 console.log('Release-safety smoke checks passed.');
