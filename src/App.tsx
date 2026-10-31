@@ -44,6 +44,7 @@ const MockExamRunner = lazy(() => import('./screens/MockExamScreen').then((modul
 const HistoryScreen = lazy(() => import('./screens/HistoryScreen'))
 const FlashcardsScreen = lazy(() => import('./screens/FlashcardsScreen'))
 const BookmarksScreen = lazy(() => import('./screens/BookmarksScreen'))
+const VaultScreen = lazy(() => import('./screens/VaultScreen'))
 const SearchScreen = lazy(() => import('./screens/SearchScreen'))
 const StudyTimeScreen = lazy(() => import('./screens/StudyTimeScreen'))
 const IOSInstallGuideScreen = lazy(() => import('./screens/IOSInstallGuideScreen'))
@@ -359,7 +360,7 @@ export default function App() {
     if (allowed) return
     const isPermittedFreeRunner = isFreeSession && (
       (isMockRunner && currentMode === 'MOCK') ||
-      (isPracticeQuiz && currentMode === 'PRACTICE')
+      (isPracticeQuiz && (currentMode === 'PRACTICE' || currentMode === 'DRILL'))
     )
     if (isQuestionRunner && isPermittedFreeRunner) return
     const trackParam: Record<string, string> = {
@@ -536,6 +537,7 @@ export default function App() {
           <Route path="/history" element={<HistoryScreen />} />
           <Route path="/flashcards" element={<FlashcardsScreen />} />
           <Route path="/bookmarks" element={<BookmarksScreen />} />
+          <Route path="/vault" element={<VaultScreen />} />
           <Route path="/search" element={<SearchScreen />} />
           <Route path="/studytime" element={<StudyTimeScreen />} />
           <Route path="/install/ios" element={<IOSInstallGuideScreen />} />
