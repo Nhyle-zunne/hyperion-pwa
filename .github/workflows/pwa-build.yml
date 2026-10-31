@@ -49,6 +49,14 @@ jobs:
           if-no-files-found: error
           retention-days: 2
           compression-level: 0
+      - name: Deploy verified PWA to the existing Hyperion Worker
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.CLOUDFLARE_API_TOKEN != ''
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: e4f2b51a3c1a61a5ba56a7d5cf1d8f45
+          wranglerVersion: '4'
+          command: deploy
 
   google-play-migration-regression:
     runs-on: ubuntu-latest
