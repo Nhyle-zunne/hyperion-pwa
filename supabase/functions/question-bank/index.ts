@@ -809,10 +809,30 @@ Deno.serve(async (req: Request) => {
       }
       const upload = await bucket.upload(path, replacementBytes, { contentType: "application/octet-stream", cacheControl: "3600", upsert: true });
       if (upload.error) return json(req, { error: "Replacement failed. Previous file backed up at " + backupPath + "." }, 500);
+
+      // Bump the shared question-bank epoch so other warm Edge isolates discard
+      // their in-memory decrypted copy of this source. The 15-minute local cache
+      // is therefore retained only while the server confirms the same bank epoch.
+      const updatedAt = new Date().toISOString();
+      const { error: epochError } = await admin.from("question_bank_migration_state")
+        .update({ updated_at: updatedAt })
+        .eq("id", 1);
+      migrationStateCache = null;
       privateTextCache.delete(path);
       const updatedTrack = trackForPath(path);
-      if (updatedTrack) freeQuestionFingerprintCache.delete(updatedTrack);
-      return json(req, { ok: true, path, uploadFormat: body.uploadFormat, questionCount, backupPath, updatedAt: new Date().toISOString() });
+      if (updatedTrack) {
+        freeQuestionFingerprintCache.delete(updatedTrack);
+        fullQuestionFingerprintCache.delete(updatedTrack);
+      }
+      return json(req, {
+        ok: true,
+        path,
+        uploadFormat: body.uploadFormat,
+        questionCount,
+        backupPath,
+        updatedAt,
+        cacheRefreshPending: !!epochError
+      });
     } catch {
       return json(req, { error: "Could not encrypt or publish this CSV. Previous file backed up at " + backupPath + "." }, 500);
     }
