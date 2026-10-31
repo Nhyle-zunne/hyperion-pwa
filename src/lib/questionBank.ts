@@ -235,6 +235,22 @@ const SOURCES: BankSource[] = [
 
 type LoadedSource = { questions: Question[]; sampledByServer: boolean };
 const cache = new Map<string, LoadedSource>();
+const ONLINE_QUESTION_CACHE_TTL_MS = 60_000;
+const onlineQuestionPageCache = new Map<string, { questions: Question[]; cachedAt: number }>();
+const onlineQuestionCountsCache = new Map<string, { counts: QuestionBankCount[]; cachedAt: number }>();
+
+function clearOnlineQuestionCacheForTrack(track: TrackId, includeFree = true) {
+  for (const key of onlineQuestionPageCache.keys()) {
+    if (key.startsWith(`${track}:`) && (includeFree || key.startsWith(`${track}:full:`))) {
+      onlineQuestionPageCache.delete(key);
+    }
+  }
+  for (const key of onlineQuestionCountsCache.keys()) {
+    if (key.startsWith(`${track}:`) && (includeFree || key.endsWith(':full'))) {
+      onlineQuestionCountsCache.delete(key);
+    }
+  }
+}
 
 async function offlineEntitlementExpiry(track: TrackId): Promise<number | null> {
   if (!supabase) return null
@@ -302,6 +318,8 @@ function shuffleQuestions<T>(items: T[]): T[] {
 
 export function clearPaidQuestionCache() {
   for (const key of cache.keys()) if (key.endsWith(':full')) cache.delete(key);
+  for (const key of onlineQuestionPageCache.keys()) if (key.includes(':full:')) onlineQuestionPageCache.delete(key);
+  for (const key of onlineQuestionCountsCache.keys()) if (key.endsWith(':full')) onlineQuestionCountsCache.delete(key);
 }
 
 function mapAnswer(ans: string): number {
@@ -538,10 +556,29 @@ async function loadQuestionsByCompetenceInternal(
   if (randomSample && totalWanted > 200) throw new Error('Random exam samples are limited to 200 questions.')
 
   const requestPage = async (offset: number, pageLimit: number, random: boolean) => {
+    const pageCacheKey = `${track}:${freeOnly ? 'free' : 'full'}:${competenceId}:${part ?? ''}:${offset}:${pageLimit}`
+    if (!random) {
+      const cached = onlineQuestionPageCache.get(pageCacheKey)
+      if (cached && Date.now() - cached.cachedAt < ONLINE_QUESTION_CACHE_TTL_MS) {
+        onlineQuestionPageCache.delete(pageCacheKey)
+        onlineQuestionPageCache.set(pageCacheKey, cached)
+        return cached.questions.slice()
+      }
+    }
     const { data, error } = await supabase!.functions.invoke('question-bank', {
       body: { action: 'questions', track, competenceId, part, freeOnly, offset, limit: pageLimit, randomSample: random }
     })
-    if (!error && Array.isArray(data?.questions)) return data.questions as Question[]
+    if (!error && Array.isArray(data?.questions)) {
+      const questions = data.questions as Question[]
+      if (!random) {
+        if (onlineQuestionPageCache.size >= 40) {
+          const oldestKey = onlineQuestionPageCache.keys().next().value
+          if (oldestKey) onlineQuestionPageCache.delete(oldestKey)
+        }
+        onlineQuestionPageCache.set(pageCacheKey, { questions, cachedAt: Date.now() })
+      }
+      return questions.slice()
+    }
     if (error && canFallbackToOffline(error)) {
       try {
         return await getCachedCompetenceRange(track, competenceId, part, freeOnly, random ? 1 : offset + 1, pageLimit, random)
@@ -834,16 +871,23 @@ async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = fals
     const cachedCounts = await getOfflineQuestionCounts(track, freeOnly)
     if (cachedCounts) return cachedCounts
   }
+  const countsCacheKey = `${track}:${freeOnly ? 'free' : 'full'}`
+  const cachedOnlineCounts = onlineQuestionCountsCache.get(countsCacheKey)
+  if (cachedOnlineCounts && Date.now() - cachedOnlineCounts.cachedAt < ONLINE_QUESTION_CACHE_TTL_MS) {
+    return cachedOnlineCounts.counts
+  }
   if (!supabase) throw new Error('Protected question service is not configured.');
   const { data, error } = await supabase.functions.invoke('question-bank', {
     body: { action: 'counts', track, freeOnly }
   });
   if (!error && Array.isArray(data?.counts)) {
-    return data.counts.map((item: { competenceId: string; part: number | null; count: number }) => ({
+    const counts = data.counts.map((item: { competenceId: string; part: number | null; count: number }) => ({
       competenceId: String(item.competenceId),
       part: item.part == null ? null : Number(item.part),
       count: Math.max(0, Number(item.count) || 0)
-    }));
+    }))
+    onlineQuestionCountsCache.set(countsCacheKey, { counts, cachedAt: Date.now() })
+    return counts
   }
   if (error && canFallbackToOffline(error) && await mayUseOfflineTrack(track, freeOnly)) {
     const cached = await getOfflineQuestionCounts(track, freeOnly)
@@ -1002,6 +1046,7 @@ export async function checkOfflineQuestionPackUpdates(
 
     const checkedAt = Date.now()
     const state = changedPaths.length ? 'available' : 'current'
+    if (changedPaths.length) clearOnlineQuestionCacheForTrack(track)
     await recordOfflinePackVersionCheck(track, freeOnly, {
       checkedAt,
       state,
