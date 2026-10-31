@@ -172,30 +172,6 @@ function trackForPath(path: string) {
   if (path.startsWith("engine_mgt/")) return "ENGINE_MGT";
   return null;
 }
-// The Supabase gateway verifies the JWT signature when verify_jwt=true.
-// Decode only its claims here to avoid a second Auth HTTP request per invocation.
-function verifiedUserFromGateway(req: Request): { id: string; email?: string } | null {
-  const authorization = req.headers.get('Authorization') || ''
-  const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1]
-  if (!token) return null
-  const parts = token.split('.')
-  if (parts.length !== 3 || !parts[1]) return null
-  try {
-    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))
-    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
-    const claims = JSON.parse(new TextDecoder().decode(bytes))
-    if (claims.role !== 'authenticated' ||
-        typeof claims.sub !== 'string' ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(claims.sub) ||
-        !Number.isFinite(claims.exp) ||
-        claims.exp <= Date.now() / 1000) return null
-    return { id: claims.sub, email: typeof claims.email === 'string' ? claims.email : undefined }
-  } catch {
-    return null
-  }
-}
-
 function isAdminEmail(email: string | undefined) {
   const configured = (Deno.env.get("ADMIN_EMAILS") || "").split(/[;,\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
   return !!email && configured.includes(email.toLowerCase());
@@ -628,20 +604,15 @@ Deno.serve(async (req: Request) => {
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   let body: { action?: string; path?: string; csvText?: string; uploadFormat?: string; encryptedBase64?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown; items?: unknown; paths?: unknown };
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
-  let user: { id: string; email?: string } | null = verifiedUserFromGateway(req);
-  let isAdmin = false;
-  // Admin bypass remains checked against the live Auth user record, not only
-  // a possibly stale email claim in a still-valid access token.
-  if (user?.email && isAdminEmail(user.email)) {
-    const authHeader = req.headers.get("Authorization") || "";
+  let user: any = null, isAdmin = false;
+  const authHeader = req.headers.get("Authorization");
+  if (authHeader) {
+    // This endpoint deliberately allows publishable-key-only guests to retrieve
+    // the free sample, so verify_jwt stays disabled at the gateway. Resolve any
+    // supplied user token against Auth before trusting its identity or email.
     const authClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } });
     const result = await authClient.auth.getUser();
-    if (result.error || !result.data.user || result.data.user.id !== user.id) {
-      user = null;
-    } else {
-      user = { id: result.data.user.id, email: result.data.user.email };
-      isAdmin = isAdminEmail(user.email);
-    }
+    if (!result.error && result.data.user) { user = result.data.user; isAdmin = isAdminEmail(user.email); }
   }
 
   if (body.action === "optimize-storage-cache") {
