@@ -199,6 +199,17 @@ async function migrationState(admin: any) {
   return result.data;
 }
 
+const MIGRATION_STATE_CACHE_TTL_MS = 60_000;
+let migrationStateCache: { data: any; cachedAt: number } | null = null;
+async function cachedMigrationState(admin: any) {
+  if (migrationStateCache && Date.now() - migrationStateCache.cachedAt < MIGRATION_STATE_CACHE_TTL_MS) {
+    return migrationStateCache.data;
+  }
+  const data = await migrationState(admin);
+  migrationStateCache = { data, cachedAt: Date.now() };
+  return data;
+}
+
 type SourceInfo = { track: string; competenceId: string; part: number | null; format: "standard" | "gmdss"; functionId: string; idPrefix: string };
 const PRIVATE_TEXT_CACHE_TTL_MS = 60_000;
 const privateTextCache = new Map<string, { text: string; cachedAt: number }>();
@@ -670,6 +681,7 @@ Deno.serve(async (req: Request) => {
     if (state.status === "complete" && state.asset_count === SOURCE_ASSETS.length) return json(req, { status: "complete", assetCount: state.asset_count, expectedAssets: SOURCE_ASSETS.length });
     if (state.status === "running" && Date.now() - new Date(state.updated_at).getTime() < 5 * 60 * 1000) return json(req, { error: "A question-bank migration is already running." }, 409);
     await admin.from("question_bank_migration_state").update({ status: "running", error_summary: null, updated_at: new Date().toISOString() }).eq("id", 1);
+    migrationStateCache = null;
     const failures: string[] = [];
     let copied = 0;
     for (let i = 0; i < SOURCE_ASSETS.length; i += 4) {
@@ -698,10 +710,11 @@ Deno.serve(async (req: Request) => {
       return json(req, { error: "Some question files could not be copied. Public files were not deleted.", status: "failed", assetCount: copied, expectedAssets: SOURCE_ASSETS.length, failedAssets: failures.slice(0, 12) }, 502);
     }
     await admin.from("question_bank_migration_state").update({ status: "complete", asset_count: copied, error_summary: null, updated_at: new Date().toISOString() }).eq("id", 1);
+    migrationStateCache = null;
     return json(req, { status: "complete", assetCount: copied, expectedAssets: SOURCE_ASSETS.length, message: "Encrypted question files are safely copied to private storage. Public copies still need removal in a follow-up deployment after migration is verified." });
   }
   let state: any;
-  try { state = await migrationState(admin); } catch { return json(req, { error: "Question service is not ready." }, 503); }
+  try { state = await cachedMigrationState(admin); } catch { return json(req, { error: "Question service is not ready." }, 503); }
   if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Protected question bank is not ready yet." }, 503);
 
   if (body.action === "content-versions") {
