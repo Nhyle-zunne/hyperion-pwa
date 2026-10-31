@@ -738,21 +738,18 @@ Deno.serve(async (req: Request) => {
       // A question-bank update changes the Storage object's ETag/updated_at.
       // Use that metadata as a stable version marker instead of downloading and
       // hashing every encrypted file on every client's periodic update check.
-      const { data: objects, error: objectError } = await admin.schema("storage")
-        .from("objects")
-        .select("name,updated_at,metadata")
-        .eq("bucket_id", "question-banks")
-        .in("name", sources.map(source => source.path));
+      const { data: objects, error: objectError } = await admin.rpc("get_question_bank_object_versions", {
+        p_names: sources.map(source => source.path)
+      });
       if (objectError || !Array.isArray(objects)) throw new Error("Question-bank object metadata is unavailable.");
 
       const byName = new Map<string, any>(objects.map((item: any) => [String(item.name), item]));
       const versions = [];
       for (const source of sources) {
         const object = byName.get(source.path);
-        const metadata = object?.metadata && typeof object.metadata === "object" ? object.metadata : {};
-        const etag = typeof metadata.eTag === "string" ? metadata.eTag : "";
+        const etag = typeof object?.etag === "string" ? object.etag : "";
         const updatedAt = typeof object?.updated_at === "string" ? object.updated_at : "";
-        const size = Number(metadata.size);
+        const size = Number(object?.size);
         if (!etag || !updatedAt || !Number.isFinite(size) || size <= 0) {
           throw new Error("A question-bank source is missing version metadata.");
         }
