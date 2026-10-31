@@ -159,6 +159,18 @@ assert.ok(
   'Progress endpoint trusts only gateway-verified, authenticated, unexpired JWT claims'
 );
 assert.match(questionBank, /FREE_FINGERPRINT_CACHE_TTL_MS/, 'Free-question authorization fingerprints expire or invalidate');
+assert.ok(
+  questionBank.includes('cachedQuestionCounts') &&
+  questionBank.includes('question_bank_asset_counts') &&
+  questionBank.includes('source_etag'),
+  'Question counts persist across Edge isolates and invalidate when source assets change'
+);
+assert.ok(
+  questionBank.includes('full_fingerprints') &&
+  questionBank.includes('sameAssetVersions') &&
+  questionBank.includes('question_bank_track_free_fingerprints'),
+  'Free and full authorization fingerprints persist with source-version validation'
+);
 assert.match(finalizerMigration, /search_path|SECURITY DEFINER/i, 'Finalizer migration defines a database function');
 assert.match(finalizerMigration, /service_role/i, 'Finalizer migration restricts execution to the service role');
 assert.match(priceCorrectionMigration, /month.*then 40/i, 'GMDSS monthly price correction is tracked in a separate migration');
