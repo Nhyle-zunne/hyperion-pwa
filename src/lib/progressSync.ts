@@ -174,6 +174,7 @@ let lastUploadedUserId: string | null = null
 let lastUploadedSignature: string | null = null
 
 const persistedSignatureKey = (userId: string) => `hyperion:progress-upload-signature:${userId}`
+const persistedUploadAtKey = (userId: string) => `hyperion:progress-last-upload-at:${userId}`
 const crossTabLockKey = (userId: string) => `hyperion:progress-sync-lock:${userId}`
 const syncInstanceId = (() => {
   try { return crypto.randomUUID() } catch { return `tab-${Date.now()}-${Math.random().toString(36).slice(2)}` }
@@ -694,6 +695,19 @@ async function uploadSnapshot(): Promise<void> {
     return
   }
 
+  // Enforce the upload interval across every tab/window signed into this account,
+  // not just within one JavaScript runtime. A tab that has new local work waits for
+  // the next shared slot instead of racing another tab with another large snapshot.
+  const sharedLastUploadAt = (() => {
+    try { return Number(localStorage.getItem(persistedUploadAtKey(userId))) || 0 } catch { return 0 }
+  })()
+  const sharedCooldownRemaining = Math.max(0, MIN_UPLOAD_INTERVAL_MS - (Date.now() - sharedLastUploadAt))
+  if (sharedCooldownRemaining > 0) {
+    lock.release()
+    scheduleUpload(sharedCooldownRemaining)
+    return
+  }
+
   uploadInFlight = true
   const key = dirtyKey(userId)
   const dirtyAtStart = (() => { try { return localStorage.getItem(key) } catch { return null } })()
@@ -770,7 +784,10 @@ async function uploadSnapshot(): Promise<void> {
         cloudSnapshot = snapshotToUpload
         lastUploadedUserId = userId
         lastUploadedSignature = snapshotSignature
-        try { localStorage.setItem(persistedSignatureKey(userId), signatureHash) } catch { /* cross-tab hint is optional */ }
+        try {
+          localStorage.setItem(persistedSignatureKey(userId), signatureHash)
+          localStorage.setItem(persistedUploadAtKey(userId), String(lastUploadAt))
+        } catch { /* cross-tab hints are optional; server save remains authoritative */ }
         saved = true
         break
       }
