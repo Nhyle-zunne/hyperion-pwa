@@ -38,28 +38,61 @@ Deno.serve(async req => {
   if (body.action === 'check-admin') return json({ isAdmin: true })
   const admin = createClient(url, service, { auth: { persistSession: false } })
   if (body.action === 'list') {
-    const { data, error } = await admin.from('orders').select('id,user_id,product_code,track_id,license_term,amount_php,status,payment_reference,payment_method,proof_url,customer_note,customer_name,customer_company,customer_school,admin_note,created_at,reviewed_at,paid_at').in('status', ['submitted','pending','paid','failed']).order('created_at', { ascending: false }).limit(200)
-    if (error) return json({ error: 'Could not load payment submissions.' }, 500)
-    const ids = [...new Set((data || []).map(row => row.user_id))]
-    const emails: Record<string,string> = {}
-    for (const id of ids) { const { data: userData } = await admin.auth.admin.getUserById(id); if (userData.user?.email) emails[id] = userData.user.email }
-    const paidOrderIds = (data || []).filter(row => row.status === 'paid').map(row => row.id)
+    const [ordersResult, alertsResult] = await Promise.all([
+      admin.from('orders')
+        .select('id,user_id,product_code,track_id,license_term,amount_php,status,payment_reference,payment_method,proof_url,customer_note,customer_name,customer_company,customer_school,admin_note,created_at,reviewed_at,paid_at')
+        .in('status', ['submitted','pending','paid','failed'])
+        .order('created_at', { ascending: false })
+        .limit(200),
+      admin.from('paymongo_reconciliation_alerts')
+        .select('id,checkout_reference,checkout_session_id,paymongo_payment_id,expected_amount_php,observed_amount_minor,observed_currency,reason,created_at')
+        .order('created_at', { ascending: false })
+        .limit(100)
+    ]);
+    if (ordersResult.error) return json({ error: 'Could not load payment submissions.' }, 500);
+    if (alertsResult.error) return json({ error: 'Could not load PayMongo reconciliation alerts.' }, 500);
+
+    const rows = ordersResult.data || [];
+    const ids = [...new Set(rows.map(row => row.user_id))];
+    const emails: Record<string,string> = {};
+    // One paginated Auth request replaces one getUserById request per order owner.
+    // The current dashboard is capped at 200 orders; stop as soon as every distinct
+    // owner is found, and retain pagination for accounts beyond the first 1,000.
+    let page = 1;
+    while (Object.keys(emails).length < ids.length && page <= 10) {
+      const { data: usersPage, error: usersError } = await admin.auth.admin.listUsers({
+        page,
+        perPage: 1000
+      });
+      if (usersError) return json({ error: 'Could not load payment customer emails.' }, 500);
+      const users = usersPage?.users || [];
+      for (const customer of users) {
+        if (ids.includes(customer.id) && customer.email) emails[customer.id] = customer.email;
+      }
+      if (users.length < 1000) break;
+      page += 1;
+    }
+
+    const paidOrderIds = rows.filter(row => row.status === 'paid').map(row => row.id);
     const { data: accessRows, error: accessError } = paidOrderIds.length
       ? await admin.from('entitlements').select('order_id,status,expires_at,granted_at').in('order_id', paidOrderIds)
-      : { data: [], error: null }
-    if (accessError) return json({ error: 'Could not load license access status.' }, 500)
-    const accessByOrder: Record<string, { status: string; expires_at: string | null }> = {}
+      : { data: [], error: null };
+    if (accessError) return json({ error: 'Could not load license access status.' }, 500);
+    const accessByOrder: Record<string, { status: string; expires_at: string | null }> = {};
     for (const access of accessRows || []) {
       const effectiveStatus = access.status === 'revoked' ? 'revoked'
-        : access.expires_at && new Date(access.expires_at).getTime() <= Date.now() ? 'expired' : 'active'
-      accessByOrder[access.order_id] = { status: effectiveStatus, expires_at: access.expires_at }
+        : access.expires_at && new Date(access.expires_at).getTime() <= Date.now() ? 'expired' : 'active';
+      accessByOrder[access.order_id] = { status: effectiveStatus, expires_at: access.expires_at };
     }
-    return json({ orders: (data || []).map(row => ({
-      ...row,
-      email: emails[row.user_id] || '(email unavailable)',
-      access_status: row.status !== 'paid' ? 'none' : accessByOrder[row.id]?.status || 'not_current',
-      access_expires_at: accessByOrder[row.id]?.expires_at || null
-    })) })
+    return json({
+      orders: rows.map(row => ({
+        ...row,
+        email: emails[row.user_id] || '(email unavailable)',
+        access_status: row.status !== 'paid' ? 'none' : accessByOrder[row.id]?.status || 'not_current',
+        access_expires_at: accessByOrder[row.id]?.expires_at || null
+      })),
+      alerts: alertsResult.data || []
+    });
   }
   if (body.action === 'reconciliation-alerts') {
     const { data, error } = await admin.from('paymongo_reconciliation_alerts')
