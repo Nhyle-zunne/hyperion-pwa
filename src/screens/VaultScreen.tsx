@@ -126,6 +126,13 @@ export default function VaultScreen() {
                               <span className="caption">{item.functionId||TRACK_LABELS[track]} · {competence} · ITEM {item.id} · MISSED {item.wrongCount}×</span>
                               <button className="btn btn-outline" onClick={()=>remove(item.id)}>Remove</button>
                             </div>
+                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'.5rem',marginTop:'.4rem'}}>
+                              <span className="caption">Redemption progress</span>
+                              <strong className="caption">{Math.min(item.consecutiveCorrect,2)}/2 CORRECT</strong>
+                            </div>
+                            <div role="progressbar" aria-label={`Redemption progress for item ${item.id}`} aria-valuemin={0} aria-valuemax={2} aria-valuenow={Math.min(item.consecutiveCorrect,2)} style={{height:'.35rem',borderRadius:'999px',overflow:'hidden',background:'var(--border)',marginTop:'.25rem'}}>
+                              <div style={{height:'100%',width:`${Math.min(item.consecutiveCorrect,2)/2*100}%`,background:'var(--success)',transition:'width .2s ease'}} />
+                            </div>
                             <button className="btn btn-outline" style={{width:'100%',textAlign:'left',marginTop:'.45rem'}} aria-expanded={expanded} onClick={()=>toggle(expandedQuestions,setExpandedQuestions,item.id)}>{expanded?'Hide details':'View question'} · {item.questionText}</button>
                             {expanded&&<div style={{marginTop:'.6rem',lineHeight:1.5}}>
                               <div>{item.questionText}</div>
