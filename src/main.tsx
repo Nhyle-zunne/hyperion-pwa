@@ -31,7 +31,7 @@ registerSW({
       })
     }
     window.setTimeout(checkForUpdate, 5_000)
-    window.setInterval(checkForUpdate, 15 * 60 * 1000)
+    window.setInterval(checkForUpdate, 5 * 60 * 1000)
     window.addEventListener('focus', checkForUpdate)
     document.addEventListener('visibilitychange', checkForUpdate)
   }
