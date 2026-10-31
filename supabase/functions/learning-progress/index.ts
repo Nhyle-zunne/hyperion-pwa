@@ -106,106 +106,32 @@ async function fingerprintQuestion(question: JsonRecord): Promise<string | null>
   return Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-async function authorizeSavedQuestions(
-  client: ReturnType<typeof createClient>,
-  track: TrackId,
-  questions: unknown[]
-): Promise<Set<number>> {
-  const candidates: { originalIndex: number; id: string; fingerprint: string }[] = []
-  for (let index = 0; index < questions.length; index++) {
-    const item = questions[index]
-    if (!isQuestion(item) || item.track !== track || item.id.length > 120) continue
-    const fingerprint = await fingerprintQuestion(item)
-    if (fingerprint) candidates.push({ originalIndex: index, id: item.id, fingerprint })
-  }
-  if (!candidates.length) return new Set()
+type ProgressQuestionCandidate = { index: number; track: TrackId; id: string; fingerprint: string }
+type ProgressSessionCandidate = { track: TrackId; questions: { id: string; fingerprint: string }[] }
 
-  const { data, error } = await client.functions.invoke('question-bank', {
-    body: {
-      action: 'authorize-saved-questions',
-      track,
-      items: candidates.map(({ id, fingerprint }) => ({ id, fingerprint }))
-    }
-  })
-  if (error || !Array.isArray(data?.allowedIndexes)) {
-    // Fail closed and preserve the previous cloud row; do not treat verifier outages
-    // as proof that saved question text is a permitted free sample.
-    throw new Error('Saved question authorization could not be verified.')
-  }
-  const allowed = new Set<number>()
-  for (const index of data.allowedIndexes) {
-    if (Number.isInteger(index) && index >= 0 && index < candidates.length) {
-      allowed.add(candidates[index].originalIndex)
-    }
-  }
-  return allowed
-}
-
-async function filterQuestionCollection(
-  client: ReturnType<typeof createClient>,
-  raw: unknown,
-  allowedTracks: Set<TrackId>
-): Promise<string | null> {
+function parseQuestionCollection(raw: unknown): { persisted: JsonRecord; state: JsonRecord; items: unknown[] } | null {
   if (typeof raw !== 'string') return null
-  let persisted: JsonRecord
   try {
     const parsed = JSON.parse(raw)
     if (!isRecord(parsed) || !isRecord(parsed.state) || !Array.isArray(parsed.state.items)) return null
-    persisted = parsed
+    return { persisted: parsed, state: parsed.state, items: parsed.state.items }
   } catch {
     return null
   }
-  const state = persisted.state as JsonRecord
-  const items = state.items as unknown[]
-  const keep = new Set<number>()
-  const byTrack = new Map<TrackId, { indexes: number[]; items: unknown[] }>()
-  items.forEach((item, index) => {
-    if (!isRecord(item) || !isTrackId(item.track)) return
-    const track = item.track
-    const group = byTrack.get(track) ?? { indexes: [], items: [] }
-    group.indexes.push(index)
-    group.items.push(item)
-    byTrack.set(track, group)
-  })
-  for (const [track, group] of byTrack) {
-    if (allowedTracks.has(track)) {
-      group.items.forEach((item, localIndex) => {
-        if (isQuestion(item) && item.track === track) keep.add(group.indexes[localIndex])
-      })
-      continue
-    }
-    const allowed = await authorizeSavedQuestions(client, track, group.items)
-    for (const localIndex of allowed) keep.add(group.indexes[localIndex])
-  }
-  const filteredItems = items.filter((_item, index) => keep.has(index))
-  return JSON.stringify({ ...persisted, state: { ...state, items: filteredItems } })
 }
 
-async function authorizeSession(
-  client: ReturnType<typeof createClient>,
-  track: unknown,
-  questions: unknown,
-  allowedTracks: Set<TrackId>
-): Promise<boolean> {
-  if (!isTrackId(track) || !Array.isArray(questions) || questions.length < 1 || questions.length > 3000) return false
-  if (!questions.every(question => isQuestion(question) && question.track === track)) return false
-  if (allowedTracks.has(track)) return true
-
-  const ids: string[] = []
-  const fingerprints: string[] = []
-  for (const question of questions as JsonRecord[]) {
-    const fingerprint = await fingerprintQuestion(question)
-    if (!fingerprint) return false
-    ids.push(String(question.id))
-    fingerprints.push(fingerprint)
+async function fingerprintSessionCandidate(track: unknown, questions: unknown): Promise<ProgressSessionCandidate | null> {
+  if (!isTrackId(track) || !Array.isArray(questions) || questions.length < 1 || questions.length > 3000) return null
+  if (!questions.every(question => isQuestion(question) && question.track === track)) return null
+  const fingerprints = await Promise.all((questions as JsonRecord[]).map(fingerprintQuestion))
+  if (fingerprints.some(value => value === null)) return null
+  return {
+    track,
+    questions: (questions as JsonRecord[]).map((question, index) => ({
+      id: String(question.id),
+      fingerprint: fingerprints[index] as string
+    }))
   }
-  const { data, error } = await client.functions.invoke('question-bank', {
-    body: { action: 'authorize-session', track, questionIds: ids, fingerprints }
-  })
-  if (error || typeof data?.allowed !== 'boolean') {
-    throw new Error('Session question authorization could not be verified.')
-  }
-  return data.allowed === true
 }
 
 async function sanitizeSnapshot(
@@ -216,36 +142,115 @@ async function sanitizeSnapshot(
   if (!isRecord(input) || input.version !== 1 || !isRecord(input.storage)) {
     throw new Error('Invalid learning progress snapshot.')
   }
+
   const snapshot = JSON.parse(JSON.stringify(input)) as JsonRecord
   const storage = snapshot.storage as JsonRecord
+  const collections = new Map<string, { persisted: JsonRecord; state: JsonRecord; items: unknown[]; keep: Set<number> }>()
+  const bookmarkItems: ProgressQuestionCandidate[] = []
+  const vaultItems: ProgressQuestionCandidate[] = []
+
   for (const key of QUESTION_STORAGE_KEYS) {
-    storage[key] = await filterQuestionCollection(client, storage[key], allowedTracks)
+    const parsed = parseQuestionCollection(storage[key])
+    if (!parsed) {
+      storage[key] = null
+      continue
+    }
+    const keep = new Set<number>()
+    const candidates = key === 'hyperion-bookmarks' ? bookmarkItems : vaultItems
+    for (let index = 0; index < parsed.items.length; index++) {
+      const item = parsed.items[index]
+      if (!isQuestion(item) || !isTrackId(item.track)) continue
+      if (allowedTracks.has(item.track)) {
+        keep.add(index)
+        continue
+      }
+      const fingerprint = await fingerprintQuestion(item)
+      if (fingerprint) candidates.push({ index, track: item.track, id: item.id, fingerprint })
+    }
+    collections.set(key, { ...parsed, keep })
   }
 
-  const legacySavedPractice = storage['hyperion-saved-practice']
-  if (typeof legacySavedPractice === 'string') {
+  const legacyKey = 'hyperion-saved-practice'
+  let legacyCandidate: ProgressSessionCandidate | null = null
+  if (typeof storage[legacyKey] === 'string') {
     let legacy: JsonRecord | null = null
     try {
-      const parsed = JSON.parse(legacySavedPractice)
+      const parsed = JSON.parse(String(storage[legacyKey]))
       if (isRecord(parsed)) legacy = parsed
     } catch {
       legacy = null
     }
-    if (legacy) {
-      const keep = await authorizeSession(client, legacy.track, legacy.questions, allowedTracks)
-      if (!keep) storage['hyperion-saved-practice'] = null
+    if (legacy && isTrackId(legacy.track) && allowedTracks.has(legacy.track)) {
+      legacyCandidate = await fingerprintSessionCandidate(legacy.track, legacy.questions)
+      if (!legacyCandidate) storage[legacyKey] = null
+      // Entitled sessions are accepted locally after full snapshot validation below.
+    } else if (legacy) {
+      legacyCandidate = await fingerprintSessionCandidate(legacy.track, legacy.questions)
+      if (!legacyCandidate) storage[legacyKey] = null
     } else {
-      storage['hyperion-saved-practice'] = null
+      storage[legacyKey] = null
     }
   }
 
+  let activeCandidate: ProgressSessionCandidate | null = null
   if (isRecord(snapshot.activeSession)) {
-    const activeSession = snapshot.activeSession
-    const keep = await authorizeSession(client, activeSession.track, activeSession.questions, allowedTracks)
-    if (!keep) snapshot.activeSession = null
+    activeCandidate = await fingerprintSessionCandidate(snapshot.activeSession.track, snapshot.activeSession.questions)
+    if (!activeCandidate) snapshot.activeSession = null
   } else {
     snapshot.activeSession = null
   }
+
+  const needsRemoteAuthorization =
+    bookmarkItems.length > 0 ||
+    vaultItems.length > 0 ||
+    (legacyCandidate !== null && !allowedTracks.has(legacyCandidate.track)) ||
+    (activeCandidate !== null && !allowedTracks.has(activeCandidate.track))
+
+  let allowedBookmarkIndexes = new Set<number>()
+  let allowedVaultIndexes = new Set<number>()
+  let legacyAllowed = legacyCandidate !== null && allowedTracks.has(legacyCandidate.track)
+  let activeAllowed = activeCandidate !== null && allowedTracks.has(activeCandidate.track)
+
+  if (needsRemoteAuthorization) {
+    const { data, error } = await client.functions.invoke('question-bank', {
+      body: {
+        action: 'authorize-progress-snapshot',
+        bookmarkItems,
+        vaultItems,
+        legacySavedPractice: legacyCandidate && !allowedTracks.has(legacyCandidate.track) ? legacyCandidate : null,
+        activeSession: activeCandidate && !allowedTracks.has(activeCandidate.track) ? activeCandidate : null
+      }
+    })
+    if (error ||
+        !Array.isArray(data?.bookmarkAllowedIndexes) ||
+        !Array.isArray(data?.vaultAllowedIndexes) ||
+        typeof data?.legacySavedPracticeAllowed !== 'boolean' ||
+        typeof data?.activeSessionAllowed !== 'boolean') {
+      // Fail closed and preserve the previous cloud row if authorization is unavailable.
+      throw new Error('Saved question authorization could not be verified.')
+    }
+    allowedBookmarkIndexes = new Set(data.bookmarkAllowedIndexes.filter((i: unknown) => Number.isInteger(i) && Number(i) >= 0))
+    allowedVaultIndexes = new Set(data.vaultAllowedIndexes.filter((i: unknown) => Number.isInteger(i) && Number(i) >= 0))
+    if (legacyCandidate && !allowedTracks.has(legacyCandidate.track)) legacyAllowed = data.legacySavedPracticeAllowed
+    if (activeCandidate && !allowedTracks.has(activeCandidate.track)) activeAllowed = data.activeSessionAllowed
+  }
+
+  for (const [key, collection] of collections) {
+    const remoteAllowed = key === 'hyperion-bookmarks' ? allowedBookmarkIndexes : allowedVaultIndexes
+    const candidateItems = key === 'hyperion-bookmarks' ? bookmarkItems : vaultItems
+    candidateItems.forEach(candidate => {
+      if (remoteAllowed.has(candidate.index)) collection.keep.add(candidate.index)
+    })
+    const filteredItems = collection.items.filter((_item, index) => collection.keep.has(index))
+    storage[key] = JSON.stringify({
+      ...collection.persisted,
+      state: { ...collection.state, items: filteredItems }
+    })
+  }
+
+  if (legacyCandidate && !legacyAllowed) storage[legacyKey] = null
+  if (activeCandidate && !activeAllowed) snapshot.activeSession = null
+
   return snapshot
 }
 
