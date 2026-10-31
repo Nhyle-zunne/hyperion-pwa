@@ -138,7 +138,7 @@ export default function VaultScreen() {
         <div className="card" role="status" aria-live="polite" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
           Checking access to saved questions…
         </div>
-      ) : visibleItems.length === 0 ? (
+      ) : scopedItems.length === 0 ? (
         <div className="card" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
           No saved mistakes are available here yet. Mistakes are added automatically when you answer incorrectly in an authorized Practice, Drill, or Mock Exam session. Free users can review mistakes from permitted free question pools; paid questions remain available while the corresponding license is active.
         </div>
