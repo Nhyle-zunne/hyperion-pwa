@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
@@ -22,6 +22,8 @@ export default function AdminPaymentsScreen() {
   const [authorized, setAuthorized] = useState(false)
   const [statusTab, setStatusTab] = useState<'active' | 'pending' | 'failed' | 'expired'>('pending')
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({})
+  const loadInFlight = useRef<Promise<void> | null>(null)
+  const lastAutoLoadAt = useRef(0)
   const call = useCallback(async (body: Record<string,unknown>) => {
     if (!supabase) throw new Error('Payment administration is temporarily unavailable. Please try again later.')
     const { data, error } = await supabase.functions.invoke('admin-payment-review', { body })
@@ -29,29 +31,41 @@ export default function AdminPaymentsScreen() {
     if (data?.error) throw new Error(data.error)
     return data
   }, [])
-  const load = useCallback(async () => {
-    try {
-      const result = await call({ action: 'list' })
-      setOrders(result.orders || [])
-      setAuthorized(true)
+  const load = useCallback(async (force = false) => {
+    if (loadInFlight.current) return loadInFlight.current
+    // Focus and visibilitychange can fire together, and multiple admin tabs may
+    // be open. Share a single request pair and throttle background refreshes.
+    if (!force && Date.now() - lastAutoLoadAt.current < 120_000) return
+    lastAutoLoadAt.current = Date.now()
+    const task = (async () => {
       try {
-        const reconciliation = await call({ action: 'reconciliation-alerts' })
-        setReconciliationAlerts(reconciliation.alerts || [])
-        setAlertLoadWarning('')
-      } catch {
-        setAlertLoadWarning('Could not load PayMongo reconciliation alerts. Check the function logs before marking any duplicate payment resolved.')
-      }
-    } catch (e) { setAuthorized(false); setMessage(safeAdminError(e, 'Unable to load payment submissions. Please retry.')) }
-  }, [call])
-  // Refresh periodically while the admin page is visible. A 60-second cadence
-  // is sufficient for webhook-driven updates and avoids polling both admin lists
-  // every 10 seconds when the page is left open in a tab.
-  useEffect(() => {
-    void withPageLoading('Loading payment submissions', () => load())
-    const refreshIfVisible = () => {
-      if (document.visibilityState === 'visible') void load()
+        const result = await call({ action: 'list' })
+        setOrders(result.orders || [])
+        setAuthorized(true)
+        try {
+          const reconciliation = await call({ action: 'reconciliation-alerts' })
+          setReconciliationAlerts(reconciliation.alerts || [])
+          setAlertLoadWarning('')
+        } catch {
+          setAlertLoadWarning('Could not load PayMongo reconciliation alerts. Check the function logs before marking any duplicate payment resolved.')
+        }
+      } catch (e) { setAuthorized(false); setMessage(safeAdminError(e, 'Unable to load payment submissions. Please retry.')) }
+    })()
+    loadInFlight.current = task
+    try {
+      await task
+    } finally {
+      if (loadInFlight.current === task) loadInFlight.current = null
     }
-    const timer = window.setInterval(refreshIfVisible, 60_000)
+  }, [call])
+  // Webhooks deliver payment status changes; manual refresh remains available
+  // while background polling is intentionally limited to one request pair / 2 min.
+  useEffect(() => {
+    void withPageLoading('Loading payment submissions', () => load(true))
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') void load(false)
+    }
+    const timer = window.setInterval(refreshIfVisible, 120_000)
     document.addEventListener('visibilitychange', refreshIfVisible)
     return () => {
       window.clearInterval(timer)
@@ -60,7 +74,7 @@ export default function AdminPaymentsScreen() {
   }, [load])
   const review = async (orderId: string, decision: 'approve'|'reject') => {
     setBusy(true); setMessage('')
-    try { await withPageLoading(decision === 'approve' ? 'Approving payment' : 'Reviewing payment', async () => { await call({ action:'review', orderId, decision, adminNote: note[orderId] || '' }); setMessage(decision === 'approve' ? 'Payment approved and access granted.' : 'Payment rejected.'); await load() }) }
+    try { await withPageLoading(decision === 'approve' ? 'Approving payment' : 'Reviewing payment', async () => { await call({ action:'review', orderId, decision, adminNote: note[orderId] || '' }); setMessage(decision === 'approve' ? 'Payment approved and access granted.' : 'Payment rejected.'); await load(true) }) }
     catch (e) { setMessage(safeAdminError(e, 'Could not complete the payment review. Please try again.')) }
     finally { setBusy(false) }
   }
