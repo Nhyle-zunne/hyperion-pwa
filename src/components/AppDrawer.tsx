@@ -216,6 +216,7 @@ export default function AppDrawer({ open, onClose }: { open: boolean; onClose: (
         <div className="drawer-section">Question bank & tools</div>
         <Item label="Search question bank" path="/search" icon="🔍" />
         <Item label="Bookmarked questions" path="/bookmarks" icon="🔖" />
+        <Item label="Mistakes notebook" path="/vault" icon="✧" />
         <Item label="Session log & history" path="/history" icon="📋" />
 
         <div className="drawer-section">Account & support</div>
