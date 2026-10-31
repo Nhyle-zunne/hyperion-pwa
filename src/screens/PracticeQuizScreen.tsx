@@ -54,7 +54,7 @@ export default function PracticeQuizScreen() {
     const attemptKey = `${question.id}:${currentIndex}:${answer.selectedIndex}`
     if (autoAdvancePendingRef.current !== attemptKey) return
     const shouldAdvance = answer.isCorrect ? automations.autoNextCorrect : automations.autoNextWrong
-    if (!shouldAdvance) return
+    if (!shouldAdvance) { autoAdvancePendingRef.current = null; return }
 
     const expectedIndex = currentIndex
     const expectedQuestionId = question.id
