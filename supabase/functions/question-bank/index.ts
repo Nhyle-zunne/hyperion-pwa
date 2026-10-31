@@ -549,7 +549,7 @@ async function authorizeTrack(admin: any, user: any, isAdmin: boolean, track: st
   const entitlement = await loadEntitlement(admin, user.id, track);
   return canAccessPaidTrack({ userId: user.id, isAdmin: false, entitlement, track });
 }
-const FREE_FINGERPRINT_CACHE_TTL_MS = 15 * 60_000;
+const FREE_FINGERPRINT_CACHE_TTL_MS = 60 * 60_000;
 const freeQuestionFingerprintCache = new Map<string, { fingerprints: Set<string>; cachedAt: number; bankEpoch: string }>();
 const fullQuestionFingerprintCache = new Map<string, { fingerprints: Set<string>; cachedAt: number; bankEpoch: string }>();
 function questionIdBelongsToTrack(id: string, track: string) {
