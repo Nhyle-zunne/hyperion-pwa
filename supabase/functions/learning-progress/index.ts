@@ -268,24 +268,6 @@ async function sanitizeSnapshot(
   return snapshot
 }
 
-function canonicalJson(value: unknown, snapshotRoot = false): string {
-  if (Array.isArray(value)) return `[${value.map(item => canonicalJson(item)).join(',')}]`
-  if (isRecord(value)) {
-    const keys = Object.keys(value)
-      .filter(key => !snapshotRoot || (key !== 'savedAt' && key !== 'changedSections'))
-      .sort()
-    return `{${keys.map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`
-  }
-  return JSON.stringify(value) ?? 'null'
-}
-
-function equivalentProgressSnapshots(left: unknown, right: unknown): boolean {
-  return isRecord(left) && isRecord(right)
-    && left.version === 1 && right.version === 1
-    && isRecord(left.storage) && isRecord(right.storage)
-    && canonicalJson(left, true) === canonicalJson(right, true)
-}
-
 async function loadAllowedTracks(
   admin: any,
   user: { id: string; email?: string }
@@ -370,26 +352,27 @@ Deno.serve(async req => {
     }
 
     try {
-      // Many client versions periodically resend an unchanged full snapshot.
-      // Detect that case before entitlement lookups, question-bank verification,
-      // or a Postgres UPDATE. A matching row was previously sanitized for this
-      // same user; this response returns no question data.
-      const current = await admin.from('user_learning_progress')
-        .select('data,updated_at')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (current.error) return json(req, { error: 'Could not check the progress version.' }, 500)
-      if (expectedUpdatedAt === null) {
-        if (current.data) {
-          return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
+      // Compare the snapshot inside Postgres and return only a small status string.
+      // Selecting data here used to transfer the entire 200–400 KB JSONB snapshot
+      // from Postgres to this Edge Function on every no-op write.
+      const { data: comparison, error: comparisonError } = await admin.rpc(
+        'compare_user_learning_progress',
+        {
+          p_user_id: user.id,
+          p_expected_updated_at: expectedUpdatedAt,
+          p_data: body.data
         }
-      } else {
-        if (!current.data || current.data.updated_at !== expectedUpdatedAt) {
-          return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
-        }
-        if (equivalentProgressSnapshots(body.data, current.data.data)) {
-          return json(req, { ok: true, unchanged: true, updated_at: current.data.updated_at })
-        }
+      )
+      if (comparisonError) return json(req, { error: 'Could not check the progress version.' }, 500)
+      if (comparison === 'conflict') {
+        return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
+      }
+      if (comparison === 'unchanged') {
+        return json(req, { ok: true, unchanged: true, updated_at: expectedUpdatedAt })
+      }
+      if ((expectedUpdatedAt === null && comparison !== 'missing') ||
+          (expectedUpdatedAt !== null && comparison !== 'changed')) {
+        return json(req, { error: 'The progress comparison returned an unexpected result.' }, 503)
       }
 
       let allowedTracks: Set<TrackId>
