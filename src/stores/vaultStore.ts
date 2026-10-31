@@ -16,6 +16,7 @@ export interface VaultItem {
   explanation: string;
   difficulty: string;
   wrongCount: number;
+  consecutiveCorrect: number;
   lastWrongAt: number;
   lastSelectedIndex: number | null;
   /** True only when this mistake was saved from a permitted free reviewer/mock pool. */
@@ -25,6 +26,7 @@ export interface VaultItem {
 interface VaultState {
   items: VaultItem[];
   addMistake: (q: Question, selectedIndex: number | null, isFreeSession?: boolean) => void;
+  recordCorrectAttempt: (questionId: string, requiredPasses?: number) => void;
   purgePaidForTracks: (tracks: TrackId[]) => void;
   remove: (id: string) => void;
   clear: () => void;
@@ -46,6 +48,7 @@ export const useVaultStore = create<VaultState>()(
                 ? {
                     ...i,
                     wrongCount: i.wrongCount + 1,
+                    consecutiveCorrect: 0,
                     lastWrongAt: Date.now(),
                     lastSelectedIndex: selectedIndex,
                     isFreeSession: i.isFreeSession === true || isFreeSession === true
@@ -67,11 +70,25 @@ export const useVaultStore = create<VaultState>()(
           explanation: q.explanation,
           difficulty: q.difficulty,
           wrongCount: 1,
+          consecutiveCorrect: 0,
           lastWrongAt: Date.now(),
           lastSelectedIndex: selectedIndex,
           isFreeSession: isFreeSession === true
         };
         set({ items: [entry, ...get().items].slice(0, 500) });
+      },
+
+      recordCorrectAttempt: (questionId, requiredPasses = 2) => {
+        const threshold = Math.min(5, Math.max(1, Math.floor(requiredPasses)));
+        const existing = get().items.find(item => item.id === questionId);
+        if (!existing) return;
+        const next = existing.consecutiveCorrect + 1;
+        if (next >= threshold) {
+          markProgressItemDeleted('vault', questionId);
+          set({ items: get().items.filter(item => item.id !== questionId) });
+        } else {
+          set({ items: get().items.map(item => item.id === questionId ? { ...item, consecutiveCorrect: next } : item) });
+        }
       },
 
       purgePaidForTracks: (tracks) => {
