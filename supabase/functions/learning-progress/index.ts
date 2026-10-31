@@ -26,7 +26,7 @@ function json(req: Request, body: unknown, status = 200) {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-store'
   })
-  const acceptsGzip = /(?:^|,)\\s*gzip\\s*(?:,|$)/i.test(req.headers.get('accept-encoding') || '')
+  const acceptsGzip = /(?:^|,)\s*gzip\s*(?:,|$)/i.test(req.headers.get('accept-encoding') || '')
   if (acceptsGzip && new TextEncoder().encode(serialized).byteLength >= 4096) {
     // Progress snapshots contain repeated JSON keys and question text. Gzip
     // reduces response egress substantially without changing the JSON contract;
