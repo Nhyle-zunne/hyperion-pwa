@@ -8,7 +8,7 @@ import { createSerialAsyncQueue } from '../src/lib/serializedAsyncQueue.mjs';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
-  pricing, checkout, verify, webhook, questionBank, questionBankMigration,
+  pricing, checkout, verify, webhook, questionBank, learningProgressFn, questionBankMigration,
   finalizerMigration, priceCorrectionMigration, functionConfig, app, practiceStore, mockExam, licenseStore, basketScreen, accountScreen,
   indexCss, manualPayment, ordersHistory, historyScreen, studyTimeScreen, trackSelectionScreen, studyTimeStore, progressSync,
   aboutScreen, termsScreen, privacyScreen, topLoadingIndicator, pageLoadingManager,
@@ -23,6 +23,7 @@ const [
   read('../supabase/functions/verify-checkout/index.ts'),
   read('../supabase/functions/paymongo-webhook/index.ts'),
   read('../supabase/functions/question-bank/index.ts'),
+  read('../supabase/functions/learning-progress/index.ts'),
   read('../supabase/migrations/20261026142927_secure_question_bank_private_storage.sql'),
   read('../supabase/migrations/20261027095847_finalize_paymongo_checkout_atomically.sql'),
   read('../supabase/migrations/20261027095917_correct_gmdss_monthly_price_in_payment_finalizer.sql'),
@@ -151,6 +152,12 @@ for (const [code, weekly, monthly, yearly] of terms) {
 
 assert.match(questionBankMigration, /values\s*\('question-banks',\s*'question-banks',\s*false/i, 'Question bank bucket is private');
 assert.match(questionBank, /\.auth\.getUser\(\)/, 'Question-bank validates supplied user tokens with Auth while preserving guest free-sample access');
+assert.ok(
+  learningProgressFn.includes('verifiedUserFromGateway(req)') &&
+  learningProgressFn.includes("claims.role !== 'authenticated'") &&
+  learningProgressFn.includes("claims.exp <= Date.now() / 1000"),
+  'Progress endpoint trusts only gateway-verified, authenticated, unexpired JWT claims'
+);
 assert.match(questionBank, /FREE_FINGERPRINT_CACHE_TTL_MS/, 'Free-question authorization fingerprints expire or invalidate');
 assert.match(finalizerMigration, /search_path|SECURITY DEFINER/i, 'Finalizer migration defines a database function');
 assert.match(finalizerMigration, /service_role/i, 'Finalizer migration restricts execution to the service role');
