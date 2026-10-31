@@ -50,6 +50,7 @@ export default function TrackPurchaseDialog() {
   const [term, setTerm] = useState<LicenseTerm>(() => validTerm(params.get('purchase_term')))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [basketItems, setBasketItems] = useState(() => savedBasket())
   const autoCheckoutRef = useRef<string | null>(null)
 
   const requestedProduct = params.get('purchase_product')
@@ -63,6 +64,16 @@ export default function TrackPurchaseDialog() {
   useEffect(() => {
     if (isOpen) setBasketItems(savedBasket())
   }, [isOpen])
+
+  useEffect(() => {
+    const syncBasket = () => setBasketItems(savedBasket())
+    window.addEventListener('storage', syncBasket)
+    window.addEventListener('focus', syncBasket)
+    return () => {
+      window.removeEventListener('storage', syncBasket)
+      window.removeEventListener('focus', syncBasket)
+    }
+  }, [])
 
   useEffect(() => {
     setTerm(validTerm(params.get('purchase_term')))
@@ -127,6 +138,7 @@ export default function TrackPurchaseDialog() {
       const nextBasket = [...savedBasket().filter(item => item.code !== product.code), { code: product.code, term }]
       try {
         localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(nextBasket))
+        setBasketItems(nextBasket)
       } catch {
         setMessage('Your purchase could not be saved on this device. Please enable browser storage and try again.')
         return
