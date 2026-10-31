@@ -1110,7 +1110,7 @@ export async function checkOfflineQuestionPackUpdates(
   }
 }
 
-const OFFLINE_PACK_VERSION_CHECK_TTL_MS = 10 * 60 * 1000
+const OFFLINE_PACK_VERSION_CHECK_TTL_MS = 30 * 60 * 1000
 
 async function hasFreshCurrentOfflinePack(track: TrackId, freeOnly: boolean): Promise<boolean> {
   const manifest = await getOfflinePackManifest(track, freeOnly)
