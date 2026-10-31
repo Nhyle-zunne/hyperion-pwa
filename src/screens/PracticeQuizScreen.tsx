@@ -39,45 +39,23 @@ export default function PracticeQuizScreen() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [jumpNumber, setJumpNumber] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const autoAdvancePendingRef = useRef<string | null>(null)
+  const autoAdvanceTimerRef = useRef<number | null>(null)
   const [automations, setAutomations] = useState(() => { try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as {directAnswer:boolean;autoNextCorrect:boolean;autoNextWrong:boolean} } catch { return {directAnswer:false,autoNextCorrect:false,autoNextWrong:false} } })
   useEffect(() => { const settings = (e: Event) => setAutomations((e as CustomEvent).detail); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
-  // Match Android practice automation: evaluate first, then advance only for the enabled outcome.
-  // The question/index guard prevents a stale timer from skipping a newly selected question.
+  // Any manual navigation cancels an outstanding auto-advance. The timeout itself
+  // also validates the session, index, question, and answer before moving forward.
   useEffect(() => {
-    if (mode === 'MOCK') return
-    const question = questions[currentIndex]
-    if (!question) return
-    const answer = answers[question.id]
-    if (answer?.selectedIndex == null) return
-    const attemptKey = `${question.id}:${currentIndex}:${answer.selectedIndex}`
-    if (autoAdvancePendingRef.current !== attemptKey) return
-    const shouldAdvance = answer.isCorrect ? automations.autoNextCorrect : automations.autoNextWrong
-    if (!shouldAdvance) { autoAdvancePendingRef.current = null; return }
-
-    const expectedIndex = currentIndex
-    const expectedQuestionId = question.id
-    const delay = answer.isCorrect ? 750 : 1200
-    const timer = window.setTimeout(() => {
-      const latest = usePracticeStore.getState()
-      const latestQuestion = latest.questions[latest.currentIndex]
-      const latestAnswer = latestQuestion ? latest.answers[latestQuestion.id] : undefined
-      if (
-        latest.currentIndex === expectedIndex &&
-        latestQuestion?.id === expectedQuestionId &&
-        latestAnswer?.selectedIndex != null &&
-        latestAnswer.isCorrect === answer.isCorrect &&
-        !latest.finished
-      ) {
-        autoAdvancePendingRef.current = null
-        next()
-      }
-    }, delay)
-    return () => {
-      window.clearTimeout(timer)
-      if (autoAdvancePendingRef.current === attemptKey) autoAdvancePendingRef.current = null
+    if (autoAdvanceTimerRef.current !== null) {
+      window.clearTimeout(autoAdvanceTimerRef.current)
+      autoAdvanceTimerRef.current = null
     }
-  }, [answers, automations.autoNextCorrect, automations.autoNextWrong, currentIndex, mode, next, questions])
+  }, [currentIndex, mode])
+  useEffect(() => () => {
+    if (autoAdvanceTimerRef.current !== null) {
+      window.clearTimeout(autoAdvanceTimerRef.current)
+      autoAdvanceTimerRef.current = null
+    }
+  }, [])
 
   const updateAutomation = (key: 'directAnswer' | 'autoNextCorrect' | 'autoNextWrong', value: boolean) => {
     setAutomations(current => {
@@ -200,7 +178,64 @@ export default function PracticeQuizScreen() {
   const q = questions[currentIndex]
   const answer = answers[q.id]
   const hasAnswered = answer?.selectedIndex != null
-  const confirmAnswer = () => { if (pendingAnswer != null) { autoAdvancePendingRef.current = `${q.id}:${currentIndex}:${pendingAnswer}`; selectAnswer(pendingAnswer); setPendingAnswer(null) } }
+  const commitAnswer = (selectedIndex: number) => {
+    if (mode === 'MOCK') {
+      selectAnswer(selectedIndex)
+      return
+    }
+
+    const before = usePracticeStore.getState()
+    const activeQuestion = before.questions[before.currentIndex]
+    if (
+      before.finished ||
+      before.currentIndex !== currentIndex ||
+      activeQuestion?.id !== q.id ||
+      before.answers[q.id]?.selectedIndex != null
+    ) return
+
+    const isCorrect = selectedIndex === activeQuestion.correctAnswerIndex
+    const shouldAutoAdvance = isCorrect ? automations.autoNextCorrect : automations.autoNextWrong
+    const expectedSessionId = before.sessionId
+    const expectedIndex = before.currentIndex
+    const expectedQuestionId = activeQuestion.id
+
+    if (autoAdvanceTimerRef.current !== null) {
+      window.clearTimeout(autoAdvanceTimerRef.current)
+      autoAdvanceTimerRef.current = null
+    }
+
+    // Answer evaluation is synchronous. Both Direct Answer and Check Answer call
+    // this exact path, so the same result-specific automation rule always applies.
+    selectAnswer(selectedIndex)
+
+    if (!shouldAutoAdvance) return
+
+    const delay = isCorrect ? 750 : 1200
+    const timer = window.setTimeout(() => {
+      if (autoAdvanceTimerRef.current !== timer) return
+      autoAdvanceTimerRef.current = null
+
+      const latest = usePracticeStore.getState()
+      const latestQuestion = latest.questions[latest.currentIndex]
+      const latestAnswer = latestQuestion ? latest.answers[latestQuestion.id] : undefined
+      const stillOnEvaluatedAnswer =
+        !latest.finished &&
+        latest.sessionId === expectedSessionId &&
+        latest.currentIndex === expectedIndex &&
+        latestQuestion?.id === expectedQuestionId &&
+        latestAnswer?.selectedIndex === selectedIndex &&
+        latestAnswer.isCorrect === isCorrect
+
+      if (stillOnEvaluatedAnswer) latest.next()
+    }, delay)
+    autoAdvanceTimerRef.current = timer
+  }
+  const confirmAnswer = () => {
+    if (pendingAnswer != null) {
+      commitAnswer(pendingAnswer)
+      setPendingAnswer(null)
+    }
+  }
   const showFeedback = mode !== 'MOCK' && hasAnswered
   const jumpTo = (index: number) => { if (index >= 0 && index < questions.length) { const delta = index - currentIndex; if (delta > 0) for (let i = 0; i < delta; i++) next(); else for (let i = 0; i > delta; i--) prev(); setPendingAnswer(null); setPaletteOpen(false) } }
 
@@ -282,7 +317,7 @@ export default function PracticeQuizScreen() {
           } else if ((hasAnswered && idx === answer!.selectedIndex) || (!hasAnswered && pendingAnswer === idx)) {
             border = 'var(--accent)'; bg = 'var(--quiz-selection-bg)'
           }
-          return <button key={idx} onClick={() => { if (mode === 'MOCK') selectAnswer(idx); else if (!hasAnswered) { if (automations.directAnswer) { autoAdvancePendingRef.current = `${q.id}:${currentIndex}:${idx}`; selectAnswer(idx) } else setPendingAnswer(idx) } }} disabled={mode !== 'MOCK' && hasAnswered} style={{textAlign:'left',padding:'0.9rem 1rem',borderRadius:10,border:`1px solid ${border}`,background:bg,color:'var(--text)',fontSize:'calc(0.95rem * var(--quiz-text-scale))',cursor:mode !== 'MOCK' && hasAnswered ? 'default' : 'pointer'}}>
+          return <button key={idx} onClick={() => { if (mode === 'MOCK') selectAnswer(idx); else if (!hasAnswered) { if (automations.directAnswer) commitAnswer(idx); else setPendingAnswer(idx) } }} disabled={mode !== 'MOCK' && hasAnswered} style={{textAlign:'left',padding:'0.9rem 1rem',borderRadius:10,border:`1px solid ${border}`,background:bg,color:'var(--text)',fontSize:'calc(0.95rem * var(--quiz-text-scale))',cursor:mode !== 'MOCK' && hasAnswered ? 'default' : 'pointer'}}>
             <span style={{ fontWeight: 600, marginRight: 8 }}>{String.fromCharCode(65 + idx)}.</span>{opt}
           </button>
         })}
