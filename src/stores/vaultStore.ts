@@ -82,7 +82,7 @@ export const useVaultStore = create<VaultState>()(
         const threshold = Math.min(5, Math.max(1, Math.floor(requiredPasses)));
         const existing = get().items.find(item => item.id === questionId);
         if (!existing) return;
-        const next = existing.consecutiveCorrect + 1;
+        const next = (existing.consecutiveCorrect || 0) + 1;
         if (next >= threshold) {
           markProgressItemDeleted('vault', questionId);
           set({ items: get().items.filter(item => item.id !== questionId) });
