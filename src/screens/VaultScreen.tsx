@@ -87,7 +87,7 @@ export default function VaultScreen() {
       <>
         <div className="card" style={{marginBottom:'1rem'}}>
           <strong>Redemption queue ({scopedItems.length} questions)</strong>
-          <p style={{color:'var(--text-muted)',margin:'.35rem 0 .8rem'}}>Review your saved mistakes by track and competence, or drill a complete licensed track.</p>
+          <p style={{color:'var(--text-muted)',margin:'.35rem 0 .8rem'}}>A mistake is automatically redeemed and removed after 2 consecutive correct answers. Wrong answers reset its progress.</p>
           {groups.map(([track,comps])=><button key={track} className="btn btn-outline" style={{width:'100%',marginTop:'.35rem'}} onClick={()=>void practiceVault(track,comps.flatMap(([,list])=>list))}>Drill all {TRACK_LABELS[track]} mistakes ({comps.reduce((n,[,list])=>n+list.length,0)})</button>)}
         </div>
         <label style={{display:'block',marginBottom:'.8rem'}}>
@@ -119,7 +119,7 @@ export default function VaultScreen() {
                         <button className="btn btn-outline" onClick={()=>void practiceVault(track,list,competence==='GENERAL'?null:competence)}>Drill</button>
                       </div>
                       {open&&<div style={{display:'grid',gap:'.5rem',marginTop:'.5rem'}}>
-                        {list.sort((a,b)=>b.wrongCount-a.wrongCount||b.lastWrongAt-a.lastWrongAt).map(item=>{
+                        {[...list].sort((a,b)=>b.wrongCount-a.wrongCount||b.lastWrongAt-a.lastWrongAt).map(item=>{
                           const expanded=expandedQuestions.includes(item.id)
                           return <article key={item.id} className="card" style={{padding:'.75rem'}}>
                             <div style={{display:'flex',justifyContent:'space-between',gap:'.5rem',alignItems:'center'}}>
