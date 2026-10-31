@@ -5,7 +5,7 @@ import { useStudyTimeStore } from '../stores/studyTimeStore'
 import { useVaultStore } from '../stores/vaultStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { usePracticeStore } from '../stores/practiceStore'
-import { supabase } from './supabase'
+import { supabase, supabaseUrl, supabaseAnonKey } from './supabase'
 import { readEncryptedPersistedValue, removeEncryptedPersistedValue, writeEncryptedPersistedValue } from './encryptedPersistStorage'
 import { filterProgressCollection, mergeProgressDeletionLedgers } from './progressDeletionLedger'
 
@@ -672,6 +672,46 @@ function scheduleUpload(delay = 800): void {
   }, Math.max(delay, remaining))
 }
 
+async function invokeCompressedProgressWrite(
+  body: Record<string, unknown>,
+  accessToken: string
+): Promise<{ data: any; error: any }> {
+  const serialized = JSON.stringify(body)
+  if (
+    typeof CompressionStream === 'undefined' ||
+    !supabaseUrl ||
+    !supabaseAnonKey ||
+    new TextEncoder().encode(serialized).byteLength < 4096
+  ) {
+    return supabase!.functions.invoke('learning-progress', { body })
+  }
+
+  const compressedBody = await new Response(
+    new Blob([serialized]).stream().pipeThrough(new CompressionStream('gzip'))
+  ).arrayBuffer()
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/learning-progress`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: supabaseAnonKey,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'Content-Encoding': 'gzip'
+    },
+    body: compressedBody
+  })
+  const data = await response.json()
+  if (!response.ok) {
+    const error = new Error(
+      typeof data?.error === 'string' ? data.error : 'The progress service rejected the save.'
+    ) as Error & { context?: { status: number } }
+    error.context = { status: response.status }
+    return { data: null, error }
+  }
+  return { data, error: null }
+}
+
 async function uploadSnapshot(): Promise<void> {
   if (!supabase || !activeUserId || !cloudReady || hydrating) return
   const expectedUserId = activeUserId
@@ -768,13 +808,11 @@ async function uploadSnapshot(): Promise<void> {
         ? mergeSnapshots(snapshot, latestSnapshot, snapshot.changedSections, false)
         : snapshot
       snapshotToUpload.changedSections = []
-      const { data: writeResult, error: writeError } = await supabase.functions.invoke('learning-progress', {
-        body: {
-          action: 'write',
-          data: snapshotToUpload,
-          expected_updated_at: expectedUpdatedAt
-        }
-      })
+      const { data: writeResult, error: writeError } = await invokeCompressedProgressWrite({
+        action: 'write',
+        data: snapshotToUpload,
+        expected_updated_at: expectedUpdatedAt
+      }, sessionData.session.access_token)
 
       if (!writeError && writeResult?.ok === true) {
         expectedUpdatedAt = typeof writeResult.updated_at === 'string' ? writeResult.updated_at : expectedUpdatedAt
