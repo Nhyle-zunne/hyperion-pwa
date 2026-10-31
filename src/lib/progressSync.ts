@@ -719,7 +719,22 @@ async function migrateLegacyProgressCaches(): Promise<void> {
   await legacyProgressCacheMigration
 }
 
+const initializationPromises = new Map<string, Promise<void>>()
+
 async function initializeUser(userId: string): Promise<void> {
+  const existing = initializationPromises.get(userId)
+  if (existing) return existing
+
+  const pending = initializeUserInternal(userId)
+  initializationPromises.set(userId, pending)
+  try {
+    await pending
+  } finally {
+    if (initializationPromises.get(userId) === pending) initializationPromises.delete(userId)
+  }
+}
+
+async function initializeUserInternal(userId: string): Promise<void> {
   if (!supabase) return
   await migrateLegacyProgressCaches()
   const { data: sessionData } = await supabase.auth.getSession()
