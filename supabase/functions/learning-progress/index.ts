@@ -46,7 +46,7 @@ function rememberProgressRow(userId: string, data: unknown, updatedAt: string): 
 }
 
 const corsHeaders = {
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, content-encoding',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Max-Age': '86400',
   'Vary': 'Origin'
@@ -91,8 +91,19 @@ async function readRequestBody(req: Request, maxBytes: number): Promise<string> 
     throw new PayloadTooLargeError()
   }
 
-  const reader = req.body?.getReader()
-  if (!reader) return ''
+  const contentEncoding = (req.headers.get('content-encoding') || 'identity').trim().toLowerCase()
+  if (contentEncoding !== 'identity' && contentEncoding !== 'gzip') {
+    throw new Error('Unsupported request content encoding.')
+  }
+
+  const bodyStream = req.body
+  if (!bodyStream) return ''
+  // Enforce MAX_REQUEST_BYTES against the decompressed JSON too, preventing a
+  // small gzip payload from expanding beyond the service's existing safety limit.
+  const decodedStream = contentEncoding === 'gzip'
+    ? bodyStream.pipeThrough(new DecompressionStream('gzip'))
+    : bodyStream
+  const reader = decodedStream.getReader()
 
   const chunks: Uint8Array[] = []
   let totalBytes = 0
