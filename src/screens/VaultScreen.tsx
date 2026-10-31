@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useVaultStore } from '../stores/vaultStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useLicenseStore } from '../stores/licenseStore'
-import { authorizeQuestionSet } from '../lib/questionBank'
 import type { TrackId } from '../types/question'
 import type { VaultItem } from '../stores/vaultStore'
 
@@ -27,55 +26,15 @@ export default function VaultScreen() {
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
   const cloudTrackIds = useLicenseStore((s) => s.cloudTrackIds)
-  const [verifiedFreeItems, setVerifiedFreeItems] = useState<string[]>([])
-  const [validatingVault, setValidatingVault] = useState(true)
+  const [validatingVault] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    async function validateVault() {
-      setValidatingVault(true)
-      if (!entitlementsVerified) {
-        if (!cancelled) {
-          setVerifiedFreeItems([])
-          setValidatingVault(false)
-        }
-        return
-      }
-
-      const valid = new Set<string>()
-      const questions = asQuestions()
-      const tracks = [...new Set(items.map(item => item.track))]
-      for (const track of tracks) {
-        if (isAllAccessUnlocked || isTrackUnlocked(track)) continue
-
-        // The free-session marker is only a candidate filter. The protected
-        // question service verifies every question before cached text is shown.
-        const candidates = items.filter(item => item.track === track && item.isFreeSession === true)
-        if (!candidates.length) continue
-        const ids = new Set(candidates.map(item => item.id))
-        const candidateQuestions = questions.filter(question => question.track === track && ids.has(question.id))
-        try {
-          if (candidateQuestions.length === candidates.length && await authorizeQuestionSet(track, candidateQuestions)) {
-            candidates.forEach(item => valid.add(item.id))
-          }
-        } catch {
-          // Fail closed: do not display locally cached question text if validation fails.
-        }
-      }
-
-      if (!cancelled) {
-        setVerifiedFreeItems([...valid])
-        setValidatingVault(false)
-      }
-    }
-    void validateVault()
-    return () => { cancelled = true }
-  }, [items, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isTrackUnlocked, asQuestions])
-
-  const validFreeIds = new Set(verifiedFreeItems)
+  const hasAnyActiveLicense = entitlementsVerified && (
+    isAllAccessUnlocked || cloudTrackIds.includes('ALL') ||
+    ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'].some(isTrackUnlocked)
+  )
   const visibleItems = entitlementsVerified
-    ? items.filter(item => validFreeIds.has(item.id) || isAllAccessUnlocked || isTrackUnlocked(item.track))
+    ? items.filter(item => isAllAccessUnlocked || cloudTrackIds.includes('ALL') || isTrackUnlocked(item.track))
     : []
 
   const scopedItems = requestedTrack && Object.prototype.hasOwnProperty.call(TRACK_LABELS, requestedTrack)
@@ -119,7 +78,7 @@ export default function VaultScreen() {
         <button type="button" className="btn btn-outline" onClick={() => navigate(requestedTrack ? "/track?track=" + encodeURIComponent(({ DECK_OIC_NW: "oic_nw", GMDSS_GOC: "gmdss", ENGINE_OIC_EW: "engine_ew", DECK_MGT: "deck_mgt", ENGINE_MGT: "engine_mgt" } as Record<TrackId, string>)[requestedTrack] || "oic_nw") : "/")}>Back</button>
       </div>
       <p className="subtitle">
-        {scopedItems.length} available question{scopedItems.length === 1 ? '' : 's'} you missed · auto-saved from Practice, Drill, Mock
+        {scopedItems.length} licensed mistake{scopedItems.length === 1 ? '' : 's'} · auto-saved from your sessions
       </p>
       {saveError && <p role="alert" style={{ color: 'var(--danger)' }}>{saveError}</p>}
 
@@ -134,13 +93,19 @@ export default function VaultScreen() {
         </button>
       ))}
 
-      {validatingVault ? (
+      {!entitlementsVerified ? (
         <div className="card" role="status" aria-live="polite" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-          Checking access to saved questions…
+          Verifying your active license…
+        </div>
+      ) : (!hasAnyActiveLicense || (requestedTrack && Object.prototype.hasOwnProperty.call(TRACK_LABELS, requestedTrack) && !(isAllAccessUnlocked || cloudTrackIds.includes('ALL') || isTrackUnlocked(requestedTrack)))) ? (
+        <div className="card" style={{ textAlign: 'center' }}>
+          <h2 style={{ marginTop: 0 }}>Mistakes Notebook is locked</h2>
+          <p style={{ color: 'var(--text-muted)' }}>An active license is required to access the Mistakes Notebook. Subscribe to a track to unlock its saved mistakes. Your notebook will show only mistakes from tracks with an active license.</p>
+          <button type="button" className="btn btn-primary" onClick={() => navigate('/account')}>VIEW LICENSE OPTIONS</button>
         </div>
       ) : scopedItems.length === 0 ? (
         <div className="card" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-          No saved mistakes are available here yet. Mistakes are added automatically when you answer incorrectly in an authorized Practice, Drill, or Mock Exam session. Free users can review mistakes from permitted free question pools; paid questions remain available while the corresponding license is active.
+          No saved mistakes are available for this licensed track yet. Mistakes are added automatically when you answer incorrectly. Only mistakes belonging to tracks with an active license appear here.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '0.6rem' }}>
@@ -186,12 +151,12 @@ export default function VaultScreen() {
         </div>
       )}
 
-      {items.length > 0 && (
+      {hasAnyActiveLicense && scopedItems.length > 0 && (
         <button
           className="btn btn-outline"
           style={{ width: '100%', marginTop: '1.25rem', color: 'var(--danger)' }}
           onClick={() => {
-            if (confirm('Clear the mistakes vault?')) clear()
+            if (confirm('Clear the mistakes notebook?')) clear()
           }}
         >
           Clear vault
