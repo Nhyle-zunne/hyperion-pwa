@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useVaultStore } from '../stores/vaultStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -17,6 +17,8 @@ const TRACK_LABELS: Record<TrackId, string> = {
 
 export default function VaultScreen() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const requestedTrack = searchParams.get('track') as TrackId | null
   const items = useVaultStore((s) => s.items)
   const remove = useVaultStore((s) => s.remove)
   const clear = useVaultStore((s) => s.clear)
@@ -76,8 +78,12 @@ export default function VaultScreen() {
     ? items.filter(item => validFreeIds.has(item.id) || isAllAccessUnlocked || isTrackUnlocked(item.track))
     : []
 
+  const scopedItems = requestedTrack && Object.prototype.hasOwnProperty.call(TRACK_LABELS, requestedTrack)
+    ? visibleItems.filter(item => item.track === requestedTrack)
+    : visibleItems
+
   const trackGroups = new Map<TrackId, VaultItem[]>()
-  for (const item of visibleItems) {
+  for (const item of scopedItems) {
     const group = trackGroups.get(item.track) ?? []
     group.push(item)
     trackGroups.set(item.track, group)
@@ -108,9 +114,12 @@ export default function VaultScreen() {
 
   return (
     <div className="screen">
-      <h1 className="page-title">Mistakes Vault</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <h1 className="page-title">Mistakes Notebook</h1>
+        <button type="button" className="btn btn-outline" onClick={() => navigate(requestedTrack ? "/track?track=" + encodeURIComponent(({ DECK_OIC_NW: "oic_nw", GMDSS_GOC: "gmdss", ENGINE_OIC_EW: "engine_ew", DECK_MGT: "deck_mgt", ENGINE_MGT: "engine_mgt" } as Record<TrackId, string>)[requestedTrack] || "oic_nw") : "/")}>Back</button>
+      </div>
       <p className="subtitle">
-        {visibleItems.length} available question{visibleItems.length === 1 ? '' : 's'} you missed · auto-saved from Practice, Drill, Mock
+        {scopedItems.length} available question{scopedItems.length === 1 ? '' : 's'} you missed · auto-saved from Practice, Drill, Mock
       </p>
       {saveError && <p role="alert" style={{ color: 'var(--danger)' }}>{saveError}</p>}
 
@@ -131,7 +140,7 @@ export default function VaultScreen() {
         </div>
       ) : visibleItems.length === 0 ? (
         <div className="card" style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-          No mistakes are currently available. Free-sample questions are verified separately; paid mistakes require an active track license.
+          No saved mistakes are available here yet. Mistakes are added automatically when you answer incorrectly in an authorized Practice, Drill, or Mock Exam session. Free users can review mistakes from permitted free question pools; paid questions remain available while the corresponding license is active.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '0.6rem' }}>
