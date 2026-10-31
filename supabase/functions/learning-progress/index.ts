@@ -255,6 +255,22 @@ async function sanitizeSnapshot(
   return snapshot
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (isRecord(value)) {
+    const keys = Object.keys(value).filter(key => key !== 'savedAt' && key !== 'changedSections').sort()
+    return `{${keys.map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
+function equivalentProgressSnapshots(left: unknown, right: unknown): boolean {
+  return isRecord(left) && isRecord(right)
+    && left.version === 1 && right.version === 1
+    && isRecord(left.storage) && isRecord(right.storage)
+    && canonicalJson(left) === canonicalJson(right)
+}
+
 async function loadAllowedTracks(
   admin: ReturnType<typeof createClient>,
   user: { id: string; email?: string }
@@ -287,12 +303,6 @@ Deno.serve(async req => {
   const { data: { user }, error: authError } = await client.auth.getUser()
   if (authError || !user) return json(req, { error: 'Please sign in again.' }, 401)
   const admin = createClient(url, service, { auth: { persistSession: false } })
-  let allowedTracks: Set<TrackId>
-  try {
-    allowedTracks = await loadAllowedTracks(admin, user)
-  } catch {
-    return json(req, { error: 'Current license access could not be verified.' }, 503)
-  }
 
   let body: JsonRecord
   let rawBody: string
@@ -309,6 +319,12 @@ Deno.serve(async req => {
   }
 
   if (body.action === 'read') {
+    let allowedTracks: Set<TrackId>
+    try {
+      allowedTracks = await loadAllowedTracks(admin, user)
+    } catch {
+      return json(req, { error: 'Current license access could not be verified.' }, 503)
+    }
     const { data, error } = await admin.from('user_learning_progress')
       .select('data,updated_at')
       .eq('user_id', user.id)
@@ -338,6 +354,35 @@ Deno.serve(async req => {
     }
 
     try {
+      // Many client versions periodically resend an unchanged full snapshot.
+      // Detect that case before entitlement lookups, question-bank verification,
+      // or a Postgres UPDATE. A matching row was previously sanitized for this
+      // same user; this response returns no question data.
+      const current = await admin.from('user_learning_progress')
+        .select('data,updated_at')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (current.error) return json(req, { error: 'Could not check the progress version.' }, 500)
+      if (expectedUpdatedAt === null) {
+        if (current.data) {
+          return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
+        }
+      } else {
+        if (!current.data || current.data.updated_at !== expectedUpdatedAt) {
+          return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
+        }
+        if (equivalentProgressSnapshots(body.data, current.data.data)) {
+          return json(req, { ok: true, unchanged: true, updated_at: current.data.updated_at })
+        }
+      }
+
+      let allowedTracks: Set<TrackId>
+      try {
+        allowedTracks = await loadAllowedTracks(admin, user)
+      } catch {
+        return json(req, { error: 'Current license access could not be verified.' }, 503)
+      }
+
       const sanitized = await sanitizeSnapshot(client, body.data, allowedTracks)
       if (expectedUpdatedAt === null) {
         // First writer inserts; a competing first writer receives a conflict.
@@ -351,7 +396,11 @@ Deno.serve(async req => {
           }
           return json(req, { error: 'Could not save progress.' }, 500)
         }
-        return json(req, { ok: true, updated_at: data?.updated_at ?? null })
+        return json(req, {
+          ok: true,
+          updated_at: data?.updated_at ?? null,
+          ...(body.return_data === true ? { data: sanitized } : {})
+        })
       }
 
       const { data, error } = await admin.from('user_learning_progress')
@@ -365,7 +414,11 @@ Deno.serve(async req => {
       if (!data) {
         return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
       }
-      return json(req, { ok: true, updated_at: data.updated_at })
+      return json(req, {
+        ok: true,
+        updated_at: data.updated_at,
+        ...(body.return_data === true ? { data: sanitized } : {})
+      })
     } catch {
       // Do not persist unsanitized question-bearing progress when access verification fails.
       return json(req, { error: 'Could not safely verify saved question access.' }, 503)
