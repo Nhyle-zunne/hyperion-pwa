@@ -273,7 +273,8 @@ Deno.serve(async (req) => {
       await processCheckout(order, false)
     }
 
-    console.info('[expire-abandoned-checkouts] Cleanup completed', JSON.stringify(summary))
+    // Successful empty/normal cleanup is intentionally quiet. Failures, PayMongo
+  // uncertainty, and payment races above retain their warning/error logs.
     return json({ status: 'ok', cutoff, summary })
   } catch {
     console.error('[expire-abandoned-checkouts] Cleanup interrupted')
