@@ -63,7 +63,7 @@ export default function VaultScreen() {
     const started=await usePracticeStore.getState().startCustomSession({questions,track,competenceId})
     if(!started) return
     usePracticeStore.setState({mode:'DRILL',startedAt:Date.now(),finished:false,loading:false,error:null})
-    const saved=await usePracticeStore.getState().saveProgress()
+    const saved = await usePracticeStore.getState().saveProgress()
     if(!saved){setSaveError('Could not save this drill on the device. Check storage and try again before starting it.');return}
     navigate('/practice/quiz')
   }
