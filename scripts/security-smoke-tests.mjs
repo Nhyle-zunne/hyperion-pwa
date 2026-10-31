@@ -675,6 +675,13 @@ assert.ok(
   learningProgressFunction.includes("'compare_user_learning_progress'"),
   'No-op progress comparison stays inside Postgres and the RPC is restricted to service_role'
 );
+assert.ok(
+  learningProgressFunction.includes('PROGRESS_ROW_CACHE_TTL_MS') &&
+  learningProgressFunction.includes("select('updated_at')") &&
+  learningProgressFunction.includes('revision.updated_at === cached.updatedAt') &&
+  learningProgressFunction.includes('sanitizeSnapshot(client, snapshotData, allowedTracks)'),
+  'Warm-isolate progress reads verify the latest DB version and re-sanitize cached data against current entitlements'
+);
 
 assert.ok(progressPrivilegeMigration.includes('alter table public.user_learning_progress enable row level security') && progressPrivilegeMigration.includes('drop policy if exists "Users can read their own learning progress"'), 'Learning progress remains RLS-enabled without direct per-user JSON read policies');
 
