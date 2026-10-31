@@ -71,7 +71,7 @@ let cloudVersionLoaded = false
 let cloudSnapshot: LearningProgressSnapshot | null = null
 let lastUploadAt = 0
 let uploadInFlight = false
-const MIN_UPLOAD_INTERVAL_MS = 30_000
+const MIN_UPLOAD_INTERVAL_MS = 120_000
 let uploadQueued = false
 let unsubscribeStores: (() => void)[] = []
 let authSubscription: { unsubscribe: () => void } | null = null
