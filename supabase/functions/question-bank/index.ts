@@ -228,7 +228,7 @@ type SourceInfo = { track: string; competenceId: string; part: number | null; fo
 // Cached question text is reusable across requests in a warm Edge isolate. The
 // migration-state timestamp is a cross-isolate content epoch: successful admin
 // publications bump it, so a long cache lifetime does not delay updated questions.
-const PRIVATE_TEXT_CACHE_TTL_MS = 15 * 60_000;
+const PRIVATE_TEXT_CACHE_TTL_MS = 60 * 60_000;
 const privateTextCache = new Map<string, { text: string; cachedAt: number; bankEpoch: string }>();
 function currentQuestionBankEpoch(): string {
   return typeof migrationStateCache?.data?.updated_at === "string"
