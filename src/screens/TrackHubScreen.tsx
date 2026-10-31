@@ -216,7 +216,7 @@ export default function TrackHubScreen() {
     if (!online || checkingOfflineVersion) return
     setCheckingOfflineVersion(true)
     try {
-      const result = await checkOfflineQuestionPackUpdates(info.trackId, !unlocked)
+      const result = await checkOfflineQuestionPackUpdates(info.trackId, !unlocked, true)
       setOfflineUpdateCheck(result)
     } finally {
       setCheckingOfflineVersion(false)
