@@ -200,7 +200,7 @@ async function migrationState(admin: any) {
 }
 
 type SourceInfo = { track: string; competenceId: string; part: number | null; format: "standard" | "gmdss"; functionId: string; idPrefix: string };
-const PRIVATE_TEXT_CACHE_TTL_MS = 15_000;
+const PRIVATE_TEXT_CACHE_TTL_MS = 60_000;
 const privateTextCache = new Map<string, { text: string; cachedAt: number }>();
 function sourceInfo(path: string): SourceInfo | null {
   const track = trackForPath(path);
