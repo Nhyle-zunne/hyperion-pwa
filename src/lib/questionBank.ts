@@ -517,6 +517,13 @@ async function loadQuestionsByCompetenceInternal(
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
   }
+  // If this device already has a verified, up-to-date offline pack, use it while
+  // online too. The previous path fetched the same questions from Edge Functions
+  // every time a competence was opened, despite a complete local copy being present.
+  const cachedCurrent = await getCurrentCachedCompetenceRange(
+    track, competenceId, part, freeOnly, startItem, limit, randomSample
+  )
+  if (cachedCurrent) return cachedCurrent
   if (!supabase) return getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
   const firstOffset = Math.max(0, Math.floor(startItem || 1) - 1)
   let totalWanted = limit == null ? 0 : Math.max(0, Math.floor(limit))
@@ -821,6 +828,12 @@ async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = fals
     if (cached) return cached
     throw new Error('Download this question bank for offline use while connected to the internet.')
   }
+  // Counts are already included in a complete offline pack. Reuse them while
+  // the manifest is known current instead of requesting the same metadata again.
+  if (await hasFreshCurrentOfflinePack(track, freeOnly) && await mayUseOfflineTrack(track, freeOnly)) {
+    const cachedCounts = await getOfflineQuestionCounts(track, freeOnly)
+    if (cachedCounts) return cachedCounts
+  }
   if (!supabase) throw new Error('Protected question service is not configured.');
   const { data, error } = await supabase.functions.invoke('question-bank', {
     body: { action: 'counts', track, freeOnly }
@@ -1013,6 +1026,40 @@ export async function checkOfflineQuestionPackUpdates(
   }
 }
 
+const OFFLINE_PACK_VERSION_CHECK_TTL_MS = 5 * 60 * 1000
+
+async function hasFreshCurrentOfflinePack(track: TrackId, freeOnly: boolean): Promise<boolean> {
+  const manifest = await getOfflinePackManifest(track, freeOnly)
+  if (!manifest?.complete) return false
+
+  const checkedAt = Number(manifest.lastCheckedAt ?? 0)
+  if (checkedAt > 0 && Date.now() - checkedAt < OFFLINE_PACK_VERSION_CHECK_TTL_MS) {
+    return manifest.lastKnownUpdateState === 'current'
+  }
+
+  const check = await checkOfflineQuestionPackUpdates(track, freeOnly)
+  return check.status === 'current'
+}
+
+async function getCurrentCachedCompetenceRange(
+  track: TrackId,
+  competenceId: string,
+  part: number | undefined,
+  freeOnly: boolean,
+  startItem: number,
+  limit: number | undefined,
+  randomSample: boolean
+): Promise<Question[] | null> {
+  if (!(await hasFreshCurrentOfflinePack(track, freeOnly))) return null
+  try {
+    return await getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
+  } catch {
+    // A missing/expired local lease or damaged cache must never block the normal
+    // online license check and protected question-delivery path.
+    return null
+  }
+}
+
 export function listAvailableCompetences(
   track: TrackId
 ): { id: string; label: string }[] {
@@ -1043,6 +1090,11 @@ async function loadFlashcardQuestionsInternal(track: TrackId, competenceId?: str
     if (!local.length) throw new Error('Download the full question bank for this track before using flashcards offline.')
     const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
     return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
+  }
+  if (await hasFreshCurrentOfflinePack(track, false) && await offlineEntitlementExpiry(track)) {
+    const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
+    const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
+    if (local.length) return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
   }
   const { data, error } = await supabase.functions.invoke('question-bank', {
     body: { action: 'flashcards', track, competenceId, limit: Math.max(1, Math.min(30, limit)) }
@@ -1229,6 +1281,16 @@ async function searchQuestionsInternal(
       (question.questionText + ' ' + question.topic + ' ' + question.competenceId + ' ' + question.options.join(' '))
         .toLowerCase().includes(q.toLowerCase())
     ).slice(0, Math.max(1, Math.min(40, limit)))
+  }
+  if (await hasFreshCurrentOfflinePack(track, false) && await offlineEntitlementExpiry(track)) {
+    const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
+    if (local.length) {
+      const hits = local.filter(question =>
+        (question.questionText + ' ' + question.topic + ' ' + question.competenceId + ' ' + question.options.join(' '))
+          .toLowerCase().includes(q.toLowerCase())
+      )
+      return hits.slice(0, Math.max(1, Math.min(40, limit)))
+    }
   }
   const { data, error } = await supabase.functions.invoke('question-bank', {
     body: { action: 'search', track, query: q, limit: Math.max(1, Math.min(40, limit)) }
