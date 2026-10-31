@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useUIStore } from '../stores/uiStore'
 import { useVaultStore } from '../stores/vaultStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -19,6 +20,7 @@ const sortCompetence = (a: string, b: string) =>
 
 export default function VaultScreen() {
   const navigate = useNavigate()
+  const openPaywall = useUIStore(state => state.openPaywall)
   const [searchParams] = useSearchParams()
   const requestedTrack = searchParams.get('track') as TrackId | null
   const items = useVaultStore((s) => s.items)
@@ -85,9 +87,12 @@ export default function VaultScreen() {
       <div className="card" style={{textAlign:'center'}}>
         <h2 style={{marginTop:0}}>Mistakes Notebook is locked</h2>
         <p style={{color:'var(--text-muted)'}}>An active license is required. Your notebook shows mistakes only for tracks with an active license.</p>
-        <button className="btn btn-primary" onClick={()=>requestedTrack && TRACK_KEYS[requestedTrack]
-          ? navigate(`/track?track=${TRACK_KEYS[requestedTrack]}`)
-          : navigate('/account')}>VIEW LICENSE OPTIONS</button>
+        <button className="btn btn-primary" onClick={()=>{
+          if (requestedTrack && TRACK_KEYS[requestedTrack]) {
+            navigate(`/track?track=${TRACK_KEYS[requestedTrack]}`)
+            openPaywall('Mistakes Notebook')
+          } else navigate('/account')
+        }}>VIEW LICENSE OPTIONS</button>
       </div> :
       scopedItems.length===0 ? <div className="card" style={{textAlign:'center',color:'var(--text-muted)'}}>No saved mistakes for this licensed track yet. Mistakes are recorded automatically after incorrect answers.</div> :
       <>

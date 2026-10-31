@@ -2,12 +2,14 @@ import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { paidProductCodeForTrackId } from '../lib/supabase'
 import { useUIStore } from '../stores/uiStore'
+import { useLicenseStore } from '../stores/licenseStore'
 
 export default function PaywallDialog() {
   const { showPaywall, paywallFeature, closePaywall } = useUIStore()
   const [params, setParams] = useSearchParams()
   const trackValue = params.get('purchase_product') || params.get('track') || ''
-  const purchaseCode = paidProductCodeForTrackId(trackValue)
+  const entitlementsVerified = useLicenseStore(state => state.entitlementsVerified)
+  const purchaseCode = entitlementsVerified ? paidProductCodeForTrackId(trackValue) : null
 
   // Any track-scoped paywall becomes the actual product card. The ordinary
   // warning remains only for cases where no specific paid track is known.
