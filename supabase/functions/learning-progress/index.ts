@@ -11,6 +11,30 @@ const PROGRESS_ROW_CACHE_MAX_ENTRIES = 16
 type ProgressRowCacheEntry = { data: unknown; updatedAt: string; cachedAt: number }
 const progressRowCache = new Map<string, ProgressRowCacheEntry>()
 
+// The Supabase gateway verifies the JWT signature when verify_jwt=true.
+// Decode only its claims here to avoid a second Auth HTTP request per invocation.
+function verifiedUserFromGateway(req: Request): { id: string; email?: string } | null {
+  const authorization = req.headers.get('Authorization') || ''
+  const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1]
+  if (!token) return null
+  const parts = token.split('.')
+  if (parts.length !== 3 || !parts[1]) return null
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
+    const claims = JSON.parse(new TextDecoder().decode(bytes))
+    if (claims.role !== 'authenticated' ||
+        typeof claims.sub !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(claims.sub) ||
+        !Number.isFinite(claims.exp) ||
+        claims.exp <= Date.now() / 1000) return null
+    return { id: claims.sub, email: typeof claims.email === 'string' ? claims.email : undefined }
+  } catch {
+    return null
+  }
+}
+
 function rememberProgressRow(userId: string, data: unknown, updatedAt: string): void {
   progressRowCache.delete(userId)
   progressRowCache.set(userId, { data, updatedAt, cachedAt: Date.now() })
@@ -312,9 +336,9 @@ Deno.serve(async req => {
   const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !anon || !service) return json(req, { error: 'Progress service is not configured.' }, 503)
 
+  const user = verifiedUserFromGateway(req)
+  if (!user) return json(req, { error: 'Please sign in again.' }, 401)
   const client = createClient(url, anon, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } })
-  const { data: { user }, error: authError } = await client.auth.getUser()
-  if (authError || !user) return json(req, { error: 'Please sign in again.' }, 401)
   const admin = createClient(url, service, { auth: { persistSession: false } })
 
   let body: JsonRecord
