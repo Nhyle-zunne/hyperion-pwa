@@ -495,43 +495,6 @@ function parseGmdssRows(
   return list;
 }
 
-async function loadSource(src: BankSource, freeOnly = false): Promise<LoadedSource> {
-  const cacheKey = src.path + (freeOnly ? ':free' : ':full');
-  const cached = cache.get(cacheKey);
-  if (cached) return cached;
-
-  try {
-    if (!supabase) throw new Error('Protected question service is not configured.');
-    let text = '';
-    let sampledByServer = false;
-    const response = await supabase.functions.invoke('question-bank', {
-      body: { action: 'get', path: src.path, freeOnly }
-    });
-    if (response.error || !response.data?.text) {
-      throw response.error || new Error(response.data?.error || 'Protected question delivery failed.');
-    }
-    text = String(response.data.text);
-    sampledByServer = freeOnly && response.data.access === 'free-sample';
-    const rows = parseCsvText(text);
-    if (rows.length <= 1 && src.format !== 'gmdss') {
-      const empty = { questions: [], sampledByServer };
-      cache.set(cacheKey, empty);
-      return empty;
-    }
-
-    const headerIdx = findHeaderRow(rows, src.format);
-    const questions = src.format === 'gmdss'
-      ? parseGmdssRows(rows, headerIdx, src)
-      : parseStandardRows(rows, headerIdx, src);
-    const loaded = { questions, sampledByServer };
-    cache.set(cacheKey, loaded);
-    return loaded;
-  } catch (e) {
-    console.error('Failed to load protected question bank', src.path, e);
-    return { questions: [], sampledByServer: freeOnly };
-  }
-}
-
 async function loadFreeTrackSourcesByBatch(
   track: TrackId,
   sources: BankSource[]
