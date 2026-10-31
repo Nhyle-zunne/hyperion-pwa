@@ -59,26 +59,7 @@ export default function AdminQuestionBankScreen() {
 
   const loadAssets = useCallback(async () => {
     setLoading(true)
-    let cacheNotice = ''
-    let cacheNoticeIsError = false
     try {
-      // Run an idempotent one-time migration for the existing private encrypted
-      // files. The server re-uploads the exact bytes with a 1-hour cache TTL,
-      // verifies unchanged ETags/sizes, and keeps the bucket private.
-      try {
-        const cacheResult = await call({ action: 'optimize-storage-cache' })
-        if (cacheResult?.ok !== true || cacheResult?.bucketPrivate !== true || Number(cacheResult?.failed) > 0) {
-          throw new Error('Storage cache settings did not pass verification.')
-        }
-        cacheNotice = Number(cacheResult.updated) > 0
-          ? 'Storage caching optimized for ' + Number(cacheResult.updated) + ' private question files. Question contents were unchanged.'
-          : 'Private question-file cache settings are already optimized.'
-      } catch (reason) {
-        cacheNotice = 'Question sets loaded, but storage cache optimization needs another attempt: ' +
-          (reason instanceof Error ? reason.message : 'verification failed')
-        cacheNoticeIsError = true
-      }
-
       const result = await call({ action: 'list-update-assets' })
       const rows = Array.isArray(result.assets) ? result.assets as Asset[] : []
       setAssets(rows)
@@ -87,10 +68,6 @@ export default function AdminQuestionBankScreen() {
         const match = rows.find(asset => rawCsvName(asset.path) === uploadedCsvName(item.file.name))
         return { ...item, targetPath: match?.path || item.targetPath }
       }))
-      if (cacheNotice) {
-        setMessage(cacheNotice)
-        setIsError(cacheNoticeIsError)
-      }
     } catch (reason) {
       setIsError(true)
       setMessage(reason instanceof Error ? reason.message : 'Could not load supported question-bank files.')
