@@ -28,7 +28,8 @@ export default function PracticeQuizScreen() {
     score,
     reset,
     saveProgress,
-    restoreSavedProgress
+    restoreSavedProgress,
+    next
   } = usePracticeStore()
 
   const [showExitDialog, setShowExitDialog] = useState(false)
@@ -38,8 +39,49 @@ export default function PracticeQuizScreen() {
   const [pendingAnswer, setPendingAnswer] = useState<number | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [jumpNumber, setJumpNumber] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [automations, setAutomations] = useState(() => { try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as {directAnswer:boolean;autoNextCorrect:boolean;autoNextWrong:boolean} } catch { return {directAnswer:false,autoNextCorrect:false,autoNextWrong:false} } })
   useEffect(() => { const settings = (e: Event) => setAutomations((e as CustomEvent).detail); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
+  // Match Android practice automation: evaluate first, then advance only for the enabled outcome.
+  // The question/index guard prevents a stale timer from skipping a newly selected question.
+  useEffect(() => {
+    if (mode === 'MOCK') return
+    const question = questions[currentIndex]
+    if (!question) return
+    const answer = answers[question.id]
+    if (answer?.selectedIndex == null) return
+    const shouldAdvance = answer.isCorrect ? automations.autoNextCorrect : automations.autoNextWrong
+    if (!shouldAdvance) return
+
+    const expectedIndex = currentIndex
+    const expectedQuestionId = question.id
+    const delay = answer.isCorrect ? 750 : 1200
+    const timer = window.setTimeout(() => {
+      const latest = usePracticeStore.getState()
+      const latestQuestion = latest.questions[latest.currentIndex]
+      const latestAnswer = latestQuestion ? latest.answers[latestQuestion.id] : undefined
+      if (
+        latest.currentIndex === expectedIndex &&
+        latestQuestion?.id === expectedQuestionId &&
+        latestAnswer?.selectedIndex != null &&
+        latestAnswer.isCorrect === answer.isCorrect &&
+        !latest.finished
+      ) {
+        next()
+      }
+    }, delay)
+    return () => window.clearTimeout(timer)
+  }, [answers, automations.autoNextCorrect, automations.autoNextWrong, currentIndex, mode, next, questions])
+
+  const updateAutomation = (key: 'directAnswer' | 'autoNextCorrect' | 'autoNextWrong', value: boolean) => {
+    setAutomations(current => {
+      const updated = { ...current, [key]: value }
+      localStorage.setItem('hyperion-practice-automations', JSON.stringify(updated))
+      window.dispatchEvent(new CustomEvent('hyperion:practice-settings', { detail: updated }))
+      return updated
+    })
+  }
+
   useEffect(() => {
     if (resumeSessionId) {
       void restoreSavedProgress(resumeSessionId)
@@ -193,11 +235,24 @@ export default function PracticeQuizScreen() {
           </section>
         </div>
       )}
-      <header style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,margin:'-0.5rem -0.25rem 1rem',padding:'0.4rem 0',borderBottom:'3px solid var(--accent)'}}>
+      <header style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,margin:'-0.5rem -0.25rem 1rem',padding:'0.4rem 0',borderBottom:'3px solid var(--accent)',position:'relative'}}>
         <div style={{minWidth:0,flex:1,textAlign:'center'}}>
           <div style={{fontWeight:800,lineHeight:1.2}}>Question {currentIndex + 1} of {questions.length}</div>
           <div style={{fontSize:'0.82rem',color:'var(--accent)',fontWeight:700}}>{q.track} · {q.competenceId}</div>
         </div>
+        <button type="button" className="btn btn-outline" aria-label="Question settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(open => !open)} style={{padding:'0.45rem 0.65rem',minWidth:42}}>⚙</button>
+        {settingsOpen && <section role="group" aria-label="Practice automations" style={{position:'absolute',right:0,top:'calc(100% + 8px)',zIndex:30,width:'min( min(88vw, 330px), 330px)',padding:'0.9rem',border:'1px solid var(--border)',borderTop:'3px solid var(--accent)',borderRadius:10,background:'var(--bg-card)',boxShadow:'0 12px 32px rgba(0,0,0,.22)',textAlign:'left'}}>
+          <div style={{fontSize:'.75rem',fontWeight:800,letterSpacing:'.08em',color:'var(--text-muted)',marginBottom:8}}>PRACTICE AUTOMATIONS</div>
+          {([
+            ['directAnswer','Direct Answer','Confirm immediately when an option is tapped'],
+            ['autoNextCorrect','Auto-Next (Correct)','Advance after a correct answer'],
+            ['autoNextWrong','Auto-Next (Wrong)','Advance after an incorrect answer']
+          ] as const).map(([key,label,description]) => <label key={key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'0.65rem 0',borderTop:'1px solid var(--border)',cursor:'pointer'}}>
+            <span style={{display:'grid',gap:3,minWidth:0}}><strong style={{fontSize:'.9rem'}}>{label}</strong><span style={{fontSize:'.76rem',color:'var(--text-muted)'}}>{description}</span></span>
+            <input type="checkbox" checked={automations[key]} onChange={event => updateAutomation(key,event.target.checked)} style={{width:20,height:20,accentColor:'var(--accent)',flexShrink:0}} />
+          </label>)}
+          <button type="button" className="btn btn-outline" style={{width:'100%',marginTop:8}} onClick={() => setSettingsOpen(false)}>Done</button>
+        </section>}
       </header>
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem',fontSize:'0.85rem',color:'var(--text-muted)'}}>
