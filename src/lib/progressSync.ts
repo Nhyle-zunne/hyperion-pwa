@@ -727,6 +727,8 @@ async function initializeUser(userId: string): Promise<void> {
   const generation = ++currentGeneration
   if (uploadTimer) { clearTimeout(uploadTimer); uploadTimer = null }
   cloudReady = false
+  cloudUpdatedAt = null
+  cloudVersionLoaded = false
 
   let ownerBeforeLoad: string | null = null
   try { ownerBeforeLoad = localStorage.getItem(OWNER_KEY) } catch { /* storage may be unavailable */ }
