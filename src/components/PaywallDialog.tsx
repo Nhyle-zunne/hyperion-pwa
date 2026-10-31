@@ -1,13 +1,16 @@
 import { useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { paidProductCodeForTrackId } from '../lib/supabase'
 import { useUIStore } from '../stores/uiStore'
 import { useLicenseStore } from '../stores/licenseStore'
 
 export default function PaywallDialog() {
   const { showPaywall, paywallFeature, closePaywall } = useUIStore()
+  const location = useLocation()
   const [params, setParams] = useSearchParams()
-  const trackValue = params.get('purchase_product') || params.get('track') || ''
+  const trackScopedRoutes = ['/track', '/practice', '/practice/competences', '/drill', '/quick-scan', '/quick-scan/view', '/flashcards', '/search']
+  const trackValue = params.get('purchase_product') || params.get('track') ||
+    (trackScopedRoutes.includes(location.pathname) ? 'oic_nw' : '')
   const entitlementsVerified = useLicenseStore(state => state.entitlementsVerified)
   const purchaseCode = entitlementsVerified ? paidProductCodeForTrackId(trackValue) : null
 
