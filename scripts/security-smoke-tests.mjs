@@ -771,9 +771,11 @@ assert.ok(
   trackPurchaseDialog.includes('LICENSE_TERMS') &&
   trackPurchaseDialog.includes('priceForTerm(product, term)') &&
   trackPurchaseDialog.includes("provider: 'google'") &&
-  trackPurchaseDialog.includes("body: { items: [{ productCode: product.code, term }], returnTo }") &&
-  trackPurchaseDialog.includes("verify-checkout"),
-  'Track purchase dialog offers the selected track plans, signs guests in, starts the existing secure checkout, and verifies payment on return'
+  trackPurchaseDialog.includes("set('purchase_product', product.code)") &&
+  trackPurchaseDialog.includes("set('purchase_action', 'checkout')") &&
+  trackPurchaseDialog.includes("hyperion-account-basket-v1") &&
+  trackPurchaseDialog.includes("navigate('/checkout')"),
+  'Track purchase dialog presents track-specific plans, preserves the selected duration through Google sign-in, and opens the internal Checkout basket'
 );
 assert.ok(
   checkout.includes('body.returnTo') &&
@@ -786,6 +788,7 @@ assert.ok(
 assert.ok(
   trackHubScreen.includes('{unlocked && (') &&
   trackHubScreen.includes("'DOWNLOAD FULL BANK FOR OFFLINE'") &&
+  trackHubScreen.includes("gated('Mistakes Notebook'") &&
   !trackHubScreen.includes('ACTIVATE A LICENSE TO DOWNLOAD'),
   'Track hub hides the offline question-bank download control entirely when the selected track is not licensed'
 );

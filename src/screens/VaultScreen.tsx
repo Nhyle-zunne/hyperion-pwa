@@ -10,6 +10,10 @@ const TRACK_LABELS: Record<TrackId, string> = {
   DECK_OIC_NW: 'OIC-NW', GMDSS_GOC: 'GMDSS', ENGINE_OIC_EW: 'OIC-EW',
   DECK_MGT: 'Deck Mgt', ENGINE_MGT: 'Engine Mgt'
 }
+const TRACK_KEYS: Record<TrackId, string> = {
+  DECK_OIC_NW: 'oic_nw', GMDSS_GOC: 'gmdss', ENGINE_OIC_EW: 'engine_ew',
+  DECK_MGT: 'deck_mgt', ENGINE_MGT: 'engine_mgt'
+}
 const sortCompetence = (a: string, b: string) =>
   (Number(a.replace(/^C/i, '')) || Number.MAX_SAFE_INTEGER) - (Number(b.replace(/^C/i, '')) || Number.MAX_SAFE_INTEGER) || a.localeCompare(b)
 
@@ -81,7 +85,9 @@ export default function VaultScreen() {
       <div className="card" style={{textAlign:'center'}}>
         <h2 style={{marginTop:0}}>Mistakes Notebook is locked</h2>
         <p style={{color:'var(--text-muted)'}}>An active license is required. Your notebook shows mistakes only for tracks with an active license.</p>
-        <button className="btn btn-primary" onClick={()=>navigate('/account')}>VIEW LICENSE OPTIONS</button>
+        <button className="btn btn-primary" onClick={()=>requestedTrack && TRACK_KEYS[requestedTrack]
+          ? navigate(`/track?track=${TRACK_KEYS[requestedTrack]}`)
+          : navigate('/account')}>VIEW LICENSE OPTIONS</button>
       </div> :
       scopedItems.length===0 ? <div className="card" style={{textAlign:'center',color:'var(--text-muted)'}}>No saved mistakes for this licensed track yet. Mistakes are recorded automatically after incorrect answers.</div> :
       <>

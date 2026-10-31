@@ -23,6 +23,13 @@ const TRACK_LABELS: Record<TrackId, string> = {
   DECK_MGT: 'Deck Management',
   ENGINE_MGT: 'Engine Management'
 }
+const TRACK_KEYS: Record<TrackId, string> = {
+  DECK_OIC_NW: 'oic_nw',
+  GMDSS_GOC: 'gmdss',
+  ENGINE_OIC_EW: 'engine_ew',
+  DECK_MGT: 'deck_mgt',
+  ENGINE_MGT: 'engine_mgt'
+}
 
 const MODE_LABEL: Record<SessionMode, string> = {
   PRACTICE: 'Practice',
@@ -214,6 +221,7 @@ export default function HistoryScreen() {
     if (!row) return
     const snapshot = await getSessionSnapshot(id)
     if (!await canOpenQuestionReview(row, snapshot)) {
+      navigate(`/track?track=${TRACK_KEYS[row.track]}`)
       openPaywall('Reviewing these saved questions requires a current license, unless the questions belong to the free reviewer sample.')
       return
     }
@@ -240,16 +248,14 @@ export default function HistoryScreen() {
       const allowed = await canOpenQuestionReview(row, snapshot)
       if (cancelled) return
       if (!allowed) {
+        navigate(`/track?track=${TRACK_KEYS[row.track]}`)
         openPaywall('Reviewing these saved questions requires a current license, unless the questions belong to the free reviewer sample.')
-        const nextParams = new URLSearchParams(params)
-        nextParams.delete('review')
-        setParams(nextParams, { replace: true })
         return
       }
       if (!cancelled) setReview({ id, snapshot, index: 0, tab: 'questions', missedOnly: false })
     })()
     return () => { cancelled = true }
-  }, [params, entries, review?.id, refreshCloudEntitlements, openPaywall])
+  }, [params, entries, review?.id, refreshCloudEntitlements, openPaywall, navigate])
 
   useEffect(() => {
     const snapshot = review?.snapshot
@@ -259,13 +265,11 @@ export default function HistoryScreen() {
       const allowed = await authorizeQuestionSet(snapshot.track, snapshot.questions)
       if (cancelled || allowed) return
       setReview(null)
-      const nextParams = new URLSearchParams(params)
-      nextParams.delete('review')
-      setParams(nextParams, { replace: true })
+      navigate(`/track?track=${TRACK_KEYS[review.snapshot.track]}`)
       openPaywall('This saved question review is no longer available without an active track license.')
     })()
     return () => { cancelled = true }
-  }, [review?.id, review?.snapshot, cloudTrackIds, entitlementsVerified, params, setParams, openPaywall])
+  }, [review?.id, review?.snapshot, cloudTrackIds, entitlementsVerified, params, setParams, openPaywall, navigate])
 
   const closeReview = () => {
     setReview(null)

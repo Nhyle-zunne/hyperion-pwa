@@ -12,6 +12,10 @@ const TRACK_LABELS: Record<TrackId, string> = {
   DECK_OIC_NW: 'OIC-NW', GMDSS_GOC: 'GMDSS', ENGINE_OIC_EW: 'OIC-EW',
   DECK_MGT: 'Deck Mgt', ENGINE_MGT: 'Engine Mgt'
 }
+const TRACK_KEYS: Record<TrackId, string> = {
+  DECK_OIC_NW: 'oic_nw', GMDSS_GOC: 'gmdss', ENGINE_OIC_EW: 'engine_ew',
+  DECK_MGT: 'deck_mgt', ENGINE_MGT: 'engine_mgt'
+}
 const sortCompetence = (a: string, b: string) =>
   (Number(a.replace(/^C/i, '')) || Number.MAX_SAFE_INTEGER) - (Number(b.replace(/^C/i, '')) || Number.MAX_SAFE_INTEGER) || a.localeCompare(b)
 
@@ -86,7 +90,10 @@ export default function BookmarksScreen() {
     if (!questions.length) return
     const started = await startCustomSession({ questions, track, competenceId })
     if (started) navigate('/practice/quiz')
-    else openPaywall('These saved questions could not be authorized. Renew access or remove unavailable bookmarks.')
+    else {
+      navigate(`/track?track=${TRACK_KEYS[track]}`)
+      openPaywall('These saved questions could not be authorized. Renew access or remove unavailable bookmarks.')
+    }
   }
   const toggle = (list: string[], setList: (v: string[]) => void, key: string) =>
     setList(list.includes(key) ? list.filter(v => v !== key) : [...list, key])

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { searchQuestions } from '../lib/questionBank'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -12,9 +13,21 @@ const TRACKS: { id: TrackId; label: string }[] = [
   { id: 'DECK_MGT', label: 'Deck Mgt' },
   { id: 'ENGINE_MGT', label: 'Engine Mgt' }
 ]
-
+const TRACK_PARAM_TO_ID: Record<string, TrackId> = {
+  oic_nw: 'DECK_OIC_NW', gmdss: 'GMDSS_GOC', engine_ew: 'ENGINE_OIC_EW',
+  deck_mgt: 'DECK_MGT', engine_mgt: 'ENGINE_MGT'
+}
+const TRACK_ID_TO_PARAM: Record<TrackId, string> = {
+  DECK_OIC_NW: 'oic_nw', GMDSS_GOC: 'gmdss', ENGINE_OIC_EW: 'engine_ew',
+  DECK_MGT: 'deck_mgt', ENGINE_MGT: 'engine_mgt'
+}
 export default function SearchScreen() {
-  const [track, setTrack] = useState<TrackId>('DECK_OIC_NW')
+  const [params, setParams] = useSearchParams()
+  const [track, setTrack] = useState<TrackId>(() => TRACK_PARAM_TO_ID[params.get('track') || ''] || 'DECK_OIC_NW')
+  useEffect(() => {
+    const requested = TRACK_PARAM_TO_ID[params.get('track') || '']
+    if (requested) setTrack(requested)
+  }, [params])
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Question[]>([])
   const [loading, setLoading] = useState(false)
@@ -75,6 +88,7 @@ export default function SearchScreen() {
             }}
             onClick={() => {
               setTrack(t.id)
+              setParams(current => { const next = new URLSearchParams(current); next.set('track', TRACK_ID_TO_PARAM[t.id]); return next }, { replace: true })
               setResults([])
               setSearched(false)
             }}

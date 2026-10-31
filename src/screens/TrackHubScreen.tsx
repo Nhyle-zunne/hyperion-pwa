@@ -294,7 +294,7 @@ export default function TrackHubScreen() {
       badge: !unlocked ? 'LICENSE REQUIRED' : trackMistakes.length ? `${trackMistakes.length} SAVED` : 'EMPTY',
       icon: '✧',
       locked: !unlocked,
-      onClick: () => navigate(`/vault?track=${key}`)
+      onClick: gated('Mistakes Notebook', `/vault?track=${key}`)
     },
     {
       title: 'SESSION LOG',
@@ -521,7 +521,7 @@ export default function TrackHubScreen() {
       </section>
 
       {!unlocked && (
-        <button className="btn btn-primary hub-activate" onClick={() => navigate('/account')}>
+        <button className="btn btn-primary hub-activate" onClick={() => openPaywall(`${info.title} · Track subscription`)}>
           VIEW SUBSCRIPTION OPTIONS
         </button>
       )}

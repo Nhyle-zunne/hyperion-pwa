@@ -1,146 +1,151 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
-import { LICENSE_TERMS, PAID_PRODUCTS, priceForTerm, supabase, supabaseConfigured } from '../lib/supabase'
+import { LICENSE_TERMS, PAID_PRODUCTS, paidProductCodeForTrackId, priceForTerm, supabase, supabaseConfigured } from '../lib/supabase'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 
-const TRACK_TO_PRODUCT: Record<string, PaidTrack> = {
-  oic_nw: 'oic_nw',
-  gmdss: 'gmdss',
-  engine_ew: 'engine_ew',
-  deck_mgt: 'deck_mgt',
-  engine_mgt: 'engine_mgt',
+function isPaidTrack(value: string | null): value is PaidTrack {
+  return Boolean(value && PAID_PRODUCTS.some(item => item.code === value))
 }
 
 function validTerm(value: string | null): LicenseTerm {
   return value === 'week' || value === 'month' || value === 'year' ? value : 'year'
 }
 
-function safeError(error: unknown): string {
-  if (error && typeof error === 'object' && 'context' in error) {
-    const context = (error as { context?: unknown }).context
-    if (context instanceof Response) {
-      // Edge-function errors are intentionally summarized without exposing backend internals.
-      return 'Checkout could not be prepared. Please retry or use the manual payment option.'
-    }
+function productDescription(code: PaidTrack) {
+  switch (code) {
+    case 'oic_nw': return 'Deck officer examination preparation and reviewer access.'
+    case 'gmdss': return 'GMDSS GOC examination preparation and reviewer access.'
+    case 'engine_ew': return 'Engine OIC-EW examination preparation and reviewer access.'
+    case 'deck_mgt': return 'Deck management examination preparation and reviewer access.'
+    case 'engine_mgt': return 'Engine management examination preparation and reviewer access.'
   }
-  return error instanceof Error && error.message && !/supabase|functions|jwt|fetch failed/i.test(error.message)
-    ? error.message
-    : 'The request could not be completed. Please try again.'
+}
+
+function savedBasket(): { code: PaidTrack; term: LicenseTerm }[] {
+  try {
+    const raw = localStorage.getItem('hyperion-account-basket-v1')
+    const saved: unknown = raw ? JSON.parse(raw) : []
+    if (!Array.isArray(saved)) return []
+    return saved.flatMap((entry: unknown) => {
+      if (typeof entry === 'string' && isPaidTrack(entry)) return [{ code: entry, term: 'year' as const }]
+      if (!entry || typeof entry !== 'object') return []
+      const item = entry as { code?: unknown; term?: unknown }
+      if (typeof item.code !== 'string' || !isPaidTrack(item.code)) return []
+      return [{ code: item.code, term: validTerm(typeof item.term === 'string' ? item.term : null) }]
+    })
+  } catch {
+    return []
+  }
 }
 
 export default function TrackPurchaseDialog() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const refreshCloudEntitlements = useLicenseStore(state => state.refreshCloudEntitlements)
   const [session, setSession] = useState<Session | null>(null)
+  const [sessionChecked, setSessionChecked] = useState(false)
   const [term, setTerm] = useState<LicenseTerm>(() => validTerm(params.get('purchase_term')))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-  const [messageIsError, setMessageIsError] = useState(false)
-  const [checkoutEnabled, setCheckoutEnabled] = useState<boolean | null>(null)
-  const [paymentVerified, setPaymentVerified] = useState(false)
-  const handledOrder = useRef<string | null>(null)
+  const autoCheckoutRef = useRef<string | null>(null)
 
-  const productCode = TRACK_TO_PRODUCT[params.get('track') || 'oic_nw']
+  const requestedProduct = params.get('purchase_product')
+  const productCode = isPaidTrack(requestedProduct)
+    ? requestedProduct
+    : paidProductCodeForTrackId(params.get('track') || 'oic_nw')
   const product = useMemo(() => PAID_PRODUCTS.find(item => item.code === productCode), [productCode])
-  const isOpen = location.pathname === '/practice' && params.get('purchase') === '1' && Boolean(product)
-
-  useEffect(() => {
-    if (!supabase) {
-      setSession(null)
-      return
-    }
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
-    return () => data.subscription.unsubscribe()
-  }, [])
+  const isOpen = Boolean(product && params.get('purchase') === '1')
+  const selectedPrice = product ? priceForTerm(product, term) : 0
 
   useEffect(() => {
     setTerm(validTerm(params.get('purchase_term')))
   }, [params])
 
   useEffect(() => {
-    let active = true
-    if (!isOpen || !session?.user.id || !supabase) {
-      setCheckoutEnabled(null)
+    if (!supabase) {
+      setSession(null)
+      setSessionChecked(true)
       return
     }
-    void supabase.functions.invoke('create-checkout', { body: { action: 'status' } }).then(({ data, error }) => {
-      if (!active) return
-      setCheckoutEnabled(!error && data?.action === 'status' && data?.enabled === true)
-    }).catch(() => {
-      if (active) setCheckoutEnabled(false)
-    })
-    return () => { active = false }
-  }, [isOpen, session?.user.id])
-
-  useEffect(() => {
-    const orderId = params.get('order_id')
-    const payment = params.get('payment')
-    if (!isOpen || !session?.user.id || !supabase || !orderId || !payment || handledOrder.current === orderId) return
-    handledOrder.current = orderId
     let active = true
-    setBusy(true)
-    setMessage(payment === 'success' ? 'Verifying your payment securely with PayMongo…' : 'You returned from PayMongo. No payment has been confirmed.')
-    setMessageIsError(false)
-    if (payment === 'cancelled') {
-      setBusy(false)
-      return
-    }
-    void supabase.functions.invoke('verify-checkout', { body: { orderId } }).then(async ({ data, error }) => {
+    void supabase.auth.getSession().then(({ data }) => {
       if (!active) return
-      if (!error && data?.status === 'paid') {
-        await refreshCloudEntitlements()
-        if (!active) return
-        setPaymentVerified(true)
-        setMessage('Payment confirmed. Your track license has been activated.')
-        setMessageIsError(false)
-      } else {
-        setMessage(typeof data?.message === 'string' ? data.message : 'PayMongo has not confirmed this payment yet. Do not pay again; check your Orders & Payment History.')
-        setMessageIsError(Boolean(error))
-      }
+      setSession(data.session)
+      setSessionChecked(true)
     }).catch(() => {
-      if (active) {
-        setMessage('Payment verification is temporarily unavailable. Do not pay again; retry verification from Orders & Payment History.')
-        setMessageIsError(true)
-      }
-    }).finally(() => {
-      if (active) setBusy(false)
+      if (active) setSessionChecked(true)
     })
-    return () => { active = false }
-  }, [isOpen, session?.user.id, params.get('order_id'), params.get('payment')])
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!active) return
+      setSession(nextSession)
+      setSessionChecked(true)
+    })
+    return () => {
+      active = false
+      data.subscription.unsubscribe()
+    }
+  }, [])
 
-  const updateTerm = (nextTerm: LicenseTerm) => {
-    setTerm(nextTerm)
+  const close = useCallback(() => {
     setParams(current => {
       const next = new URLSearchParams(current)
-      next.set('purchase_term', nextTerm)
-      return next
-    }, { replace: true })
-  }
-
-  const close = () => {
-    setParams(current => {
-      const next = new URLSearchParams(current)
-      ;['purchase', 'purchase_term', 'payment', 'order_id', 'product_code'].forEach(key => next.delete(key))
+      ;['purchase', 'purchase_product', 'purchase_term', 'purchase_action'].forEach(key => next.delete(key))
       return next
     }, { replace: true })
     setMessage('')
-    setPaymentVerified(false)
-    handledOrder.current = null
-  }
+    autoCheckoutRef.current = null
+  }, [setParams])
+
+  const proceedToCheckout = useCallback(async () => {
+    if (!product || !session?.user || !supabase) return
+    setBusy(true)
+    setMessage('Checking your track access…')
+    try {
+      await refreshCloudEntitlements()
+      const entitlement = useLicenseStore.getState()
+      const alreadyLicensed = entitlement.entitlementsVerified && (
+        entitlement.isAllAccessUnlocked ||
+        entitlement.cloudTrackIds.includes('ALL') ||
+        entitlement.cloudTrackIds.includes(product.trackLabel)
+      )
+      if (!entitlement.entitlementsVerified) {
+        setMessage('We could not verify your current license. Please reconnect and try again before purchasing.')
+        return
+      }
+      if (alreadyLicensed) {
+        setMessage('Your license for this track is already active. You do not need to purchase it again.')
+        return
+      }
+
+      const nextBasket = [...savedBasket().filter(item => item.code !== product.code), { code: product.code, term }]
+      try {
+        localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(nextBasket))
+      } catch {
+        setMessage('Your purchase could not be saved on this device. Please enable browser storage and try again.')
+        return
+      }
+      close()
+      navigate('/checkout')
+    } catch {
+      setMessage('Checkout could not be opened. Please reconnect and try again.')
+    } finally {
+      setBusy(false)
+    }
+  }, [product, session?.user.id, refreshCloudEntitlements, term, close, navigate])
 
   const signIn = async () => {
-    if (!supabase) {
+    if (!supabase || !supabaseConfigured || !product) {
       setMessage('Sign-in is temporarily unavailable. Please try again later.')
-      setMessageIsError(true)
       return
     }
     const returnParams = new URLSearchParams(params)
     returnParams.set('purchase', '1')
+    returnParams.set('purchase_product', product.code)
     returnParams.set('purchase_term', term)
+    returnParams.set('purchase_action', 'checkout')
     const returnTo = `${location.pathname}?${returnParams.toString()}`
     try {
       localStorage.setItem('hyperion-oauth-return-to', JSON.stringify({
@@ -161,54 +166,27 @@ export default function TrackPurchaseDialog() {
       try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* Ignore storage cleanup errors. */ }
       setBusy(false)
       setMessage('Google sign-in could not be started. Please try again.')
-      setMessageIsError(true)
     }
   }
 
-  const buyNow = async () => {
-    if (!supabase || !session || !product) return
-    setBusy(true)
-    setMessage('Preparing your secure checkout…')
-    setMessageIsError(false)
-    try {
-      const status = await supabase.functions.invoke('create-checkout', { body: { action: 'status' } })
-      if (status.error || status.data?.action !== 'status' || status.data?.enabled !== true) {
-        setCheckoutEnabled(false)
-        throw new Error('PayMongo checkout is currently unavailable. You can use the track-specific manual payment option.')
-      }
-      const returnParams = new URLSearchParams(params)
-      returnParams.set('purchase', '1')
-      returnParams.set('purchase_term', term)
-      returnParams.delete('payment')
-      returnParams.delete('order_id')
-      returnParams.delete('product_code')
-      const returnTo = `${location.pathname}?${returnParams.toString()}`
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { items: [{ productCode: product.code, term }], returnTo },
-      })
-      if (error) throw error
-      if (data?.error) throw new Error(data.error)
-      if (data?.alreadyProcessing === true) {
-        setMessage('A payment for this track is already processing. Please check Orders & Payment History before starting another payment.')
-        return
-      }
-      const url = typeof data?.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
-      if (!url || url.protocol !== 'https:' || url.hostname !== 'checkout.paymongo.com') {
-        throw new Error('PayMongo did not return a valid secure checkout link.')
-      }
-      window.location.assign(url.toString())
-    } catch (error) {
-      setMessage(safeError(error))
-      setMessageIsError(true)
-    } finally {
-      setBusy(false)
-    }
-  }
+  useEffect(() => {
+    if (!isOpen || !product || !session?.user.id || params.get('purchase_action') !== 'checkout') return
+    const key = `${session.user.id}:${product.code}:${term}`
+    if (autoCheckoutRef.current === key) return
+    autoCheckoutRef.current = key
+    void proceedToCheckout()
+  }, [isOpen, product, session?.user.id, params, term, proceedToCheckout])
 
   if (!isOpen || !product) return null
 
-  const selectedPrice = priceForTerm(product, term)
-  const manualPaymentUrl = `/manual-payment?product=${encodeURIComponent(product.code)}&term=${term}`
+  const description = productDescription(product.code)
+  const handleBuyNow = () => {
+    if (!session?.user) {
+      void signIn()
+      return
+    }
+    void proceedToCheckout()
+  }
 
   return (
     <div
@@ -221,67 +199,58 @@ export default function TrackPurchaseDialog() {
         aria-modal="true"
         aria-labelledby="track-purchase-title"
         onClick={event => event.stopPropagation()}
-        style={{ width: 'min(100%, 480px)', maxHeight: 'min(90vh, 760px)', overflowY: 'auto', boxSizing: 'border-box', padding: '1.2rem', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 24px 70px rgba(0,0,0,.45)' }}
+        style={{ width: 'min(100%, 480px)', maxHeight: 'min(90vh, 760px)', overflowY: 'auto', boxSizing: 'border-box', padding: '1rem', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: '0 24px 70px rgba(0,0,0,.45)' }}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '.8rem' }}>
-          <div>
-            <div style={{ color: 'var(--accent)', fontSize: '.7rem', fontWeight: 900, letterSpacing: '.14em' }}>HYPERION BOND STORE</div>
-            <h2 id="track-purchase-title" style={{ margin: '.35rem 0 .2rem', fontSize: '1.25rem' }}>Unlock {product.label}</h2>
-            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '.88rem', lineHeight: 1.5 }}>Choose a license for this track to access all Practice All Questions content and offline downloads.</p>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.6rem', marginBottom: '.65rem' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '.7rem', fontWeight: 900, letterSpacing: '.12em' }}>HYPERION BOND STORE</div>
           <button type="button" aria-label="Close purchase dialog" disabled={busy} onClick={close} style={{ border: 0, background: 'transparent', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1, padding: '.1rem .25rem' }}>×</button>
         </div>
-
-        {paymentVerified ? (
-          <div style={{ marginTop: '1.2rem', padding: '1rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', textAlign: 'center' }}>
-            <div aria-hidden="true" style={{ width: 54, height: 54, margin: '0 auto .7rem', display: 'grid', placeItems: 'center', borderRadius: '50%', background: 'rgba(20,125,67,.14)', color: '#16834a', fontSize: '2rem', fontWeight: 900 }}>✓</div>
-            <h3 style={{ margin: '0 0 .45rem' }}>License activated</h3>
-            <p style={{ margin: '0 0 1rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>Your {product.label} access is ready. Return to Practice All Questions and start your session.</p>
-            <button type="button" className="btn btn-primary" onClick={close} style={{ width: '100%', minHeight: 46 }}>CONTINUE TO PRACTICE</button>
+        <article className="account-product-card" style={{ width: '100%', boxSizing: 'border-box' }}>
+          <div className="product-art">
+            <div aria-hidden="true">{product.code === 'gmdss' ? '📡' : product.code === 'engine_ew' || product.code === 'engine_mgt' ? '⚙️' : '⚓'}</div>
+            <span>HYPERION REVIEWER</span>
           </div>
-        ) : (
-          <>
-            <div style={{ display: 'grid', gap: '.55rem', marginTop: '1.1rem' }}>
-              {LICENSE_TERMS.map(option => {
-                const price = priceForTerm(product, option.code)
-                const selected = term === option.code
-                return (
-                  <button
-                    key={option.code}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => updateTerm(option.code)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.8rem', width: '100%', padding: '.85rem', textAlign: 'left', border: selected ? '2px solid var(--accent)' : '1px solid var(--border)', background: selected ? 'var(--accent-soft)' : 'var(--bg-elevated)', color: 'var(--text)', cursor: 'pointer' }}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '.65rem' }}>
-                      <span aria-hidden="true" style={{ width: 17, height: 17, borderRadius: '50%', border: selected ? '5px solid var(--accent)' : '1px solid var(--text-muted)', boxSizing: 'border-box', flexShrink: 0 }} />
-                      <span><strong style={{ display: 'block' }}>{option.label}</strong><small style={{ color: 'var(--text-muted)' }}>{option.durationLabel} access</small></span>
-                    </span>
-                    <strong style={{ fontSize: '1.05rem' }}>₱{price}</strong>
-                  </button>
-                )
-              })}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.8rem', marginTop: '1rem', paddingTop: '.85rem', borderTop: '1px solid var(--border)' }}>
-              <span style={{ color: 'var(--text-muted)', fontWeight: 750 }}>Total due</span>
-              <strong style={{ fontSize: '1.5rem' }}>₱{selectedPrice}</strong>
-            </div>
-            {message && <div role="status" aria-live="polite" style={{ marginTop: '.8rem', padding: '.7rem', border: '1px solid var(--border)', color: messageIsError ? 'var(--danger, #dc2626)' : 'var(--text)', fontSize: '.85rem', lineHeight: 1.5 }}>{message}</div>}
-            {!session ? (
-              <div style={{ marginTop: '1rem' }}>
-                <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', lineHeight: 1.5 }}>Sign in with Google to attach this purchase to your Hyperion account. You will return to this same purchase popup after signing in.</p>
-                <button type="button" className="btn btn-primary" disabled={!supabaseConfigured || busy} onClick={() => void signIn()} style={{ width: '100%', minHeight: 48 }}>{busy ? 'PLEASE WAIT…' : 'SIGN IN WITH GOOGLE TO BUY'}</button>
-              </div>
-            ) : (
-              <div style={{ marginTop: '1rem' }}>
-                <button type="button" className="btn btn-primary" disabled={busy || checkoutEnabled === false} onClick={() => void buyNow()} style={{ width: '100%', minHeight: 48, background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--btn-primary-text)' }}>{busy ? 'PREPARING CHECKOUT…' : 'BUY NOW · ₱' + selectedPrice}</button>
-                {checkoutEnabled === null && <p style={{ margin: '.55rem 0 0', color: 'var(--text-muted)', fontSize: '.76rem', textAlign: 'center' }}>Checking secure checkout availability…</p>}
-                {checkoutEnabled === false && <p style={{ margin: '.55rem 0 0', color: 'var(--text-muted)', fontSize: '.8rem', lineHeight: 1.45 }}>Online checkout is temporarily unavailable. <a href={manualPaymentUrl} style={{ color: 'var(--accent)', fontWeight: 850 }}>Continue with manual payment for {product.label}</a>.</p>}
-              </div>
-            )}
-          </>
-        )}
-        <p style={{ margin: '1rem 0 0', color: 'var(--text-muted)', fontSize: '.72rem', lineHeight: 1.45, textAlign: 'center' }}>Secure payment is completed on PayMongo. Your license activates only after payment is verified.</p>
+          <div style={{ color: 'var(--text-muted)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>CHOOSE ACCESS DURATION</div>
+          <h2 id="track-purchase-title" style={{ margin: '.35rem 0 0', fontSize: '1.03rem', minHeight: '2.4em', lineHeight: 1.2 }}>{product.label}</h2>
+          <div className="product-price">₱{selectedPrice}<span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 650 }}> / {term}</span></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '.35rem', marginTop: '.6rem' }}>
+            {LICENSE_TERMS.map(option => {
+              const price = priceForTerm(product, option.code)
+              const selected = term === option.code
+              return (
+                <button
+                  key={option.code}
+                  type="button"
+                  aria-pressed={selected}
+                  disabled={busy}
+                  onClick={() => {
+                    setTerm(option.code)
+                    setParams(current => {
+                      const next = new URLSearchParams(current)
+                      next.set('purchase', '1')
+                      next.set('purchase_product', product.code)
+                      next.set('purchase_term', option.code)
+                      return next
+                    }, { replace: true })
+                  }}
+                  style={{ border: '1px solid ' + (selected ? 'var(--accent)' : 'var(--border)'), borderRadius: 7, padding: '.45rem .2rem', background: selected ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)', fontSize: '.72rem', fontWeight: 800, cursor: busy ? 'not-allowed' : 'pointer' }}
+                >
+                  <span style={{ display: 'block' }}>{option.label}</span>
+                  <span style={{ display: 'block', marginTop: '.15rem' }}>₱{price}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="product-meta">{description}</div>
+          <div className="product-card-spacer" />
+          <span className="product-status">AVAILABLE</span>
+          <button type="button" className="btn btn-primary" disabled={!sessionChecked || !supabaseConfigured || busy} onClick={handleBuyNow} style={{ width: '100%', marginTop: '.8rem', minHeight: 46, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff' }}>
+            {!sessionChecked ? 'PLEASE WAIT…' : busy ? 'PLEASE WAIT…' : 'BUY NOW'}
+          </button>
+        </article>
+        {message && <div role="status" aria-live="polite" style={{ marginTop: '.8rem', padding: '.7rem', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.85rem', lineHeight: 1.5 }}>{message}</div>}
+        {!session?.user && <p style={{ margin: '.75rem .15rem 0', color: 'var(--text-muted)', fontSize: '.8rem', lineHeight: 1.5, textAlign: 'center' }}>Sign in with Google when you press BUY NOW. Your selected track and duration will be kept, then you will go directly to Checkout.</p>}
+        <p style={{ margin: '.75rem .15rem 0', color: 'var(--text-muted)', fontSize: '.72rem', lineHeight: 1.45, textAlign: 'center' }}>Secure payment is completed in Hyperion Checkout. Your license activates only after payment is verified.</p>
       </section>
     </div>
   )
