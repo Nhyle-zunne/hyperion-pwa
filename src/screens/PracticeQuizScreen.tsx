@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
 import type { TrackId } from '../types/question'
@@ -40,6 +40,7 @@ export default function PracticeQuizScreen() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [jumpNumber, setJumpNumber] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const autoAdvancePendingRef = useRef<string | null>(null)
   const [automations, setAutomations] = useState(() => { try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as {directAnswer:boolean;autoNextCorrect:boolean;autoNextWrong:boolean} } catch { return {directAnswer:false,autoNextCorrect:false,autoNextWrong:false} } })
   useEffect(() => { const settings = (e: Event) => setAutomations((e as CustomEvent).detail); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
   // Match Android practice automation: evaluate first, then advance only for the enabled outcome.
@@ -50,6 +51,8 @@ export default function PracticeQuizScreen() {
     if (!question) return
     const answer = answers[question.id]
     if (answer?.selectedIndex == null) return
+    const attemptKey = `${question.id}:${currentIndex}:${answer.selectedIndex}`
+    if (autoAdvancePendingRef.current !== attemptKey) return
     const shouldAdvance = answer.isCorrect ? automations.autoNextCorrect : automations.autoNextWrong
     if (!shouldAdvance) return
 
@@ -67,10 +70,14 @@ export default function PracticeQuizScreen() {
         latestAnswer.isCorrect === answer.isCorrect &&
         !latest.finished
       ) {
+        autoAdvancePendingRef.current = null
         next()
       }
     }, delay)
-    return () => window.clearTimeout(timer)
+    return () => {
+      window.clearTimeout(timer)
+      if (autoAdvancePendingRef.current === attemptKey) autoAdvancePendingRef.current = null
+    }
   }, [answers, automations.autoNextCorrect, automations.autoNextWrong, currentIndex, mode, next, questions])
 
   const updateAutomation = (key: 'directAnswer' | 'autoNextCorrect' | 'autoNextWrong', value: boolean) => {
@@ -194,7 +201,7 @@ export default function PracticeQuizScreen() {
   const q = questions[currentIndex]
   const answer = answers[q.id]
   const hasAnswered = answer?.selectedIndex != null
-  const confirmAnswer = () => { if (pendingAnswer != null) { selectAnswer(pendingAnswer); setPendingAnswer(null) } }
+  const confirmAnswer = () => { if (pendingAnswer != null) { autoAdvancePendingRef.current = `${q.id}:${currentIndex}:${pendingAnswer}`; selectAnswer(pendingAnswer); setPendingAnswer(null) } }
   const showFeedback = mode !== 'MOCK' && hasAnswered
   const jumpTo = (index: number) => { if (index >= 0 && index < questions.length) { const delta = index - currentIndex; if (delta > 0) for (let i = 0; i < delta; i++) next(); else for (let i = 0; i > delta; i--) prev(); setPendingAnswer(null); setPaletteOpen(false) } }
 
@@ -276,7 +283,7 @@ export default function PracticeQuizScreen() {
           } else if ((hasAnswered && idx === answer!.selectedIndex) || (!hasAnswered && pendingAnswer === idx)) {
             border = 'var(--accent)'; bg = 'var(--quiz-selection-bg)'
           }
-          return <button key={idx} onClick={() => { if (mode === 'MOCK') selectAnswer(idx); else if (!hasAnswered) { if (automations.directAnswer) selectAnswer(idx); else setPendingAnswer(idx) } }} disabled={mode !== 'MOCK' && hasAnswered} style={{textAlign:'left',padding:'0.9rem 1rem',borderRadius:10,border:`1px solid ${border}`,background:bg,color:'var(--text)',fontSize:'calc(0.95rem * var(--quiz-text-scale))',cursor:mode !== 'MOCK' && hasAnswered ? 'default' : 'pointer'}}>
+          return <button key={idx} onClick={() => { if (mode === 'MOCK') selectAnswer(idx); else if (!hasAnswered) { if (automations.directAnswer) { autoAdvancePendingRef.current = `${q.id}:${currentIndex}:${idx}`; selectAnswer(idx) } else setPendingAnswer(idx) } }} disabled={mode !== 'MOCK' && hasAnswered} style={{textAlign:'left',padding:'0.9rem 1rem',borderRadius:10,border:`1px solid ${border}`,background:bg,color:'var(--text)',fontSize:'calc(0.95rem * var(--quiz-text-scale))',cursor:mode !== 'MOCK' && hasAnswered ? 'default' : 'pointer'}}>
             <span style={{ fontWeight: 600, marginRight: 8 }}>{String.fromCharCode(65 + idx)}.</span>{opt}
           </button>
         })}
