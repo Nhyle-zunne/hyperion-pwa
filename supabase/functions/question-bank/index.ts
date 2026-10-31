@@ -787,6 +787,100 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  if (body.action === "authorize-progress-snapshot") {
+    const normalizeCollection = (value: unknown): { index: number; track: string; id: string; fingerprint: string }[] | null => {
+      if (!Array.isArray(value) || value.length > 1000) return null;
+      const seenIndexes = new Set<number>();
+      const items: { index: number; track: string; id: string; fingerprint: string }[] = [];
+      for (const item of value) {
+        if (!item || !Number.isInteger(item.index) || item.index < 0 ||
+            typeof item.track !== "string" || !OFFLINE_TRACK_IDS.includes(item.track) ||
+            typeof item.id !== "string" || item.id.length < 1 || item.id.length > 120 ||
+            typeof item.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(item.fingerprint) ||
+            seenIndexes.has(item.index)) return null;
+        seenIndexes.add(item.index);
+        items.push({ index: item.index, track: item.track, id: item.id, fingerprint: item.fingerprint });
+      }
+      return items;
+    };
+    const bookmarkItems = normalizeCollection((body as any).bookmarkItems);
+    const vaultItems = normalizeCollection((body as any).vaultItems);
+    const normalizeSession = (value: any): { track: string; questions: { id: string; fingerprint: string }[] } | null | false => {
+      if (value == null) return null;
+      if (!value || typeof value.track !== "string" || !OFFLINE_TRACK_IDS.includes(value.track) ||
+          !Array.isArray(value.questions) || value.questions.length < 1 || value.questions.length > 3000 ||
+          value.questions.some((q: any) => !q || typeof q.id !== "string" || q.id.length < 1 || q.id.length > 120 ||
+            typeof q.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(q.fingerprint))) return false;
+      return { track: value.track, questions: value.questions.map((q: any) => ({ id: q.id, fingerprint: q.fingerprint })) };
+    };
+    const legacySavedPractice = normalizeSession((body as any).legacySavedPractice);
+    const activeSession = normalizeSession((body as any).activeSession);
+    if (!bookmarkItems || !vaultItems || legacySavedPractice === false || activeSession === false) {
+      return json(req, { error: "Invalid progress authorization request." }, 400);
+    }
+
+    const fingerprintSets = new Map<string, Promise<Set<string>>>();
+    const fingerprintsFor = (track: string, full: boolean) => {
+      const key = track + (full ? ":full" : ":free");
+      let pending = fingerprintSets.get(key);
+      if (!pending) {
+        pending = full ? fullQuestionFingerprints(admin, track) : freeQuestionFingerprints(admin, track);
+        fingerprintSets.set(key, pending);
+      }
+      return pending;
+    };
+    const accessByTrack = new Map<string, Promise<boolean>>();
+    const trackIsLicensed = (track: string) => {
+      let pending = accessByTrack.get(track);
+      if (!pending) {
+        pending = authorizeTrack(admin, user, isAdmin, track);
+        accessByTrack.set(track, pending);
+      }
+      return pending;
+    };
+    const itemAllowed = async (item: { track: string; id: string; fingerprint: string }) => {
+      if (await trackIsLicensed(item.track)) {
+        if (questionIdBelongsToTrack(item.id, item.track)) return true;
+        return (await fingerprintsFor(item.track, true)).has(item.fingerprint);
+      }
+      return (await fingerprintsFor(item.track, false)).has(item.fingerprint);
+    };
+    const authorizeCollection = async (items: { index: number; track: string; id: string; fingerprint: string }[]) => {
+      const allowed: number[] = [];
+      for (const item of items) {
+        if (await itemAllowed(item)) allowed.push(item.index);
+      }
+      return allowed;
+    };
+    const authorizeSession = async (session: { track: string; questions: { id: string; fingerprint: string }[] } | null) => {
+      if (!session) return true;
+      if (await trackIsLicensed(session.track)) {
+        if (session.questions.every(q => questionIdBelongsToTrack(q.id, session.track))) return true;
+        const fingerprints = await fingerprintsFor(session.track, true);
+        return session.questions.every(q => fingerprints.has(q.fingerprint));
+      }
+      const fingerprints = await fingerprintsFor(session.track, false);
+      return session.questions.every(q => fingerprints.has(q.fingerprint));
+    };
+
+    try {
+      const [allowedBookmarks, allowedVault, legacyAllowed, activeAllowed] = await Promise.all([
+        authorizeCollection(bookmarkItems),
+        authorizeCollection(vaultItems),
+        authorizeSession(legacySavedPractice),
+        authorizeSession(activeSession)
+      ]);
+      return json(req, {
+        bookmarkAllowedIndexes: allowedBookmarks,
+        vaultAllowedIndexes: allowedVault,
+        legacySavedPracticeAllowed: legacyAllowed,
+        activeSessionAllowed: activeAllowed
+      });
+    } catch {
+      return json(req, { error: "Could not verify saved question access." }, 503);
+    }
+  }
+
   if (body.action === "authorize-saved-questions") {
     const track = body.track || "";
     const items = body.items;
