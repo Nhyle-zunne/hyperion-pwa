@@ -54,15 +54,6 @@ export default function TrackPurchaseDialog() {
   const [basketItems, setBasketItems] = useState(() => savedBasket())
   const autoCheckoutRef = useRef<string | null>(null)
 
-  useEffect(() => {
-    const syncBasket = () => setBasketItems(savedBasket())
-    window.addEventListener('storage', syncBasket)
-    window.addEventListener('focus', syncBasket)
-    return () => {
-      window.removeEventListener('storage', syncBasket)
-      window.removeEventListener('focus', syncBasket)
-    }
-  }, [])
 
   const requestedProduct = params.get('purchase_product')
   const productCode = isPaidTrack(requestedProduct)
@@ -149,7 +140,6 @@ export default function TrackPurchaseDialog() {
       const nextBasket = [...savedBasket().filter(item => item.code !== product.code), { code: product.code, term }]
       try {
         localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(nextBasket))
-        setBasketItems(nextBasket)
         setBasketItems(nextBasket)
       } catch {
         setMessage('Your purchase could not be saved on this device. Please enable browser storage and try again.')
