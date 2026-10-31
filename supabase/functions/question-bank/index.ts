@@ -1134,6 +1134,31 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  if (body.action === "free-track-files") {
+    const track = typeof body.track === "string" ? body.track : "";
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) {
+      return json(req, { error: "Choose a valid track." }, 400);
+    }
+
+    // This route exposes only the existing official free sample. One compressed
+    // response replaces one Edge Function invocation per source CSV file.
+    const paths = SOURCE_ASSETS.filter(path => trackForPath(path) === track);
+    const files: { path: string; text: string }[] = [];
+    try {
+      for (let offset = 0; offset < paths.length; offset += 4) {
+        const group = paths.slice(offset, offset + 4);
+        const batch = await Promise.all(group.map(async path => ({
+          path,
+          text: sampleFreeCsv(path, await privateText(admin, path))
+        })));
+        files.push(...batch);
+      }
+      return json(req, { track, access: "free-sample", files });
+    } catch {
+      return json(req, { error: "Could not load the official free question sample for this track." }, 503);
+    }
+  }
+
   if (body.action === "questions") {
     const track = body.track || "";
     const competenceId = body.competenceId || "";
