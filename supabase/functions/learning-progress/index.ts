@@ -21,18 +21,18 @@ function headers(req: Request) {
 
 function json(req: Request, body: unknown, status = 200) {
   const serialized = JSON.stringify(body)
-  const responseHeaders = {
+  const responseHeaders = new Headers({
     ...headers(req),
     'Content-Type': 'application/json',
     'Cache-Control': 'no-store'
-  }
+  })
   const acceptsGzip = /(?:^|,)\\s*gzip\\s*(?:,|$)/i.test(req.headers.get('accept-encoding') || '')
   if (acceptsGzip && new TextEncoder().encode(serialized).byteLength >= 4096) {
     // Progress snapshots contain repeated JSON keys and question text. Gzip
     // reduces response egress substantially without changing the JSON contract;
     // fetch/HttpURLConnection clients transparently decode Content-Encoding.
-    responseHeaders['Content-Encoding'] = 'gzip'
-    responseHeaders['Vary'] = 'Origin, Accept-Encoding'
+    responseHeaders.set('Content-Encoding', 'gzip')
+    responseHeaders.set('Vary', 'Origin, Accept-Encoding')
     const compressed = new Blob([serialized]).stream().pipeThrough(new CompressionStream('gzip'))
     return new Response(compressed, { status, headers: responseHeaders })
   }
