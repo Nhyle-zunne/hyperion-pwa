@@ -30,7 +30,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Type-check protected question-bank and Google Play subscription functions
-        run: deno check --no-lock --node-modules-dir=auto supabase/functions/question-bank/index.ts supabase/functions/link-google-play-subscription/index.ts supabase/functions/google-play-rtdn/index.ts supabase/functions/create-checkout/index.ts supabase/functions/submit-manual-payment/index.ts supabase/functions/admin-license-management/index.ts supabase/functions/expire-inactive-accounts/index.ts supabase/functions/reconcile-google-play-subscriptions/index.ts
+        run: deno check --no-lock --node-modules-dir=auto supabase/functions/question-bank/index.ts supabase/functions/learning-progress/index.ts supabase/functions/admin-payment-review/index.ts supabase/functions/link-google-play-subscription/index.ts supabase/functions/google-play-rtdn/index.ts supabase/functions/create-checkout/index.ts supabase/functions/submit-manual-payment/index.ts supabase/functions/admin-license-management/index.ts supabase/functions/expire-inactive-accounts/index.ts supabase/functions/reconcile-google-play-subscriptions/index.ts
       - name: Test Google Play account-binding safeguards
         run: deno test --no-lock --node-modules-dir=auto supabase/tests/google_play_account_binding_test.ts
       - name: Install locked dependencies
