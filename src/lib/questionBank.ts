@@ -1291,6 +1291,8 @@ async function downloadOfflinePackInternal(
   freeOnly: boolean,
   onProgress?: (downloaded: number, total: number) => void
 ): Promise<{ questionCount: number; groupCount: number }> {
+  // Offline downloads are a licensed feature. Free users study the free sample online only.
+  if (freeOnly) throw new Error('Offline downloads require an active license for this track.')
   if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect to the internet before downloading an offline pack.')
   if (!supabase) throw new Error('Protected question service is not configured.')
   await requestPersistentStorageIfSupported()

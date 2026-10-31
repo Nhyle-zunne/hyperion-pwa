@@ -145,7 +145,7 @@ export default function TrackHubScreen() {
         if (!unlocked && !online) await ensureOfflineFreeSamplePack(info.trackId)
         const status = await getOfflinePackStatus(info.trackId, !unlocked)
         if (active) setOfflineStatus(status?.complete ? status : null)
-        if (status?.complete) {
+        if (status?.complete && unlocked) {
           if (active) setCheckingOfflineVersion(true)
           const updateCheck = await checkOfflineQuestionPackUpdates(info.trackId, !unlocked)
           if (active) setOfflineUpdateCheck(updateCheck)
@@ -189,6 +189,10 @@ export default function TrackHubScreen() {
   }, [info.trackId, unlocked, online, offlineRefreshKey])
 
   const startOfflineDownload = async () => {
+    if (!unlocked) {
+      openPaywall(`${info.title} · Offline Access`)
+      return
+    }
     setOfflineDownloading(true)
     setOfflineError('')
     setOfflineProgress({ downloaded: 0, total: 0 })
@@ -213,7 +217,7 @@ export default function TrackHubScreen() {
   }
 
   const refreshOfflineVersionCheck = async () => {
-    if (!online || checkingOfflineVersion) return
+    if (!unlocked || !online || checkingOfflineVersion) return
     setCheckingOfflineVersion(true)
     try {
       const result = await checkOfflineQuestionPackUpdates(info.trackId, !unlocked, true)
@@ -381,7 +385,7 @@ export default function TrackHubScreen() {
               : `${offlineStatus.questionCount.toLocaleString()} free reviewer questions are saved on this device.`
             : unlocked
               ? 'Download the full question bank for this track to practice without internet.'
-              : 'Download the free reviewer questions for use without internet.'}
+              : 'Offline downloads require an active license. Activate a key to practice without internet.'}
         </p>
         {offlineStatus && unlocked && <p role="status" style={{ margin: '0 0 .8rem', padding: '.65rem .75rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: offlineLicenseExpiry && offlineLicenseExpiry > Date.now() ? 'var(--success, #16803d)' : 'var(--warning, #c2410c)', fontSize: '.84rem', lineHeight: 1.5 }}>
           {!offlineLicenseChecked
@@ -422,17 +426,18 @@ export default function TrackHubScreen() {
           type="button"
           className={offlineStatus && (offlineUpdateCheck.status === 'current' || (!online && offlineUpdateCheck.lastKnownState === 'current')) ? 'btn btn-outline' : 'btn btn-primary'}
           onClick={() => {
-            if (!offlineStatus) void startOfflineDownload()
+            if (!unlocked) openPaywall(`${info.title} · Offline Access`)
+            else if (!offlineStatus) void startOfflineDownload()
             else if (offlineUpdateCheck.status === 'available') void startOfflineDownload()
             else void refreshOfflineVersionCheck()
           }}
           disabled={
-            !online ||
+            (unlocked && !online) ||
             offlineDownloading ||
             checkingOfflineVersion ||
             Boolean(offlineStatus && offlineUpdateCheck.status === 'current')
           }
-          aria-disabled={!online || offlineDownloading || checkingOfflineVersion || Boolean(offlineStatus && offlineUpdateCheck.status === 'current')}
+          aria-disabled={(unlocked && !online) || offlineDownloading || checkingOfflineVersion || Boolean(offlineStatus && offlineUpdateCheck.status === 'current')}
           style={{
             width: '100%',
             minHeight: 44,
@@ -441,7 +446,9 @@ export default function TrackHubScreen() {
               : {})
           }}
         >
-          {offlineDownloading
+          {!unlocked
+            ? 'ACTIVATE A LICENSE TO DOWNLOAD'
+            : offlineDownloading
             ? 'DOWNLOADING…'
             : checkingOfflineVersion
               ? 'CHECKING FOR UPDATES…'
