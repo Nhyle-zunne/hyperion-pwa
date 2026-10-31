@@ -101,6 +101,7 @@ const adminPaymentReviewFunction = await read('../supabase/functions/admin-payme
 const deleteAccount = await read('../supabase/functions/delete-account/index.ts');
 const learningProgressFunction = await read('../supabase/functions/learning-progress/index.ts');
 const progressPrivilegeMigration = await read('../supabase/migrations/20261029032520_revoke_client_access_to_learning_progress.sql');
+const progressSnapshotComparisonMigration = await read('../supabase/migrations/20261031100000_add_low_egress_progress_snapshot_comparison.sql');
 const cancelCheckout = await read('../supabase/functions/cancel-checkout/index.ts');
 const offlineEntitlementCrypto = await read('../src/lib/offlineEntitlementCrypto.mjs');
 const sessionArchive = await read('../src/lib/sessionArchive.ts');
@@ -667,6 +668,14 @@ assert.ok(functionConfig.includes('[functions.learning-progress]') && functionCo
 
 
 assert.ok(progressPrivilegeMigration.includes('revoke all privileges on table public.user_learning_progress from PUBLIC, anon, authenticated') && progressPrivilegeMigration.includes('grant all privileges on table public.user_learning_progress to service_role'), 'Direct browser privileges are revoked while service-role access is retained');
+assert.ok(
+  progressSnapshotComparisonMigration.includes('SECURITY DEFINER') &&
+  progressSnapshotComparisonMigration.includes('REVOKE ALL ON FUNCTION public.compare_user_learning_progress') &&
+  progressSnapshotComparisonMigration.includes('TO service_role') &&
+  learningProgressFunction.includes("'compare_user_learning_progress'"),
+  'No-op progress comparison stays inside Postgres and the RPC is restricted to service_role'
+);
+
 assert.ok(progressPrivilegeMigration.includes('alter table public.user_learning_progress enable row level security') && progressPrivilegeMigration.includes('drop policy if exists "Users can read their own learning progress"'), 'Learning progress remains RLS-enabled without direct per-user JSON read policies');
 
 
