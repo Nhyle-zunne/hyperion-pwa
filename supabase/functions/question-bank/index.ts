@@ -725,8 +725,70 @@ Deno.serve(async (req: Request) => {
     }
 
     try {
-      // Only hashes and public metadata leave this endpoint. Question text and
-      // answer data continue to come exclusively from the protected question routes.
+      const canReadFullBank = await authorizeTrack(admin, user, isAdmin, track);
+      const sources = SOURCE_ASSETS
+        .filter(path => trackForPath(path) === track)
+        .map(path => ({ path, info: sourceInfo(path) }))
+        .filter(item => item.info !== null)
+        .sort((left, right) =>
+          left.info!.competenceId.localeCompare(right.info!.competenceId, undefined, { numeric: true }) ||
+          ((left.info!.part ?? 0) - (right.info!.part ?? 0))
+        );
+
+      // A question-bank update changes the Storage object's ETag/updated_at.
+      // Use that metadata as a stable version marker instead of downloading and
+      // hashing every encrypted file on every client's periodic update check.
+      const { data: objects, error: objectError } = await admin.schema("storage")
+        .from("objects")
+        .select("name,updated_at,metadata")
+        .eq("bucket_id", "question-banks")
+        .in("name", sources.map(source => source.path));
+      if (objectError || !Array.isArray(objects)) throw new Error("Question-bank object metadata is unavailable.");
+
+      const byName = new Map<string, any>(objects.map((item: any) => [String(item.name), item]));
+      const versions = [];
+      for (const source of sources) {
+        const object = byName.get(source.path);
+        const metadata = object?.metadata && typeof object.metadata === "object" ? object.metadata : {};
+        const etag = typeof metadata.eTag === "string" ? metadata.eTag : "";
+        const updatedAt = typeof object?.updated_at === "string" ? object.updated_at : "";
+        const size = Number(metadata.size);
+        if (!etag || !updatedAt || !Number.isFinite(size) || size <= 0) {
+          throw new Error("A question-bank source is missing version metadata.");
+        }
+        const versionBytes = new TextEncoder().encode(JSON.stringify([source.path, updatedAt, etag, size]));
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", versionBytes));
+        const sourceVersion = Array.from(digest, value => value.toString(16).padStart(2, "0")).join("");
+        versions.push({
+          path: source.path,
+          competenceId: source.info!.competenceId,
+          part: source.info!.part,
+          freeHash: sourceVersion,
+          ...(canReadFullBank ? { fullHash: sourceVersion } : {})
+        });
+      }
+      if (versions.length !== sources.length) throw new Error("One or more question-bank version records are missing.");
+      return json(req, {
+        track,
+        versions,
+        versionFormat: "storage-metadata-v1",
+        checkedAt: Date.now(),
+        fullBankIncluded: canReadFullBank
+      });
+    } catch {
+      return json(req, { error: "Could not verify the latest question-bank version. Please try again while connected." }, 503);
+    }
+  }
+
+  // Used only once to migrate older offline manifests from content hashes to
+  // Storage metadata versions. Normal update checks never download whole files.
+  if (body.action === "content-versions-legacy") {
+    const track = typeof body.track === "string" ? body.track : "";
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) {
+      return json(req, { error: "Choose a valid track." }, 400);
+    }
+
+    try {
       const canReadFullBank = await authorizeTrack(admin, user, isAdmin, track);
       const sources = SOURCE_ASSETS
         .filter(path => trackForPath(path) === track)
@@ -755,9 +817,9 @@ Deno.serve(async (req: Request) => {
         }
         versions.push(version);
       }
-      return json(req, { track, versions, checkedAt: Date.now(), fullBankIncluded: canReadFullBank });
+      return json(req, { track, versions, versionFormat: "content-sha256-v1", checkedAt: Date.now(), fullBankIncluded: canReadFullBank });
     } catch {
-      return json(req, { error: "Could not verify the latest question-bank version. Please try again while connected." }, 503);
+      return json(req, { error: "Could not verify legacy question-bank versions. Please try again while connected." }, 503);
     }
   }
 
