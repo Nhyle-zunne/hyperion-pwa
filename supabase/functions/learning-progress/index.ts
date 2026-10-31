@@ -9,6 +9,7 @@ const MAX_REQUEST_BYTES = 8 * 1024 * 1024
 const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
   'Vary': 'Origin'
 }
 
