@@ -197,6 +197,46 @@ jobs:
           $checks$;
           SQL
 
+      - name: Verify low-egress progress snapshot comparison is private and version-safe
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $checks$
+          DECLARE
+            v_missing text;
+            v_conflict text;
+          BEGIN
+            v_missing := public.compare_user_learning_progress(
+              pg_catalog.gen_random_uuid(), NULL, '{}'::jsonb
+            );
+            v_conflict := public.compare_user_learning_progress(
+              pg_catalog.gen_random_uuid(), pg_catalog.now(), '{}'::jsonb
+            );
+            IF v_missing <> 'missing' OR v_conflict <> 'conflict' THEN
+              RAISE EXCEPTION 'Progress compare RPC did not preserve insert/conflict states';
+            END IF;
+            IF pg_catalog.has_function_privilege(
+                 'anon',
+                 'public.compare_user_learning_progress(uuid,timestamptz,jsonb)',
+                 'EXECUTE'
+               )
+               OR pg_catalog.has_function_privilege(
+                 'authenticated',
+                 'public.compare_user_learning_progress(uuid,timestamptz,jsonb)',
+                 'EXECUTE'
+               )
+               OR NOT pg_catalog.has_function_privilege(
+                 'service_role',
+                 'public.compare_user_learning_progress(uuid,timestamptz,jsonb)',
+                 'EXECUTE'
+               ) THEN
+              RAISE EXCEPTION 'Progress compare RPC must remain service-role-only';
+            END IF;
+          END;
+          $checks$;
+          SQL
+
       - name: Lint the migrated local database
         run: supabase db lint --local --fail-on error
 
