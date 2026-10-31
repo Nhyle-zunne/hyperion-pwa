@@ -65,6 +65,7 @@ let activeUserId: string | null = null
 let cloudReady = false
 let uploadTimer: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let currentGeneration = 0
 let cloudUpdatedAt: string | null = null
 let cloudVersionLoaded = false
@@ -869,8 +870,12 @@ function observeStoreChanges(): void {
     })
   ]
 
-  // Active-session state is synced when answers, position, or session metadata
-  // actually changes. Do not upload a full snapshot on a timer-only heartbeat.
+  // Keep cross-device resume timers reasonably fresh without the old 10-second
+  // full-snapshot upload loop. Meaningful answer/position changes still sync sooner.
+  heartbeatTimer = setInterval(() => {
+    const state = usePracticeStore.getState()
+    if (state.questions.length && !state.finished) noteLocalChange('practice')
+  }, 60_000)
 }
 
 export function startLearningProgressSync(): () => void {
@@ -924,6 +929,7 @@ export function startLearningProgressSync(): () => void {
     cloudReady = false
     if (uploadTimer) clearTimeout(uploadTimer)
     if (retryTimer) clearTimeout(retryTimer)
+    if (heartbeatTimer) clearInterval(heartbeatTimer)
     cloudUpdatedAt = null
     cloudVersionLoaded = false
     lastUploadAt = 0
