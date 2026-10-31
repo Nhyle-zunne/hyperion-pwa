@@ -173,6 +173,71 @@ function progressSignature(snapshot: LearningProgressSnapshot): string {
 let lastUploadedUserId: string | null = null
 let lastUploadedSignature: string | null = null
 
+const persistedSignatureKey = (userId: string) => `hyperion:progress-upload-signature:${userId}`
+const crossTabLockKey = (userId: string) => `hyperion:progress-sync-lock:${userId}`
+const syncInstanceId = (() => {
+  try { return crypto.randomUUID() } catch { return `tab-${Date.now()}-${Math.random().toString(36).slice(2)}` }
+})()
+
+async function hashProgressSignature(signature: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(signature))
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+type ProgressSyncLock = { release: () => void }
+
+async function acquireProgressSyncLock(userId: string): Promise<ProgressSyncLock | null> {
+  // Web Locks provide an atomic same-origin lock across tabs and installed PWA
+  // windows. The localStorage lease is a best-effort fallback for older browsers.
+  if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+    let releaseHold: (() => void) | null = null
+    const hold = new Promise<void>(resolve => { releaseHold = resolve })
+    const entered = new Promise<ProgressSyncLock | null>(resolve => {
+      void navigator.locks.request(
+        `hyperion-learning-progress:${userId}`,
+        { mode: 'exclusive', ifAvailable: true },
+        async lock => {
+          if (!lock) {
+            resolve(null)
+            return
+          }
+          let released = false
+          resolve({
+            release: () => {
+              if (released) return
+              released = true
+              releaseHold?.()
+            }
+          })
+          await hold
+        }
+      ).catch(() => resolve(null))
+    })
+    return entered
+  }
+
+  const key = crossTabLockKey(userId)
+  try {
+    const now = Date.now()
+    const current = parseJson<{ owner?: string; expiresAt?: number }>(localStorage.getItem(key))
+    if (current?.expiresAt && current.expiresAt > now && current.owner !== syncInstanceId) return null
+    localStorage.setItem(key, JSON.stringify({ owner: syncInstanceId, expiresAt: now + 45_000 }))
+    // Let racing tabs write their claim before checking which one won.
+    await new Promise(resolve => window.setTimeout(resolve, 35 + Math.floor(Math.random() * 35)))
+    const confirmed = parseJson<{ owner?: string }>(localStorage.getItem(key))
+    if (confirmed?.owner !== syncInstanceId) return null
+    return {
+      release: () => {
+        const latest = parseJson<{ owner?: string }>(localStorage.getItem(key))
+        if (latest?.owner === syncInstanceId) localStorage.removeItem(key)
+      }
+    }
+  } catch {
+    // When browser storage is disabled, do not block otherwise-valid cloud sync.
+    return { release: () => undefined }
+  }
+}
+
 
 function parseJson<T>(raw: string | null): T | null {
   if (!raw) return null
