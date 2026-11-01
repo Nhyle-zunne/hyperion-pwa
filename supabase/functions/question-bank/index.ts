@@ -125,7 +125,7 @@ function validStandardRows(rows: string[][], path: string): string[][] {
   const deckManagementLimits: Record<string, number> = {
     "10": 610, "11": 421, "12": 351, "13": 888, "17": 628
   };
-  const deckMatch = path.match(/^deck\\/oic_nw_c(10|11|12|13|17)\\.csv\\.enc$/);
+  const deckMatch = path.match(/^deck\/oic_nw_c(10|11|12|13|17)\.csv\.enc$/);
   const deckLimit = deckMatch ? deckManagementLimits[deckMatch[1]] : undefined;
   for (const row of rows.slice(header + 1)) {
     if (!validStandard(row, path)) continue;
