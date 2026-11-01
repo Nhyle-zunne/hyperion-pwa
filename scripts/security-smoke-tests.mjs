@@ -402,6 +402,13 @@ assert.equal(originalQuestionFingerprint, shuffledQuestionFingerprint, 'Shufflin
 assert.notEqual(originalQuestionFingerprint, changedAnswerFingerprint, 'Changing the correct answer does not preserve question identity');
 assert.ok(questionBank.includes('const authHeader = req.headers.get("Authorization")') && questionBank.includes('.auth.getUser()'), 'Question-bank identity comes from a validated Supabase user token, not client metadata');
 assert.ok(licenseStore.includes('Never erase a paid offline grant before a replacement is verified'), 'Transient online refresh failures do not erase a valid offline entitlement');
+assert.ok(
+  questionBank.includes('admin: isAdmin === true') &&
+    !questionBank.includes('offlineAdminExpiry') &&
+    licenseStore.includes('snapshot.isAdmin ? [...TRACK_IDS]'),
+  'Signed administrator offline access is all-track and has no artificial seven-day expiry'
+);
+
 const offlineEntitlementLookupStart = questionBankClient.indexOf('async function offlineEntitlementExpiry');
 const offlineEntitlementLookupEnd = questionBankClient.indexOf('\n}', offlineEntitlementLookupStart);
 const offlineEntitlementLookup = questionBankClient.slice(offlineEntitlementLookupStart, offlineEntitlementLookupEnd);
@@ -488,6 +495,33 @@ const validOfflineClaims = await verifyOfflineEntitlementToken(
   ephemeralPublicJwk
 );
 assert.equal(validOfflineClaims?.tracks?.DECK_OIC_NW, sampleClaims.tracks.DECK_OIC_NW, 'A valid ECDSA-signed offline lease is accepted');
+assert.equal(validOfflineClaims?.admin, false, 'Ordinary signed offline leases do not gain administrator privileges');
+const adminOfflineClaims = {
+  v: 1,
+  userId: 'offline-admin-test-user',
+  issuedAt: cryptoTestNow,
+  admin: true,
+  tracks: {}
+};
+const validAdminOfflineToken = await signOfflineClaims(adminOfflineClaims);
+const verifiedAdminOfflineClaims = await verifyOfflineEntitlementToken(
+  validAdminOfflineToken,
+  adminOfflineClaims.userId,
+  cryptoTestNow,
+  ephemeralPublicJwk
+);
+assert.equal(verifiedAdminOfflineClaims?.admin, true, 'A server-signed administrator claim is recognized without inventing a track expiry');
+assert.equal(
+  await verifyOfflineEntitlementToken(
+    await signOfflineClaims({ ...adminOfflineClaims, tracks: { DECK_OIC_NW: cryptoTestNow + 7 * 24 * 60 * 60 * 1000 } }),
+    adminOfflineClaims.userId,
+    cryptoTestNow,
+    ephemeralPublicJwk
+  ),
+  null,
+  'Administrator leases cannot smuggle a synthetic per-track subscription expiry'
+);
+
 assert.equal(await verifyOfflineEntitlementToken(validOfflineToken, 'different-user', cryptoTestNow, ephemeralPublicJwk), null, 'Signed offline leases cannot be replayed across accounts');
 assert.equal(offlineEntitlementCrypto.includes('MAX_OFFLINE_ENTITLEMENT_AGE_MS'), false, 'Offline signed entitlement validity is not capped by an arbitrary token age');
 assert.equal(OFFLINE_CLOCK_ROLLBACK_TOLERANCE_MS, 5 * 60 * 1000, 'Offline lease validation allows no more than five minutes of clock skew');
