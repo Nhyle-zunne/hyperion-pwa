@@ -131,6 +131,9 @@ function validStandardRows(rows: string[][], path: string): string[][] {
   return valid;
 }
 function validGmdss(row: string[]) {
+  // Android's GMDSS row parser requires question + six option slots,
+  // explanation and answer columns before it can create a Question object.
+  if (row.length < 10) return false;
   const q = (row[0] || "").trim();
   const opts = row.slice(2, 8).map(v => (v || "").trim()).filter(Boolean);
   return !!q && q.toLowerCase() !== "question" && opts.length >= 2;
