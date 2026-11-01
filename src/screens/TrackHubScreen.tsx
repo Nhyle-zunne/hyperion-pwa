@@ -16,7 +16,6 @@ interface TrackInfo {
   title: string
   level: string
   freeTitle: string
-  freeDesc: string
   totalQuestions?: string
   competencies?: string
   functions?: string
@@ -28,7 +27,6 @@ const TRACKS: Record<string, TrackInfo> = {
     title: 'OIC-NW OPERATIONAL REVIEWER',
     level: 'DECK OIC-NW OPERATIONAL LEVEL',
     freeTitle: 'OIC-NW FREE REVIEWER',
-    freeDesc: '2,065 free questions',
     totalQuestions: '6,448 ITEMS',
     competencies: '12 COMPETENCIES',
     functions: 'FUNCTIONS 1-3'
@@ -38,28 +36,24 @@ const TRACKS: Record<string, TrackInfo> = {
     title: 'GMDSS GOC REVIEWER',
     level: 'GMDSS GOC LEVEL',
     freeTitle: 'GMDSS FREE REVIEWER',
-    freeDesc: '1,030 free questions (C1: 900 · C2: 130).'
   },
   engine_ew: {
     trackId: 'ENGINE_OIC_EW',
     title: 'ENGINE OIC-EW REVIEWER',
     level: 'ENGINE OIC-EW OPERATIONAL LEVEL',
     freeTitle: 'ENGINE OIC-EW FREE REVIEWER',
-    freeDesc: 'Free sample: 40% of every competence.'
   },
   engine_mgt: {
     trackId: 'ENGINE_MGT',
     title: 'ENGINE MANAGEMENT REVIEWER',
     level: 'ENGINE MANAGEMENT LEVEL',
     freeTitle: 'ENGINE MGT FREE REVIEWER',
-    freeDesc: 'Free sample: 40% of every competence.'
   },
   deck_mgt: {
     trackId: 'DECK_MGT',
     title: 'DECK MANAGEMENT REVIEWER',
     level: 'DECK MANAGEMENT LEVEL',
     freeTitle: 'DECK MGT FREE REVIEWER',
-    freeDesc: 'Free sample: 40% of every competence.'
   }
 }
 
@@ -105,11 +99,6 @@ export default function TrackHubScreen() {
 
   useEffect(() => {
     let active = true
-    if (key === 'oic_nw' || key === 'gmdss') {
-      setFreeQuestionCount(null)
-      return () => { active = false }
-    }
-
     setFreeQuestionCount(null)
     void getQuestionCountsByTrack(info.trackId, true)
       .then(counts => {
@@ -255,11 +244,9 @@ export default function TrackHubScreen() {
   const modes: Mode[] = [
     {
       title: info.freeTitle,
-      desc: key === 'oic_nw' || key === 'gmdss'
-        ? info.freeDesc
-        : freeQuestionCount === null
-          ? 'Free sample: 40% of every competence.'
-          : `${freeQuestionCount.toLocaleString()} free questions`,
+      desc: freeQuestionCount === null
+        ? 'Loading verified free-question count…'
+        : `${freeQuestionCount.toLocaleString()} valid questions in the free pool`,
       badge: 'FREE ACCESS',
       icon: '▰',
       locked: false,
