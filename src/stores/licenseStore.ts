@@ -101,16 +101,19 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     // then so an offline device drops expired tracks without needing a network call.
     scheduleEntitlementExpiryRefresh(userId, expiryValues, (expectedUserId) => {
       void (async () => {
-        if (!supabase) return;
+        const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
         try {
+          if (isOffline) {
+            await get().refreshCloudEntitlements();
+            set((state) => ({ entitlementExpiryRevision: state.entitlementExpiryRevision + 1 }));
+            return;
+          }
+          if (!supabase) return;
           const current = await supabase.auth.getSession();
-          const currentUserId = current.data.session?.user.id;
-          const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
-          if (currentUserId && currentUserId !== expectedUserId) return;
-          if (!currentUserId && !isOffline) return;
+          if (current.data.session?.user.id !== expectedUserId) return;
           await get().refreshCloudEntitlements();
           const latest = await supabase.auth.getSession();
-          if (latest.data.session?.user.id === expectedUserId || isOffline) {
+          if (latest.data.session?.user.id === expectedUserId) {
             set((state) => ({ entitlementExpiryRevision: state.entitlementExpiryRevision + 1 }));
           }
         } catch {
@@ -162,14 +165,22 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       return;
     }
     let session;
+    let sessionError: unknown = null;
     try {
       const result = await supabase.auth.getSession();
       session = result.data.session;
+      sessionError = result.error;
     } catch {
       await applyCachedOfflineEntitlements();
       return;
     }
     if (!session?.user) {
+      if (sessionError) {
+        await applyCachedOfflineEntitlements();
+        return;
+      }
+      // A clean signed-out response is an explicit logout; never preserve a
+      // previous user's cached paid grant across sign-out.
       clearEntitlementExpiryTimer();
       clearOfflineEntitlements();
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
@@ -268,7 +279,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       armEntitlementExpiryRefresh(session.user.id, rows.map((row) => row.expires_at));
       set({ cloudTrackIds: ids, ...accessFlags(ids), entitlementsVerified: true });
     } catch {
-      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+      await applyCachedOfflineEntitlements();
     }
   },
 
