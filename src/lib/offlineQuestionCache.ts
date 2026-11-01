@@ -139,6 +139,18 @@ export function offlineManifestId(track: TrackId, freeOnly: boolean) {
   return `${track}:${freeOnly ? 'free' : 'licensed'}`
 }
 
+async function requestPersistentOfflineStorage() {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.storage ||
+        typeof navigator.storage.persist !== 'function') return
+    // Browser support varies (notably on iOS). A granted persistent-storage
+    // request reduces eviction risk but cannot guarantee indefinite retention.
+    await navigator.storage.persist()
+  } catch {
+    // The pack remains usable for this session if persistence is unavailable.
+  }
+}
+
 async function deviceStorageKey(db: IDBPDatabase<OfflineBankDatabase>): Promise<CryptoKey> {
   const saved = await db.get('keys', 'device-key')
   if (saved?.key) return saved.key
@@ -172,6 +184,7 @@ export async function saveOfflineQuestionPack(pack: Omit<OfflineQuestionPack, 'i
   const tx = db.transaction(['packs', 'packMeta'], 'readwrite')
   await Promise.all([tx.objectStore('packs').put(record), tx.objectStore('packMeta').put(metadata)])
   await tx.done
+  await requestPersistentOfflineStorage()
 }
 
 /**
@@ -268,6 +281,7 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
   const manifestsStore = tx.objectStore('manifests')
   for (const manifest of manifests) await manifestsStore.put(manifest)
   await tx.done
+  await requestPersistentOfflineStorage()
 }
 
 async function decryptOfflineQuestionPack(
