@@ -374,7 +374,7 @@ assert.ok(!iosInstallGuide.includes('Keep the app name as Hyperion Maritime.') &
 assert.ok(questionBank.includes('if (body.action === "authorize-session")') && questionBank.includes('fingerprints.every(hash => allowedFingerprints.has(hash as string))'), 'Saved-session authorization verifies the server-defined free sample when the caller lacks a license');
 assert.ok(questionBank.includes('fullQuestionFingerprints') && questionBank.includes('questionIds.every(id => questionIdBelongsToTrack(id, track))'), 'Licensed legacy sessions require private-bank fingerprint matches when old question IDs do not match the current track prefix');
 assert.ok(questionBank.includes('const canonicalOptions') && learningProgressFunction.includes('const canonicalOptions'), 'Question access and cloud-progress filtering use stable option-order-independent fingerprints');
-assert.ok(questionBankClient.includes("saveOfflineEntitlements") && questionBankClient.includes("body: { action: 'offline-license' }") && questionBankClient.includes('await getOfflineEntitlementExpiry(userId, track)'), 'Paid offline-pack downloads save and verify a signed, track-specific offline entitlement lease');
+assert.ok(questionBankClient.includes("saveOfflineEntitlements") && questionBankClient.includes("body: { action: 'offline-license' }") && questionBankClient.includes('await hasValidOfflineTrackLease(track, userId)'), 'Paid offline-pack downloads save and verify a signed, track-specific offline entitlement lease');
 assert.ok(questionBankClient.includes("if (await matchesCachedPack(true)) return 'free-sample'") && questionBankClient.includes('if (await hasValidOfflineTrackLease(track)) return \'licensed\''), 'Saved-session fallback supports verified free samples and paid full-bank leases after network/server failures');
 assert.ok(
   questionBankClient.includes('QUESTION_BANK_VERSION_CHECK_COOLDOWN_MS = 5 * 60 * 1000') &&
@@ -409,12 +409,12 @@ assert.ok(
   'Signed administrator offline access is all-track and has no artificial seven-day expiry'
 );
 
-const offlineEntitlementLookupStart = questionBankClient.indexOf('async function offlineEntitlementExpiry');
+const offlineEntitlementLookupStart = questionBankClient.indexOf('async function hasValidOfflineTrackLease');
 const offlineEntitlementLookupEnd = questionBankClient.indexOf('\n}', offlineEntitlementLookupStart);
 const offlineEntitlementLookup = questionBankClient.slice(offlineEntitlementLookupStart, offlineEntitlementLookupEnd);
-assert.ok(offlineEntitlementLookup.includes('getCachedOfflineEntitlementExpiry(track)') && !offlineEntitlementLookup.includes('supabase.auth.getSession()'), 'Offline question access verifies the locally stored account-bound token without requiring a Supabase session');
+assert.ok(offlineEntitlementLookup.includes('getCachedOfflineEntitlementSnapshot()') && offlineEntitlementLookup.includes('snapshot.isAdmin') && !offlineEntitlementLookup.includes('supabase.auth.getSession()'), 'Offline question access accepts a verified administrator role without inventing a paid expiry and remains account-bound');
 assert.ok(offlineQuestionCache.includes('if (!stored || stored.userId !== userId) return null') && offlineQuestionCache.includes('export async function getCachedOfflineEntitlementSnapshot()') && offlineQuestionCache.includes('expiresAt > verified.effectiveNow') && offlineEntitlementCrypto.includes('crypto.subtle.verify'), 'Offline entitlement cache can restore its signed account-bound track grants without a Supabase session and still enforces actual expiry and clock integrity');
-assert.ok(questionBankClient.includes('if (error && canFallbackToOffline(error) && await offlineEntitlementExpiry(track))'), 'Online question fallback only consults saved paid packs after a network/server failure plus a valid local expiry');
+assert.ok(questionBankClient.includes('if (error && canFallbackToOffline(error) && await hasValidOfflineTrackLease(track))'), 'Online question fallback only consults saved paid packs after a network/server failure plus a valid local expiry');
 assert.ok(questionBank.includes('body.freeOnly !== true') && questionBank.includes('Raw paid-bank delivery is disabled. Use paginated question delivery.'), 'Legacy raw-file endpoint cannot be used to retrieve paid-bank assets');
 
 
@@ -637,9 +637,9 @@ assert.equal(canAccessPaidTrack({ userId: null, isAdmin: true, entitlement: null
 assert.equal(canAccessPaidTrack({ userId: 'test-user-free', isAdmin: 'true', entitlement: null, track: 'DECK_OIC_NW', now: accessNow }), false, 'A non-boolean admin flag cannot grant access');
 
 
-assert.ok(trackHubScreen.includes("getOfflineEntitlementExpiry(userId, info.trackId)") && trackHubScreen.includes("offlineLicenseExpiry && offlineLicenseExpiry > Date.now()"), 'Offline panel checks the signed per-track lease before claiming paid offline access is verified');
+assert.ok(trackHubScreen.includes('getCachedOfflineEntitlementSnapshot()') && trackHubScreen.includes('offlineLicenseAdmin') && trackHubScreen.includes('offlineLicenseExpiry && offlineLicenseExpiry > Date.now()'), 'Offline panel distinguishes a signed administrator role from a paid per-track expiry');
 assert.ok(trackHubScreen.includes('DEVICE ONLINE') && trackHubScreen.includes('DEVICE OFFLINE') && trackHubScreen.includes('Last saved on this device'), 'Offline panel displays connection and last-saved state');
-assert.ok(trackHubScreen.includes('Reconnect before expiry to refresh your license.') && trackHubScreen.includes('valid offline license could not be verified on this device'), 'Offline panel explains the license expiry and reconnect requirement without promising indefinite access');
+assert.ok(trackHubScreen.includes('Reconnect before expiry to refresh your license.') && trackHubScreen.includes('Administrator access is verified on this device and has no subscription expiry.') && trackHubScreen.includes('valid offline license could not be verified on this device'), 'Offline panel explains paid expiry and no-expiry administrator role separately');
 assert.ok(trackHubScreen.includes("window.addEventListener('focus', refreshOfflineState)") && trackHubScreen.includes("window.addEventListener('online', updateOnline)"), 'Offline readiness refreshes when the app regains focus or connectivity');
 
 
@@ -855,7 +855,7 @@ assert.ok(
   'Track hub hides the offline question-bank download control entirely when the selected track is not licensed'
 );
 assert.ok(questionBankClient.includes('export async function ensureOfflineFreeSamplePack') && questionBankClient.includes('const fullBank = await getOfflineQuestionsByTrack(track, false)') && questionBankClient.includes('freeSample(fullBank, track)'), 'An old Deck OIC offline free sample is repaired only from the complete cached bank and the current server-matched sampler');
-assert.ok(questionBankClient.includes('async function hasValidOfflineTrackLease(track: TrackId): Promise<boolean>') && questionBankClient.includes('const expiry = await offlineEntitlementExpiry(track)') && questionBankClient.includes('expiry > Date.now()'), 'Saved paid-session recovery requires an unexpired server-signed lease for the same user and track');
+assert.ok(questionBankClient.includes('async function hasValidOfflineTrackLease(track: TrackId, expectedUserId?: string): Promise<boolean>') && questionBankClient.includes('snapshot.isAdmin') && questionBankClient.includes('snapshot.trackExpiries[track]'), 'Saved paid-session recovery accepts either an authenticated administrator role or the same track’s unexpired signed license');
 const accessQuestionSetStart = questionBankClient.indexOf('export async function authorizeQuestionSetAccess');
 const offlineAuthStart = questionBankClient.indexOf('if (offline) {', accessQuestionSetStart);
 const offlineAuthEnd = questionBankClient.indexOf('\n\n  if (supabase)', offlineAuthStart);

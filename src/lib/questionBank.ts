@@ -1,8 +1,7 @@
 import { supabase } from './supabase';
 import { withPageLoading } from './pageLoading';
 import {
-  getOfflineEntitlementExpiry,
-  getCachedOfflineEntitlementExpiry,
+  getCachedOfflineEntitlementSnapshot,
   getOfflinePackManifest,
   getOfflineQuestionCounts,
   getOfflineQuestionPacks,
@@ -262,33 +261,28 @@ function clearOnlineQuestionCacheForTrack(track: TrackId, includeFree = true) {
   }
 }
 
-async function offlineEntitlementExpiry(track: TrackId): Promise<number | null> {
-  // The signed grant is already bound to its original Supabase user. Verify that
-  // local token directly so an expired/refreshing auth session cannot lock out
-  // a paid customer who has no network connection.
+/**
+ * Verify the account-bound signed offline grant. Paid tracks require their real
+ * unexpired track entitlement; a server-signed administrator role grants all
+ * tracks without inventing a subscription expiry.
+ */
+async function hasValidOfflineTrackLease(track: TrackId, expectedUserId?: string): Promise<boolean> {
   try {
-    return await getCachedOfflineEntitlementExpiry(track)
+    const snapshot = await getCachedOfflineEntitlementSnapshot()
+    if (!snapshot || (expectedUserId && snapshot.userId !== expectedUserId)) return false
+    if (snapshot.isAdmin) return true
+    const expiry = snapshot.trackExpiries[track]
+    return typeof expiry === 'number' && Number.isFinite(expiry) && expiry > 0
   } catch {
-    return null
+    return false
   }
 }
 
 /**
- * A saved session already contains its encrypted local question snapshot. To resume
- * that snapshot offline, require the server-signed, unexpired lease for the same
- * account and track, but do not require an identical full-bank cache or identical
- * fingerprints from the current question-bank version.
- *
- * Starting NEW offline sessions remains stricter: getCachedCompetenceRange and the
- * question-count path still require an integrity-checked downloaded pack.
+ * Starting new offline sessions still requires an integrity-checked downloaded pack.
  */
-async function hasValidOfflineTrackLease(track: TrackId): Promise<boolean> {
-  const expiry = await offlineEntitlementExpiry(track)
-  return typeof expiry === 'number' && Number.isFinite(expiry) && expiry > Date.now()
-}
-
 async function mayUseOfflineTrack(track: TrackId, freeOnly: boolean): Promise<boolean> {
-  return freeOnly || (await offlineEntitlementExpiry(track)) !== null
+  return freeOnly || await hasValidOfflineTrackLease(track)
 }
 
 function canFallbackToOffline(error: unknown): boolean {
@@ -1257,13 +1251,13 @@ export function listRegisteredSourceCount(): number {
 async function loadFlashcardQuestionsInternal(track: TrackId, competenceId?: string, limit = 20): Promise<Question[]> {
   if (!supabase) throw new Error('Protected question service is not configured.');
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    if (!(await offlineEntitlementExpiry(track))) throw new Error('An active offline license is required for flashcards.')
+    if (!(await hasValidOfflineTrackLease(track))) throw new Error('An active offline license is required for flashcards.')
     const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
     if (!local.length) throw new Error('Download the full question bank for this track before using flashcards offline.')
     const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
     return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
   }
-  if (await hasFreshCurrentOfflinePack(track, false) && await offlineEntitlementExpiry(track)) {
+  if (await hasFreshCurrentOfflinePack(track, false) && await hasValidOfflineTrackLease(track)) {
     const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
     const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
     if (local.length) return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
@@ -1272,7 +1266,7 @@ async function loadFlashcardQuestionsInternal(track: TrackId, competenceId?: str
     body: { action: 'flashcards', track, competenceId, limit: Math.max(1, Math.min(30, limit)) }
   });
   if (error || !Array.isArray(data?.questions)) {
-    if (error && canFallbackToOffline(error) && await offlineEntitlementExpiry(track)) {
+    if (error && canFallbackToOffline(error) && await hasValidOfflineTrackLease(track)) {
       const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
       const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
       if (local.length) return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
@@ -1330,8 +1324,8 @@ async function downloadOfflinePackInternal(
     throw new Error('An active license for this track is required to download its offline question bank.')
   }
   const savedLease = await saveOfflineEntitlements(userId, offlineLicense.token)
-  const expiry = savedLease ? await getOfflineEntitlementExpiry(userId, track) : null
-  if (!expiry) {
+  const verifiedAccess = savedLease && await hasValidOfflineTrackLease(track, userId)
+  if (!verifiedAccess) {
     throw new Error('Your questions were not prepared for offline access because this device could not verify the track license. Reconnect and retry.')
   }
 
@@ -1455,7 +1449,7 @@ async function searchQuestionsInternal(
   if (q.length < 2) return [];
   if (!supabase) throw new Error('Protected question service is not configured.');
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    if (!(await offlineEntitlementExpiry(track))) throw new Error('An active offline license is required for question search.')
+    if (!(await hasValidOfflineTrackLease(track))) throw new Error('An active offline license is required for question search.')
     const cached = (await getOfflineQuestionsByTrack(track, false)) ?? []
     if (!cached.length) throw new Error('Download the full question bank for this track before using Search offline.')
     return cached.filter(question =>
@@ -1463,7 +1457,7 @@ async function searchQuestionsInternal(
         .toLowerCase().includes(q.toLowerCase())
     ).slice(0, Math.max(1, Math.min(40, limit)))
   }
-  if (await hasFreshCurrentOfflinePack(track, false) && await offlineEntitlementExpiry(track)) {
+  if (await hasFreshCurrentOfflinePack(track, false) && await hasValidOfflineTrackLease(track)) {
     const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
     if (local.length) {
       const hits = local.filter(question =>
@@ -1477,7 +1471,7 @@ async function searchQuestionsInternal(
     body: { action: 'search', track, query: q, limit: Math.max(1, Math.min(40, limit)) }
   });
   if (error || !Array.isArray(data?.questions)) {
-    if (error && canFallbackToOffline(error) && await offlineEntitlementExpiry(track)) {
+    if (error && canFallbackToOffline(error) && await hasValidOfflineTrackLease(track)) {
       const cached = (await getOfflineQuestionsByTrack(track, false)) ?? []
       const hits = cached.filter(question =>
         (question.questionText + ' ' + question.topic + ' ' + question.competenceId + ' ' + question.options.join(' '))

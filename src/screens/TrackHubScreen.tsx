@@ -7,7 +7,7 @@ import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useVaultStore } from '../stores/vaultStore'
 import type { TrackId } from '../types/question'
 import { checkOfflineQuestionPackUpdates, downloadOfflinePack, ensureOfflineFreeSamplePack, getQuestionCountsByTrack, getPublicQuestionCountByTrack } from '../lib/questionBank'
-import { getOfflineEntitlementExpiry, getOfflinePackStatus } from '../lib/offlineQuestionCache'
+import { getCachedOfflineEntitlementSnapshot, getOfflinePackStatus } from '../lib/offlineQuestionCache'
 import { supabase } from '../lib/supabase'
 import './TrackHubScreen.css'
 
@@ -83,6 +83,7 @@ export default function TrackHubScreen() {
   const [totalQuestionCount, setTotalQuestionCount] = useState<number | null>(null)
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
   const [offlineLicenseExpiry, setOfflineLicenseExpiry] = useState<number | null>(null)
+  const [offlineLicenseAdmin, setOfflineLicenseAdmin] = useState(false)
   const [offlineLicenseChecked, setOfflineLicenseChecked] = useState(false)
   const [offlineRefreshKey, setOfflineRefreshKey] = useState(0)
 
@@ -161,6 +162,7 @@ export default function TrackHubScreen() {
       if (!unlocked || !supabase) {
         if (active) {
           setOfflineLicenseExpiry(null)
+          setOfflineLicenseAdmin(false)
           setOfflineLicenseChecked(true)
         }
         return
@@ -169,14 +171,18 @@ export default function TrackHubScreen() {
       try {
         const { data, error } = await supabase.auth.getSession()
         const userId = !error ? data.session?.user?.id : undefined
-        const expiry = userId ? await getOfflineEntitlementExpiry(userId, info.trackId) : null
+        const snapshot = userId ? await getCachedOfflineEntitlementSnapshot() : null
+        const accountMatches = Boolean(snapshot && snapshot.userId === userId)
+        const expiry = accountMatches ? snapshot?.trackExpiries[info.trackId] ?? null : null
         if (active) {
           setOfflineLicenseExpiry(expiry)
+          setOfflineLicenseAdmin(accountMatches && snapshot?.isAdmin === true)
           setOfflineLicenseChecked(true)
         }
       } catch {
         if (active) {
           setOfflineLicenseExpiry(null)
+          setOfflineLicenseAdmin(false)
           setOfflineLicenseChecked(true)
         }
       }
@@ -382,12 +388,14 @@ export default function TrackHubScreen() {
               ? 'Download the full question bank for this track to practice without internet.'
               : 'Offline downloads require an active license. Activate a key to practice without internet.'}
         </p>
-        {offlineStatus && unlocked && <p role="status" style={{ margin: '0 0 .8rem', padding: '.65rem .75rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: offlineLicenseExpiry && offlineLicenseExpiry > Date.now() ? 'var(--success, #16803d)' : 'var(--warning, #c2410c)', fontSize: '.84rem', lineHeight: 1.5 }}>
+        {offlineStatus && unlocked && <p role="status" style={{ margin: '0 0 .8rem', padding: '.65rem .75rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: offlineLicenseAdmin || (offlineLicenseExpiry && offlineLicenseExpiry > Date.now()) ? 'var(--success, #16803d)' : 'var(--warning, #c2410c)', fontSize: '.84rem', lineHeight: 1.5 }}>
           {!offlineLicenseChecked
             ? 'Checking this device’s offline license…'
-            : offlineLicenseExpiry && offlineLicenseExpiry > Date.now()
-              ? `Offline access is verified until ${new Date(offlineLicenseExpiry).toLocaleString()}. Reconnect before expiry to refresh your license.`
-              : 'Your paid question pack is saved, but a valid offline license could not be verified on this device. Reconnect to refresh access before going offline.'}
+            : offlineLicenseAdmin
+              ? 'Administrator access is verified on this device and has no subscription expiry. Reconnect to refresh administrator status.'
+              : offlineLicenseExpiry && offlineLicenseExpiry > Date.now()
+                ? `Offline access is verified until ${new Date(offlineLicenseExpiry).toLocaleString()}. Reconnect before expiry to refresh your license.`
+                : 'Your paid question pack is saved, but a valid offline license could not be verified on this device. Reconnect to refresh access before going offline.'}
         </p>}
         {offlineStatus && offlineUpdateCheck.status === 'current' && online && <p role="status" style={{ margin: '0 0 .8rem', padding: '.65rem .75rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--success, #16803d)', fontSize: '.84rem', lineHeight: 1.5 }}>
           Your downloaded question pack matches the latest published question bank. No update is needed.
