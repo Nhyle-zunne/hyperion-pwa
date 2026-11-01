@@ -30,6 +30,57 @@ export function effectiveOfflineEntitlementNow(now, lastVerifiedAt) {
   return Math.max(now, lastVerifiedAt);
 }
 
+// performance.now() is monotonic within this browser session and is unaffected by
+// manual wall-clock changes. The saved wall-clock high-water mark remains the
+// restart/reboot boundary; when a page starts with a clock behind that mark, fail
+// closed until the device clock is corrected rather than silently extending a plan.
+let monotonicOfflineClockAnchor = null;
+
+function readMonotonicClockNow() {
+  return typeof globalThis.performance?.now === 'function'
+    ? globalThis.performance.now()
+    : Date.now();
+}
+
+export function resetMonotonicOfflineEntitlementClock() {
+  monotonicOfflineClockAnchor = null;
+}
+
+export function anchorMonotonicOfflineEntitlementClock(trustedEpochMs, monotonicNow = readMonotonicClockNow()) {
+  if (!Number.isFinite(trustedEpochMs) || trustedEpochMs <= 0 || !Number.isFinite(monotonicNow)) {
+    monotonicOfflineClockAnchor = null;
+    return;
+  }
+  monotonicOfflineClockAnchor = { trustedEpochMs, monotonicNow };
+}
+
+export function effectiveOfflineEntitlementNowMonotonic(
+  now,
+  lastVerifiedAt,
+  monotonicNow = readMonotonicClockNow()
+) {
+  if (
+    !Number.isFinite(now) ||
+    !Number.isFinite(lastVerifiedAt) ||
+    lastVerifiedAt <= 0 ||
+    !Number.isFinite(monotonicNow)
+  ) return null;
+
+  if (!monotonicOfflineClockAnchor) {
+    const initial = effectiveOfflineEntitlementNow(now, lastVerifiedAt);
+    if (initial === null) return null;
+    anchorMonotonicOfflineEntitlementClock(initial, monotonicNow);
+    return initial;
+  }
+
+  const elapsed = Math.max(0, monotonicNow - monotonicOfflineClockAnchor.monotonicNow);
+  const monotonicEpoch = monotonicOfflineClockAnchor.trustedEpochMs + elapsed;
+  // A wall clock moved backwards during this live browser session cannot freeze
+  // the license countdown: monotonic time advances it until the real expiry.
+  // A forward wall-clock adjustment is honored (never grants extra time).
+  return Math.max(now, lastVerifiedAt, monotonicEpoch);
+}
+
 const OFFLINE_TRACK_IDS = new Set([
   'DECK_OIC_NW',
   'GMDSS_GOC',
