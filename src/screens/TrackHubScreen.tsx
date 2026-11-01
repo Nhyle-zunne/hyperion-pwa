@@ -16,7 +16,6 @@ interface TrackInfo {
   title: string
   level: string
   freeTitle: string
-  totalQuestions?: string
   competencies?: string
   functions?: string
 }
@@ -27,7 +26,6 @@ const TRACKS: Record<string, TrackInfo> = {
     title: 'OIC-NW OPERATIONAL REVIEWER',
     level: 'DECK OIC-NW OPERATIONAL LEVEL',
     freeTitle: 'OIC-NW FREE REVIEWER',
-    totalQuestions: '6,448 ITEMS',
     competencies: '12 COMPETENCIES',
     functions: 'FUNCTIONS 1-3'
   },
