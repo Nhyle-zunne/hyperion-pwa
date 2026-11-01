@@ -110,7 +110,7 @@ export default function TrackHubScreen() {
     return () => { active = false }
   }, [key, info.trackId])
 
-  const unlocked = useLicenseStore((s) => s.isTrackUnlocked(info.trackId) || s.isAllAccessUnlocked)
+  const unlocked = useLicenseStore((s) => s.entitlementsVerified && (s.isTrackUnlocked(info.trackId) || s.isAllAccessUnlocked))
   const remaining = useLicenseStore((s) => s.getRemainingLabel)
   const openPaywall = useUIStore((s) => s.openPaywall)
   const history = useHistoryStore((s) => s.entries)
