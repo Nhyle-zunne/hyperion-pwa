@@ -18,6 +18,7 @@ export default function DesktopAccountMenu() {
   const [open, setOpen] = useState(false)
   const [signedIn, setSignedIn] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+  const [signingIn, setSigningIn] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
@@ -55,6 +56,45 @@ export default function DesktopAccountMenu() {
       document.removeEventListener('keydown', handleEscape)
     }
   }, [open])
+
+  const signInWithGoogle = async () => {
+    const client = supabase
+    if (!client || signingIn) return
+    setSigningIn(true)
+    setErrorMessage('')
+
+    // Use the existing redirect callback and preserve the page the visitor came from.
+    // A normal header sign-in should not force visitors into the Bond Store.
+    const requestedReturnTo = window.location.pathname + window.location.search + window.location.hash
+    const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//')
+      ? requestedReturnTo
+      : '/'
+    try {
+      localStorage.setItem('hyperion-oauth-return-to', JSON.stringify({
+        path: returnTo,
+        startedAt: Date.now(),
+        mode: 'redirect',
+      }))
+    } catch {
+      // The OAuth callback will safely return to the dashboard without storage.
+    }
+
+    try {
+      const { error } = await client.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: 'https://hyperionmaritime.org/auth/callback',
+          queryParams: { prompt: 'select_account' },
+        },
+      })
+      if (error) throw error
+    } catch {
+      try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
+      setErrorMessage('Unable to open Google sign-in. Please try again.')
+      setSigningIn(false)
+      setOpen(true)
+    }
+  }
 
   const signOut = async () => {
     const client = supabase
@@ -131,14 +171,15 @@ export default function DesktopAccountMenu() {
             {signingOut ? 'Signing out…' : 'Sign Out'}
           </button>
         ) : (
-          <Link
-            to="/account"
+          <button
+            type="button"
             className="desktop-account-option desktop-account-signout"
-            onClick={() => setOpen(false)}
+            disabled={!supabase || signingIn}
+            onClick={() => { void signInWithGoogle() }}
           >
             <span aria-hidden="true">↪</span>
-            Sign In
-          </Link>
+            {signingIn ? 'Opening Google…' : 'Sign In'}
+          </button>
         )}
         {errorMessage && <p className="desktop-account-error" role="alert">{errorMessage}</p>}
       </div>
