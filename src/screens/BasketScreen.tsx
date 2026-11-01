@@ -96,6 +96,40 @@ export default function BasketScreen() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
+  const signInWithGoogle = async () => {
+    if (!supabase) {
+      setMessage('Google sign-in is temporarily unavailable. Please try again later.')
+      return
+    }
+    const requestedReturnTo = window.location.pathname + window.location.search + window.location.hash
+    const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//') ? requestedReturnTo : '/checkout'
+    try {
+      localStorage.setItem('hyperion-oauth-return-to', JSON.stringify({
+        path: returnTo,
+        startedAt: Date.now(),
+        mode: 'redirect',
+      }))
+    } catch {
+      // The selected tracks are already persisted in the basket; OAuth can still continue.
+    }
+    setBusy(true)
+    setMessage('')
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: 'https://hyperionmaritime.org/auth/callback',
+          queryParams: { prompt: 'select_account' },
+        },
+      })
+      if (error) throw error
+    } catch {
+      try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
+      setMessage('Google sign-in could not be completed. Please try again.')
+      setBusy(false)
+    }
+  }
+
   // Read the server-side checkout switch on entry and when the user returns to
   // this tab. Never show an actionable PayMongo button while availability is
   // disabled or cannot be verified.
@@ -645,7 +679,8 @@ export default function BasketScreen() {
     {!session ? <section style={{ ...style.card, maxWidth: 600 }}>
       <h2 style={{ marginTop: 0 }}>Sign in to continue</h2>
       <p className="basket-muted">Your basket is saved in this browser. Sign in to verify pending purchases and complete checkout.</p>
-      <button type="button" className="btn btn-primary" onClick={() => navigate('/account')} style={{ width: '100%' }}>SIGN IN / OPEN ACCOUNT</button>
+      <button type="button" className="btn btn-primary" disabled={!supabaseConfigured || busy} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>{busy ? 'OPENING GOOGLE…' : 'SIGN IN WITH GOOGLE'}</button>
+      <button type="button" className="btn btn-outline" onClick={() => navigate('/account?tab=payments')} style={{ width: '100%', marginTop: '.55rem' }}>BACK TO BOND STORE</button>
     </section> : <>
       {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>
         {message}

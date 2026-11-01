@@ -581,27 +581,9 @@ export default function AccountScreen() {
       </section>
     </div>}
 
-    {!session ? <section style={{ ...card, maxWidth: 460, margin: '1.5rem auto' }}>
-      <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>Sign in to manage your profile, purchase reviewer tracks, and view your licenses.</p>
-      <button
-        type="button"
-        className="btn btn-outline"
-        disabled={!supabaseConfigured || busy}
-        onClick={() => void signInWithGoogle()}
-        style={{ width: '100%', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.65rem', minHeight: 46 }}
-      >
-        <svg aria-hidden="true" viewBox="0 0 48 48" width="20" height="20">
-          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.02 13.22l7.98 6.19C11.89 13.72 17.48 9.5 24 9.5Z"/>
-          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.72 7.18l7.62 5.91c4.45-4.11 7.14-10.16 7.14-17.56Z"/>
-          <path fill="#FBBC05" d="M9.99 28.59A14.4 14.4 0 0 1 9.2 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.9 23.9 0 0 0 0 24c0 3.87.93 7.52 2.57 10.78l7.42-6.19Z"/>
-          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.89l-7.62-5.91c-2.11 1.41-4.81 2.25-8.29 2.25-6.52 0-12.11-4.22-14-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z"/>
-        </svg>
-        Continue with Google
-      </button>
-      {params.get('payment') === 'success' && <div role="status" style={{ ...card, marginTop: '1rem', marginBottom: 0 }}>You returned from checkout. Sign in with the same Hyperion account to verify payment and activate the purchased track.</div>}
-    </section> : <>
-      {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
-      {renewalGraceUntil && <div role="status" style={{ ...card, lineHeight: 1.55, marginTop: '.8rem', marginBottom: 0, borderColor: 'var(--warning, #c2410c)' }}>
+    <>
+      {session && message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
+      {session && renewalGraceUntil && <div role="status" style={{ ...card, lineHeight: 1.55, marginTop: '.8rem', marginBottom: 0, borderColor: 'var(--warning, #c2410c)' }}>
         <strong style={{ display: 'block', marginBottom: '.25rem' }}>Your license has expired</strong>
         Paid-track access ended at expiry. Your account is in its 30-day retention grace period until <strong>{new Date(renewalGraceUntil).toLocaleDateString()}</strong>, giving you time to purchase an eligible website license. This is an account-retention safeguard, not extra paid access. Account deletion is considered only after the separate inactivity and grace requirements are met.
         <button type="button" className="btn btn-primary" style={{ width: '100%', marginTop: '.65rem' }} onClick={() => setAccountTab('payments')}>View available licenses</button>
@@ -613,7 +595,7 @@ export default function AccountScreen() {
 
       <div className="account-layout">
         <aside className="account-sidebar">
-          <section style={{ ...card, marginBottom: 0 }}>
+          {session && <section style={{ ...card, marginBottom: 0 }}>
             <div style={{ display: 'flex', gap: '.8rem', alignItems: 'center', marginBottom: '.8rem' }}>
               <div className="profile-avatar">{(fullName || 'H').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase()}</div>
               <div style={{ minWidth: 0, flex: 1 }}>
@@ -651,12 +633,29 @@ export default function AccountScreen() {
               </section>}
             </div>
             </div>
-          </section>
+          </section>}
+          {!session && <section style={{ ...card, marginBottom: 0 }}>
+            <div style={{ display: 'flex', gap: '.8rem', alignItems: 'center', marginBottom: '.8rem' }}>
+              <div className="profile-avatar">H</div>
+              <div style={{ minWidth: 0 }}>
+                <h2 style={{ margin: 0, fontSize: '1rem' }}>Welcome to Hyperion</h2>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginTop: '.2rem' }}>Guest visitor</div>
+              </div>
+            </div>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '.85rem' }}>
+              <h3 style={{ margin: '0 0 .25rem', fontSize: '.98rem' }}>Your profile</h3>
+              <p className="profile-side-links" style={{ margin: '0 0 .8rem' }}>Sign in with Google to manage your Hyperion account, sync licenses, and complete purchases.</p>
+              <button type="button" className="btn btn-primary" disabled={!supabaseConfigured || busy} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>
+                {busy ? 'Opening Google…' : 'Sign in with Google'}
+              </button>
+              <p className="profile-side-links" style={{ margin: '.7rem 0 0' }}>You can browse the Bond Store without signing in. Sign-in is required only when you proceed to checkout or manage your account.</p>
+            </div>
+          </section>}
         </aside>
 
         <main className="account-main">
-          <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />
-          {accountTab === 'licenses' ? <>
+          {session && <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />}
+          {session && accountTab === 'licenses' ? <>
           <section style={card}>
             <div className="account-panel-title">
               <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
@@ -770,6 +769,6 @@ export default function AccountScreen() {
           </>}
         </main>
       </div>
-    </>}
+    </>
   </div>
 }
