@@ -135,20 +135,17 @@ export default function App() {
     const refreshOnWake = () => {
       if (document.visibilityState === 'visible') void refresh()
     }
-    // A ten-minute safety refresh keeps access reasonably fresh without repeatedly
-    // querying entitlements while users remain in a long study session.
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh()
-    }, minimumRefreshIntervalMs)
+    // Recheck when the account changes, the app returns to the foreground,
+    // or connectivity returns. Do not poll licenses on a fixed interval.
+    const refreshOnOnline = () => { void refresh(false, true) }
     window.addEventListener('focus', refreshOnWake)
     document.addEventListener('visibilitychange', refreshOnWake)
-    window.addEventListener('online', refreshOnWake)
+    window.addEventListener('online', refreshOnOnline)
     return () => {
       alive = false
-      window.clearInterval(interval)
       window.removeEventListener('focus', refreshOnWake)
       document.removeEventListener('visibilitychange', refreshOnWake)
-      window.removeEventListener('online', refreshOnWake)
+      window.removeEventListener('online', refreshOnOnline)
       authListener?.data.subscription.unsubscribe()
     }
   }, [refreshCloudEntitlements])
