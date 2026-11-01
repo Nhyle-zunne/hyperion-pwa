@@ -166,9 +166,11 @@ export async function verifyOfflineEntitlementToken(
       !Number.isFinite(claims.issuedAt) ||
       claims.issuedAt <= 0 ||
       claims.issuedAt > now + 5 * 60 * 1000 ||
+      (claims.admin !== undefined && typeof claims.admin !== 'boolean') ||
       !claims.tracks ||
       typeof claims.tracks !== 'object' ||
-      Array.isArray(claims.tracks)
+      Array.isArray(claims.tracks) ||
+      (claims.admin === true && Object.keys(claims.tracks).length !== 0)
     ) return null;
 
     const verifiedTracks = {};
@@ -186,6 +188,7 @@ export async function verifyOfflineEntitlementToken(
       v: 1,
       userId: claims.userId,
       issuedAt: claims.issuedAt,
+      admin: claims.admin === true,
       tracks: verifiedTracks
     };
   } catch {
