@@ -75,6 +75,8 @@ const [
 ]);
 
 const trackPurchaseDialog = await read('../src/components/TrackPurchaseDialog.tsx');
+const pendingBuyNow = await read('../src/lib/pendingBuyNow.ts');
+const oauthCallbackScreen = await read('../src/screens/OAuthCallbackScreen.tsx');
 const paywallDialog = await read('../src/components/PaywallDialog.tsx');
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const submitManualPaymentFunction = await read('../supabase/functions/submit-manual-payment/index.ts');
@@ -357,7 +359,7 @@ assert.ok(abandonedCheckoutCleanup.includes('mark_abandoned_paymongo_checkout_fa
 assert.ok(abandonedCheckoutMigration.includes('interval \'12 hours\'') && abandonedCheckoutMigration.includes('created_at <= now() - interval \'12 hours\''), 'Database transition has its own atomic 12-hour cutoff guard');
 assert.ok(abandonedCheckoutMigration.includes('grant execute on function public.verify_abandoned_checkout_cron_token(text) to service_role') && abandonedCheckoutMigration.includes('revoke all on function public.verify_abandoned_checkout_cron_token(text) from public, anon, authenticated'), 'Cron token validation is service-role only');
 assert.ok(abandonedCheckoutMigration.includes('hyperion-expire-abandoned-paymongo-checkouts') && abandonedCheckoutMigration.includes('*/5 * * * *') && abandonedCheckoutMigration.includes('vault.decrypted_secrets'), 'Supabase schedules cleanup every five minutes using secrets stored in Vault');
-assert.ok(app.includes('<InstallPrompt variant="modal" iosOnly />') && app.includes('<Route path="/" element={<><InstallPrompt variant="modal" iosOnly /><TrackSelectionScreen /></>} />'), 'Initial entry page displays the install modal only on iOS');
+assert.ok(app.includes('<InstallPrompt variant="modal" iosOnly />') && app.includes('<Route path="/" element={<DashboardLanding />} />'), 'Dashboard landing retains the iOS-only install prompt behind the pending checkout recovery check');
 assert.ok(installPrompt.includes("isIos ? (") && installPrompt.includes('<AppleAppStoreBadge onClick={dismiss} />') && installPrompt.includes('Download on the') && installPrompt.includes('App Store'), 'iPhone install prompt displays a prominent App Store-style badge instead of text instructions');
 assert.ok(installPrompt.includes('to="/install/ios"') && installPrompt.includes('onClick={onClick}') && installPrompt.includes("onClick={dismiss}"), 'Apple install badge navigates directly to the iOS setup guide and dismisses the prompt');
 assert.ok(installPrompt.includes('iosOnly = false') && installPrompt.includes('(iosOnly && !isIos)'), 'New entry popup is restricted to iPhone and iPad browsers');
@@ -835,12 +837,33 @@ assert.ok(
   trackPurchaseDialog.includes('priceForTerm(product, term)') &&
   trackPurchaseDialog.includes("provider: 'google'") &&
   trackPurchaseDialog.includes("set('purchase_product', product.code)") &&
-  trackPurchaseDialog.includes('path: directCheckoutPath(product.code, term)') &&
+  trackPurchaseDialog.includes('rememberPendingBuyNow(product.code, term)') &&
   trackPurchaseDialog.includes('const nextBasket = [{ code: product.code, term }]') &&
   trackPurchaseDialog.includes('const selection = [{ code: product.code, term }]') &&
-  trackPurchaseDialog.includes("hyperion-account-basket-v1") &&
-  trackPurchaseDialog.includes('navigate(directCheckoutPath(product.code, term))'),
-  'Buy Now selects only the clicked track and term, persists them before Google OAuth, and returns directly to Checkout'
+  trackPurchaseDialog.includes('navigate(buyNowCheckoutPath(product.code, term))'),
+  'Buy Now keeps the selected track and term before Google OAuth and opens only that track in Checkout'
+);
+assert.ok(
+  pendingBuyNow.includes("PENDING_BUY_NOW_KEY = 'hyperion-pending-buy-now-v1'") &&
+  pendingBuyNow.includes('MAX_PENDING_AGE_MS = 10 * 60 * 1000') &&
+  pendingBuyNow.includes("PAID_PRODUCTS.some(product => product.code === pending.code)") &&
+  pendingBuyNow.includes("pending.term === 'week' || pending.term === 'month' || pending.term === 'year'") &&
+  pendingBuyNow.includes("age >= 0 && age <= MAX_PENDING_AGE_MS") &&
+  pendingBuyNow.includes("localStorage.setItem('hyperion-account-basket-v1'") &&
+  pendingBuyNow.includes('path, startedAt, mode: \'redirect\''),
+  'Guest Buy Now stores only a real track, valid duration and short-lived checkout return for OAuth'
+);
+assert.ok(
+  app.includes('function DashboardLanding()') &&
+  app.includes("supabase.auth.getSession()") &&
+  app.includes('supabase.auth.onAuthStateChange') &&
+  app.includes('const selection = readPendingBuyNow()') &&
+  app.includes('clearMatchingBuyNowReturn(destination)') &&
+  app.includes('navigate(destination, { replace: true })') &&
+  oauthCallbackScreen.includes("if (pending && (returnTo === '/' || returnTo.startsWith('/checkout')))") &&
+  oauthCallbackScreen.includes('returnTo = buyNowCheckoutPath(pending.code, pending.term)') &&
+  oauthCallbackScreen.includes('clearPendingBuyNow()'),
+  'Either a valid OAuth callback or an authenticated Site URL homepage fallback opens the pending Checkout instead of Dashboard'
 );
 assert.ok(
   basketScreen.includes('function directBuyNowSelection(params: URLSearchParams): BasketItem | null') &&
