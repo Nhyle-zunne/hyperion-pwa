@@ -19,6 +19,7 @@ import { withPageLoading } from './lib/pageLoading'
 import { clearPaidQuestionCache } from './lib/questionBank'
 import { deletePaidQuestionSnapshotsForTrack } from './lib/sessionArchive'
 import { deletePaidOfflineQuestionPacksForTrack } from './lib/offlineQuestionCache'
+import { buyNowCheckoutPath, clearMatchingBuyNowReturn, clearPendingBuyNow, readPendingBuyNow } from './lib/pendingBuyNow'
 
 const HomeScreen = lazy(() => import('./screens/HomeScreen'))
 const TrackSelectionScreen = lazy(() => import('./screens/TrackSelectionScreen'))
@@ -49,6 +50,62 @@ const VaultScreen = lazy(() => import('./screens/VaultScreen'))
 const SearchScreen = lazy(() => import('./screens/SearchScreen'))
 const StudyTimeScreen = lazy(() => import('./screens/StudyTimeScreen'))
 const IOSInstallGuideScreen = lazy(() => import('./screens/IOSInstallGuideScreen'))
+
+// Supabase may fall back to the configured Site URL (/) when the requested
+// OAuth callback URL is absent from the Auth redirect allowlist. The dashboard
+// must recover a guest's recently selected Buy Now checkout after sign-in.
+function DashboardLanding() {
+  const navigate = useNavigate()
+  const [checkingPurchase, setCheckingPurchase] = useState(() => readPendingBuyNow() !== null)
+
+  useEffect(() => {
+    const pending = readPendingBuyNow()
+    if (!pending || !supabase) {
+      setCheckingPurchase(false)
+      return
+    }
+
+    let active = true
+    let redirected = false
+    const resumePurchase = (hasSession: boolean) => {
+      if (!active || redirected) return
+      if (!hasSession) {
+        setCheckingPurchase(false)
+        return
+      }
+      const selection = readPendingBuyNow()
+      if (!selection) {
+        setCheckingPurchase(false)
+        return
+      }
+      const destination = buyNowCheckoutPath(selection.code, selection.term)
+      redirected = true
+      clearPendingBuyNow()
+      clearMatchingBuyNowReturn(destination)
+      navigate(destination, { replace: true })
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // A late OAuth SIGNED_IN can arrive after the initial session check.
+      if (session?.user) resumePurchase(true)
+    })
+    void supabase.auth.getSession()
+      .then(({ data, error }) => resumePurchase(!error && Boolean(data.session?.user)))
+      .catch(() => resumePurchase(false))
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [navigate])
+
+  if (checkingPurchase) {
+    return <div className="screen" role="status" aria-live="polite" style={{ minHeight: 220, display: 'grid', placeItems: 'center' }}>
+      Completing sign-in and opening Checkout…
+    </div>
+  }
+  return <><InstallPrompt variant="modal" iosOnly /><TrackSelectionScreen /></>
+}
 
 export default function App() {
   const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
@@ -517,7 +574,7 @@ export default function App() {
         <RouteErrorBoundary>
         <Suspense fallback={<div role="status" aria-live="polite" style={{ minHeight: 220, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Loading Hyperion…</div>}>
         <Routes>
-          <Route path="/" element={<><InstallPrompt variant="modal" iosOnly /><TrackSelectionScreen /></>} />
+          <Route path="/" element={<DashboardLanding />} />
           <Route path="/account" element={<AccountScreen />} />
           <Route path="/manual-payment" element={<ManualPaymentScreen />} />
           <Route path="/orders" element={<OrdersPaymentHistoryScreen />} />
