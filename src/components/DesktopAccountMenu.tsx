@@ -109,7 +109,7 @@ export default function DesktopAccountMenu() {
         aria-label="Account options"
         hidden={!open}
       >
-        {accountLinks.map(link => (
+        {accountLinks.filter(link => signedIn || link.to === '/account?tab=payments').map(link => (
           <Link
             key={link.to}
             to={link.to}
