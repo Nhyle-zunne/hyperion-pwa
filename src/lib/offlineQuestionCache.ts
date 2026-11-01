@@ -614,6 +614,7 @@ export async function getOfflineEntitledTracks(userId: string): Promise<string[]
 
 export interface CachedOfflineEntitlementSnapshot {
   userId: string
+  isAdmin: boolean
   trackExpiries: Partial<Record<TrackId, number>>
 }
 
@@ -634,7 +635,7 @@ export async function getCachedOfflineEntitlementSnapshot(): Promise<CachedOffli
   for (const [track, expiry] of Object.entries(verified.claims.tracks)) {
     if (expiry > verified.effectiveNow) trackExpiries[track as TrackId] = expiry
   }
-  return { userId: stored.userId, trackExpiries }
+  return { userId: stored.userId, isAdmin: verified.claims.admin === true, trackExpiries }
 }
 
 export async function getCachedOfflineEntitlementExpiry(track: TrackId): Promise<number | null> {
