@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
 import AppDrawer from './AppDrawer'
+import DesktopAccountMenu from './DesktopAccountMenu'
 
 const items = [
   { to: '/', label: 'Dashboard', icon: '🏠' },
@@ -23,6 +24,7 @@ export default function BottomNav() {
             {item.label}
           </NavLink>
         ))}
+        <DesktopAccountMenu />
         <a className="contact-link" href={FB} target="_blank" rel="noopener noreferrer">
           <span className="facebook-mark" aria-hidden="true">f</span> Contact Us
         </a>
