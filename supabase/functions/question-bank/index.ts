@@ -1326,6 +1326,26 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // Public catalog metadata: expose aggregate question counts only. This does not
+  // return question text, answer keys, IDs, or any protected question-bank content.
+  if (body.action === "catalog-counts") {
+    const track = body.track || "";
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) {
+      return json(req, { error: "Invalid track." }, 400);
+    }
+    try {
+      const cachedCounts = await cachedQuestionCounts(admin, track);
+      const counts = cachedCounts.map(item => ({
+        competenceId: item.competenceId,
+        part: item.part,
+        count: item.fullCount
+      }));
+      return json(req, { counts, access: "public-catalog-metadata" });
+    } catch {
+      return json(req, { error: "Could not read published question-count metadata." }, 503);
+    }
+  }
+
   if (body.action === "flashcards") {
     const track = body.track || "";
     const competenceId = typeof body.competenceId === "string" ? body.competenceId : "";
