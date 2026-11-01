@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { buyNowCheckoutPath, clearPendingBuyNow, readPendingBuyNow } from '../lib/pendingBuyNow'
 
 const RETURN_TO_KEY = 'hyperion-oauth-return-to'
 const POPUP_ATTEMPT_TTL_MS = 10 * 60 * 1000
@@ -80,11 +81,18 @@ export default function OAuthCallbackScreen() {
         }
         if (cancelled) return
 
+        // Even if an earlier auth callback path was replaced by Supabase's
+        // site URL, a valid guest Buy Now selection must reach Checkout.
+        const pending = readPendingBuyNow()
+        if (pending && (returnTo === '/' || returnTo.startsWith('/checkout'))) {
+          returnTo = buyNowCheckoutPath(pending.code, pending.term)
+        }
+        clearPendingBuyNow()
         clearAttempt()
         notifyOpener('hyperion-oauth-success')
         setStatus('Signed in successfully. Returning to Hyperion…')
 
-        if (popupAttempt || window.opener) {
+        if (popupAttempt) {
           // OAuth was launched as a popup. The opener handles the session and
           // closes this window; do not navigate this popup to the dashboard if
           // the browser temporarily blocks window.close().
@@ -97,11 +105,12 @@ export default function OAuthCallbackScreen() {
       } catch {
         const message = 'Sign-in could not be completed. Please try again.'
         if (cancelled) return
+        clearPendingBuyNow()
         clearAttempt()
         notifyOpener('hyperion-oauth-error', message)
         setStatus(message)
 
-        if (popupAttempt || window.opener) {
+        if (popupAttempt) {
           window.close()
           if (window.closed) return
           setStatus('Sign-in could not be completed. Return to the Hyperion window for details.')
