@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js'
 import { LICENSE_TERMS, PAID_PRODUCTS, paidProductCodeForTrackId, priceForTerm, supabase, supabaseConfigured } from '../lib/supabase'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
+import { buyNowCheckoutPath, clearPendingBuyNow, rememberPendingBuyNow } from '../lib/pendingBuyNow'
 import './TrackPurchaseDialog.css'
 
 function isPaidTrack(value: string | null): value is PaidTrack {
@@ -12,11 +13,6 @@ function isPaidTrack(value: string | null): value is PaidTrack {
 
 function validTerm(value: string | null): LicenseTerm {
   return value === 'week' || value === 'month' || value === 'year' ? value : 'year'
-}
-
-function directCheckoutPath(code: PaidTrack, term: LicenseTerm) {
-  const query = new URLSearchParams({ buy_product: code, buy_term: term })
-  return `/checkout?${query.toString()}`
 }
 
 function productDescription(code: PaidTrack) {
@@ -159,7 +155,7 @@ export default function TrackPurchaseDialog() {
         return
       }
       setMessage('')
-      navigate(directCheckoutPath(product.code, term))
+      navigate(buyNowCheckoutPath(product.code, term))
     } catch {
       setMessage('Checkout could not be opened. Please reconnect and try again.')
     } finally {
@@ -177,12 +173,7 @@ export default function TrackPurchaseDialog() {
     // that a second effect resumes the purchase.
     const selection = [{ code: product.code, term }]
     try {
-      localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(selection))
-      localStorage.setItem('hyperion-oauth-return-to', JSON.stringify({
-        path: directCheckoutPath(product.code, term),
-        startedAt: Date.now(),
-        mode: 'redirect',
-      }))
+      rememberPendingBuyNow(product.code, term)
     } catch {
       setMessage('Your purchase selection could not be saved. Please enable browser storage and try again.')
       return
@@ -199,6 +190,7 @@ export default function TrackPurchaseDialog() {
       })
       if (error) throw error
     } catch {
+      clearPendingBuyNow()
       try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* Ignore storage cleanup errors. */ }
       setBusy(false)
       setMessage('Google sign-in could not be started. Please try again.')
