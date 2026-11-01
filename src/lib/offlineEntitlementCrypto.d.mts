@@ -2,6 +2,7 @@ export interface OfflineEntitlementClaims {
   v: 1;
   userId: string;
   issuedAt: number;
+  admin: boolean;
   tracks: Record<string, number>;
 }
 
