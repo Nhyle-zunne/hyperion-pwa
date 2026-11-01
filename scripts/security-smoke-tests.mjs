@@ -438,7 +438,14 @@ assert.ok(offlineQuestionCache.includes('lastVerifiedAt') && offlineQuestionCach
 assert.ok(offlineQuestionCache.includes('navigator.storage.persist()') && offlineQuestionCache.includes('requestPersistentOfflineStorage'), 'PWA requests persistent origin storage after saving offline question packs to reduce browser eviction risk');
 assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes("typeof value.token !== 'string'"), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
 assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(session.user.id, offlineLicense.token)'), 'Online license refresh stores only a server-signed offline token');
-assert.ok(licenseStore.includes('clearOfflineEntitlements(session.user.id)') && licenseStore.includes('await getOfflineEntitledTracks(session.user.id)'), 'Offline fallback verifies signed leases and clears stale leases on online authorization errors');
+assert.ok(
+  licenseStore.includes('refreshSignedOfflineLease') &&
+    licenseStore.includes('await saveOfflineEntitlements(userId, data.token)') &&
+    licenseStore.includes('await applyCachedOfflineEntitlements(session.user.id)') &&
+    !licenseStore.includes('clearOfflineEntitlements(session.user.id)'),
+  'Both purchase sources use one server-signed cross-store lease and failed refreshes preserve the last valid same-account lease'
+);
+assert.ok(accountScreen.includes('useLicenseStore.getState().clearLicense()'), 'Only an intentional website sign-out clears the device-bound offline entitlement lease');
 assert.ok(
   licenseStore.includes('getCachedOfflineEntitlementSnapshot') &&
     licenseStore.includes('navigator.onLine === false') &&
