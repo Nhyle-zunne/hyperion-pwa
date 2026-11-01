@@ -437,7 +437,7 @@ assert.ok(offlineEntitlementCrypto.includes('effectiveOfflineEntitlementNow') &&
 assert.ok(offlineQuestionCache.includes('lastVerifiedAt') && offlineQuestionCache.includes('persistOfflineEntitlementHighWaterMark') && offlineQuestionCache.includes('effectiveOfflineEntitlementNowMonotonic(Date.now(), stored.lastVerifiedAt)'), 'PWA offline grants persist a high-water mark and use monotonic time while the app remains open');
 assert.ok(offlineQuestionCache.includes('navigator.storage.persist()') && offlineQuestionCache.includes('requestPersistentOfflineStorage'), 'PWA requests persistent origin storage after saving offline question packs to reduce browser eviction risk');
 assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes("typeof value.token !== 'string'"), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
-assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(session.user.id, offlineLicense.token)'), 'Online license refresh stores only a server-signed offline token');
+assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(userId, data.token)'), 'Online license refresh stores only a server-signed offline token');
 assert.ok(
   licenseStore.includes('refreshSignedOfflineLease') &&
     licenseStore.includes('await saveOfflineEntitlements(userId, data.token)') &&
@@ -868,23 +868,10 @@ assert.ok(
   'Manual-payment submissions remain usable before the Play migration while still rejecting other license-query errors'
 );
 assert.ok(
-  licenseStore.includes("candidate.code !== 'PGRST205'") &&
-    licenseStore.includes("message.includes('google_play_entitlements')") &&
-    licenseStore.includes("message.includes('schema cache')"),
-  'Only a confirmed PostgREST missing-table response for google_play_entitlements is treated as an optional table'
-);
-assert.ok(
-  licenseStore.includes('const errorStatus = websiteResult.error ? websiteResult.status : playResult.status') &&
-    licenseStore.includes('canUseOfflineEntitlementsAfterError(error, errorStatus)') &&
-    licenseStore.includes("if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false") &&
-    licenseStore.indexOf("if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false") <
-      licenseStore.indexOf("if (typeof navigator !== 'undefined' && navigator.onLine === false)"),
-  'Coded authorization/database errors fail closed before offline fallback is considered'
-);
-assert.ok(
-  licenseStore.includes('const error = websiteResult.error || (playTableMissing ? null : playResult.error)') &&
-    licenseStore.includes('(playTableMissing ? [] : (playResult.data ?? []))'),
-  'Missing optional Google Play table does not block website-license reads, while website query errors remain enforced'
+  !licenseStore.includes("from('entitlements')") &&
+    !licenseStore.includes("from('google_play_entitlements')") &&
+    licenseStore.includes("body: { action: 'offline-license' }"),
+  'Client entitlement state uses the server-signed merged grant instead of independently querying purchase-source tables'
 );
 
 assert.ok(googlePlayLinkFunction.includes("if (req.method === 'OPTIONS') return json(req, { ok: true })"), 'Google Play linking preflight responses use the same origin-aware CORS helper as normal responses');
