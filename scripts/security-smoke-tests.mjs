@@ -1115,6 +1115,12 @@ assert.ok(
   'Desktop Account dropdown shows Bond Store, My Licenses, Orders, and Sign Out'
 );
 assert.ok(
+  desktopAccountMenu.includes("accountLinks.filter(link => signedIn || link.to === '/account?tab=payments')") &&
+  desktopAccountMenu.includes('{signedIn ? (') &&
+  desktopAccountMenu.includes('Sign In'),
+  'Signed-out visitors see only Bond Store and Sign In; licenses, orders, and Sign Out require a session'
+);
+assert.ok(
   desktopAccountMenu.includes('onMouseEnter={() => setOpen(true)}') &&
   desktopAccountMenu.includes('onMouseLeave=') &&
   desktopAccountMenu.includes("event.key === 'Escape'") &&
