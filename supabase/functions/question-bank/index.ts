@@ -90,13 +90,45 @@ function headerIndex(rows: string[][], format: "standard" | "gmdss") {
   }
   return format === "gmdss" ? 3 : 0;
 }
-function validStandard(row: string[]) {
+function isStrictStandardTrack(path: string): boolean {
+  return path.startsWith("engine_ew/") || path.startsWith("deck_mgt/") || path.startsWith("engine_mgt/");
+}
+function validStandard(row: string[], path: string): boolean {
   if (row.length < 7) return false;
-  const number = Number.parseInt(row[0].trim(), 10);
-  const question = row[1].trim();
-  const options = row.slice(2, 6).map(v => v.trim()).filter(Boolean);
-  return Number.isFinite(number) && number > 0 && !!question && question.toLowerCase() !== "question" &&
-    !(options.length === 4 && options.every((v, i) => v === ["A","B","C","D"][i])) && options.length >= 2;
+  const numberText = (row[0] || "").trim();
+  if (!/^\\d+$/.test(numberText) || Number(numberText) <= 0) return false;
+  const question = (row[1] || "").trim();
+  const rawOptions = row.slice(2, 6).map(value => (value || "").trim());
+  const options = rawOptions.filter(Boolean);
+  if (!question || question.toLowerCase() === "question" ||
+      (options.length === 4 && options.every((value, index) => value === ["A","B","C","D"][index])) ||
+      options.length < 2) return false;
+
+  // Match Android's newer-track parser: an answer must be present, valid,
+  // and point to a populated choice. Legacy deck banks keep their existing
+  // behavior, which falls back to the first remaining answer option.
+  if (isStrictStandardTrack(path)) {
+    const answer = (row[6] || "").trim().toUpperCase();
+    const answerIndex: Record<string, number> = { A:0, B:1, C:2, D:3, "1":0, "2":1, "3":2, "4":3 };
+    const index = answerIndex[answer];
+    if (index === undefined || !rawOptions[index]) return false;
+  }
+  return true;
+}
+function validStandardRows(rows: string[][], path: string): string[][] {
+  const header = headerIndex(rows, "standard");
+  const seenNumbers = new Set<number>();
+  const valid: string[][] = [];
+  for (const row of rows.slice(header + 1)) {
+    if (!validStandard(row, path)) continue;
+    if (isStrictStandardTrack(path)) {
+      const number = Number((row[0] || "").trim());
+      if (seenNumbers.has(number)) continue;
+      seenNumbers.add(number);
+    }
+    valid.push(row);
+  }
+  return valid;
 }
 function validGmdss(row: string[]) {
   const q = (row[0] || "").trim();
@@ -150,7 +182,7 @@ function sampleFreeCsv(path: string, text: string) {
   }
   const hi = headerIndex(rows, "standard");
   const header = rows.slice(0, hi + 1);
-  const valid = rows.slice(hi + 1).filter(validStandard);
+  const valid = validStandardRows(rows, path);
   if (path.startsWith("deck/")) {
     const match = path.match(/oic_nw_c(\d+)\.csv\.enc$/);
     const quotas: Record<string, number> = { "1":420,"2":221,"3":258,"4":160,"5":100,"7":196,"9":176,"10":109,"11":96,"12":110,"13":122,"17":97 };
@@ -441,7 +473,7 @@ function validQuestionCount(path: string, text: string, freeOnly: boolean): numb
   }
   const rows = parseCsv(text);
   const hi = headerIndex(rows, "standard");
-  count = rows.slice(hi + 1).filter(validStandard).length;
+  count = validStandardRows(rows, path).length;
   if (!freeOnly) return count;
   if (info.track === "DECK_OIC_NW") {
     const quotas: Record<string, number> = { C1:420,C2:221,C3:258,C4:160,C5:100,C7:196,C9:176,C10:109,C11:96,C12:110,C13:122,C17:97 };
@@ -549,7 +581,7 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
   } else {
     const rows = parseCsv(text), hi = headerIndex(rows, "standard");
     for (const row of rows.slice(hi + 1)) {
-      if (!validStandard(row)) continue;
+      if (!validStandard(row, path)) continue;
       records.push({ q: row[1].trim(), options: row.slice(2,6).map(x => x.trim()).filter(Boolean), explanation: (row[7] || "").trim(), answer: row[6].trim() });
     }
   }
@@ -836,7 +868,7 @@ Deno.serve(async (req: Request) => {
       if (path.startsWith("gmdss/")) questionCount = validGmdssRows(csvText).length;
       else {
         const rows = parseCsv(csvText);
-        questionCount = rows.slice(headerIndex(rows, "standard") + 1).filter(validStandard).length;
+        questionCount = validStandardRows(rows, path).length;
       }
     } catch {
       return json(req, { error: "Could not parse CSV. Check quotes, commas, and columns." }, 400);
