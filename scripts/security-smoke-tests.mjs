@@ -835,10 +835,21 @@ assert.ok(
   trackPurchaseDialog.includes('priceForTerm(product, term)') &&
   trackPurchaseDialog.includes("provider: 'google'") &&
   trackPurchaseDialog.includes("set('purchase_product', product.code)") &&
-  trackPurchaseDialog.includes("set('purchase_action', 'checkout')") &&
+  trackPurchaseDialog.includes('path: directCheckoutPath(product.code, term)') &&
+  trackPurchaseDialog.includes('const nextBasket = [{ code: product.code, term }]') &&
+  trackPurchaseDialog.includes('const selection = [{ code: product.code, term }]') &&
   trackPurchaseDialog.includes("hyperion-account-basket-v1") &&
-  trackPurchaseDialog.includes("navigate('/checkout')"),
-  'Track purchase dialog presents track-specific plans, preserves the selected duration through Google sign-in, and opens the internal Checkout basket'
+  trackPurchaseDialog.includes('navigate(directCheckoutPath(product.code, term))'),
+  'Buy Now selects only the clicked track and term, persists them before Google OAuth, and returns directly to Checkout'
+);
+assert.ok(
+  basketScreen.includes('function directBuyNowSelection(params: URLSearchParams): BasketItem | null') &&
+  basketScreen.includes("params.get('buy_product')") &&
+  basketScreen.includes("params.get('buy_term')") &&
+  basketScreen.includes('return requested ? [requested] : savedBasket()') &&
+  basketScreen.includes('if (requested) setBasket([requested])') &&
+  basketScreen.includes("navigate('/checkout', { replace: true })"),
+  'Checkout restores a valid track/term selection from the sign-in return URL and consumes the one-time URL'
 );
 assert.ok(
   checkout.includes('body.returnTo') &&
