@@ -93,7 +93,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
       return false;
     }
-    const offlineIds = Object.keys(snapshot.trackExpiries);
+    const offlineIds = snapshot.isAdmin ? [...TRACK_IDS] : Object.keys(snapshot.trackExpiries);
     armEntitlementExpiryRefresh(snapshot.userId, Object.values(snapshot.trackExpiries));
     set({
       cloudTrackIds: offlineIds,
@@ -120,9 +120,9 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     if (!snapshot || snapshot.userId !== userId) {
       throw new Error('The signed offline license could not be verified after saving.');
     }
-    const trackIds = Object.keys(snapshot.trackExpiries);
+    const trackIds = snapshot.isAdmin ? [...TRACK_IDS] : Object.keys(snapshot.trackExpiries);
     armEntitlementExpiryRefresh(userId, Object.values(snapshot.trackExpiries));
-    return trackIds;
+    return { trackIds, isAdmin: snapshot.isAdmin };
   };
 
   return ({
@@ -178,8 +178,8 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     }
 
     try {
-      const signedTrackIds = await refreshSignedOfflineLease(session.user.id);
-      if (isAdmin) {
+      const signedLease = await refreshSignedOfflineLease(session.user.id);
+      if (isAdmin || signedLease.isAdmin) {
         // Admin UI remains all-access while online. The signed lease still contains
         // the server-issued offline admin grant and its bounded expiry.
         set({
@@ -190,8 +190,8 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
         return;
       }
       set({
-        cloudTrackIds: signedTrackIds,
-        ...accessFlags(signedTrackIds),
+        cloudTrackIds: signedLease.trackIds,
+        ...accessFlags(signedLease.trackIds),
         entitlementsVerified: true
       });
     } catch {
