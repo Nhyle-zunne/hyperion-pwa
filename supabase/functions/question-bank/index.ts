@@ -471,7 +471,7 @@ function validQuestionCount(path: string, text: string, freeOnly: boolean): numb
   if (!info) return 0;
   if (info.format === "gmdss") {
     count = validGmdssRows(text).length;
-    if (freeOnly) count = Math.min(count, info.competenceId === "C1" ? 90 : 65);
+    if (freeOnly) count = Math.min(count, info.competenceId === "C1" ? 900 : 130);
     return count;
   }
   const rows = parseCsv(text);
