@@ -3,6 +3,9 @@ import type { Question, TrackId } from '../types/question'
 import {
   verifyOfflineEntitlementToken,
   effectiveOfflineEntitlementNow,
+  effectiveOfflineEntitlementNowMonotonic,
+  anchorMonotonicOfflineEntitlementClock,
+  resetMonotonicOfflineEntitlementClock,
   OFFLINE_CLOCK_PERSIST_INTERVAL_MS
 } from './offlineEntitlementCrypto.mjs'
 import { isGmdssFreeSampleQuestion, isOfflinePackSetComplete } from './offlinePackIntegrity.mjs'
@@ -499,6 +502,7 @@ export function clearOfflineEntitlements(userId?: string) {
       if (stored && stored.userId !== userId) return
     }
     localStorage.removeItem(ENTITLEMENTS_KEY)
+    resetMonotonicOfflineEntitlementClock()
   } catch {
     // Storage can be unavailable in private browsing or constrained browser modes.
   }
@@ -521,7 +525,7 @@ async function verifyStoredOfflineEntitlements(stored: StoredOfflineEntitlements
   if (stored.userId !== userId) {
     return { claims: null, effectiveNow: null, clockRollback: false }
   }
-  const effectiveNow = effectiveOfflineEntitlementNow(Date.now(), stored.lastVerifiedAt)
+  const effectiveNow = effectiveOfflineEntitlementNowMonotonic(Date.now(), stored.lastVerifiedAt)
   if (effectiveNow === null) {
     // Preserve the lease so restoring the device clock can restore offline use;
     // access is denied until the clock is within the tolerated skew again.
@@ -541,7 +545,7 @@ export async function saveOfflineEntitlements(userId: string, token: string): Pr
   const priorHighWater = previous?.userId === userId ? previous.lastVerifiedAt : 0
   const now = Date.now()
   const effectiveNow = priorHighWater > 0
-    ? effectiveOfflineEntitlementNow(now, priorHighWater)
+    ? effectiveOfflineEntitlementNowMonotonic(now, priorHighWater)
     : now
   // A clock rollback must not replace a newer lease with one verified against an older time.
   if (effectiveNow === null) return false
@@ -563,6 +567,7 @@ export async function saveOfflineEntitlements(userId: string, token: string): Pr
       token
     }
     localStorage.setItem(ENTITLEMENTS_KEY, JSON.stringify(value))
+    anchorMonotonicOfflineEntitlementClock(trustedNow)
     return true
   } catch {
     // Offline entitlements are an enhancement; live server checks remain authoritative.
