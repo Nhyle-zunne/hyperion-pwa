@@ -232,14 +232,14 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       // Preserve the last valid lease for this exact account when refresh/signing
       // fails. Never erase a paid offline grant before a replacement is verified.
       const restored = await applyCachedOfflineEntitlements(session.user.id);
-      if (!restored) {
-        set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
-      } else if (isAdmin) {
+      if (isAdmin) {
         set({
           cloudTrackIds: [...TRACK_IDS],
           ...accessFlags([...TRACK_IDS]),
           entitlementsVerified: true
         });
+      } else if (!restored) {
+        set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
       }
     }
   },
