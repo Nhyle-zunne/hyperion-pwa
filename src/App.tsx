@@ -56,6 +56,7 @@ const IOSInstallGuideScreen = lazy(() => import('./screens/IOSInstallGuideScreen
 // must recover a guest's recently selected Buy Now checkout after sign-in.
 function DashboardLanding() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [checkingPurchase, setCheckingPurchase] = useState(() => readPendingBuyNow() !== null)
 
   useEffect(() => {
@@ -104,7 +105,7 @@ function DashboardLanding() {
       Completing sign-in and opening Checkout…
     </div>
   }
-  return <><InstallPrompt variant="modal" iosOnly /><TrackSelectionScreen /></>
+  return <>{location.pathname === '/' && <InstallPrompt variant="modal" iosOnly />}<TrackSelectionScreen /></>
 }
 
 export default function App() {
@@ -584,7 +585,7 @@ export default function App() {
           <Route path="/admin/licenses" element={<AdminLicensesScreen />} />
           <Route path="/admin/payments" element={<AdminPaymentsScreen />} />
           <Route path="/admin/questions" element={<AdminQuestionBankScreen />} />
-          <Route path="/tracks" element={<TrackSelectionScreen />} />
+          <Route path="/tracks" element={<DashboardLanding />} />
           <Route path="/track" element={<TrackHubScreen />} />
           <Route path="/home" element={<HomeScreen />} />
           <Route path="/about" element={<AboutScreen />} />
