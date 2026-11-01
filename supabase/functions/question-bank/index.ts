@@ -122,15 +122,18 @@ function validStandardRows(rows: string[][], path: string): string[][] {
   // Android's Deck F2/F3 loader stores each valid question by its numbered
   // slot and only has slots up to the competence's published bank size.
   // Mirror that rule here so counts, delivered questions, and Android agree.
-  const deckManagementLimits: Record<string, number> = {
+  const numberedDeckLimits: Record<string, number> = {
+    "7": 533, "9": 508,
     "10": 610, "11": 421, "12": 351, "13": 888, "17": 628
   };
-  const deckMatch = path.match(/^deck\/oic_nw_c(10|11|12|13|17)\.csv\.enc$/);
-  const deckLimit = deckMatch ? deckManagementLimits[deckMatch[1]] : undefined;
+  const deckMatch = path.match(/^deck\/oic_nw_c(7|9|10|11|12|13|17)\.csv\.enc$/);
+  const deckLimit = deckMatch ? numberedDeckLimits[deckMatch[1]] : undefined;
   for (const row of rows.slice(header + 1)) {
     if (!validStandard(row, path)) continue;
     const number = Number((row[0] || "").trim());
     if (deckLimit !== undefined && number > deckLimit) continue;
+    // Android stores C7/C9 and F2/F3 questions in numbered slots, so duplicate
+    // numbers replace the same slot instead of increasing the real question count.
     if (isStrictStandardTrack(path) || deckLimit !== undefined) {
       if (seenNumbers.has(number)) continue;
       seenNumbers.add(number);
@@ -476,7 +479,7 @@ async function loadTrackFingerprintCache(admin: any, track: string) {
 
 // Bump this whenever valid-question parsing or free-pool sampling rules change.
 // Asset ETags alone cannot invalidate derived counts when only parser logic changes.
-const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v4";
+const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v5";
 
 function validQuestionCount(path: string, text: string, freeOnly: boolean): number {
   let count = 0;
