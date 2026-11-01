@@ -417,7 +417,7 @@ async function cachedQuestionCounts(admin: any, track: string) {
     const cached = cachedByPath.get(version.path);
     const versionMatches = cached &&
       Date.parse(String(cached.source_updated_at)) === Date.parse(version.updatedAt) &&
-      cached.source_etag === version.etag &&
+      cached.source_etag === `${version.etag}:${QUESTION_COUNT_ALGORITHM_VERSION}` &&
       Number(cached.source_size) === version.size;
 
     let fullCount: number;
@@ -432,7 +432,7 @@ async function cachedQuestionCounts(admin: any, track: string) {
       rowsToUpsert.push({
         asset_path: version.path,
         source_updated_at: version.updatedAt,
-        source_etag: version.etag,
+        source_etag: `${version.etag}:${QUESTION_COUNT_ALGORITHM_VERSION}`,
         source_size: version.size,
         full_count: fullCount,
         free_count: freeCount
@@ -464,6 +464,10 @@ async function loadTrackFingerprintCache(admin: any, track: string) {
   if (error) throw new Error("Question-bank fingerprint cache is unavailable.");
   return data;
 }
+
+// Bump this whenever valid-question parsing or free-pool sampling rules change.
+// Asset ETags alone cannot invalidate derived counts when only parser logic changes.
+const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v3";
 
 function validQuestionCount(path: string, text: string, freeOnly: boolean): number {
   let count = 0;
