@@ -1124,10 +1124,10 @@ assert.ok(
   'Desktop Account dropdown opens on hover or keyboard interaction and closes on escape/outside click'
 );
 assert.ok(
-  desktopAccountMenu.includes('supabase.auth.signOut()') &&
+  desktopAccountMenu.includes('client.auth.signOut()') &&
   desktopAccountMenu.includes('useLicenseStore.getState().clearLicense()') &&
   desktopAccountMenu.includes("navigate('/account', { replace: true })") &&
-  desktopAccountMenu.includes('if (!supabase || !signedIn || signingOut) return'),
+  desktopAccountMenu.includes('if (!client || !signedIn || signingOut) return'),
   'Desktop Sign Out authenticates the session state, clears licenses, and returns to Account'
 );
 assert.ok(
