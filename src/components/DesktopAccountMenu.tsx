@@ -57,12 +57,13 @@ export default function DesktopAccountMenu() {
   }, [open])
 
   const signOut = async () => {
-    if (!supabase || !signedIn || signingOut) return
+    const client = supabase
+    if (!client || !signedIn || signingOut) return
     setSigningOut(true)
     setErrorMessage('')
     try {
       await withPageLoading('Signing out', async () => {
-        const { error } = await supabase.auth.signOut()
+        const { error } = await client.auth.signOut()
         if (error) throw error
         // Intentional sign-out clears cached account licenses just as AccountScreen does.
         useLicenseStore.getState().clearLicense()
