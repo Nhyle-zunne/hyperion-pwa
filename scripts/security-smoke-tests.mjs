@@ -75,6 +75,7 @@ const [
 ]);
 
 const trackPurchaseDialog = await read('../src/components/TrackPurchaseDialog.tsx');
+const paywallDialog = await read('../src/components/PaywallDialog.tsx');
 const offlineQuestionCache = await read('../src/lib/offlineQuestionCache.ts');
 const submitManualPaymentFunction = await read('../supabase/functions/submit-manual-payment/index.ts');
 const googlePlayLinkFunction = await read('../supabase/functions/link-google-play-subscription/index.ts');
@@ -1050,7 +1051,7 @@ assert.ok(googlePlaySchema.includes("CREATE TRIGGER google_play_link_inactive_re
 
 // Mistakes notebook navigation and access regression coverage.
 assert.ok(app.includes("const VaultScreen = lazy(() => import('./screens/VaultScreen'))"), 'Mistakes notebook screen is lazy-loaded');
-assert.ok(app.includes('<Route path="/vault" element={<VaultScreen />} />'), 'Mistakes notebook has a real application route');
+assert.ok(app.includes('<Route path="/vault" element={showTrackAccessCheck ?') && app.includes(': <VaultScreen />} />') && app.includes("location.pathname === '/vault' && setupParams.has('track')"), 'Mistakes notebook has a track-guarded route while the global notebook remains usable');
 assert.ok(app.includes("currentMode === 'PRACTICE'") && !app.includes("currentMode === 'PRACTICE' || currentMode === 'DRILL'"), 'Free practice remains available but free-sample mistake drills require a license');
 assert.ok(appDrawer.includes('Mistakes notebook') && appDrawer.includes('path="/vault"'), 'Mistakes notebook is available from the app drawer');
 assert.ok(trackHubScreen.includes("gated('Mistakes Notebook'") && trackHubScreen.includes('`/vault?track=${key}`'), 'Each track hub opens its scoped mistakes notebook through the license gate');
@@ -1058,6 +1059,10 @@ assert.ok(vaultScreen.includes('useSearchParams') && vaultScreen.includes('scope
 assert.ok(vaultScreen.includes('hasAnyActiveLicense') && vaultScreen.includes('An active license is required') && vaultScreen.includes('isTrackUnlocked(item.track)'), 'Mistakes notebook is locked without a license and filters mistakes to their active licensed track');
 assert.ok(!vaultScreen.includes('verifiedFreeItems') && !vaultScreen.includes('authorizeQuestionSet'), 'Free-sample mistakes cannot bypass the Mistakes Notebook license gate');
 assert.ok(trackHubScreen.includes("badge: !unlocked ? 'LICENSE REQUIRED'"), 'Track hub clearly marks the notebook as license-required for unlicensed tracks');
+assert.ok(paywallDialog.includes('const purchaseCode = paidProductCodeForTrackId(trackValue)') && !paywallDialog.includes('entitlementsVerified ?'), 'Guests see the correct track-specific Bond Store purchase dialog without requiring an authenticated license lease');
+assert.ok(licenseStore.includes('if (!session?.user) {') && licenseStore.includes('clearOfflineEntitlements();\n      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });'), 'Online guest sessions do not inherit another account\'s cached paid license');
+assert.ok(app.includes('const showTrackAccessCheck = setupNeedsLicense && (!entitlementsChecked || !hasActiveSetupLicense)') && app.includes('<Route path="/practice/competences" element={showTrackAccessCheck ?'), 'Unlicensed direct Practice All Questions URLs do not render protected competence counts before redirecting to the Bond Store popup');
+
 assert.ok(vaultStore.includes('recordCorrectAttempt') && vaultStore.includes('consecutiveCorrect: 0') && vaultStore.includes('next >= threshold'), 'Mistakes reset redemption progress after wrong answers and are removed after consecutive correct answers');
 assert.ok(practiceStore.includes('recordCorrectAttempt(q.id)') && practiceStore.includes("if (s.mode === 'MOCK') useVaultStore.getState().recordCorrectAttempt(q.id)"), 'Correct answers in practice/drill and mock exams advance notebook redemption progress');
 assert.ok(vaultScreen.includes('2 consecutive correct answers') && vaultScreen.includes('Math.min(item.consecutiveCorrect,2)'), 'Mistakes notebook explains and displays redemption progress');
