@@ -175,11 +175,12 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       return;
     }
     if (!session?.user) {
-      if (sessionError) {
+      if (sessionError && canUseOfflineEntitlementsAfterError(sessionError)) {
         await applyCachedOfflineEntitlements();
         return;
       }
-      // A clean signed-out response is an explicit logout; never preserve a
+      // A clean signed-out response or definitive auth error is an explicit
+      // sign-out/revocation; never preserve a
       // previous user's cached paid grant across sign-out.
       clearEntitlementExpiryTimer();
       clearOfflineEntitlements();
