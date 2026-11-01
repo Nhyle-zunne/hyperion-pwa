@@ -109,8 +109,11 @@ export default function App() {
           } else {
             await refreshCloudEntitlements()
           }
-          if (alive) setEntitlementsChecked(true)
+        } catch {
+          // A failed refresh must not leave protected routes displaying their
+          // question directory forever. Unverified access is never paid access.
         } finally {
+          if (alive) setEntitlementsChecked(true)
           lastRefreshAt = Date.now()
         }
       })()
@@ -380,23 +383,26 @@ export default function App() {
   const setupTrack = quickScanKeys[setupTrackKey]
   const setupMode = setupParams.get('mode') || ''
   const isExplicitFreeReviewerSetup = setupParams.get('free') === '1' && setupMode !== 'drill'
-  const setupNeedsLicense = isPracticeSetup && !isExplicitFreeReviewerSetup
+  const isOtherProtectedTrackScreen = ['/drill', '/quick-scan', '/search', '/vault'].includes(location.pathname)
+  const setupNeedsLicense = (isPracticeSetup && !isExplicitFreeReviewerSetup) || isOtherProtectedTrackScreen
+  const hasActiveSetupLicense = entitlementsVerified && (
+    isAllAccessUnlocked || cloudTrackIds.includes('ALL') ||
+    (setupTrack != null && cloudTrackIds.includes(setupTrack))
+  )
+  // Do not mount protected pages, fetch private counts, or expose a competence
+  // directory while entitlement restoration and the redirect are pending.
+  const showTrackAccessCheck = setupNeedsLicense && (!entitlementsChecked || !hasActiveSetupLicense)
 
   useEffect(() => {
-    if (!entitlementsChecked || !setupNeedsLicense) return
-    const hasActiveLicense = entitlementsVerified && (
-      isAllAccessUnlocked || cloudTrackIds.includes('ALL') ||
-      (setupTrack != null && cloudTrackIds.includes(setupTrack))
-    )
-    if (hasActiveLicense) return
+    if (!entitlementsChecked || !setupNeedsLicense || hasActiveSetupLicense) return
 
     navigate('/track?track=' + setupTrackKey, { replace: true })
     useUIStore.getState().openPaywall(
-      setupMode === 'drill'
+      setupMode === 'drill' || location.pathname === '/drill'
         ? 'Drill requires an active license for this track.'
-        : 'Practice All Questions requires an active license. Free Reviewer and Timed Mock Exam remain available without a purchase.'
+        : 'This feature requires an active license for this track. Free Reviewer and Timed Mock Exam remain available without a purchase.'
     )
-  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isPracticeSetup, setupNeedsLicense, setupTrack, setupTrackKey, setupMode, navigate])
+  }, [entitlementsChecked, setupNeedsLicense, hasActiveSetupLicense, setupTrackKey, setupMode, location.pathname, navigate])
 
   const hideNav = [
     '/practice/quiz',
@@ -524,19 +530,19 @@ export default function App() {
           <Route path="/about" element={<AboutScreen />} />
           <Route path="/terms" element={<TermsScreen />} />
           <Route path="/privacy-policy" element={<PrivacyPolicyScreen />} />
-          <Route path="/practice/competences" element={<PracticeCompetenceScreen />} />
-          <Route path="/practice" element={<PracticeConfigScreen />} />
+          <Route path="/practice/competences" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <PracticeCompetenceScreen />} />
+          <Route path="/practice" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <PracticeConfigScreen />} />
           <Route path="/practice/quiz" element={<PracticeQuizScreen />} />
-          <Route path="/drill" element={<DrillScreen />} />
-          <Route path="/quick-scan" element={<QuickScanCompetenceScreen />} />
+          <Route path="/drill" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <DrillScreen />} />
+          <Route path="/quick-scan" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <QuickScanCompetenceScreen />} />
           <Route path="/quick-scan/view" element={<QuickScanViewerScreen />} />
           <Route path="/mock" element={<MockExamScreen />} />
           <Route path="/mock/exam" element={<MockExamRunner />} />
           <Route path="/history" element={<HistoryScreen />} />
           <Route path="/flashcards" element={<FlashcardsScreen />} />
           <Route path="/bookmarks" element={<BookmarksScreen />} />
-          <Route path="/vault" element={<VaultScreen />} />
-          <Route path="/search" element={<SearchScreen />} />
+          <Route path="/vault" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <VaultScreen />} />
+          <Route path="/search" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <SearchScreen />} />
           <Route path="/studytime" element={<StudyTimeScreen />} />
           <Route path="/install/ios" element={<IOSInstallGuideScreen />} />
           <Route path="/streak" element={<StudyTimeScreen />} />
