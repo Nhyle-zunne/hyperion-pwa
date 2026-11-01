@@ -19,13 +19,6 @@ const LABELS: Record<TrackId, string> = {
   DECK_MGT: 'Deck Management',
   ENGINE_MGT: 'Engine Management'
 }
-const SUBTITLES: Record<TrackId, string> = {
-  DECK_OIC_NW: 'Select an official STCW competence below to begin sequential or customized practice drilling (2,065 total questions).',
-  GMDSS_GOC: 'Select a GMDSS competence below to begin practice from the free question pool (1,150 total questions).',
-  ENGINE_OIC_EW: 'Select an engineering competence below to begin practice from the fixed 40% free question pool.',
-  DECK_MGT: 'Select a deck management competence below to begin practice from the fixed 40% free question pool.',
-  ENGINE_MGT: 'Select an engine management competence below to begin practice from the fixed 40% free question pool.'
-}
 
 export default function PracticeCompetenceScreen() {
   const navigate = useNavigate()
@@ -37,6 +30,7 @@ export default function PracticeCompetenceScreen() {
   const openPaywall = useUIStore(s => s.openPaywall)
   const competences = listAvailableCompetences(track)
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [totalCount, setTotalCount] = useState<number | null>(null)
   const [countError, setCountError] = useState('')
 
   useEffect(() => {
@@ -44,16 +38,21 @@ export default function PracticeCompetenceScreen() {
     async function loadCounts() {
       const restrictedToFreePool = freeMode || !unlocked
       setCountError('')
+      setTotalCount(null)
       try {
         const items = await getQuestionCountsByTrack(track, restrictedToFreePool)
         const next: Record<string, number> = {}
         for (const competence of competences) {
           next[competence.id] = items.filter(item => item.competenceId === competence.id).reduce((sum, item) => sum + item.count, 0)
         }
-        if (!cancelled) setCounts(next)
+        if (!cancelled) {
+          setCounts(next)
+          setTotalCount(items.reduce((sum, item) => sum + item.count, 0))
+        }
       } catch {
         if (!cancelled) {
           setCounts({})
+          setTotalCount(null)
           setCountError('Protected question storage is not ready yet. Please refresh later or contact the administrator.')
         }
       }
@@ -74,7 +73,13 @@ export default function PracticeCompetenceScreen() {
     <button type="button" onClick={() => navigate(`/track?track=${key}`)} style={{ color: 'var(--text-muted)', margin: '0 0 1.2rem', padding: '0.5rem 0' }}>← Back to Track</button>
     <div className="card" style={{ borderRadius: 0, border: '1px solid #087f63', borderTop: '3px solid #00e5a0', background: 'linear-gradient(120deg, #172b31, #17252d)', padding: '1.2rem', marginBottom: '3rem' }}>
       <h1 style={{ fontSize: '1.35rem', lineHeight: 1.25, margin: '0 0 .4rem', fontWeight: 900 }}>{freeMode ? (track === 'DECK_OIC_NW' ? 'MARINA CRP PRACTICE' : `${LABELS[track].toUpperCase()} FREE PRACTICE`) : 'PRACTICE ALL QUESTIONS'}</h1>
-      <p style={{ color: '#9af1d1', fontWeight: 700, lineHeight: 1.45, margin: 0 }}>{freeMode ? SUBTITLES[track] : `Choose a competence for the full ${LABELS[track]} question bank.`}</p>
+      <p style={{ color: '#9af1d1', fontWeight: 700, lineHeight: 1.45, margin: 0 }}>
+        {countError
+          ? 'Verified question counts are currently unavailable.'
+          : totalCount === null
+            ? 'Loading verified question counts…'
+            : `${totalCount.toLocaleString()} valid questions across ${competences.length} competencies.`}
+      </p>
     </div>
     <h2 style={{ fontSize: '.95rem', letterSpacing: '.13em', fontWeight: 900, borderTop: '3px solid #334155', paddingTop: '1rem', margin: '0 0 1.5rem' }}>COMPETENCE DIRECTORY ({competences.length})</h2>
     {countError && <p role="status" style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{countError}</p>}
