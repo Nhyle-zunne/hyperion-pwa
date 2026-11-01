@@ -476,7 +476,7 @@ async function loadTrackFingerprintCache(admin: any, track: string) {
 
 // Bump this whenever valid-question parsing or free-pool sampling rules change.
 // Asset ETags alone cannot invalidate derived counts when only parser logic changes.
-const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v3";
+const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v4";
 
 function validQuestionCount(path: string, text: string, freeOnly: boolean): number {
   let count = 0;
