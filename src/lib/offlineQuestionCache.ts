@@ -2,7 +2,6 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Question, TrackId } from '../types/question'
 import {
   verifyOfflineEntitlementToken,
-  effectiveOfflineEntitlementNow,
   effectiveOfflineEntitlementNowMonotonic,
   anchorMonotonicOfflineEntitlementClock,
   resetMonotonicOfflineEntitlementClock,
