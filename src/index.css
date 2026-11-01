@@ -2150,3 +2150,115 @@ a:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* Desktop Account: hover, click and keyboard-accessible dropdown. Mobile keeps its own Account tab. */
+.desktop-account-menu { display: none; }
+@media (min-width: 900px) {
+  .app-bottom-nav > a[href="/account"] { display: none !important; }
+
+  .app-bottom-nav .desktop-account-menu {
+    display: block;
+    position: relative;
+    align-self: center;
+    flex: 0 0 auto;
+    margin-left: 0 !important;
+  }
+
+  .app-bottom-nav .desktop-account-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .55rem;
+    min-height: 42px;
+    padding: .65rem .85rem;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: .9rem;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
+  }
+  .app-bottom-nav .desktop-account-trigger:hover,
+  .app-bottom-nav .desktop-account-trigger[aria-expanded="true"],
+  .app-bottom-nav .desktop-account-trigger.is-active {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .desktop-account-chevron {
+    font-size: 1rem;
+    line-height: 1;
+    transition: transform 160ms ease;
+  }
+  .desktop-account-chevron.is-open { transform: rotate(180deg); }
+
+  .app-bottom-nav .desktop-account-popover {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 220;
+    display: flex;
+    flex-direction: column;
+    width: 244px;
+    max-width: calc(100vw - 2rem);
+    padding: .4rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 18px 45px rgba(0,0,0,.22);
+  }
+  .app-bottom-nav .desktop-account-popover[hidden] { display: none !important; }
+
+  .app-bottom-nav .desktop-account-option {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: .7rem !important;
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: .7rem .8rem !important;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text) !important;
+    font: inherit;
+    font-size: .87rem !important;
+    font-weight: 650 !important;
+    text-align: left;
+    text-decoration: none !important;
+    cursor: pointer;
+  }
+  .app-bottom-nav .desktop-account-option > span {
+    display: inline-flex;
+    justify-content: center;
+    min-width: 20px;
+    font-size: 1rem !important;
+  }
+  .app-bottom-nav .desktop-account-option:hover,
+  .app-bottom-nav .desktop-account-option:focus-visible {
+    background: var(--accent-soft) !important;
+    color: var(--accent) !important;
+  }
+  .app-bottom-nav .desktop-account-signout {
+    margin-top: .3rem;
+    padding-top: .85rem !important;
+    border-top: 1px solid var(--border) !important;
+    border-radius: 0 0 8px 8px;
+  }
+  .app-bottom-nav .desktop-account-signout:disabled {
+    opacity: .55;
+    cursor: progress;
+  }
+  .desktop-account-error {
+    margin: .45rem .4rem .2rem;
+    color: var(--danger, #ef4444);
+    font-size: .78rem;
+    line-height: 1.45;
+  }
+}
