@@ -1121,6 +1121,17 @@ assert.ok(
   'Signed-out visitors see only Bond Store and Sign In; licenses, orders, and Sign Out require a session'
 );
 assert.ok(
+  desktopAccountMenu.includes('onClick={() => { void signInWithGoogle() }}') &&
+  desktopAccountMenu.includes("const { error } = await client.auth.signInWithOAuth({") &&
+  desktopAccountMenu.includes("provider: 'google'") &&
+  desktopAccountMenu.includes("redirectTo: 'https://hyperionmaritime.org/auth/callback'") &&
+  desktopAccountMenu.includes("queryParams: { prompt: 'select_account' }") &&
+  desktopAccountMenu.includes("localStorage.setItem('hyperion-oauth-return-to'") &&
+  desktopAccountMenu.includes("mode: 'redirect'") &&
+  !desktopAccountMenu.includes('to="/account"'),
+  'Guest desktop Sign In starts Google OAuth directly and returns through the existing callback without opening Bond Store first'
+);
+assert.ok(
   desktopAccountMenu.includes('onMouseEnter={() => setOpen(true)}') &&
   desktopAccountMenu.includes('onMouseLeave=') &&
   desktopAccountMenu.includes("event.key === 'Escape'") &&
