@@ -160,10 +160,12 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     }
 
     if (!session?.user) {
-      // Auth can temporarily be unavailable while a device is offline even when
-      // navigator.onLine incorrectly reports true. Explicit user sign-out clears
-      // the lease in AccountScreen; do not mistake a missing session for sign-out.
-      await applyCachedOfflineEntitlements();
+      // No authenticated session means the browser cannot claim the previous
+      // account's paid tracks. Only the explicit offline/network-error paths
+      // above may restore a signed offline lease.
+      clearEntitlementExpiryTimer();
+      clearOfflineEntitlements();
+      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
       return;
     }
 
