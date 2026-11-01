@@ -44,6 +44,16 @@ function savedBasket(): BasketItem[] {
   }
 }
 
+// BUY NOW links are validated against the real products and terms, and always
+// select exactly the purchased track. The URL also survives Google's OAuth redirect.
+function directBuyNowSelection(params: URLSearchParams): BasketItem | null {
+  const code = params.get('buy_product')
+  const term = params.get('buy_term')
+  if (!PAID_PRODUCTS.some(product => product.code === code)) return null
+  if (term !== 'week' && term !== 'month' && term !== 'year') return null
+  return { code: code as PaidTrack, term }
+}
+
 async function edgeError(error: unknown): Promise<string> {
   if (error && typeof error === 'object' && 'context' in error) {
     const context = (error as { context?: unknown }).context
@@ -64,7 +74,10 @@ export default function BasketScreen() {
   const location = useLocation()
   const [params] = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
-  const [basket, setBasket] = useState<BasketItem[]>(savedBasket)
+  const [basket, setBasket] = useState<BasketItem[]>(() => {
+    const requested = directBuyNowSelection(params)
+    return requested ? [requested] : savedBasket()
+  })
   const [orders, setOrders] = useState<Order[]>([])
   const [ownedCodes, setOwnedCodes] = useState<PaidTrack[]>([])
   const [busy, setBusy] = useState(false)
@@ -88,6 +101,15 @@ export default function BasketScreen() {
       else localStorage.removeItem('hyperion-account-basket-v1')
     } catch { /* Keep the basket in memory for this visit. */ }
   }, [basket])
+
+  useEffect(() => {
+    if (!params.has('buy_product') && !params.has('buy_term')) return
+    const requested = directBuyNowSelection(params)
+    if (requested) setBasket([requested])
+    // Consume the one-time selection so returning from PayMongo, editing the
+    // basket or refreshing Checkout never silently re-adds a removed product.
+    navigate('/checkout', { replace: true })
+  }, [params, navigate])
 
   useEffect(() => {
     if (!supabase) return
