@@ -598,6 +598,36 @@ export async function getOfflineEntitledTracks(userId: string): Promise<string[]
 }
 
 
+export interface CachedOfflineEntitlementSnapshot {
+  userId: string
+  trackExpiries: Partial<Record<TrackId, number>>
+}
+
+/**
+ * Reads the locally stored signed grant without relying on Supabase auth/session
+ * restoration. The embedded user ID is used only as the expected signer subject;
+ * the ECDSA signature and per-track real expiry are still verified before use.
+ */
+export async function getCachedOfflineEntitlementSnapshot(): Promise<CachedOfflineEntitlementSnapshot | null> {
+  const stored = readStoredOfflineEntitlements()
+  if (!stored) return null
+  const verified = await verifyStoredOfflineEntitlements(stored, stored.userId)
+  if (!verified.claims || verified.effectiveNow === null) {
+    if (!verified.clockRollback) clearOfflineEntitlements(stored.userId)
+    return null
+  }
+  const trackExpiries: Partial<Record<TrackId, number>> = {}
+  for (const [track, expiry] of Object.entries(verified.claims.tracks)) {
+    if (expiry > verified.effectiveNow) trackExpiries[track as TrackId] = expiry
+  }
+  return { userId: stored.userId, trackExpiries }
+}
+
+export async function getCachedOfflineEntitlementExpiry(track: TrackId): Promise<number | null> {
+  const snapshot = await getCachedOfflineEntitlementSnapshot()
+  return snapshot?.trackExpiries[track] ?? null
+}
+
 export async function deletePaidOfflineQuestionPacksForTrack(track: TrackId) {
   const db = await database()
   const tx = db.transaction(['packs', 'packMeta', 'manifests'], 'readwrite')
