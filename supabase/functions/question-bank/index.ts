@@ -772,8 +772,10 @@ async function issueOfflineEntitlement(admin: any, user: any, isAdmin: boolean) 
   const now = Date.now();
   const tracks: Record<string, number> = {};
   if (isAdmin) {
-    const offlineAdminExpiry = now + 7 * 24 * 60 * 60 * 1000;
-    for (const track of OFFLINE_TRACK_IDS) tracks[track] = offlineAdminExpiry;
+    // Administrator access has no subscription term. Represent it as a signed
+    // role claim, not a fabricated seven-day track subscription expiry. Clients
+    // retain this account-bound admin grant offline until the next successful
+    // server sync or an explicit sign-out.
   } else {
     const [website, play] = await Promise.all([
       admin.from("entitlements").select("track_id,expires_at")
@@ -792,7 +794,7 @@ async function issueOfflineEntitlement(admin: any, user: any, isAdmin: boolean) 
     }
   }
 
-  const claims = { v: 1, userId: user.id, issuedAt: now, tracks };
+  const claims = { v: 1, userId: user.id, issuedAt: now, admin: isAdmin === true, tracks };
   const payload = encodeBase64Url(new TextEncoder().encode(JSON.stringify(claims)));
   const keys = await loadOrCreateOfflineSigningKeys(admin);
   const privateKey = await crypto.subtle.importKey(
@@ -810,7 +812,7 @@ async function issueOfflineEntitlement(admin: any, user: any, isAdmin: boolean) 
   return {
     token: payload + "." + encodeBase64Url(new Uint8Array(signed)),
     issuedAt: now,
-    trackIds: Object.keys(tracks)
+    trackIds: isAdmin ? [...OFFLINE_TRACK_IDS] : Object.keys(tracks)
   };
 }
 
