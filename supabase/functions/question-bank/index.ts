@@ -119,10 +119,19 @@ function validStandardRows(rows: string[][], path: string): string[][] {
   const header = headerIndex(rows, "standard");
   const seenNumbers = new Set<number>();
   const valid: string[][] = [];
+  // Android's Deck F2/F3 loader stores each valid question by its numbered
+  // slot and only has slots up to the competence's published bank size.
+  // Mirror that rule here so counts, delivered questions, and Android agree.
+  const deckManagementLimits: Record<string, number> = {
+    "10": 610, "11": 421, "12": 351, "13": 888, "17": 628
+  };
+  const deckMatch = path.match(/^deck\\/oic_nw_c(10|11|12|13|17)\\.csv\\.enc$/);
+  const deckLimit = deckMatch ? deckManagementLimits[deckMatch[1]] : undefined;
   for (const row of rows.slice(header + 1)) {
     if (!validStandard(row, path)) continue;
-    if (isStrictStandardTrack(path)) {
-      const number = Number((row[0] || "").trim());
+    const number = Number((row[0] || "").trim());
+    if (deckLimit !== undefined && number > deckLimit) continue;
+    if (isStrictStandardTrack(path) || deckLimit !== undefined) {
       if (seenNumbers.has(number)) continue;
       seenNumbers.add(number);
     }
