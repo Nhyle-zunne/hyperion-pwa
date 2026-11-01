@@ -102,7 +102,6 @@ export default function DesktopAccountMenu() {
       >
         <span aria-hidden="true">👤</span>
         Account
-        <span className={'desktop-account-chevron' + (open ? ' is-open' : '')} aria-hidden="true">⌄</span>
       </button>
       <div
         id="desktop-account-dropdown"
