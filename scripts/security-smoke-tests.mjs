@@ -433,7 +433,12 @@ assert.ok(mainEntry.includes("caches.delete('hyperion-question-banks')"), 'App s
 
 
 assert.ok(questionBank.includes("body.action === \"offline-license-public-key\"") && questionBank.includes("Only the verification key is public") && questionBank.includes("key_ops: [\"verify\"]"), 'Offline signing-key endpoint returns only a verification key');
-assert.ok(questionBank.includes("body.action === \"offline-license\"") && questionBank.includes("const claims = { v: 1, userId: user.id, issuedAt: now, tracks }") && questionBank.includes("crypto.subtle.sign"), 'Offline entitlement claims are issued by the authenticated server and cryptographically signed');
+assert.ok(
+  questionBank.includes("body.action === \"offline-license\"") &&
+    questionBank.includes("const claims = { v: 1, userId: user.id, issuedAt: now, admin: isAdmin === true, tracks }") &&
+    questionBank.includes("crypto.subtle.sign"),
+  'Offline entitlement claims are issued by the authenticated server and cryptographically signed, including the administrator role without a fake expiry'
+);
 assert.ok(questionBank.includes('.eq("user_id", user.id)') && questionBank.includes('.eq("status", "active")') && questionBank.includes('.gt("expires_at", new Date(now).toISOString())'), 'Offline entitlement token only contains the signed-in user’s currently active, unexpired tracks');
 assert.ok(offlineEntitlementSigningMigration.includes('private_jwk jsonb NOT NULL') && offlineEntitlementSigningMigration.includes('public_jwk jsonb NOT NULL') && offlineEntitlementSigningMigration.includes('ENABLE ROW LEVEL SECURITY'), 'Offline signing keys are stored in an RLS-protected table');
 assert.ok(offlineEntitlementSigningMigration.includes('REVOKE ALL ON TABLE public.offline_entitlement_signing_keys FROM PUBLIC, anon, authenticated') && offlineEntitlementSigningMigration.includes('GRANT SELECT, INSERT ON TABLE public.offline_entitlement_signing_keys TO service_role'), 'Offline private signing keys cannot be read or written by client database roles');
