@@ -110,6 +110,9 @@ const sessionArchive = await read('../src/lib/sessionArchive.ts');
 const {
   verifyOfflineEntitlementToken,
   effectiveOfflineEntitlementNow,
+  effectiveOfflineEntitlementNowMonotonic,
+  anchorMonotonicOfflineEntitlementClock,
+  resetMonotonicOfflineEntitlementClock,
   OFFLINE_CLOCK_ROLLBACK_TOLERANCE_MS
 } = await import('../src/lib/offlineEntitlementCrypto.mjs');
 
@@ -431,7 +434,7 @@ assert.ok(offlineEntitlementSigningMigration.includes('REVOKE ALL ON TABLE publi
 
 assert.ok(offlineEntitlementCrypto.includes('OFFLINE_ENTITLEMENT_PUBLIC_KEY') && offlineEntitlementCrypto.includes('claims.userId !== expectedUserId') && offlineEntitlementCrypto.includes('signature.length !== 64'), 'Offline entitlement verifier pins the public key, account identity, and ECDSA signature size');
 assert.ok(offlineEntitlementCrypto.includes('effectiveOfflineEntitlementNow') && offlineEntitlementCrypto.includes('OFFLINE_CLOCK_ROLLBACK_TOLERANCE_MS'), 'Offline entitlement validation exposes a bounded wall-clock rollback guard');
-assert.ok(offlineQuestionCache.includes('lastVerifiedAt') && offlineQuestionCache.includes('persistOfflineEntitlementHighWaterMark') && offlineQuestionCache.includes('effectiveOfflineEntitlementNow(Date.now(), stored.lastVerifiedAt)'), 'PWA offline grants persist a high-water mark and reject a rolled-back browser clock');
+assert.ok(offlineQuestionCache.includes('lastVerifiedAt') && offlineQuestionCache.includes('persistOfflineEntitlementHighWaterMark') && offlineQuestionCache.includes('effectiveOfflineEntitlementNowMonotonic(Date.now(), stored.lastVerifiedAt)'), 'PWA offline grants persist a high-water mark and use monotonic time while the app remains open');
 assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes("typeof value.token !== 'string'"), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
 assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(session.user.id, offlineLicense.token)'), 'Online license refresh stores only a server-signed offline token');
 assert.ok(licenseStore.includes('clearOfflineEntitlements(session.user.id)') && licenseStore.includes('await getOfflineEntitledTracks(session.user.id)'), 'Offline fallback verifies signed leases and clears stale leases on online authorization errors');
@@ -480,6 +483,27 @@ assert.equal(validOfflineClaims?.tracks?.DECK_OIC_NW, sampleClaims.tracks.DECK_O
 assert.equal(await verifyOfflineEntitlementToken(validOfflineToken, 'different-user', cryptoTestNow, ephemeralPublicJwk), null, 'Signed offline leases cannot be replayed across accounts');
 assert.equal(offlineEntitlementCrypto.includes('MAX_OFFLINE_ENTITLEMENT_AGE_MS'), false, 'Offline signed entitlement validity is not capped by an arbitrary token age');
 assert.equal(OFFLINE_CLOCK_ROLLBACK_TOLERANCE_MS, 5 * 60 * 1000, 'Offline lease validation allows no more than five minutes of clock skew');
+resetMonotonicOfflineEntitlementClock();
+const monotonicBase = cryptoTestNow;
+anchorMonotonicOfflineEntitlementClock(monotonicBase, 10_000);
+assert.equal(
+  effectiveOfflineEntitlementNowMonotonic(monotonicBase - 60 * 60 * 1000, monotonicBase, 70_000),
+  monotonicBase + 60_000,
+  'A wall-clock rollback while the PWA remains open cannot freeze the offline expiry countdown'
+);
+resetMonotonicOfflineEntitlementClock();
+assert.equal(
+  effectiveOfflineEntitlementNowMonotonic(cryptoTestNow - 6 * 60 * 1000, cryptoTestNow, 100),
+  null,
+  'After a browser restart, a clock behind the persisted high-water mark fails closed until corrected'
+);
+resetMonotonicOfflineEntitlementClock();
+assert.equal(
+  effectiveOfflineEntitlementNowMonotonic(cryptoTestNow + 60 * 60 * 1000, cryptoTestNow, 100),
+  cryptoTestNow + 60 * 60 * 1000,
+  'A forward clock adjustment is never allowed to extend offline access'
+);
+resetMonotonicOfflineEntitlementClock();
 assert.equal(
   effectiveOfflineEntitlementNow(cryptoTestNow - 2 * 60 * 1000, cryptoTestNow),
   cryptoTestNow,
