@@ -96,7 +96,7 @@ function isStrictStandardTrack(path: string): boolean {
 function validStandard(row: string[], path: string): boolean {
   if (row.length < 7) return false;
   const numberText = (row[0] || "").trim();
-  if (!/^\\d+$/.test(numberText) || Number(numberText) <= 0) return false;
+  if (!/^\d+$/.test(numberText) || Number(numberText) <= 0) return false;
   const question = (row[1] || "").trim();
   const rawOptions = row.slice(2, 6).map(value => (value || "").trim());
   const options = rawOptions.filter(Boolean);
@@ -472,7 +472,6 @@ function validQuestionCount(path: string, text: string, freeOnly: boolean): numb
     return count;
   }
   const rows = parseCsv(text);
-  const hi = headerIndex(rows, "standard");
   count = validStandardRows(rows, path).length;
   if (!freeOnly) return count;
   if (info.track === "DECK_OIC_NW") {
@@ -579,10 +578,11 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
       records.push({ q: (row[0] || "").trim(), options: row.slice(2,8).map(x => (x || "").trim()).filter(Boolean), explanation: (row[8] || "").trim(), answer: (row[9] || "").trim() });
     }
   } else {
-    const rows = parseCsv(text), hi = headerIndex(rows, "standard");
-    for (const row of rows.slice(hi + 1)) {
-      if (!validStandard(row, path)) continue;
-      records.push({ q: row[1].trim(), options: row.slice(2,6).map(x => x.trim()).filter(Boolean), explanation: (row[7] || "").trim(), answer: row[6].trim() });
+    const rows = parseCsv(text);
+    for (const row of validStandardRows(rows, path)) {
+      const rawOptions = row.slice(2, 6).map(value => (value || "").trim());
+      const options = isStrictStandardTrack(path) ? rawOptions : rawOptions.filter(Boolean);
+      records.push({ q: row[1].trim(), options, explanation: (row[7] || "").trim(), answer: row[6].trim() });
     }
   }
   return records.map((record, i) => ({
