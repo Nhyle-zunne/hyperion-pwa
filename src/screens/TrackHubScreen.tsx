@@ -6,7 +6,7 @@ import { useHistoryStore } from '../stores/historyStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useVaultStore } from '../stores/vaultStore'
 import type { TrackId } from '../types/question'
-import { checkOfflineQuestionPackUpdates, downloadOfflinePack, ensureOfflineFreeSamplePack, getQuestionCountsByTrack } from '../lib/questionBank'
+import { checkOfflineQuestionPackUpdates, downloadOfflinePack, ensureOfflineFreeSamplePack, getQuestionCountsByTrack, getPublicQuestionCountByTrack } from '../lib/questionBank'
 import { getOfflineEntitlementExpiry, getOfflinePackStatus } from '../lib/offlineQuestionCache'
 import { supabase } from '../lib/supabase'
 import './TrackHubScreen.css'
@@ -88,10 +88,20 @@ export default function TrackHubScreen() {
   const [checkingOfflineVersion, setCheckingOfflineVersion] = useState(false)
   const [offlineError, setOfflineError] = useState('')
   const [freeQuestionCount, setFreeQuestionCount] = useState<number | null>(null)
+  const [totalQuestionCount, setTotalQuestionCount] = useState<number | null>(null)
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
   const [offlineLicenseExpiry, setOfflineLicenseExpiry] = useState<number | null>(null)
   const [offlineLicenseChecked, setOfflineLicenseChecked] = useState(false)
   const [offlineRefreshKey, setOfflineRefreshKey] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    setTotalQuestionCount(null)
+    void getPublicQuestionCountByTrack(info.trackId)
+      .then(count => { if (active) setTotalQuestionCount(count) })
+      .catch(() => { if (active) setTotalQuestionCount(null) })
+    return () => { active = false }
+  }, [info.trackId])
 
   useEffect(() => {
     let active = true
@@ -333,10 +343,10 @@ export default function TrackHubScreen() {
         <p className="hub-eyebrow">HYPERION MARITIME LICENSURE</p>
         <h1>{info.title}</h1>
         <div className="hub-meta">
-          {info.totalQuestions && <span>{info.totalQuestions}</span>}
+          {totalQuestionCount !== null && <span>{totalQuestionCount.toLocaleString()} ITEMS</span>}
           {info.competencies && <span>{info.competencies}</span>}
           {info.functions && <span>{info.functions}</span>}
-          {!info.totalQuestions && <span>{info.level}</span>}
+          {totalQuestionCount === null && <span>{info.level}</span>}
           {unlocked && <span>PASS: {remaining()}</span>}
         </div>
       </section>
