@@ -75,6 +75,8 @@ const [
 ]);
 
 const trackPurchaseDialog = await read('../src/components/TrackPurchaseDialog.tsx');
+const desktopAccountMenu = await read('../src/components/DesktopAccountMenu.tsx');
+const bottomNav = await read('../src/components/BottomNav.tsx');
 const pendingBuyNow = await read('../src/lib/pendingBuyNow.ts');
 const oauthCallbackScreen = await read('../src/screens/OAuthCallbackScreen.tsx');
 const paywallDialog = await read('../src/components/PaywallDialog.tsx');
@@ -1103,4 +1105,36 @@ assert.ok(vaultScreen.includes('2 consecutive correct answers') && vaultScreen.i
 assert.ok(vaultScreen.includes('Mistakes by track & competence') && vaultScreen.includes('Search results') && vaultScreen.includes('Practice track') && vaultScreen.includes('expandedCompetencies'), 'Mistakes notebook groups by track and competence, supports searchable results, and offers scoped drills');
 assert.ok(bookmarksScreen.includes('Bookmarks by track & competence') && bookmarksScreen.includes('Search results') && bookmarksScreen.includes('Practice track') && bookmarksScreen.includes('expandedCompetencies'), 'Bookmarks group by track and competence, support searchable results, and offer scoped practice');
 assert.ok(bookmarksScreen.includes('q.functionId') && bookmarksScreen.includes('q.explanation') && vaultScreen.includes('item.functionId') && vaultScreen.includes('item.explanation'), 'Saved-question search covers function and explanation metadata as well as question text');
+// Desktop Account dropdown: correct destinations and an authenticated, license-clearing logout.
+assert.ok(
+  bottomNav.includes('<DesktopAccountMenu />') &&
+  desktopAccountMenu.includes("to: '/account?tab=payments'") &&
+  desktopAccountMenu.includes("to: '/account?tab=licenses'") &&
+  desktopAccountMenu.includes("to: '/orders'") &&
+  desktopAccountMenu.includes('Sign Out'),
+  'Desktop Account dropdown shows Bond Store, My Licenses, Orders, and Sign Out'
+);
+assert.ok(
+  desktopAccountMenu.includes('onMouseEnter={() => setOpen(true)}') &&
+  desktopAccountMenu.includes('onMouseLeave=') &&
+  desktopAccountMenu.includes("event.key === 'Escape'") &&
+  desktopAccountMenu.includes("document.addEventListener('pointerdown', handleOutsideClick)") &&
+  desktopAccountMenu.includes('aria-expanded={open}') &&
+  desktopAccountMenu.includes('hidden={!open}'),
+  'Desktop Account dropdown opens on hover or keyboard interaction and closes on escape/outside click'
+);
+assert.ok(
+  desktopAccountMenu.includes('supabase.auth.signOut()') &&
+  desktopAccountMenu.includes('useLicenseStore.getState().clearLicense()') &&
+  desktopAccountMenu.includes("navigate('/account', { replace: true })") &&
+  desktopAccountMenu.includes('if (!supabase || !signedIn || signingOut) return'),
+  'Desktop Sign Out authenticates the session state, clears licenses, and returns to Account'
+);
+assert.ok(
+  indexCss.includes('.app-bottom-nav > a[href="/account"] { display: none !important; }') &&
+  indexCss.includes('.desktop-account-menu { display: none; }') &&
+  indexCss.includes('.app-bottom-nav .desktop-account-popover[hidden] { display: none !important; }'),
+  'Desktop dropdown replaces only the desktop Account tab and preserves mobile navigation'
+);
+
 console.log('Release-safety smoke checks passed.');
