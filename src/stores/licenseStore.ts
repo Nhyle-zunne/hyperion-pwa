@@ -2,8 +2,6 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import {
   clearOfflineEntitlements,
-  getOfflineEntitledTracks,
-  getOfflineEntitlementExpiry,
   getCachedOfflineEntitlementSnapshot,
   saveOfflineEntitlements
 } from '../lib/offlineQuestionCache';
@@ -123,21 +121,42 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     });
   };
 
-  const applyCachedOfflineEntitlements = async () => {
+  const applyCachedOfflineEntitlements = async (expectedUserId?: string) => {
     const snapshot = await getCachedOfflineEntitlementSnapshot();
-    if (!snapshot) {
+    if (!snapshot || (expectedUserId && snapshot.userId !== expectedUserId)) {
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
       return false;
     }
     const offlineIds = Object.keys(snapshot.trackExpiries);
-    const expiryTimes = offlineIds.map((track) => snapshot.trackExpiries[track as keyof typeof snapshot.trackExpiries]);
-    armEntitlementExpiryRefresh(snapshot.userId, expiryTimes);
+    armEntitlementExpiryRefresh(snapshot.userId, Object.values(snapshot.trackExpiries));
     set({
       cloudTrackIds: offlineIds,
       ...accessFlags(offlineIds),
       entitlementsVerified: true
     });
-    return offlineIds.length > 0;
+    // A correctly signed, current lease with no active tracks is still an
+    // authoritative cache result; distinguish it from a missing/invalid cache.
+    return true;
+  };
+
+  const refreshSignedOfflineLease = async (userId: string) => {
+    const { data, error } = await supabase!.functions.invoke('question-bank', {
+      body: { action: 'offline-license' }
+    });
+    if (error) throw error;
+    if (typeof data?.token !== 'string' || !data.token) {
+      throw new Error('The server did not return a signed offline license.');
+    }
+    if (!await saveOfflineEntitlements(userId, data.token)) {
+      throw new Error('The signed offline license could not be saved on this device.');
+    }
+    const snapshot = await getCachedOfflineEntitlementSnapshot();
+    if (!snapshot || snapshot.userId !== userId) {
+      throw new Error('The signed offline license could not be verified after saving.');
+    }
+    const trackIds = Object.keys(snapshot.trackExpiries);
+    armEntitlementExpiryRefresh(userId, Object.values(snapshot.trackExpiries));
+    return trackIds;
   };
 
   return ({
@@ -153,8 +172,8 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
 
   refreshCloudEntitlements: async () => {
     clearEntitlementExpiryTimer();
-    // Offline startup must not depend on Supabase restoring its refresh-token
-    // session. The signed grant is sufficient until its actual per-track expiry.
+    // A signed server lease is the common entitlement source for both purchase
+    // channels. Offline startup never depends on Supabase session restoration.
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       await applyCachedOfflineEntitlements();
       return;
@@ -164,123 +183,64 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
       return;
     }
+
     let session;
-    let sessionError: unknown = null;
     try {
       const result = await supabase.auth.getSession();
       session = result.data.session;
-      sessionError = result.error;
     } catch {
       await applyCachedOfflineEntitlements();
       return;
     }
+
     if (!session?.user) {
-      if (sessionError && canUseOfflineEntitlementsAfterError(sessionError)) {
-        await applyCachedOfflineEntitlements();
-        return;
-      }
-      // A clean signed-out response or definitive auth error is an explicit
-      // sign-out/revocation; never preserve a
-      // previous user's cached paid grant across sign-out.
-      clearEntitlementExpiryTimer();
-      clearOfflineEntitlements();
-      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
+      // Auth can temporarily be unavailable while a device is offline even when
+      // navigator.onLine incorrectly reports true. Explicit user sign-out clears
+      // the lease in AccountScreen; do not mistake a missing session for sign-out.
+      await applyCachedOfflineEntitlements();
       return;
     }
 
-    // Admin status is checked server-side against ADMIN_EMAILS; never trust client metadata.
     let isAdmin = false;
     try {
-      const { data, error } = await supabase.functions.invoke('admin-payment-review', { body: { action: 'check-admin' } });
+      const { data, error } = await supabase.functions.invoke('admin-payment-review', {
+        body: { action: 'check-admin' }
+      });
       isAdmin = !error && data?.isAdmin === true;
     } catch {
-      // If the admin check is unavailable, continue with ordinary subscription lookup.
-    }
-
-    if (isAdmin) {
-      // Refresh the signed lease from the server. Never synthesize admin expiries in the browser.
-      clearOfflineEntitlements(session.user.id);
-      try {
-        const { data, error } = await supabase.functions.invoke('question-bank', {
-          body: { action: 'offline-license' }
-        });
-        if (!error && typeof data?.token === 'string') {
-          const saved = await saveOfflineEntitlements(session.user.id, data.token);
-          if (saved) {
-            const expiryTimes = await Promise.all(TRACK_IDS.map((track) => getOfflineEntitlementExpiry(session.user.id, track)));
-            armEntitlementExpiryRefresh(session.user.id, expiryTimes);
-          }
-        }
-      } catch {
-        // Online admin access remains available; offline access stays cleared if signing fails.
-      }
-      set({ cloudTrackIds: [...TRACK_IDS], ...accessFlags([...TRACK_IDS]), entitlementsVerified: true });
-      return;
+      // An unavailable admin check must not block ordinary signed-license refresh.
     }
 
     try {
-      const [websiteResult, playResult] = await Promise.all([
-        supabase.from('entitlements')
-          .select('track_id, expires_at')
-          .eq('user_id', session.user.id)
-          .eq('status', 'active')
-          .gt('expires_at', new Date().toISOString()),
-        supabase.from('google_play_entitlements')
-          .select('track_id, expires_at')
-          .eq('user_id', session.user.id)
-          .eq('status', 'active')
-          .gt('expires_at', new Date().toISOString())
-      ]);
-      // Google Play entitlement syncing is an optional backend extension until its
-      // migration is released. Ignore only PostgREST's exact missing-table/schema-cache
-      // response; permission failures and other client/server errors must not be hidden.
-      const playTableMissing = isMissingGooglePlayEntitlementsTable(playResult.error);
-      const error = websiteResult.error || (playTableMissing ? null : playResult.error);
-      const errorStatus = websiteResult.error ? websiteResult.status : playResult.status;
-      if (error) {
-        // Fail closed for authorization/client errors. Only a confirmed network failure or
-        // server outage may use a still-valid signed lease cached for this same account.
-        if (canUseOfflineEntitlementsAfterError(error, errorStatus)) {
-          const offlineIds = await getOfflineEntitledTracks(session.user.id);
-          if (offlineIds.length) {
-            const expiryTimes = await Promise.all(offlineIds.map((track) =>
-              getOfflineEntitlementExpiry(session.user.id, track as (typeof TRACK_IDS)[number])
-            ));
-            armEntitlementExpiryRefresh(session.user.id, expiryTimes);
-            set({ cloudTrackIds: offlineIds, ...accessFlags(offlineIds), entitlementsVerified: true });
-            return;
-          }
-        } else {
-          clearOfflineEntitlements(session.user.id);
-        }
-        set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+      const signedTrackIds = await refreshSignedOfflineLease(session.user.id);
+      if (isAdmin) {
+        // Admin UI remains all-access while online. The signed lease still contains
+        // the server-issued offline admin grant and its bounded expiry.
+        set({
+          cloudTrackIds: [...TRACK_IDS],
+          ...accessFlags([...TRACK_IDS]),
+          entitlementsVerified: true
+        });
         return;
       }
-      const rows = [
-        ...(websiteResult.data ?? []),
-        ...(playTableMissing ? [] : (playResult.data ?? []))
-      ];
-      const ids = Array.from(new Set(rows.map((row) => row.track_id as string)));
-
-      // Replace any old signed lease with a fresh server-signed version of the current
-      // entitlement state. If issuance fails, old offline access must not survive a
-      // successful live check that found the license revoked or expired.
-      clearOfflineEntitlements(session.user.id);
-      try {
-        const { data: offlineLicense, error: offlineLicenseError } = await supabase.functions.invoke('question-bank', {
-          body: { action: 'offline-license' }
-        });
-        if (!offlineLicenseError && typeof offlineLicense?.token === 'string') {
-          await saveOfflineEntitlements(session.user.id, offlineLicense.token);
-        }
-      } catch {
-        // Keep online access working, but don't retain stale offline access.
-      }
-
-      armEntitlementExpiryRefresh(session.user.id, rows.map((row) => row.expires_at));
-      set({ cloudTrackIds: ids, ...accessFlags(ids), entitlementsVerified: true });
+      set({
+        cloudTrackIds: signedTrackIds,
+        ...accessFlags(signedTrackIds),
+        entitlementsVerified: true
+      });
     } catch {
-      await applyCachedOfflineEntitlements();
+      // Preserve the last valid lease for this exact account when refresh/signing
+      // fails. Never erase a paid offline grant before a replacement is verified.
+      const restored = await applyCachedOfflineEntitlements(session.user.id);
+      if (!restored) {
+        set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+      } else if (isAdmin) {
+        set({
+          cloudTrackIds: [...TRACK_IDS],
+          ...accessFlags([...TRACK_IDS]),
+          entitlementsVerified: true
+        });
+      }
     }
   },
 
