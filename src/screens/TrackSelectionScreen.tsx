@@ -6,6 +6,7 @@ import { useStudyTimeStore, formatDurationMs } from '../stores/studyTimeStore'
 import AppDrawer from '../components/AppDrawer'
 import InstallPrompt from '../components/InstallPrompt'
 import type { TrackId } from '../types/question'
+import { getPublicQuestionCountByTrack } from '../lib/questionBank'
 
 const FB = 'https://www.facebook.com/hyperionbynhyle/'
 
@@ -20,11 +21,11 @@ const TRACKS: {
   tierCheck: string
   mock: string
 }[] = [
-  { id: 'oic_nw', trackId: 'DECK_OIC_NW', title: 'DECK OIC-NW', regulation: 'STCW REGULATION II/1', questions: '6,448', meta: '12 COMPETENCIES · 200-ITEM MOCK', icon: '🧭', tierCheck: 'OIC', mock: '200' },
-  { id: 'gmdss', trackId: 'GMDSS_GOC', title: 'GMDSS RADIO (GOC)', regulation: 'STCW REGULATION IV/2', questions: '2,260', meta: '2 COMPETENCIES · 100-ITEM MOCK', icon: '📡', tierCheck: 'GOC', mock: '100' },
-  { id: 'engine_ew', trackId: 'ENGINE_OIC_EW', title: 'ENGINE OIC-EW', regulation: 'STCW REGULATION III/1', questions: '5,380', meta: '13 COMPETENCIES · 200-ITEM MOCK', icon: '🔧', tierCheck: 'EW', mock: '200' },
-  { id: 'engine_mgt', trackId: 'ENGINE_MGT', title: 'ENGINE MANAGEMENT', regulation: 'STCW REGULATION III/2', questions: '5,589', meta: '14 COMPETENCIES · 200-ITEM MOCK', icon: '⚙️', tierCheck: 'EM', mock: '200' },
-  { id: 'deck_mgt', trackId: 'DECK_MGT', title: 'DECK MANAGEMENT', regulation: 'STCW REGULATION II/2', questions: '6,081', meta: '18 COMPETENCIES · 200-ITEM MOCK', icon: '▲', tierCheck: 'DM', mock: '200' }
+  { id: 'oic_nw', trackId: 'DECK_OIC_NW', title: 'DECK OIC-NW', regulation: 'STCW REGULATION II/1', questions: '', meta: '12 COMPETENCIES · 200-ITEM MOCK', icon: '🧭', tierCheck: 'OIC', mock: '200' },
+  { id: 'gmdss', trackId: 'GMDSS_GOC', title: 'GMDSS RADIO (GOC)', regulation: 'STCW REGULATION IV/2', questions: '', meta: '2 COMPETENCIES · 100-ITEM MOCK', icon: '📡', tierCheck: 'GOC', mock: '100' },
+  { id: 'engine_ew', trackId: 'ENGINE_OIC_EW', title: 'ENGINE OIC-EW', regulation: 'STCW REGULATION III/1', questions: '', meta: '13 COMPETENCIES · 200-ITEM MOCK', icon: '🔧', tierCheck: 'EW', mock: '200' },
+  { id: 'engine_mgt', trackId: 'ENGINE_MGT', title: 'ENGINE MANAGEMENT', regulation: 'STCW REGULATION III/2', questions: '', meta: '14 COMPETENCIES · 200-ITEM MOCK', icon: '⚙️', tierCheck: 'EM', mock: '200' },
+  { id: 'deck_mgt', trackId: 'DECK_MGT', title: 'DECK MANAGEMENT', regulation: 'STCW REGULATION II/2', questions: '', meta: '18 COMPETENCIES · 200-ITEM MOCK', icon: '▲', tierCheck: 'DM', mock: '200' }
 ]
 
 function dayKey(ts = Date.now()) {
@@ -43,11 +44,31 @@ export default function TrackSelectionScreen() {
   const location = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [examPanelExpanded, setExamPanelExpanded] = useState(false)
+  const [publishedQuestionCounts, setPublishedQuestionCounts] = useState<Partial<Record<TrackId, number>>>({})
   const examDetailsRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     // React 18's typings do not expose inert as a JSX prop, but the native DOM property is supported.
     if (examDetailsRef.current) examDetailsRef.current.inert = !examPanelExpanded
   }, [examPanelExpanded])
+  useEffect(() => {
+    let active = true
+    const loadPublishedCounts = async () => {
+      const results = await Promise.allSettled(
+        TRACKS.map(async track => [track.trackId, await getPublicQuestionCountByTrack(track.trackId)] as const)
+      )
+      if (!active) return
+      setPublishedQuestionCounts(current => {
+        const next = { ...current }
+        for (const result of results) {
+          if (result.status === 'fulfilled') next[result.value[0]] = result.value[1]
+        }
+        return next
+      })
+    }
+    void loadPublishedCounts()
+    return () => { active = false }
+  }, [])
+
   const targetDate = useStudyTimeStore((s) => s.targetDate)
   const setTargetDate = useStudyTimeStore((s) => s.setTargetDate)
 
@@ -200,7 +221,7 @@ export default function TrackSelectionScreen() {
               </div>
               <div className="track-title">{t.title}</div>
               <div className="track-reg" style={{ marginTop: 2 }}>{t.regulation}</div>
-              <div className="qcount">{t.questions}</div>
+              <div className="qcount">{(publishedQuestionCounts[t.trackId] ?? null)?.toLocaleString() ?? '—'}</div>
               <div className="track-meta">QUESTIONS AVAILABLE</div>
               <div className="track-meta" style={{ marginTop: 4 }}>{t.meta}</div>
               <div style={{ marginTop: 'auto', paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
