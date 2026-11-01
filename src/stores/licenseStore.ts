@@ -180,8 +180,8 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     try {
       const signedLease = await refreshSignedOfflineLease(session.user.id);
       if (isAdmin || signedLease.isAdmin) {
-        // Admin UI remains all-access while online. The signed lease still contains
-        // the server-issued offline admin grant and its bounded expiry.
+        // Admin UI remains all-access online and offline. The signed role claim
+        // has no subscription expiry because administrator access is not a plan.
         set({
           cloudTrackIds: [...TRACK_IDS],
           ...accessFlags([...TRACK_IDS]),
