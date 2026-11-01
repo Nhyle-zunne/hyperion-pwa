@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { clearOfflineEntitlements, getOfflineEntitledTracks, getOfflineEntitlementExpiry, saveOfflineEntitlements } from '../lib/offlineQuestionCache';
-import { MAX_OFFLINE_ENTITLEMENT_AGE_MS } from '../lib/offlineEntitlementCrypto.mjs';
+import {
+  clearOfflineEntitlements,
+  getOfflineEntitledTracks,
+  getOfflineEntitlementExpiry,
+  getCachedOfflineEntitlementSnapshot,
+  saveOfflineEntitlements
+} from '../lib/offlineQuestionCache';
 import { nextExpiryRefreshDelay } from '../lib/entitlementExpiryScheduler.mjs';
 
 interface LicenseState {
@@ -92,22 +97,20 @@ function accessFlags(trackIds: string[]) {
 
 export const useLicenseStore = create<LicenseState>()((set, get) => {
   const armEntitlementExpiryRefresh = (userId: string, expiryValues: unknown[]) => {
-    // Refresh the signed offline lease before its 72-hour maximum age, even when
-    // the underlying subscription expires much later. This keeps normal online
-    // users' offline packs available without extending any paid track expiry.
-    const leaseRefreshAt = Date.now() + MAX_OFFLINE_ENTITLEMENT_AGE_MS - 10 * 60 * 1000;
-    const scheduledExpiries = expiryValues.length
-      ? [...expiryValues, leaseRefreshAt]
-      : expiryValues;
-    scheduleEntitlementExpiryRefresh(userId, scheduledExpiries, (expectedUserId) => {
+    // Local access follows the actual server-issued subscription expiry. Recheck
+    // then so an offline device drops expired tracks without needing a network call.
+    scheduleEntitlementExpiryRefresh(userId, expiryValues, (expectedUserId) => {
       void (async () => {
         if (!supabase) return;
         try {
           const current = await supabase.auth.getSession();
-          if (current.data.session?.user.id !== expectedUserId) return;
+          const currentUserId = current.data.session?.user.id;
+          const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+          if (currentUserId && currentUserId !== expectedUserId) return;
+          if (!currentUserId && !isOffline) return;
           await get().refreshCloudEntitlements();
           const latest = await supabase.auth.getSession();
-          if (latest.data.session?.user.id === expectedUserId) {
+          if (latest.data.session?.user.id === expectedUserId || isOffline) {
             set((state) => ({ entitlementExpiryRevision: state.entitlementExpiryRevision + 1 }));
           }
         } catch {
@@ -115,6 +118,23 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
         }
       })();
     });
+  };
+
+  const applyCachedOfflineEntitlements = async () => {
+    const snapshot = await getCachedOfflineEntitlementSnapshot();
+    if (!snapshot) {
+      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+      return false;
+    }
+    const offlineIds = Object.keys(snapshot.trackExpiries);
+    const expiryTimes = offlineIds.map((track) => snapshot.trackExpiries[track as keyof typeof snapshot.trackExpiries]);
+    armEntitlementExpiryRefresh(snapshot.userId, expiryTimes);
+    set({
+      cloudTrackIds: offlineIds,
+      ...accessFlags(offlineIds),
+      entitlementsVerified: true
+    });
+    return offlineIds.length > 0;
   };
 
   return ({
@@ -130,6 +150,12 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
 
   refreshCloudEntitlements: async () => {
     clearEntitlementExpiryTimer();
+    // Offline startup must not depend on Supabase restoring its refresh-token
+    // session. The signed grant is sufficient until its actual per-track expiry.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      await applyCachedOfflineEntitlements();
+      return;
+    }
     if (!supabase) {
       clearOfflineEntitlements();
       set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: true });
@@ -140,7 +166,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       const result = await supabase.auth.getSession();
       session = result.data.session;
     } catch {
-      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+      await applyCachedOfflineEntitlements();
       return;
     }
     if (!session?.user) {
