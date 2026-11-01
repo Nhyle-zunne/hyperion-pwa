@@ -563,15 +563,11 @@ export async function saveOfflineEntitlements(userId: string, token: string): Pr
   // A clock rollback must not replace a newer lease with one verified against an older time.
   if (effectiveNow === null) return false
   const claims = await verifyOfflineEntitlementToken(token, userId, effectiveNow)
-  if (!claims) {
-    clearOfflineEntitlements(userId)
-    return false
-  }
+  // A malformed or temporarily incompatible replacement must not destroy
+  // the previous valid lease. The caller will continue using that lease until
+  // its signed expiry and retry the server refresh when connectivity returns.
+  if (!claims) return false
   const trustedNow = Math.max(effectiveNow, claims.issuedAt)
-  if (!Object.values(claims.tracks).some(expiresAt => expiresAt > trustedNow)) {
-    clearOfflineEntitlements(userId)
-    return false
-  }
   try {
     const value: StoredOfflineEntitlements = {
       userId,
