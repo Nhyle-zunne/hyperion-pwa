@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { withPageLoading } from './pageLoading';
 import {
   getOfflineEntitlementExpiry,
+  getCachedOfflineEntitlementExpiry,
   getOfflinePackManifest,
   getOfflineQuestionCounts,
   getOfflineQuestionPacks,
@@ -262,11 +263,11 @@ function clearOnlineQuestionCacheForTrack(track: TrackId, includeFree = true) {
 }
 
 async function offlineEntitlementExpiry(track: TrackId): Promise<number | null> {
-  if (!supabase) return null
+  // The signed grant is already bound to its original Supabase user. Verify that
+  // local token directly so an expired/refreshing auth session cannot lock out
+  // a paid customer who has no network connection.
   try {
-    const { data } = await supabase.auth.getSession()
-    const userId = data.session?.user?.id
-    return userId ? getOfflineEntitlementExpiry(userId, track) : null
+    return await getCachedOfflineEntitlementExpiry(track)
   } catch {
     return null
   }
