@@ -927,6 +927,19 @@ async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = fals
   }
   throw error || new Error(data?.error || 'Could not verify access to paid question metadata.');
 }
+/** Returns the published full-bank total for catalog display. This endpoint exposes counts only, never question content. */
+export async function getPublicQuestionCountByTrack(track: TrackId): Promise<number> {
+  if (!supabase) throw new Error('Protected question service is not configured.');
+  const { data, error } = await supabase.functions.invoke('question-bank', {
+    body: { action: 'catalog-counts', track }
+  });
+  if (error || !Array.isArray(data?.counts)) {
+    throw error || new Error(data?.error || 'Could not load the published question count.');
+  }
+  return data.counts.reduce((total: number, item: { count?: unknown }) =>
+    total + Math.max(0, Number(item.count) || 0), 0);
+}
+
 export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
   return withPageLoading('Loading question counts', () => loadQuestionCountsByTrackInternal(track, freeOnly))
 }
