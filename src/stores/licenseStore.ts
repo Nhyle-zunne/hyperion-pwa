@@ -47,40 +47,6 @@ function scheduleEntitlementExpiryRefresh(
   }, delay);
 }
 
-function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const candidate = error as { code?: unknown; message?: unknown };
-  if (candidate.code !== 'PGRST205' || typeof candidate.message !== 'string') return false;
-  const message = candidate.message.toLowerCase();
-  return message.includes('google_play_entitlements') && message.includes('schema cache');
-}
-
-function canUseOfflineEntitlementsAfterError(error: unknown, responseStatus?: number): boolean {
-  const candidate = error as {
-    status?: unknown;
-    statusCode?: unknown;
-    context?: { status?: unknown };
-    code?: unknown;
-    message?: unknown;
-    name?: unknown;
-  } | null;
-  const rawStatus = responseStatus ?? candidate?.status ?? candidate?.statusCode ?? candidate?.context?.status;
-  if (rawStatus !== undefined && rawStatus !== null && rawStatus !== '') {
-    const status = Number(rawStatus);
-    if (Number.isFinite(status)) return status === 0 || status >= 500;
-  }
-
-  // PostgREST/database errors carry a code but may not expose their HTTP status on the
-  // error object. Treat coded client/database errors as definitive before considering
-  // the browser's offline flag, so an authorization error never grants cached access.
-  if (typeof candidate?.code === 'string' && candidate.code.trim() !== '') return false;
-
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-
-  const message = typeof candidate?.message === 'string' ? candidate.message : String(error ?? '');
-  return /failed to fetch|network error|network request failed|networkerror|load failed|timed out|timeout|connection reset|connection refused|enotfound|econn|enetunreach|eai_again|aborted/i.test(message);
-}
-
 function accessFlags(trackIds: string[]) {
   const all = trackIds.includes('ALL') || TRACK_IDS.every((id) => trackIds.includes(id));
   return {
