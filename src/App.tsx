@@ -383,7 +383,10 @@ export default function App() {
   const setupTrack = quickScanKeys[setupTrackKey]
   const setupMode = setupParams.get('mode') || ''
   const isExplicitFreeReviewerSetup = setupParams.get('free') === '1' && setupMode !== 'drill'
-  const isOtherProtectedTrackScreen = ['/drill', '/quick-scan', '/search', '/vault'].includes(location.pathname)
+  // The unscoped Mistakes Notebook aggregates every licensed track and has its
+  // own per-item access filtering. Only a track-scoped notebook requires this gate.
+  const isOtherProtectedTrackScreen = ['/drill', '/quick-scan', '/search'].includes(location.pathname)
+    || (location.pathname === '/vault' && setupParams.has('track'))
   const setupNeedsLicense = (isPracticeSetup && !isExplicitFreeReviewerSetup) || isOtherProtectedTrackScreen
   const hasActiveSetupLicense = entitlementsVerified && (
     isAllAccessUnlocked || cloudTrackIds.includes('ALL') ||
