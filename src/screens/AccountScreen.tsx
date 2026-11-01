@@ -440,6 +440,8 @@ export default function AccountScreen() {
       keepSuccessBackdropRef.current = true
       const { error } = await supabase.auth.signOut()
       if (error) throw error
+      // Clear the device-bound offline grant only for an intentional user sign-out.
+      useLicenseStore.getState().clearLicense()
       setMessage('')
       setSuccessClosing(false)
       setSignedOutSuccess(true)
