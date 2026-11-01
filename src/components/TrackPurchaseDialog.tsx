@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { LICENSE_TERMS, PAID_PRODUCTS, paidProductCodeForTrackId, priceForTerm, supabase, supabaseConfigured } from '../lib/supabase'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
@@ -12,6 +12,11 @@ function isPaidTrack(value: string | null): value is PaidTrack {
 
 function validTerm(value: string | null): LicenseTerm {
   return value === 'week' || value === 'month' || value === 'year' ? value : 'year'
+}
+
+function directCheckoutPath(code: PaidTrack, term: LicenseTerm) {
+  const query = new URLSearchParams({ buy_product: code, buy_term: term })
+  return `/checkout?${query.toString()}`
 }
 
 function productDescription(code: PaidTrack) {
@@ -42,7 +47,6 @@ function savedBasket(): { code: PaidTrack; term: LicenseTerm }[] {
 }
 
 export default function TrackPurchaseDialog() {
-  const location = useLocation()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const refreshCloudEntitlements = useLicenseStore(state => state.refreshCloudEntitlements)
@@ -145,7 +149,8 @@ export default function TrackPurchaseDialog() {
         return
       }
 
-      const nextBasket = [...savedBasket().filter(item => item.code !== product.code), { code: product.code, term }]
+      // BUY NOW is a single-track purchase, not an implicit purchase of older basket items.
+      const nextBasket = [{ code: product.code, term }]
       try {
         localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(nextBasket))
         setBasketItems(nextBasket)
@@ -153,32 +158,37 @@ export default function TrackPurchaseDialog() {
         setMessage('Your purchase could not be saved on this device. Please enable browser storage and try again.')
         return
       }
-      close()
-      navigate('/checkout')
+      setMessage('')
+      navigate(directCheckoutPath(product.code, term))
     } catch {
       setMessage('Checkout could not be opened. Please reconnect and try again.')
     } finally {
       setBusy(false)
     }
-  }, [product, session?.user.id, refreshCloudEntitlements, term, close, navigate])
+  }, [product, session?.user.id, refreshCloudEntitlements, term, navigate])
 
   const signIn = async () => {
     if (!supabase || !supabaseConfigured || !product) {
       setMessage('Sign-in is temporarily unavailable. Please try again later.')
       return
     }
-    const returnParams = new URLSearchParams(params)
-    returnParams.set('purchase', '1')
-    returnParams.set('purchase_product', product.code)
-    returnParams.set('purchase_term', term)
-    returnParams.set('purchase_action', 'checkout')
-    const returnTo = `${location.pathname}?${returnParams.toString()}`
+    // Stage the exact track and term before leaving for Google. The callback
+    // returns directly to Checkout, rather than reopening the paywall and hoping
+    // that a second effect resumes the purchase.
+    const selection = [{ code: product.code, term }]
     try {
+      localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(selection))
       localStorage.setItem('hyperion-oauth-return-to', JSON.stringify({
-        path: returnTo,
+        path: directCheckoutPath(product.code, term),
         startedAt: Date.now(),
         mode: 'redirect',
       }))
+    } catch {
+      setMessage('Your purchase selection could not be saved. Please enable browser storage and try again.')
+      return
+    }
+    setBasketItems(selection)
+    try {
       setBusy(true)
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
