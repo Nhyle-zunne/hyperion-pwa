@@ -668,7 +668,7 @@ export default function HistoryScreen() {
                             const background = correct ? 'rgba(34,197,94,.12)' : chosen ? 'rgba(239,68,68,.12)' : 'var(--bg-card)'
                             return <div key={index} style={{ border: '1px solid ' + border, background, borderRadius: 6, padding: '.65rem', lineHeight: 1.5 }}>
                               <strong>{String.fromCharCode(65 + index)}.</strong> {option}
-                              {correct && <span style={{ color: 'var(--success)', fontWeight: 900 }}> · CORRECT ANSWER</span>}
+                              {correct && !chosen && <span style={{ color: 'var(--success)', fontWeight: 900 }}> · CORRECT ANSWER</span>}
                               {chosen && <span style={{ color: correct ? 'var(--success)' : 'var(--danger)', fontWeight: 900 }}> · YOUR ANSWER</span>}
                             </div>
                           })}
