@@ -75,7 +75,7 @@ function KeywordEditor({ question, enabled, headingId }: { question: Identity; e
     {enabled && editing && <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', margin: '0 0 .5rem' }}>Tap words to highlight or remove highlights.</p>}
     <div id={headingId} role={headingId ? 'heading' : undefined} aria-level={headingId ? 2 : undefined}>{content}{text.slice(cursor)}</div>
     {enabled && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-      <button type="button" className="btn btn-outline" disabled={!storageKey || saving} style={{ fontSize: '.8rem', padding: '.35rem .6rem' }} onClick={() => editing ? void save() : setEditing(true)}>
+      <button type="button" className={editing ? 'btn btn-primary' : 'btn btn-outline'} disabled={!storageKey || saving} style={{ fontSize: '.8rem', padding: '.35rem .6rem', ...(editing ? { background: '#15803d', borderColor: '#15803d', color: '#ffffff' } : {}) }} onClick={() => editing ? void save() : setEditing(true)}>
         {saving ? 'Saving…' : editing ? 'Save Keywords' : 'Edit Keyword'}
       </button>
     </div>}

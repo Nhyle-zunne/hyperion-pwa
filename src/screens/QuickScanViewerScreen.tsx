@@ -1,8 +1,7 @@
 import SessionElapsedTimer from '../components/SessionElapsedTimer'
-import KeywordHighlightSetting from '../components/KeywordHighlightSetting'
 import KeywordQuestionText from '../components/KeywordQuestionText'
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { getQuestionCountsByTrack, getQuestionsByCompetence, listAvailableCompetences } from '../lib/questionBank'
 import type { Question, TrackId } from '../types/question'
 
@@ -12,9 +11,13 @@ const TRACK_MAP: Record<string, TrackId> = {
 }
 const PAGE_SIZE = 50
 
-export default function QuickScanViewerScreen() {
-  const navigate = useNavigate()
-  const [settingsOpen, setSettingsOpen] = useState(false)
+export default function QuickScanViewerScreen({ onQuestionChange }: { onQuestionChange?: (question: Question | null) => void } = {}) {
+  const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
+  useEffect(() => {
+    const update = (event: Event) => setTextScale((event as CustomEvent<number>).detail)
+    window.addEventListener('hyperion:text-scale', update)
+    return () => window.removeEventListener('hyperion:text-scale', update)
+  }, [])
   const [params] = useSearchParams()
   const key = params.get('track') || 'oic_nw'
   const track = TRACK_MAP[key] || 'DECK_OIC_NW'
@@ -80,6 +83,10 @@ export default function QuickScanViewerScreen() {
 
   const globalIndex = pageStart + index
   const q = questions[index]
+  useEffect(() => {
+    onQuestionChange?.(loading ? null : q ?? null)
+    return () => onQuestionChange?.(null)
+  }, [q, loading, onQuestionChange])
   const previous = async () => {
     if (index > 0) setIndex(current => current - 1)
     else if (pageStart > 0) await loadPage(Math.max(1, pageStart - PAGE_SIZE + 1))
@@ -98,12 +105,7 @@ export default function QuickScanViewerScreen() {
     if (qs.length) setIndex(n - startItem)
   }
 
-  return <div className="screen" style={{ paddingBottom: '2rem' }}>
-    <div style={{ display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
-      <button type="button" className="btn btn-outline" aria-label="Question settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(open => !open)}>⚙</button>
-      {settingsOpen && <section aria-label="Question settings" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 30, background: 'var(--bg-card)', border: '1px solid var(--border)', minWidth: 240 }}><KeywordHighlightSetting /></section>}
-    </div>
-    <button type="button" onClick={() => navigate(`/quick-scan?track=${key}`)} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>← Competences</button>
+  return <div className="screen question-runner-screen quick-scan-screen" style={{ paddingBottom: '2rem' }}>
     <div className="card" style={{ borderRadius: 2, borderTop: '3px solid var(--accent)', marginBottom: '1rem' }}>
       <div style={{ color: 'var(--text-muted)', fontSize: '.72rem', letterSpacing: '.1em', fontWeight: 800 }}>QUICK SCAN · {competenceId}</div>
       <h1 className="page-title" style={{ margin: '8px 0 4px' }}>{competence?.label || competenceId}</h1>
@@ -114,10 +116,10 @@ export default function QuickScanViewerScreen() {
     {!loading && q && <>
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div style={{ color: 'var(--accent)', fontSize: '.8rem', marginBottom: 8 }}>{q.topic}</div>
-        <div style={{ fontSize: '1.05rem', lineHeight: 1.6 }}><KeywordQuestionText question={q} /></div>
+        <div style={{ fontSize: `${1.05 * textScale / 100}rem`, lineHeight: 1.6 }}><KeywordQuestionText question={q} /></div>
       </div>
       <div style={{ display: 'grid', gap: 8, marginBottom: '1rem' }}>
-        {q.options.map((option, i) => <div key={i} className="card" style={{ borderRadius: 2, border: `1px solid ${i === q.correctAnswerIndex ? 'var(--success)' : 'var(--border)'}`, background: i === q.correctAnswerIndex ? 'rgba(34,197,94,.12)' : 'var(--bg-card)', padding: '1rem', display: 'flex', gap: 10 }}>
+        {q.options.map((option, i) => <div key={i} className="card" style={{ borderRadius: 2, border: `1px solid ${i === q.correctAnswerIndex ? 'var(--success)' : 'var(--border)'}`, background: i === q.correctAnswerIndex ? 'rgba(34,197,94,.12)' : 'var(--bg-card)', padding: '0.9rem 1rem', fontSize: `${.95 * textScale / 100}rem`, display: 'flex', gap: 10 }}>
           <strong style={{ color: i === q.correctAnswerIndex ? 'var(--success)' : 'var(--text-muted)' }}>{String.fromCharCode(65 + i)}.</strong><span>{option}</span>{i === q.correctAnswerIndex && <span style={{ marginLeft: 'auto', color: 'var(--success)' }}>✓</span>}
         </div>)}
       </div>

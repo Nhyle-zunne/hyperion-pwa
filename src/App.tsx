@@ -1,3 +1,4 @@
+import type { Question } from './types/question'
 import QuestionBookmarkButton from './components/QuestionBookmarkButton'
 import KeywordHighlightSetting from './components/KeywordHighlightSetting'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
@@ -128,6 +129,7 @@ export default function App() {
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
   const q = usePracticeStore((s) => s.questions[s.currentIndex])
+  const [quickScanQuestion, setQuickScanQuestion] = useState<Question | null>(null)
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
   const [automations, setAutomations] = useState(() => {
     try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as { directAnswer: boolean; autoNextCorrect: boolean; autoNextWrong: boolean } }
@@ -468,6 +470,7 @@ export default function App() {
   const hideNav = [
     '/practice/quiz',
     '/mock/exam',
+    '/quick-scan/view',
     '/auth/callback'
   ].some((p) => location.pathname.startsWith(p))
 
@@ -492,7 +495,7 @@ export default function App() {
           {' · '}Only downloaded question packs and saved sessions are available. New sign-ins, checkout, license changes, and cloud sync need an internet connection.
         </div>
       )}
-      {isQuestionRunner && (
+      {(isQuestionRunner || isQuickScanViewer) && (
         <header
           aria-label="Question navigation"
           style={{
@@ -512,8 +515,8 @@ export default function App() {
         >
           <button
             type="button"
-            onClick={() => { if (isPracticeQuiz) window.dispatchEvent(new Event('hyperion:request-exit-practice')); else window.dispatchEvent(new Event('hyperion:request-exit-mock')) }}
-            aria-label={isMockRunner ? 'Back to mock exam overview' : 'Back to practice setup'}
+            onClick={() => { if (isQuickScanViewer) navigate('/quick-scan?track=' + (new URLSearchParams(location.search).get('track') || 'oic_nw')); else if (isPracticeQuiz) window.dispatchEvent(new Event('hyperion:request-exit-practice')); else window.dispatchEvent(new Event('hyperion:request-exit-mock')) }}
+            aria-label={isQuickScanViewer ? 'Back to Quick Scan competences' : isMockRunner ? 'Back to mock exam overview' : 'Back to practice setup'}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -531,10 +534,10 @@ export default function App() {
             Back
           </button>
           <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 700 }}>
-            {isMockRunner ? 'MOCK EXAM' : 'PRACTICE'}
+            {isQuickScanViewer ? 'QUICK SCAN' : isMockRunner ? 'MOCK EXAM' : 'PRACTICE'}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
-            {!isMockRunner && <QuestionBookmarkButton question={q} paidAtSave={!isFreeSession} />}
+            {!isMockRunner && <QuestionBookmarkButton question={isQuickScanViewer ? quickScanQuestion ?? undefined : q} paidAtSave={isQuickScanViewer || !isFreeSession} />}
             <button
               type="button"
               onClick={() => setSettingsOpen(v => !v)}
@@ -552,7 +555,7 @@ export default function App() {
               <KeywordHighlightSetting />
               <div style={{ width: '100%', padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'transparent', borderBottom: '1px solid var(--border)', color: 'var(--text)' }}><span>{theme === 'light' ? '☀ Daylight' : '☾ Night Mode'}</span><button type="button" role="switch" aria-label="Night Mode" aria-checked={theme !== 'light'} onClick={toggleTheme} style={{ position: 'relative', width: 64, height: 30, flexShrink: 0, padding: 3, border: 0, borderRadius: 999, cursor: 'pointer', background: theme !== 'light' ? '#16c60c' : '#d1d5db', transition: 'background 180ms ease', boxShadow: 'inset 0 1px 2px rgba(0,0,0,.14)' }}><span style={{ position: 'absolute', top: 3, left: theme !== 'light' ? 37 : 3, width: 24, height: 24, borderRadius: '50%', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,.28)', transition: 'left 180ms ease' }} /><span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: theme !== 'light' ? 'flex-start' : 'flex-end', padding: '0 8px', color: theme !== 'light' ? '#ffffff' : '#374151', fontSize: 9, fontWeight: 900, pointerEvents: 'none' }}>{theme !== 'light' ? 'ON' : 'OFF'}</span></button></div>
               <div style={{ padding: 12, borderBottom: '1px solid var(--border)' }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}><strong>Ｔ Text Size</strong><strong style={{ color: 'var(--accent)' }}>{textScale}%</strong></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}><button type="button" disabled={textScale <= 50} onClick={() => { const size = Math.max(50, textScale - 10); setTextScale(size); localStorage.setItem('hyperion-question-text-scale', String(size)); window.dispatchEvent(new CustomEvent('hyperion:text-scale', { detail: size })) }} style={{ padding: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)', opacity: textScale <= 50 ? .45 : 1 }}>A−</button><button type="button" onClick={() => { setTextScale(100); localStorage.setItem('hyperion-question-text-scale', '100'); window.dispatchEvent(new CustomEvent('hyperion:text-scale', { detail: 100 })) }} style={{ padding: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)' }}>100%</button><button type="button" disabled={textScale >= 150} onClick={() => { const size = Math.min(150, textScale + 10); setTextScale(size); localStorage.setItem('hyperion-question-text-scale', String(size)); window.dispatchEvent(new CustomEvent('hyperion:text-scale', { detail: size })) }} style={{ padding: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)', opacity: textScale >= 150 ? .45 : 1 }}>A+</button></div></div>
-{!isMockRunner && <>
+{!isMockRunner && !isQuickScanViewer && <>
               <div style={{ padding: 12, fontWeight: 800, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>PRACTICE AUTOMATIONS</div>
               {([['directAnswer','Direct Answer','Confirm without Check button'],['autoNextCorrect','Auto-Next (Correct)','Advance when correct'],['autoNextWrong','Auto-Next (Wrong)','Advance when incorrect']] as const).map(([key,title,desc]) => <div key={key} style={{ width: '100%', padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: 'transparent', borderBottom: '1px solid var(--border)', color: 'var(--text)', textAlign: 'left' }}><span><strong>{title}</strong><small style={{ display: 'block', color: 'var(--text-muted)' }}>{desc}</small></span><button type="button" role="switch" aria-label={title} aria-checked={automations[key]} onClick={() => updateAutomation(key, !automations[key])} style={{ position: 'relative', width: 64, height: 30, flexShrink: 0, padding: 3, border: 0, borderRadius: 999, cursor: 'pointer', background: automations[key] ? '#16c60c' : '#d1d5db', transition: 'background 180ms ease', boxShadow: 'inset 0 1px 2px rgba(0,0,0,.14)' }}><span style={{ position: 'absolute', top: 3, left: automations[key] ? 37 : 3, width: 24, height: 24, borderRadius: '50%', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,.28)', transition: 'left 180ms ease' }} /><span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: automations[key] ? 'flex-start' : 'flex-end', padding: '0 8px', color: automations[key] ? '#ffffff' : '#374151', fontSize: 9, fontWeight: 900, pointerEvents: 'none' }}>{automations[key] ? 'ON' : 'OFF'}</span></button></div>)}
               </>}
@@ -586,7 +589,7 @@ export default function App() {
           <Route path="/practice/quiz" element={<PracticeQuizScreen />} />
           <Route path="/drill" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <DrillScreen />} />
           <Route path="/quick-scan" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <QuickScanCompetenceScreen />} />
-          <Route path="/quick-scan/view" element={<QuickScanViewerScreen />} />
+          <Route path="/quick-scan/view" element={<QuickScanViewerScreen onQuestionChange={setQuickScanQuestion} />} />
           <Route path="/mock" element={<MockExamScreen />} />
           <Route path="/mock/exam" element={<MockExamRunner />} />
           <Route path="/history" element={<HistoryScreen />} />
