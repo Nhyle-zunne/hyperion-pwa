@@ -12,7 +12,7 @@ import {
   type SavedSessionEntry,
   type SessionMode
 } from '../stores/historyStore'
-import { getSessionSnapshot, type SessionSnapshot } from '../lib/sessionArchive'
+import { loadSessionSnapshot, type SessionSnapshot, type SessionSnapshotLoad } from '../lib/sessionArchive'
 import { authorizeQuestionSet } from '../lib/questionBank'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
@@ -63,6 +63,8 @@ type HistoryRow = {
 type ReviewState = {
   id: string
   snapshot: SessionSnapshot | null
+  status: SessionSnapshotLoad['status'] | 'loading'
+  cached?: boolean
   index: number
   tab: 'breakdown' | 'questions'
   missedOnly: boolean
@@ -172,6 +174,7 @@ export default function HistoryScreen() {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [progressDetails, setProgressDetails] = useState<SavedSessionEntry | null>(null)
   const [review, setReview] = useState<ReviewState | null>(null)
+  const [reviewAttempt, setReviewAttempt] = useState(0)
   const skipNextClick = useRef(false)
 
   useEffect(() => { purgeExpiredDeleted() }, [purgeExpiredDeleted])
@@ -218,25 +221,19 @@ export default function HistoryScreen() {
     return authorizeQuestionSet(row.track, snapshot.questions)
   }
 
-  const openReview = async (id: string) => {
-    const row = allRows.find(item => item.id === id && item.kind === 'entry')
-    if (!row) return
-    const snapshot = await getSessionSnapshot(id)
-    if (!await canOpenQuestionReview(row, snapshot)) {
-      navigate(`/track?track=${TRACK_KEYS[row.track]}`)
-      openPaywall('Reviewing these saved questions requires a current license, unless the questions belong to the free reviewer sample.')
-      return
-    }
-    setReview({ id, snapshot, index: 0, tab: 'questions', missedOnly: false })
+  const openReview = (id: string) => {
+    if (!allRows.some(item => item.id === id && item.kind === 'entry')) return
     const nextParams = new URLSearchParams(params)
     nextParams.set('review', id)
     setParams(nextParams, { replace: true })
+    setReviewAttempt(current => current + 1)
   }
 
+  const requestedReviewEntry = entries.find(entry => entry.id === params.get('review') && !entry.deletedAt)
   useEffect(() => {
     const id = params.get('review')
-    if (!id || review?.id === id) return
-    const entry = entries.find(item => item.id === id && !item.deletedAt)
+    if (!id) return
+    const entry = requestedReviewEntry
     if (!entry) return
     let cancelled = false
     void (async () => {
@@ -246,18 +243,22 @@ export default function HistoryScreen() {
         completed: true, correct: entry.correct, total: entry.total, answered: entry.answered ?? entry.total,
         percent: entry.percent, durationMs: entry.durationMs, entry, isFreeSession: entry.isFreeSession === true
       }
-      const snapshot = await getSessionSnapshot(id)
-      const allowed = await canOpenQuestionReview(row, snapshot)
+      setReview({ id, snapshot: null, status: 'loading', index: 0, tab: 'questions', missedOnly: false })
+      const result = await loadSessionSnapshot(id)
+      const allowed = await canOpenQuestionReview(row, result.snapshot)
       if (cancelled) return
       if (!allowed) {
+        setReview(null)
         navigate(`/track?track=${TRACK_KEYS[row.track]}`)
         openPaywall('Reviewing these saved questions requires a current license, unless the questions belong to the free reviewer sample.')
         return
       }
-      if (!cancelled) setReview({ id, snapshot, index: 0, tab: 'questions', missedOnly: false })
-    })()
+      if (!cancelled) setReview(current => current?.id === id ? { ...current, ...result } : current)
+    })().catch(() => {
+      if (!cancelled) setReview(current => current?.id === id ? { ...current, snapshot: null, status: 'unavailable' } : current)
+    })
     return () => { cancelled = true }
-  }, [params, entries, review?.id, refreshCloudEntitlements, openPaywall, navigate])
+  }, [params, requestedReviewEntry?.id, reviewAttempt, refreshCloudEntitlements, openPaywall, navigate])
 
   useEffect(() => {
     const snapshot = review?.snapshot
@@ -611,9 +612,20 @@ export default function HistoryScreen() {
               </div>
             )}
             {!review.snapshot ? (
-              <p style={secondaryText}>Detailed question-by-question answers are not available for this older history entry, but its score and session summary are preserved.</p>
+              <div aria-live="polite">
+                <p role={review.status === 'loading' ? 'status' : undefined} style={secondaryText}>{
+                  review.status === 'loading' ? 'Loading saved questions and answers…' :
+                  review.status === 'offline' ? 'This session’s questions are not downloaded on this device. Reconnect and retry to load the saved audit for offline review.' :
+                  review.status === 'sign-in-required' ? 'Sign in to the account that completed this exam, then retry loading its saved questions and answers.' :
+                  review.status === 'account-changed' ? 'The account changed while loading this session. Return to History and open a session from your current account.' :
+                  review.status === 'unavailable' ? 'The saved audit could not be downloaded. Your session summary is preserved. Retry when the connection and audit service are available.' :
+                  'No detailed question-and-answer snapshot was found on this device or in this account’s cloud archive. The score and session summary are preserved. An older session can only be reviewed if its original snapshot survives.'
+                }</p>
+                {review.status !== 'loading' && <button type="button" className="btn btn-primary" onClick={() => void openReview(review.id)}>Retry loading audit</button>}
+              </div>
             ) : (
               <>
+                {review.cached === false && <p role="status" style={secondaryText}>This audit is open online, but could not be saved for offline review. Check device storage and reopen it to retry.</p>}
                 {review.snapshot.mode === 'MOCK' && (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: '.85rem' }}>
                     <button className={review.tab === 'breakdown' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setReview(current => current ? { ...current, tab: 'breakdown' } : current)}>Competence breakdown</button>

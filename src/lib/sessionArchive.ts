@@ -180,22 +180,50 @@ function getLocalSessionSnapshot(id: string): Promise<SessionSnapshot | null> {
   })
 }
 
-export async function getSessionSnapshot(id: string, localOnly = false): Promise<SessionSnapshot | null> {
+export type SessionSnapshotLoad = {
+  snapshot: SessionSnapshot | null
+  status: 'ready' | 'offline' | 'unavailable' | 'not-found' | 'sign-in-required' | 'account-changed'
+  cached?: boolean
+}
+
+/** Missing archives and failed downloads need different recovery actions in History. */
+export async function loadSessionSnapshot(id: string): Promise<SessionSnapshotLoad> {
+  const owner = localStorage.getItem('hyperion-progress-owner')
   const local = await getLocalSessionSnapshot(id)
-  if (local || localOnly || !supabase || navigator.onLine === false) return local
+  if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+  if (local) return { snapshot: local, status: 'ready', cached: true }
+  if (navigator.onLine === false) return { snapshot: null, status: 'offline' }
+  if (!supabase) return { snapshot: null, status: 'unavailable' }
   try {
     const { data } = await supabase.auth.getSession()
     const session = data.session
-    if (!session || localStorage.getItem('hyperion-progress-owner') !== session.user.id) return null
+    if (!session) return { snapshot: null, status: 'sign-in-required' }
+    if (owner !== session.user.id || localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
     const response = await supabase.functions.invoke('learning-progress', {
       headers: { Authorization: `Bearer ${session.access_token}` },
       body: { action: 'read-session', sessionId: id }
     })
-    if (response.error || !isSessionSnapshot(response.data?.snapshot)) return null
-    if (localStorage.getItem('hyperion-progress-owner') !== session.user.id) return null
-    await saveSessionSnapshot(id, response.data.snapshot)
-    return response.data.snapshot
-  } catch { return null }
+    if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+    if (response.error) return { snapshot: null, status: 'unavailable' }
+    // Older function deployments return a progress row for unrecognized actions.
+    // Only an explicit archive response can establish that no cloud copy exists.
+    if (!response.data || !Object.prototype.hasOwnProperty.call(response.data, 'snapshot')) return { snapshot: null, status: 'unavailable' }
+    if (response.data.snapshot === null) return { snapshot: null, status: 'not-found' }
+    if (!isSessionSnapshot(response.data.snapshot) || response.data.snapshot.sessionId !== id) return { snapshot: null, status: 'unavailable' }
+    try {
+      await saveSessionSnapshot(id, response.data.snapshot)
+      if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+      return { snapshot: response.data.snapshot, status: 'ready', cached: true }
+    } catch {
+      // An online review can still open when the device cannot cache it.
+      if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+      return { snapshot: response.data.snapshot, status: 'ready', cached: false }
+    }
+  } catch { return { snapshot: null, status: 'unavailable' } }
+}
+
+export async function getSessionSnapshot(id: string, localOnly = false): Promise<SessionSnapshot | null> {
+  return localOnly ? getLocalSessionSnapshot(id) : (await loadSessionSnapshot(id)).snapshot
 }
 
 let archiveSyncRunning = false

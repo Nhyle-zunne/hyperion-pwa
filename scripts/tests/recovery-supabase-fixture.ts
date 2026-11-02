@@ -38,6 +38,7 @@ export const supabase = {
         localStorage.setItem(archiveKey, JSON.stringify(body.snapshot))
         return { data: { ok: true }, error: null }
       }
+      if (body.action === 'read-session' && localStorage.getItem('fixture-audit-unavailable')) return { data: null, error: new Error('Synthetic audit service outage') }
       if (body.action === 'read-session') return { data: { snapshot: JSON.parse(localStorage.getItem(archiveKey) || 'null') }, error: null }
       return { data: null, error: new Error('Unexpected fixture action') }
     }

@@ -6,7 +6,10 @@ import { usePracticeStore } from '../stores/practiceStore'
 import { HISTORY_RETENTION_MS, useHistoryStore } from '../stores/historyStore'
 import { useUIStore } from '../stores/uiStore'
 import { getQuestionCountsByTrack, listAvailableCompetences } from '../lib/questionBank'
-import type { TrackId } from '../types/question'
+import { savedQuestionsReturnPath, type SavedQuestionSelection } from '../lib/savedQuestionSets'
+import { useBookmarksStore } from '../stores/bookmarksStore'
+import { useVaultStore } from '../stores/vaultStore'
+import type { Question, TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = {
   oic_nw: 'DECK_OIC_NW', gmdss: 'GMDSS_GOC', engine_ew: 'ENGINE_OIC_EW',
@@ -16,6 +19,7 @@ const TRACK_LABELS: Record<TrackId, string> = {
   DECK_OIC_NW: 'OIC-NW', GMDSS_GOC: 'GMDSS GOC', ENGINE_OIC_EW: 'OIC-EW',
   DECK_MGT: 'Deck Management', ENGINE_MGT: 'Engine Management'
 }
+const EMPTY_QUESTIONS: Question[] = []
 const panel: CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 0, padding: '1.1rem', marginBottom: '1rem' }
 const sectionTitle: React.CSSProperties = { color: 'var(--accent)', fontSize: '.95rem', letterSpacing: '.07em', fontWeight: 900, margin: '0 0 1rem' }
 const muted: React.CSSProperties = { color: 'var(--text-muted)' }
@@ -37,13 +41,13 @@ type ConfigSessionRow = {
   percent: number
 }
 
-export default function PracticeConfigScreen() {
+export default function PracticeConfigScreen({ savedSelection }: { savedSelection?: SavedQuestionSelection } = {}) {
   const navigate = useNavigate()
   const [params, setSearchParams] = useSearchParams()
   const trackParam = params.get('track') || 'oic_nw'
-  const trackId = TRACK_MAP[trackParam] || 'DECK_OIC_NW'
-  const freeMode = params.get('free') === '1'
-  const isDrill = params.get('mode') === 'drill'
+  const trackId = savedSelection?.track || TRACK_MAP[trackParam] || 'DECK_OIC_NW'
+  const freeMode = !savedSelection && params.get('free') === '1'
+  const isDrill = params.get('mode') === 'drill' || (savedSelection?.collection === 'mistakes' && !params.has('mode'))
   const sessionMode = isDrill ? 'DRILL' : 'PRACTICE'
   const openPaywall = useUIStore(s => s.openPaywall)
   const isUnlocked = useLicenseStore(s => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
@@ -57,10 +61,21 @@ export default function PracticeConfigScreen() {
   const permanentlyDeleteSession = useHistoryStore(s => s.permanentlyDelete)
   const purgeExpiredSessions = useHistoryStore(s => s.purgeExpiredDeleted)
   const competences = listAvailableCompetences(trackId)
-  const competenceId = params.get('competence') || undefined
+  const competenceId = savedSelection?.competenceId || params.get('competence') || undefined
   const competence = competences.find(c => c.id === competenceId)
   const selectedPart = trackId === 'GMDSS_GOC' && competenceId ? Number(params.get('part') || '0') || undefined : undefined
   const gmdssParts = competenceId === 'C1' ? Array.from({ length: 10 }, (_, i) => i + 1) : competenceId === 'C2' ? [1, 2] : []
+  const bookmarks = useBookmarksStore(state => state.items)
+  const mistakes = useVaultStore(state => state.items)
+  const savedSetQuestions = useMemo(() => {
+    if (!savedSelection) return EMPTY_QUESTIONS
+    const rows = savedSelection.collection === 'mistakes' ? mistakes : bookmarks
+    const byId = new Map(rows.filter(item => item.track === savedSelection.track).map(item => [item.id, item]))
+    return savedSelection.ids.flatMap(id => {
+      const item = byId.get(id)
+      return item ? [{ ...item, difficulty: item.difficulty as Question['difficulty'] }] : []
+    })
+  }, [savedSelection, bookmarks, mistakes])
   const [availableQuestionCount, setAvailableQuestionCount] = useState(0)
   const [questionCountError, setQuestionCountError] = useState('')
   const [startItem, setStartItem] = useState(1)
@@ -149,6 +164,13 @@ export default function PracticeConfigScreen() {
     async function load() {
       const restrictedToFreePool = freeMode || !isUnlocked
       setQuestionCountError('')
+      if (savedSelection) {
+        setAvailableQuestionCount(savedSetQuestions.length)
+        setStartItem(1)
+        setEndItem(Math.max(1, savedSetQuestions.length))
+        if (!savedSetQuestions.length) setQuestionCountError('This saved selection has no available questions. Return to your saved collection and select it again.')
+        return
+      }
       try {
         const counts = await getQuestionCountsByTrack(trackId, restrictedToFreePool)
         if (cancelled) return
@@ -175,7 +197,7 @@ export default function PracticeConfigScreen() {
     }
     void load()
     return () => { cancelled = true }
-  }, [trackId, competenceId, freeMode, isUnlocked, selectedPart])
+  }, [trackId, competenceId, freeMode, isUnlocked, selectedPart, savedSelection, savedSetQuestions])
 
   const maxRange = Math.max(1, availableQuestionCount)
   const actualStart = Math.max(1, Math.min(startItem, maxRange))
@@ -190,6 +212,16 @@ export default function PracticeConfigScreen() {
     setStartError('')
     setStarting(true)
     try {
+      if (savedSelection) {
+        const started = await usePracticeStore.getState().startCustomSession({
+          questions: savedSetQuestions.slice(actualStart - 1, actualEnd), track: trackId, competenceId,
+          mode: sessionMode, randomizeOrder: randomizeOrder || prioritizeUnseen, shuffleChoices,
+          source: { collection: savedSelection.collection, selectionId: savedSelection.selectionId }
+        })
+        if (!started) { setStartError(usePracticeStore.getState().error || 'Could not start this saved question set. Your collection is preserved.'); return }
+        navigate('/practice/quiz')
+        return
+      }
       // Re-check access at the action boundary instead of trusting a stale UI flag.
       await refreshCloudEntitlements()
       const entitlement = useLicenseStore.getState()
@@ -238,17 +270,17 @@ export default function PracticeConfigScreen() {
         <div style={{ fontWeight: 900, color: 'var(--text)' }}>{title} <span style={{ color: value ? 'var(--accent)' : 'var(--text-muted)', fontSize: '.7rem', border: '1px solid currentColor', padding: '.2rem .35rem', whiteSpace: 'nowrap' }}>{value ? (title.startsWith('Shuffle') ? 'SHUFFLED' : 'ON') : badge}</span></div>
         <div style={{ ...muted, fontSize: '.83rem', lineHeight: 1.5, marginTop: '.25rem' }}>{description}</div>
       </div>
-      <button type="button" role="switch" aria-checked={value} onClick={() => setValue(!value)} style={{ background: value ? 'var(--accent)' : 'var(--text-muted)', color: 'white', border: '1px solid #94a3b8', padding: '.45rem .6rem', fontWeight: 900, minWidth: 82 }}>{value ? 'ON  ▥' : '▥  OFF'}</button>
+      <button type="button" role="switch" aria-checked={value} aria-label={title} onClick={() => setValue(!value)} style={{ background: value ? 'var(--accent)' : 'var(--text-muted)', color: 'white', border: '1px solid #94a3b8', padding: '.45rem .6rem', fontWeight: 900, minWidth: 82 }}>{value ? 'ON  ▥' : '▥  OFF'}</button>
     </div>
   )
 
   return <div className="screen practice-config-screen" style={{ padding: '0 0 2rem', color: 'var(--text)' }}>
-    <button type="button" onClick={() => navigate(competenceId ? `/practice/competences?track=${trackParam}${freeMode ? '&free=1' : ''}` : `/track?track=${trackParam}`)} style={{ ...muted, marginBottom: '.8rem', padding: '.4rem 0' }}>← Back</button>
+    <button type="button" onClick={() => navigate(savedQuestionsReturnPath(savedSelection) || (competenceId ? `/practice/competences?track=${trackParam}${freeMode ? '&free=1' : ''}` : `/track?track=${trackParam}`))} style={{ ...muted, marginBottom: '.8rem', padding: '.4rem 0' }}>← Back</button>
     <div style={{ ...panel, borderTop: '3px solid #00e5a0', background: 'var(--bg-elevated)', marginBottom: '1.2rem' }}>
       <div style={{ ...muted, background: 'var(--accent-soft)', color: 'var(--text)', display: 'inline-block', padding: '.2rem .5rem', fontWeight: 900, letterSpacing: '.12em', fontSize: '.75rem' }}>STEP 2 OF 2 · {freeMode ? 'FREE REVIEWER' : isDrill ? 'DRILL CONFIGURATION' : 'PRACTICE ALL QUESTIONS'}</div>
       <h1 style={{ fontSize: '1.25rem', lineHeight: 1.35, fontWeight: 900, margin: '.65rem 0 .25rem' }}>{freeMode ? `${TRACK_LABELS[trackId]} Free Reviewer` : isDrill ? 'Configure Drill' : 'Configure Practice: ' + (competence ? competence.label : TRACK_LABELS[trackId])}</h1>
       <div style={{ color: 'var(--accent)', fontWeight: 900, lineHeight: 1.5 }}>{competence ? `${competenceId} · ${availableQuestionCount} Items` : `${TRACK_LABELS[trackId]} · ${availableQuestionCount} Items`}</div>
-      <div style={{ ...muted, fontWeight: 650, lineHeight: 1.5, marginTop: '.25rem' }}>{competence?.label || 'Questions from the selected track, using the available question pool.'}</div>
+      <div style={{ ...muted, fontWeight: 650, lineHeight: 1.5, marginTop: '.25rem' }}>{savedSelection ? `Questions from your selected ${savedSelection.collection === 'mistakes' ? 'Mistakes Notebook' : 'Bookmarks'} set only.` : competence?.label || 'Questions from the selected track, using the available question pool.'}</div>
     </div>
 
     <section style={{ ...panel, background: 'var(--bg-elevated)', padding: '.65rem' }} data-testid="session-telemetry">
@@ -336,7 +368,7 @@ export default function PracticeConfigScreen() {
       </section>
     </div>}
 
-    {trackId === 'GMDSS_GOC' && competenceId && gmdssParts.length > 0 && <section style={panel}>
+    {!savedSelection && trackId === 'GMDSS_GOC' && competenceId && gmdssParts.length > 0 && <section style={panel}>
       <h2 style={sectionTitle}>SELECT QUESTION PART</h2>
       <p style={{ ...muted, lineHeight: 1.5, marginTop: 0 }}>This competence is divided into separate question-bank parts. Choose a part to limit this session to those questions, or choose all parts.</p>
       <select aria-label="GMDSS question part" value={selectedPart ?? 'all'} onChange={e => {
@@ -434,7 +466,7 @@ export default function PracticeConfigScreen() {
     </section>
 
     {startError && <div role="alert" className="card" style={{ marginTop: '.75rem', borderColor: 'var(--warning, #c2410c)' }}>{startError}</div>}
-    <button type="button" disabled={starting || availableQuestionCount === 0 || (!freeMode && !isUnlocked)} onClick={start} style={{ width: '100%', minHeight: 58, background: 'var(--accent)', color: 'var(--btn-primary-text)', border: 0, fontSize: '1.05rem', fontWeight: 900, padding: '.8rem', opacity: starting || availableQuestionCount === 0 ? .65 : 1 }}>
+    <button type="button" disabled={starting || availableQuestionCount === 0 || (!savedSelection && !freeMode && !isUnlocked)} onClick={start} style={{ width: '100%', minHeight: 58, background: 'var(--accent)', color: 'var(--btn-primary-text)', border: 0, fontSize: '1.05rem', fontWeight: 900, padding: '.8rem', opacity: starting || availableQuestionCount === 0 ? .65 : 1 }}>
       ▶　{starting ? 'Preparing Questions…' : `Start Reviewing (${itemCount.toLocaleString()} Items: #${actualStart}–#${actualEnd})`}
     </button>
   </div>
