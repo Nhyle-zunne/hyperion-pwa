@@ -86,7 +86,7 @@ export default function FlashcardsScreen() {
       setKnown(0)
       setUnknown(0)
     } catch (error) {
-      if (generation === requestGeneration.current) setError(error instanceof Error ? error.message : 'Flashcards are unavailable. Connect to the internet or download this track first.')
+      if (generation === requestGeneration.current) setError(error instanceof Error ? error.message : 'Flashcards are unavailable. Open this track online to prepare it for offline study.')
     } finally {
       if (generation === requestGeneration.current) setLoading(false)
     }

@@ -642,7 +642,7 @@ assert.equal(canAccessPaidTrack({ userId: null, isAdmin: true, entitlement: null
 assert.equal(canAccessPaidTrack({ userId: 'test-user-free', isAdmin: 'true', entitlement: null, track: 'DECK_OIC_NW', now: accessNow }), false, 'A non-boolean admin flag cannot grant access');
 
 
-assert.ok(trackHubScreen.includes('getCachedOfflineEntitlementSnapshot()') && trackHubScreen.includes('offlineLicenseAdmin') && trackHubScreen.includes('offlineLicenseExpiry && offlineLicenseExpiry > Date.now()'), 'Offline panel distinguishes a signed administrator role from a paid per-track expiry');
+assert.ok(trackHubScreen.includes('getCachedOfflineEntitlementSnapshot(accountUserId ?? undefined)') && trackHubScreen.includes('offlineLicenseAdmin') && trackHubScreen.includes('offlineLicenseExpiry && offlineLicenseExpiry > Date.now()'), 'Offline panel distinguishes a signed administrator role from a paid per-track expiry');
 assert.ok(trackHubScreen.includes('DEVICE ONLINE') && trackHubScreen.includes('DEVICE OFFLINE') && trackHubScreen.includes('Last saved on this device'), 'Offline panel displays connection and last-saved state');
 assert.ok(trackHubScreen.includes('Reconnect before expiry to refresh your license.') && trackHubScreen.includes('Administrator access is verified on this device and has no subscription expiry.') && trackHubScreen.includes('valid offline license could not be verified on this device'), 'Offline panel explains paid expiry and no-expiry administrator role separately');
 assert.ok(trackHubScreen.includes("window.addEventListener('focus', refreshOfflineState)") && trackHubScreen.includes("window.addEventListener('online', updateOnline)"), 'Offline readiness refreshes when the app regains focus or connectivity');
@@ -895,11 +895,11 @@ assert.ok(
 );
 
 assert.ok(
-  trackHubScreen.includes('{unlocked && (') &&
-  trackHubScreen.includes("'DOWNLOAD FULL BANK FOR OFFLINE'") &&
+  !trackHubScreen.includes('DOWNLOAD FULL BANK FOR OFFLINE') &&
+  trackHubScreen.includes('!unlocked || !online || !accountUserId') &&
   trackHubScreen.includes("gated('Mistakes Notebook'") &&
-  !trackHubScreen.includes('ACTIVATE A LICENSE TO DOWNLOAD'),
-  'Track hub hides the offline question-bank download control entirely when the selected track is not licensed'
+  trackHubScreen.includes('{ background: true }'),
+  'Manual bank downloads are removed and automatic encrypted preparation requires an online licensed account'
 );
 assert.ok(questionBankClient.includes('export async function ensureOfflineFreeSamplePack') && questionBankClient.includes('const fullBank = await getOfflineQuestionsByTrack(track, false)') && questionBankClient.includes('freeSample(fullBank, track)'), 'An old Deck OIC offline free sample is repaired only from the complete cached bank and the current server-matched sampler');
 assert.ok(questionBankClient.includes('async function hasValidOfflineTrackLease(track: TrackId, expectedUserId?: string): Promise<boolean>') && questionBankClient.includes('snapshot.isAdmin') && questionBankClient.includes('snapshot.trackExpiries[track]'), 'Saved paid-session recovery accepts either an authenticated administrator role or the same track’s unexpired signed license');
@@ -925,20 +925,16 @@ assert.ok(questionBankClient.includes('new JavaRandom(2065 + Number(compId.slice
 assert.ok(questionBankClient.includes("id: question.id.replace(/-\\d+$/") && questionBankClient.includes("String(index + 1).padStart(3, '0')"), 'Locally generated shuffled Deck OIC-NW free samples receive the same sequential question IDs as the protected server sample');
 assert.ok(offlinePwaConfig.includes('jpg,jpeg,webp,avif') && offlinePwaConfig.includes('google-fonts-webfonts'), 'The service worker precaches bundled image formats and caches webfont assets for offline screens');
 assert.ok(topLoadingIndicator.includes('src="/logo.png"') && !topLoadingIndicator.includes('/logo.png?'), 'The loading indicator uses the exact local image URL that the service worker precaches');
-assert.ok(app.includes('OFFLINE MODE') && app.includes('Only downloaded question packs and saved sessions are available'), 'All routes clearly explain what remains available without a connection');
-assert.ok(searchScreen.includes('Download the full question bank for this track before using Search offline') || questionBankClient.includes('Download the full question bank for this track before using Search offline'), 'Offline Search gives a clear download requirement instead of reporting a false zero-result search');
-assert.ok(flashcardsScreen.includes('Download the full question bank for this track before using flashcards offline') || questionBankClient.includes('Download the full question bank for this track before using flashcards offline'), 'Offline Flashcards explains when the full bank must be downloaded first');
-assert.ok(questionBank.includes('body.action === "content-versions"') && questionBank.includes('body.action === "content-versions-legacy"') && questionBank.includes('get_question_bank_object_versions') && questionBank.includes('fullHash') && questionBank.includes('freeHash'), 'The protected server exposes lightweight Storage metadata versions and retains the legacy hash route only for migration without returning private question text');
-assert.ok(questionBankClient.includes("action: legacyContentHashes ? 'content-versions-legacy' : 'content-versions'") && questionBankClient.includes('checkOfflineQuestionPackUpdates') && questionBankClient.includes('changedVersionPaths') && questionBankClient.includes("expectedFormat = legacyContentHashes ? 'content-sha256-v1' : 'storage-metadata-v1'") && questionBankClient.includes('legacyVersionMigrationChecked'), 'The client compares offline packs with lightweight metadata versions and migrates old hash manifests once');
+assert.ok(app.includes('OFFLINE MODE') && app.includes('Only questions already saved on this device and saved sessions are available'), 'All routes clearly explain what remains available without a connection');
+assert.ok(searchScreen.includes('Open this track online and wait for automatic offline preparation before using Search offline') || questionBankClient.includes('Open this track online and wait for automatic offline preparation before using Search offline'), 'Offline Search gives a clear download requirement instead of reporting a false zero-result search');
+assert.ok(flashcardsScreen.includes('Open this track online and wait for automatic offline preparation before using flashcards offline') || questionBankClient.includes('Open this track online and wait for automatic offline preparation before using flashcards offline'), 'Offline Flashcards explains when the full bank must be downloaded first');
+assert.ok(questionBank.includes('body.action === "content-versions"') && questionBank.includes('body.action === "content-versions-legacy"') && questionBank.includes('GITHUB_BANK_FILES') && questionBank.includes('fullHash') && questionBank.includes('freeHash'), 'The protected server exposes lightweight Storage metadata versions and retains the legacy hash route only for migration without returning private question text');
+assert.ok(questionBankClient.includes("action: legacyContentHashes ? 'content-versions-legacy' : 'content-versions'") && questionBankClient.includes('checkOfflineQuestionPackUpdates') && questionBankClient.includes('changedVersionPaths') && questionBankClient.includes("'github-content-sha256-v1'") && questionBankClient.includes('legacyVersionMigrationChecked'), 'The client compares offline packs with lightweight metadata versions and migrates old hash manifests once');
 assert.ok(offlineQuestionCache.includes('sourceVersions?: Record<string, string>') && offlineQuestionCache.includes('lastKnownUpdateState') && offlineQuestionCache.includes('recordOfflinePackVersionCheck'), 'Offline manifests persist per-source download versions and the last verified update state');
 assert.ok(questionBankClient.includes('const versionsBefore = await fetchRemoteQuestionBankVersions(track)') && questionBankClient.includes('const versionsAfter = await fetchRemoteQuestionBankVersions(track)') && questionBankClient.includes('The question bank changed while downloading'), 'Question downloads verify the bank did not change during transfer before committing a fully updated manifest');
-assert.ok(trackHubScreen.includes('FULLY UPDATED') && trackHubScreen.includes('UPDATE AVAILABLE') && trackHubScreen.includes('checkOfflineQuestionPackUpdates') && !trackHubScreen.includes('UPDATE OFFLINE QUESTION PACK'), 'Track page shows verified FULLY UPDATED or UPDATE AVAILABLE states instead of a confusing always-update button');
-const offlineUpdateButtonStart = trackHubScreen.indexOf('<button', trackHubScreen.indexOf('OFFLINE ACCESS'));
-const offlineUpdateButtonEnd = trackHubScreen.indexOf('</button>', offlineUpdateButtonStart);
-const offlineUpdateButton = trackHubScreen.slice(offlineUpdateButtonStart, offlineUpdateButtonEnd);
-assert.ok(offlineUpdateButton.includes("'FULLY UPDATED'") && offlineUpdateButton.includes("disabled={") && offlineUpdateButton.includes("offlineUpdateCheck.status === 'current'"), 'A downloaded pack that matches the latest bank displays a disabled FULLY UPDATED button');
-assert.ok(offlineUpdateButton.includes("offlineUpdateCheck.status === 'available'") && offlineUpdateButton.includes("void startOfflineDownload()"), 'The question pack download action is only started when the user has no pack or an update is actually available');
-assert.ok(offlineUpdateButton.includes("'UPDATE AVAILABLE · RECONNECT'") && offlineUpdateButton.includes("'FULLY UPDATED · LAST CHECK'"), 'Offline track pages show the last verified state and never offer an update download without connectivity');
+assert.ok(trackHubScreen.includes('checkOfflineQuestionPackUpdates') && trackHubScreen.includes("check?.status !== 'available'") && trackHubScreen.includes('offlinePreparationInFlight'), 'Background preparation reuses complete packs and serializes updates only when a new version is available');
+assert.ok(!trackHubScreen.includes('startOfflineDownload') && !trackHubScreen.includes('UPDATE AVAILABLE') && trackHubScreen.includes('accountGeneration.current'), 'No manual download/update controls remain and stale account results are invalidated');
+
 
 
 assert.ok(
@@ -1165,3 +1161,5 @@ assert.ok(
 );
 
 console.log('Release-safety smoke checks passed.');
+
+assert.ok(!questionBankClient.includes("supabase!.functions.invoke('question-bank'") && questionBankClient.includes("fetch('/api/question-bank/questions'") && questionBankClient.includes('invokeQuestionBank({'), 'Normal and automatic-pack question pages share GitHub Worker routing');

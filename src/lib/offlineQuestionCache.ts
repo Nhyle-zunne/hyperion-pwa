@@ -30,7 +30,7 @@ export interface OfflinePackManifest {
   sampleVersion?: number
   /** Version identifiers captured at download time, keyed by private source asset path. */
   sourceVersions?: Record<string, string>
-  sourceVersionFormat?: 'content-sha256-v1' | 'storage-metadata-v1'
+  sourceVersionFormat?: 'content-sha256-v1' | 'storage-metadata-v1' | 'github-content-sha256-v1'
   /** Prevents repeatedly downloading legacy source files while an update is already known. */
   legacyVersionMigrationChecked?: boolean
   lastCheckedAt?: number

@@ -230,6 +230,16 @@ try {
     await flashcards.getByRole('button', { name: 'End session', exact: true }).click()
     await flashcards.getByRole('heading', { name: /^COMPETENCE DIRECTORY/ }).waitFor()
   }
+  const savedBeforePreparation = await page.evaluate(() => ({ collections: window.recoveryFixture.ids(), history: window.recoveryFixture.finished().map(row => row.id) }))
+  const prepCallsBefore = await page.evaluate(() => window.recoveryFixture.calls.filter(call => call.action === 'offline-license').length)
+  await page.getByRole('link', { name: 'Track fixture', exact: true }).click()
+  await page.getByRole('heading', { name: 'OFFLINE STUDY', exact: true }).waitFor()
+  assert.equal(await page.getByRole('button', { name: /DOWNLOAD FULL BANK|UPDATE AVAILABLE|CHECK FOR UPDATES/i }).count(), 0)
+  await page.waitForFunction(before => window.recoveryFixture.calls.filter(call => call.action === 'offline-license').length > before, prepCallsBefore)
+  const prepCalls = await page.evaluate(() => window.recoveryFixture.calls.filter(call => call.action === 'offline-license').length)
+  await page.clock.fastForward(10000)
+  assert.equal(await page.evaluate(() => window.recoveryFixture.calls.filter(call => call.action === 'offline-license').length), prepCalls, 'Failed background preparation must not loop')
+  assert.deepEqual(await page.evaluate(() => ({ collections: window.recoveryFixture.ids(), history: window.recoveryFixture.finished().map(row => row.id) })), savedBeforePreparation)
   assert.deepEqual(errors, [])
   console.log('PASS: upgrade hydration, license-loss preservation, backup recovery, intentional deletes, offline saves/reload, reconnect sync, account isolation, shared Practice config/range/return, missing vs unavailable audits and retry, completed audit answers/cloud restore/offline review, immutable completed audits, failed-completion retry and full-track flashcards across parts, next-page failure recovery, offline flipping, bookmarks and grading.')
 } catch (error) {

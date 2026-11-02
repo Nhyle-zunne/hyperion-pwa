@@ -1,3 +1,4 @@
+import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_FILES, GITHUB_BANK_PUBLISHED_AT } from "../_shared/githubBankSource.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { canAccessPaidTrack } from "./access.mjs";
 
@@ -279,8 +280,8 @@ const PRIVATE_TEXT_CACHE_TTL_MS = 60 * 60_000;
 const privateTextCache = new Map<string, { text: string; cachedAt: number; bankEpoch: string }>();
 function currentQuestionBankEpoch(): string {
   return typeof migrationStateCache?.data?.updated_at === "string"
-    ? migrationStateCache.data.updated_at
-    : "";
+    ? GITHUB_BANK_REVISION + ":" + migrationStateCache.data.updated_at
+    : GITHUB_BANK_REVISION;
 }
 function sourceInfo(path: string): SourceInfo | null {
   const track = trackForPath(path);
@@ -316,6 +317,7 @@ function sourceInfo(path: string): SourceInfo | null {
   }
   return { track, competenceId, part, format: track === "GMDSS_GOC" ? "gmdss" : "standard", functionId, idPrefix };
 }
+const githubBankText = createGithubBankSource(fetch, undefined, Deno.env.get("GITHUB_BANK_READ_TOKEN"));
 async function privateText(admin: any, path: string): Promise<string> {
   // Ensure the isolate has loaded the shared publication epoch before consulting
   // its local cache. Without this, a cold isolate would have an empty epoch and
@@ -326,9 +328,7 @@ async function privateText(admin: any, path: string): Promise<string> {
   if (bankEpoch && cached &&
       cached.bankEpoch === bankEpoch &&
       Date.now() - cached.cachedAt < PRIVATE_TEXT_CACHE_TTL_MS) return cached.text;
-  const result = await admin.storage.from("question-banks").download(path);
-  if (result.error || !result.data) throw new Error("Question asset is not available in private storage.");
-  const text = await decryptToText(new Uint8Array(await result.data.arrayBuffer()));
+  const text = await githubBankText(path);
   privateTextCache.set(path, { text, cachedAt: Date.now(), bankEpoch });
   return text;
 }
@@ -362,38 +362,10 @@ const trackAssetVersionCache = new Map<string, {
   bankEpoch: string;
 }>();
 
-async function trackAssetVersions(admin: any, track: string): Promise<QuestionAssetVersion[]> {
-  const paths = SOURCE_ASSETS.filter(path => trackForPath(path) === track);
-  if (!paths.length) throw new Error("Question track has no source assets.");
-
-  // The shared migration timestamp is advanced by every supported admin publish.
-  // Cache only metadata, never access decisions; authorizeTrack still runs per request.
-  await cachedMigrationState(admin);
-  const bankEpoch = currentQuestionBankEpoch();
-  const cached = trackAssetVersionCache.get(track);
-  if (bankEpoch && cached &&
-      cached.bankEpoch === bankEpoch &&
-      Date.now() - cached.cachedAt < TRACK_ASSET_VERSION_CACHE_TTL_MS) {
-    return cached.versions;
-  }
-
-  const { data, error } = await admin.rpc("get_question_bank_object_versions", { p_names: paths });
-  if (error || !Array.isArray(data)) throw new Error("Question-bank source versions are unavailable.");
-  const byName = new Map<string, any>(data.map((item: any) => [String(item.name), item]));
-  const versions = paths.map(path => {
-    const item = byName.get(path);
-    const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
-    const etag = typeof item?.etag === "string" ? item.etag : "";
-    const size = Number(item?.size);
-    if (!updatedAt || !etag || !Number.isFinite(size) || size <= 0) {
-      throw new Error("Question-bank source version metadata is incomplete.");
-    }
-    return { path, updatedAt, etag, size };
-  });
-  if (bankEpoch) {
-    trackAssetVersionCache.set(track, { versions, cachedAt: Date.now(), bankEpoch });
-  }
-  return versions;
+async function trackAssetVersions(_admin: any, track: string): Promise<QuestionAssetVersion[]> {
+  return GITHUB_BANK_FILES.filter(file => trackForPath(file.path) === track).map(file => ({
+    path: file.path, updatedAt: GITHUB_BANK_PUBLISHED_AT, etag: file.sha256, size: file.bytes
+  }));
 }
 
 function assetVersionPayload(versions: QuestionAssetVersion[]) {
@@ -837,6 +809,15 @@ Deno.serve(async (req: Request) => {
     if (!result.error && result.data.user) { user = result.data.user; isAdmin = isAdminEmail(user.email); }
   }
 
+  if (body.action === "github-delivery-access") {
+    const track = body.track || "";
+    if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) return json(req, { error: "Invalid track." }, 400);
+    try {
+      if (body.freeOnly !== true && !await authorizeTrack(admin, user, isAdmin, track)) return json(req, { error: "An active license is required for this track." }, user ? 403 : 401);
+      return json(req, { allowed: true, track, access: body.freeOnly === true ? "free-sample" : isAdmin ? "admin" : "licensed" });
+    } catch { return json(req, { error: "Could not verify access." }, 503); }
+  }
+
   if (body.action === "list-update-assets") {
     if (!user || !isAdmin) return json(req, { error: "Forbidden." }, 403);
     const labels: Record<string, string> = {
@@ -848,107 +829,12 @@ Deno.serve(async (req: Request) => {
       return info ? { path, track: info.track, competenceId: info.competenceId, part: info.part, format: info.format,
         label: labels[info.track] + " · " + info.competenceId + (info.part == null ? "" : " · Part " + info.part) } : null;
     }).filter(Boolean);
-    return json(req, { assets });
+    return json(req, { assets, readOnly: true, source: "github", bankRevision: GITHUB_BANK_REVISION });
   }
 
   if (body.action === "update-csv") {
     if (!user || !isAdmin) return json(req, { error: "Forbidden." }, 403);
-    const path = body.path;
-    if (typeof path !== "string" || !SOURCE_ASSETS.includes(path)) return json(req, { error: "Choose a supported question-bank file." }, 400);
-    if (body.uploadFormat !== "csv" && body.uploadFormat !== "encrypted") return json(req, { error: "Choose a raw CSV or compatible encrypted CSV file." }, 400);
-
-    let csvText = "";
-    let plainBytes: Uint8Array;
-    let replacementBytes: Uint8Array;
-    if (body.uploadFormat === "encrypted") {
-      if (typeof body.encryptedBase64 !== "string" || body.encryptedBase64.length > 1400000 ||
-          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.encryptedBase64)) {
-        return json(req, { error: "Encrypted CSV data is missing or invalid." }, 400);
-      }
-      try {
-        const binary = atob(body.encryptedBase64);
-        replacementBytes = Uint8Array.from(binary, char => char.charCodeAt(0));
-        if (replacementBytes.length < 28 || replacementBytes.length > 1048576) return json(req, { error: "Encrypted CSV must be between 28 bytes and 1 MiB." }, 413);
-        csvText = await decryptToText(replacementBytes);
-        plainBytes = new TextEncoder().encode(csvText);
-      } catch {
-        return json(req, { error: "This .csv.enc file could not be decrypted with Hyperion's current key. No file was changed." }, 400);
-      }
-    } else {
-      if (typeof body.csvText !== "string") return json(req, { error: "Raw CSV text is missing." }, 400);
-      csvText = body.csvText.charCodeAt(0) === 0xFEFF ? body.csvText.slice(1) : body.csvText;
-      plainBytes = new TextEncoder().encode(csvText);
-      if (plainBytes.length < 20 || plainBytes.length > 700000) return json(req, { error: "Raw CSV must be between 20 bytes and 700 KB." }, 413);
-      replacementBytes = new Uint8Array(0);
-    }
-
-    if (plainBytes.length < 20 || plainBytes.length > 700000) return json(req, { error: "Decrypted CSV must be between 20 bytes and 700 KB." }, 413);
-    if (!csvText.trim() || !csvText.includes(",")) return json(req, { error: "The file does not look like a CSV." }, 400);
-    let questionCount = 0;
-    try {
-      if (path.startsWith("gmdss/")) questionCount = validGmdssRows(csvText).length;
-      else {
-        const rows = parseCsv(csvText);
-        questionCount = validStandardRows(rows, path).length;
-      }
-    } catch {
-      return json(req, { error: "Could not parse CSV. Check quotes, commas, and columns." }, 400);
-    }
-    if (!questionCount) return json(req, { error: "No valid question rows were found." }, 400);
-
-    let state: any;
-    try { state = await migrationState(admin); } catch { return json(req, { error: "Could not verify the private question bank." }, 503); }
-    if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Private question bank is not marked complete; no file was changed." }, 503);
-    const bucket = admin.storage.from("question-banks");
-    const previous = await bucket.download(path);
-    if (previous.error || !previous.data) return json(req, { error: "Could not read the existing private file. No replacement was made." }, 500);
-    const stamp = new Date().toISOString().replace(/[^0-9TZ-]/g, "-");
-    const backupPath = "_backups/" + path.replaceAll("/", "__") + "." + stamp + ".bak.enc";
-    const backupBytes = new Uint8Array(await previous.data.arrayBuffer());
-    const backup = await bucket.upload(backupPath, backupBytes, { contentType: "application/octet-stream", cacheControl: "0", upsert: false });
-    if (backup.error) return json(req, { error: "Could not save a private backup. No file was changed." }, 500);
-    try {
-      if (body.uploadFormat === "csv") {
-        const ivBytes = crypto.getRandomValues(new Uint8Array(12));
-        const key = await crypto.subtle.importKey("raw", toArrayBuffer(deriveKeyBytes()), { name: "AES-GCM" }, false, ["encrypt"]);
-        const ciphertext = new Uint8Array(await crypto.subtle.encrypt({
-          name: "AES-GCM",
-          iv: toArrayBuffer(ivBytes),
-          tagLength: 128
-        }, key, toArrayBuffer(plainBytes)));
-        replacementBytes = new Uint8Array(ivBytes.length + ciphertext.length);
-        replacementBytes.set(ivBytes, 0);
-        replacementBytes.set(ciphertext, ivBytes.length);
-      }
-      const upload = await bucket.upload(path, replacementBytes, { contentType: "application/octet-stream", cacheControl: "3600", upsert: true });
-      if (upload.error) return json(req, { error: "Replacement failed. Previous file backed up at " + backupPath + "." }, 500);
-
-      // Bump the shared question-bank epoch so other warm Edge isolates discard
-      // their in-memory decrypted copy of this source. The 15-minute local cache
-      // is therefore retained only while the server confirms the same bank epoch.
-      const updatedAt = new Date().toISOString();
-      const { error: epochError } = await admin.from("question_bank_migration_state")
-        .update({ updated_at: updatedAt })
-        .eq("id", 1);
-      migrationStateCache = null;
-      privateTextCache.delete(path);
-      const updatedTrack = trackForPath(path);
-      if (updatedTrack) {
-        freeQuestionFingerprintCache.delete(updatedTrack);
-        fullQuestionFingerprintCache.delete(updatedTrack);
-      }
-      return json(req, {
-        ok: true,
-        path,
-        uploadFormat: body.uploadFormat,
-        questionCount,
-        backupPath,
-        updatedAt,
-        cacheRefreshPending: !!epochError
-      });
-    } catch {
-      return json(req, { error: "Could not encrypt or publish this CSV. Previous file backed up at " + backupPath + "." }, 500);
-    }
+    return json(req, { error: "Question banks are now managed in hyperion-reviewer/question-banks on GitHub. Publish a verified GitHub bank version instead of replacing Supabase storage files." }, 409);
   }
 
   if (body.action === "status" || body.action === "migrate") {
@@ -1042,7 +928,7 @@ Deno.serve(async (req: Request) => {
       return json(req, {
         track,
         versions,
-        versionFormat: "storage-metadata-v1",
+        versionFormat: "github-content-sha256-v1",
         checkedAt: Date.now(),
         fullBankIncluded: canReadFullBank
       });

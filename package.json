@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/verify-supabase-build.mjs --env && tsc -b && vite build && node scripts/verify-supabase-build.mjs --dist",
+    "build": "node scripts/build-production.mjs",
     "preview": "vite preview",
     "test:security": "node scripts/security-smoke-tests.mjs",
     "test:offline-build": "node scripts/offline-build-smoke.mjs",

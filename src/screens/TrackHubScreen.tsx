@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
@@ -65,20 +65,20 @@ interface Mode {
   onClick: () => void
 }
 
+// Serialize background preparation across track changes and screen remounts.
+let offlinePreparationInFlight: Promise<void> | null = null
+
 export default function TrackHubScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const requestedKey = params.get('track')
   const key = requestedKey && TRACKS[requestedKey] ? requestedKey : 'oic_nw'
   const info = TRACKS[key]
-  const [offlineDownloading, setOfflineDownloading] = useState(false)
-  const [offlineProgress, setOfflineProgress] = useState({ downloaded: 0, total: 0 })
+  const [offlinePreparing, setOfflinePreparing] = useState(false)
   const [offlineStatus, setOfflineStatus] = useState<{ questionCount: number; groupCount: number; savedAt: number } | null>(null)
-  const [offlineUpdateCheck, setOfflineUpdateCheck] = useState<Awaited<ReturnType<typeof checkOfflineQuestionPackUpdates>>>({
-    status: 'not-downloaded', changedCompetences: [], checkedAt: null
-  })
-  const [checkingOfflineVersion, setCheckingOfflineVersion] = useState(false)
   const [offlineError, setOfflineError] = useState('')
+  const [accountUserId, setAccountUserId] = useState<string | null | undefined>(undefined)
+  const accountGeneration = useRef(0)
   const [freeQuestionCount, setFreeQuestionCount] = useState<number | null>(null)
   const [totalQuestionCount, setTotalQuestionCount] = useState<number | null>(null)
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
@@ -118,117 +118,133 @@ export default function TrackHubScreen() {
   const mistakes = useVaultStore((s) => s.items)
 
   useEffect(() => {
+    if (!supabase) {
+      setAccountUserId(null)
+      return
+    }
+    let active = true
+    const initialGeneration = accountGeneration.current
+    let observedUserId: string | null | undefined
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const userId = session?.user.id ?? null
+      if (userId === observedUserId && event !== 'SIGNED_IN') return
+      observedUserId = userId
+      // Invalidate pending results immediately, even before React runs effect cleanup.
+      accountGeneration.current += 1
+      setAccountUserId(userId)
+      setOfflineRefreshKey(current => current + 1)
+    })
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (active && accountGeneration.current === initialGeneration) {
+        setAccountUserId(!error ? data.session?.user.id ?? null : null)
+      }
+    }).catch(() => {
+      if (active && accountGeneration.current === initialGeneration) setAccountUserId(null)
+    })
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
     const refreshOfflineState = () => setOfflineRefreshKey(current => current + 1)
     const updateOnline = () => {
       setOnline(navigator.onLine)
       refreshOfflineState()
     }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshOfflineState()
+    }
     window.addEventListener('online', updateOnline)
     window.addEventListener('offline', updateOnline)
     window.addEventListener('focus', refreshOfflineState)
-    document.addEventListener('visibilitychange', refreshOfflineState)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
     return () => {
       window.removeEventListener('online', updateOnline)
       window.removeEventListener('offline', updateOnline)
       window.removeEventListener('focus', refreshOfflineState)
-      document.removeEventListener('visibilitychange', refreshOfflineState)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
     }
   }, [])
 
+  const offlineContext = `${info.trackId}:${accountUserId ?? ''}:${unlocked}:${online}`
+  const latestOfflineContext = useRef(offlineContext)
+  latestOfflineContext.current = offlineContext
+
   useEffect(() => {
     let active = true
-    const loadOfflineState = async () => {
-      setOfflineLicenseChecked(false)
-      try {
-        if (!unlocked && !online) await ensureOfflineFreeSamplePack(info.trackId)
-        const status = await getOfflinePackStatus(info.trackId, !unlocked)
-        if (active) setOfflineStatus(status?.complete ? status : null)
-        if (status?.complete && unlocked) {
-          if (active) setCheckingOfflineVersion(true)
-          const updateCheck = await checkOfflineQuestionPackUpdates(info.trackId, !unlocked)
-          if (active) setOfflineUpdateCheck(updateCheck)
-        } else if (active) {
-          setOfflineUpdateCheck({ status: 'not-downloaded', changedCompetences: [], checkedAt: null })
-        }
-      } catch {
-        if (active) {
-          setOfflineStatus(null)
-          setOfflineUpdateCheck({ status: 'unavailable', changedCompetences: [], checkedAt: null })
-        }
-      } finally {
-        if (active) setCheckingOfflineVersion(false)
-      }
-
-      if (!unlocked || !supabase) {
-        if (active) {
-          setOfflineLicenseExpiry(null)
-          setOfflineLicenseAdmin(false)
-          setOfflineLicenseChecked(true)
-        }
-        return
-      }
-
-      try {
-        const { data, error } = await supabase.auth.getSession()
-        const userId = !error ? data.session?.user?.id : undefined
-        const snapshot = userId ? await getCachedOfflineEntitlementSnapshot() : null
-        const accountMatches = Boolean(snapshot && snapshot.userId === userId)
-        const expiry = accountMatches ? snapshot?.trackExpiries[info.trackId] ?? null : null
-        if (active) {
-          setOfflineLicenseExpiry(expiry)
-          setOfflineLicenseAdmin(accountMatches && snapshot?.isAdmin === true)
-          setOfflineLicenseChecked(true)
-        }
-      } catch {
-        if (active) {
-          setOfflineLicenseExpiry(null)
-          setOfflineLicenseAdmin(false)
-          setOfflineLicenseChecked(true)
-        }
-      }
-    }
-    void loadOfflineState()
-    return () => { active = false }
-  }, [info.trackId, unlocked, online, offlineRefreshKey])
-
-  const startOfflineDownload = async () => {
-    if (!unlocked) {
-      openPaywall(`${info.title} · Offline Access`)
-      return
-    }
-    setOfflineDownloading(true)
+    const generation = accountGeneration.current
+    const isCurrent = () => active && generation === accountGeneration.current && latestOfflineContext.current === offlineContext
+    const track = info.trackId
+    setOfflineStatus(null)
     setOfflineError('')
-    setOfflineProgress({ downloaded: 0, total: 0 })
-    try {
-      const result = await downloadOfflinePack(info.trackId, !unlocked, (downloaded, total) => {
-        setOfflineProgress({ downloaded, total })
-      })
-      const status = await getOfflinePackStatus(info.trackId, !unlocked)
-      setOfflineStatus(status?.complete ? status : { ...result, savedAt: Date.now() })
-      setOfflineUpdateCheck({
-        status: 'current',
-        changedCompetences: [],
-        checkedAt: Date.now(),
-        lastKnownState: 'current',
-        savedAt: status?.savedAt ?? Date.now()
-      })
-    } catch (error) {
-      setOfflineError(error instanceof Error ? error.message : 'Offline download failed. Please try again while online.')
-    } finally {
-      setOfflineDownloading(false)
-    }
-  }
+    setOfflinePreparing(false)
+    setOfflineLicenseExpiry(null)
+    setOfflineLicenseAdmin(false)
+    setOfflineLicenseChecked(false)
 
-  const refreshOfflineVersionCheck = async () => {
-    if (!unlocked || !online || checkingOfflineVersion) return
-    setCheckingOfflineVersion(true)
-    try {
-      const result = await checkOfflineQuestionPackUpdates(info.trackId, !unlocked, true)
-      setOfflineUpdateCheck(result)
-    } finally {
-      setCheckingOfflineVersion(false)
+    const loadLicense = async () => {
+      if (!unlocked) return
+      const snapshot = await getCachedOfflineEntitlementSnapshot(accountUserId ?? undefined)
+      if (!isCurrent()) return
+      const accountMatches = Boolean(snapshot && (accountUserId ? snapshot.userId === accountUserId : !online))
+      setOfflineLicenseExpiry(accountMatches ? snapshot?.trackExpiries[track] ?? null : null)
+      setOfflineLicenseAdmin(accountMatches && snapshot?.isAdmin === true)
     }
-  }
+    const loadStatus = async () => {
+      const status = await getOfflinePackStatus(track, !unlocked)
+      if (isCurrent()) setOfflineStatus(status?.complete ? status : null)
+      return status?.complete ? status : null
+    }
+    const prepareOffline = async () => {
+      try {
+        if (!unlocked && !online) await ensureOfflineFreeSamplePack(track)
+        await loadStatus()
+        await loadLicense()
+        if (!isCurrent() || !unlocked || !online || !accountUserId) return
+
+        // A previous track/account may still be finishing. Wait without starting
+        // another transfer; canceled effects never enqueue replacement work.
+        while (offlinePreparationInFlight) {
+          await offlinePreparationInFlight
+          if (!isCurrent()) return
+        }
+        if (navigator.onLine === false) return
+        const prepare = async () => {
+          const status = await loadStatus()
+          if (!isCurrent()) return
+          const check = status ? await checkOfflineQuestionPackUpdates(track, false) : null
+          if (!isCurrent() || navigator.onLine === false) return
+          if (status && check?.status !== 'available') return
+          setOfflinePreparing(true)
+          await downloadOfflinePack(track, false, undefined, { background: true })
+          if (!isCurrent()) return
+          await loadStatus()
+          await loadLicense()
+        }
+        // Handle failure inside the shared promise so waiting effects can proceed.
+        const pending = prepare().catch(() => {
+          if (isCurrent()) setOfflineError('Offline preparation will retry when you reconnect or return to this screen.')
+        })
+        offlinePreparationInFlight = pending
+        try {
+          await pending
+        } finally {
+          if (offlinePreparationInFlight === pending) offlinePreparationInFlight = null
+        }
+      } catch {
+        if (isCurrent()) setOfflineError('Offline readiness could not be checked. Reconnect or return to this screen to retry.')
+      } finally {
+        if (isCurrent()) {
+          setOfflinePreparing(false)
+          setOfflineLicenseChecked(true)
+        }
+      }
+    }
+    void prepareOffline()
+    return () => { active = false }
+  }, [info.trackId, unlocked, online, accountUserId, offlineRefreshKey, offlineContext])
 
   const trackHistory = history.filter((entry) => entry.track === info.trackId)
   const trackMistakes = mistakes.filter((item) => item.track === info.trackId)
@@ -343,135 +359,34 @@ export default function TrackHubScreen() {
       </section>
 
       <section
-        aria-label="Offline question pack"
+        aria-label="Offline study readiness"
         style={{ margin: '1rem 0', padding: '1rem', border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-card)' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <span aria-hidden="true" style={{ fontSize: '1.4rem' }}>⇩</span>
-          <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--text)' }}>OFFLINE ACCESS</h2>
-          {offlineStatus && (
-            <span
-              role="status"
-              style={{
-                color: online
-                  ? offlineUpdateCheck.status === 'current' ? 'var(--success, #16803d)' : offlineUpdateCheck.status === 'available' ? 'var(--warning, #c2410c)' : 'var(--text-muted)'
-                  : offlineUpdateCheck.lastKnownState === 'current' ? 'var(--success, #16803d)' : offlineUpdateCheck.lastKnownState === 'available' ? 'var(--warning, #c2410c)' : 'var(--text-muted)',
-                fontSize: '0.72rem',
-                fontWeight: 850
-              }}
-            >
-              {checkingOfflineVersion
-                ? 'CHECKING…'
-                : online
-                  ? offlineUpdateCheck.status === 'current'
-                    ? 'FULLY UPDATED'
-                    : offlineUpdateCheck.status === 'available'
-                      ? 'UPDATE AVAILABLE'
-                      : offlineUpdateCheck.status === 'unavailable'
-                        ? 'UPDATE CHECK UNAVAILABLE'
-                        : 'CHECK REQUIRED'
-                  : offlineUpdateCheck.lastKnownState === 'current'
-                    ? 'FULLY UPDATED · LAST CHECK'
-                    : offlineUpdateCheck.lastKnownState === 'available'
-                      ? 'UPDATE AVAILABLE · RECONNECT'
-                      : 'UPDATE STATUS UNKNOWN'}
-            </span>
-          )}
-          <span style={{ marginLeft: 'auto', padding: '.25rem .45rem', borderRadius: 999, border: '1px solid var(--border)', color: online ? 'var(--success, #16803d)' : 'var(--warning, #c2410c)', fontSize: '0.7rem', fontWeight: 850 }}>{online ? 'DEVICE ONLINE' : 'DEVICE OFFLINE'}</span>
-        </div>
-        <p style={{ margin: '0 0 0.8rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          {offlineStatus
-            ? unlocked
-              ? `${offlineStatus.questionCount.toLocaleString()} paid questions are saved on this device.`
-              : `${offlineStatus.questionCount.toLocaleString()} free reviewer questions are saved on this device.`
-            : unlocked
-              ? 'Download the full question bank for this track to practice without internet.'
-              : 'Offline downloads require an active license. Activate a key to practice without internet.'}
+        <h2 style={{ margin: '0 0 .5rem', fontSize: '1rem', color: 'var(--text)' }}>OFFLINE STUDY</h2>
+        <p role="status" style={{ margin: 0, color: 'var(--text-muted)', fontSize: '.9rem' }}>
+          {offlinePreparing
+            ? 'Preparing encrypted offline study automatically…'
+            : offlineStatus
+              ? unlocked
+                ? 'Questions are saved on this device for licensed offline study.'
+                : 'Free reviewer questions are available on this device.'
+              : unlocked
+                ? online
+                  ? 'Offline study prepares automatically while you are online and signed in.'
+                  : 'Connect to prepare offline study automatically.'
+                : 'Activate a track to prepare licensed offline study automatically.'}
         </p>
-        {offlineStatus && unlocked && <p role="status" style={{ margin: '0 0 .8rem', padding: '.65rem .75rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: offlineLicenseAdmin || (offlineLicenseExpiry && offlineLicenseExpiry > Date.now()) ? 'var(--success, #16803d)' : 'var(--warning, #c2410c)', fontSize: '.84rem', lineHeight: 1.5 }}>
+        {offlineStatus && unlocked && <p style={{ margin: '.5rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>
           {!offlineLicenseChecked
             ? 'Checking this device’s offline license…'
             : offlineLicenseAdmin
-              ? 'Administrator access is verified on this device and has no subscription expiry. Reconnect to refresh administrator status.'
+              ? 'Administrator access is verified on this device and has no subscription expiry.'
               : offlineLicenseExpiry && offlineLicenseExpiry > Date.now()
                 ? `Offline access is verified until ${new Date(offlineLicenseExpiry).toLocaleString()}. Reconnect before expiry to refresh your license.`
-                : 'Your paid question pack is saved, but a valid offline license could not be verified on this device. Reconnect to refresh access before going offline.'}
+                : 'A valid offline license could not be verified on this device. Reconnect to refresh access before studying offline.'}
         </p>}
-        {offlineStatus && offlineUpdateCheck.status === 'current' && online && <p role="status" style={{ margin: '0 0 .8rem', padding: '.65rem .75rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--success, #16803d)', fontSize: '.84rem', lineHeight: 1.5 }}>
-          Your downloaded question pack matches the latest published question bank. No update is needed.
-        </p>}
-        {offlineStatus && offlineUpdateCheck.status === 'available' && <p role="status" style={{ margin: '0 0 .8rem', padding: '.65rem .75rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--warning, #c2410c)', fontSize: '.84rem', lineHeight: 1.5 }}>
-          Updates detected in {offlineUpdateCheck.changedCompetences.length ? offlineUpdateCheck.changedCompetences.join(', ') : 'this track'}. Press UPDATE AVAILABLE while connected to download the latest questions.
-        </p>}
-        {offlineStatus && !online && offlineUpdateCheck.lastKnownState === 'current' && <p style={{ margin: '0 0 .8rem', color: 'var(--text-muted)', fontSize: '.78rem' }}>
-          Last verified fully updated: {offlineUpdateCheck.checkedAt ? new Date(offlineUpdateCheck.checkedAt).toLocaleString() : 'not recorded'}. Connect again to check for newer changes.
-        </p>}
-        {offlineStatus && offlineUpdateCheck.status === 'unavailable' && online && <p role="status" style={{ margin: '0 0 .8rem', color: 'var(--text-muted)', fontSize: '.84rem' }}>
-          The latest version could not be checked. Your saved questions are still stored. Please retry the check.
-        </p>}
-        {offlineStatus && offlineUpdateCheck.status === 'offline' && offlineUpdateCheck.lastKnownState === 'available' && <p style={{ margin: '0 0 .8rem', color: 'var(--text-muted)', fontSize: '.84rem' }}>
-          An update was found during the last online check. Reconnect to download it.
-        </p>}
-        {offlineStatus && <p style={{ margin: '0 0 .8rem', color: 'var(--text-muted)', fontSize: '.78rem' }}>
-          Last saved on this device: {new Date(offlineStatus.savedAt).toLocaleString()}.
-        </p>}
-        {offlineDownloading && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 5 }}>
-              <span>Downloading questions…</span>
-              <span>{offlineProgress.downloaded.toLocaleString()} / {offlineProgress.total.toLocaleString()}</span>
-            </div>
-            <progress value={offlineProgress.downloaded} max={Math.max(1, offlineProgress.total)} style={{ width: '100%', height: 8 }} />
-          </div>
-        )}
-        {offlineError && <p role="alert" style={{ color: 'var(--danger, #b42318)', fontSize: '0.85rem' }}>{offlineError}</p>}
-        {unlocked && (
-          <button
-            type="button"
-            className={offlineStatus && (offlineUpdateCheck.status === 'current' || (!online && offlineUpdateCheck.lastKnownState === 'current')) ? 'btn btn-outline' : 'btn btn-primary'}
-            onClick={() => {
-              if (!offlineStatus) void startOfflineDownload()
-              else if (offlineUpdateCheck.status === 'available') void startOfflineDownload()
-              else void refreshOfflineVersionCheck()
-            }}
-            disabled={
-              !online ||
-              offlineDownloading ||
-              checkingOfflineVersion ||
-              Boolean(offlineStatus && offlineUpdateCheck.status === 'current')
-            }
-            aria-disabled={!online || offlineDownloading || checkingOfflineVersion || Boolean(offlineStatus && offlineUpdateCheck.status === 'current')}
-            style={{
-              width: '100%',
-              minHeight: 44,
-              ...(offlineStatus && offlineUpdateCheck.status === 'current'
-                ? { color: 'var(--success, #16803d)', borderColor: 'var(--success, #16803d)', cursor: 'not-allowed', opacity: 0.9 }
-                : {})
-            }}
-          >
-            {offlineDownloading
-              ? 'DOWNLOADING…'
-              : checkingOfflineVersion
-                ? 'CHECKING FOR UPDATES…'
-                : !offlineStatus
-                  ? 'DOWNLOAD FULL BANK FOR OFFLINE'
-                  : offlineUpdateCheck.status === 'current'
-                    ? 'FULLY UPDATED'
-                    : offlineUpdateCheck.status === 'available'
-                      ? online ? 'UPDATE AVAILABLE' : 'UPDATE AVAILABLE · RECONNECT'
-                      : !online && offlineUpdateCheck.lastKnownState === 'current'
-                        ? 'FULLY UPDATED · LAST CHECK'
-                        : !online && offlineUpdateCheck.lastKnownState === 'available'
-                          ? 'UPDATE AVAILABLE · RECONNECT'
-                          : online
-                            ? 'CHECK FOR UPDATES'
-                            : 'CONNECT TO CHECK UPDATES'}
-          </button>
-        )}
-        {!online && (!offlineStatus || offlineUpdateCheck.lastKnownState !== 'current') && <p style={{ margin: '0.65rem 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Connect to the internet to download this pack or check for updates.</p>}
-        <p style={{ margin: '0.65rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-          Packs are stored on this device. Paid offline access requires a valid server-signed license; reconnect periodically to refresh it. Revocation cannot reach a device while it remains fully offline.
-        </p>
+        <p style={{ margin: '.5rem 0 0', color: 'var(--text-muted)', fontSize: '.75rem' }}>{online ? 'DEVICE ONLINE' : 'DEVICE OFFLINE'}{offlineStatus ? ` · Last saved on this device: ${new Date(offlineStatus.savedAt).toLocaleString()}` : ''}</p>
+        {offlineError && <p role="status" style={{ margin: '.5rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>{offlineError}</p>}
       </section>
 
       <section className="hub-performance" aria-labelledby="hub-performance-title">

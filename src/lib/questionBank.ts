@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, supabaseAnonKey } from './supabase';
 import { withPageLoading } from './pageLoading';
 import {
   getCachedOfflineEntitlementSnapshot,
@@ -15,6 +15,22 @@ import {
 import { fingerprintQuestion } from './questionFingerprint.mjs';
 import { parseCsvText } from './csvParser';
 import type { Question, TrackId, Difficulty } from '../types/question';
+
+
+/** Bulk question bytes come from the GitHub-backed Worker; account data stays in Supabase. */
+async function invokeQuestionBank(options: { body: Record<string, unknown> }) {
+  if (!supabase) return { data: null as any, error: new Error('Question access is not configured.') as any }
+  if (options.body.action !== 'questions' || !import.meta.env.PROD || import.meta.env.VITE_QUESTION_BANK_DELIVERY !== 'github') return supabase.functions.invoke('question-bank', options)
+  try {
+    const { data } = await supabase.auth.getSession()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    const token = data.session?.access_token || supabaseAnonKey
+    if (token) headers.Authorization = `Bearer ${token}`
+    const response = await fetch('/api/question-bank/questions', { method: 'POST', headers, body: JSON.stringify(options.body) })
+    if (!response.ok) return { data: null as any, error: Object.assign(new Error('Question access could not be verified.'), { context: response }) as any }
+    return { data: await response.json() as any, error: null as any }
+  } catch (error) { return { data: null as any, error: error as any } }
+}
 
 interface BankSource {
   path: string;
@@ -497,7 +513,7 @@ async function loadFreeTrackSourcesByBatch(
   const missing = sources.filter(source => !cache.has(source.path + ':free'))
   if (missing.length) {
     if (!supabase) throw new Error('Protected question service is not configured.')
-    const { data, error } = await supabase.functions.invoke('question-bank', {
+    const { data, error } = await invokeQuestionBank({
       body: { action: 'free-track-files', track, paths: missing.map(source => source.path) }
     })
     if (error || data?.track !== track || data?.access !== 'free-sample' || !Array.isArray(data?.files)) {
@@ -585,7 +601,7 @@ async function loadQuestionsByCompetenceInternal(
         return cached.questions.slice()
       }
     }
-    const { data, error } = await supabase!.functions.invoke('question-bank', {
+    const { data, error } = await invokeQuestionBank({
       body: { action: 'questions', track, competenceId, part, freeOnly, offset, limit: pageLimit, randomSample: random }
     })
     if (!error && Array.isArray(data?.questions)) {
@@ -853,7 +869,7 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   }
 
   if (supabase) {
-    const { data, error } = await supabase.functions.invoke('question-bank', {
+    const { data, error } = await invokeQuestionBank({
       body: { action: 'authorize-session', track, questionIds: questions.map(q => q.id), fingerprints }
     });
     if (!error && data?.allowed === true) {
@@ -904,7 +920,7 @@ async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = fals
     return cachedOnlineCounts.counts
   }
   if (!supabase) throw new Error('Protected question service is not configured.');
-  const { data, error } = await supabase.functions.invoke('question-bank', {
+  const { data, error } = await invokeQuestionBank({
     body: { action: 'counts', track, freeOnly }
   });
   if (!error && Array.isArray(data?.counts)) {
@@ -925,7 +941,7 @@ async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = fals
 /** Returns the published full-bank total for catalog display. This endpoint exposes counts only, never question content. */
 export async function getPublicQuestionCountByTrack(track: TrackId): Promise<number> {
   if (!supabase) throw new Error('Protected question service is not configured.');
-  const { data, error } = await supabase.functions.invoke('question-bank', {
+  const { data, error } = await invokeQuestionBank({
     body: { action: 'catalog-counts', track }
   });
   if (error || !Array.isArray(data?.counts)) {
@@ -950,7 +966,7 @@ interface RemoteQuestionSourceVersion {
 interface RemoteQuestionBankVersions {
   track: TrackId
   versions: RemoteQuestionSourceVersion[]
-  versionFormat: 'content-sha256-v1' | 'storage-metadata-v1'
+  versionFormat: 'content-sha256-v1' | 'storage-metadata-v1' | 'github-content-sha256-v1'
   checkedAt: number
 }
 
@@ -964,14 +980,14 @@ export interface OfflinePackUpdateCheck {
 
 async function fetchRemoteQuestionBankVersions(track: TrackId, legacyContentHashes = false): Promise<RemoteQuestionBankVersions> {
   if (!supabase) throw new Error('Protected question service is not configured.')
-  const { data, error } = await supabase.functions.invoke('question-bank', {
+  const { data, error } = await invokeQuestionBank({
     body: { action: legacyContentHashes ? 'content-versions-legacy' : 'content-versions', track }
   })
   if (error || data?.track !== track || !Array.isArray(data?.versions)) {
     throw error || new Error(data?.error || 'Question-bank versions are unavailable.')
   }
-  const expectedFormat = legacyContentHashes ? 'content-sha256-v1' : 'storage-metadata-v1'
-  if (data.versionFormat !== expectedFormat) throw new Error('The server returned an unsupported question-bank version format.')
+  const expectedFormat = legacyContentHashes ? 'content-sha256-v1' : data.versionFormat
+  if (!['content-sha256-v1', 'storage-metadata-v1', 'github-content-sha256-v1'].includes(expectedFormat) || (legacyContentHashes && data.versionFormat !== expectedFormat)) throw new Error('The server returned an unsupported question-bank version format.')
   const versions = data.versions as RemoteQuestionSourceVersion[]
   if (versions.some(item =>
     typeof item.path !== 'string' ||
@@ -1117,6 +1133,7 @@ async function performOfflineQuestionPackUpdateCheck(
   // every time the user returns to an already-open reviewer tab.
   if (
     !force &&
+    (import.meta.env.VITE_QUESTION_BANK_DELIVERY !== 'github' || manifest.sourceVersionFormat === 'github-content-sha256-v1') &&
     manifest.lastCheckedAt &&
     manifest.lastKnownUpdateState &&
     Date.now() - manifest.lastCheckedAt < QUESTION_BANK_VERSION_CHECK_COOLDOWN_MS
@@ -1138,7 +1155,7 @@ async function performOfflineQuestionPackUpdateCheck(
     let legacyVersionMigrationChecked = false
     let storedVersionFormat = manifest.sourceVersionFormat
 
-    if (manifest.sourceVersionFormat === 'storage-metadata-v1') {
+    if (manifest.sourceVersionFormat === remote.versionFormat) {
       changedPaths = manifest.sourceVersions && Object.keys(manifest.sourceVersions).length
         ? changedVersionPaths(manifest.sourceVersions, currentVersions)
         : remote.versions.map(item => item.path)
@@ -1146,7 +1163,7 @@ async function performOfflineQuestionPackUpdateCheck(
       // Existing devices recorded content hashes. Compare those once against the
       // old content-hash route, then rebase current packs to cheap object metadata.
       const legacyRemote = await fetchRemoteQuestionBankVersions(track, true)
-      if (manifest.sourceVersions && Object.keys(manifest.sourceVersions).length) {
+      if (manifest.sourceVersionFormat === 'content-sha256-v1' && manifest.sourceVersions && Object.keys(manifest.sourceVersions).length) {
         changedPaths = changedVersionPaths(
           manifest.sourceVersions,
           sourceVersionMap(legacyRemote, freeOnly)
@@ -1156,7 +1173,7 @@ async function performOfflineQuestionPackUpdateCheck(
         changedPaths = await compareLegacyPackToCurrent(track, freeOnly, localPacks, legacyRemote)
       }
       legacyVersionMigrationChecked = true
-      storedVersionFormat = changedPaths.length ? manifest.sourceVersionFormat : 'storage-metadata-v1'
+      storedVersionFormat = changedPaths.length ? manifest.sourceVersionFormat : remote.versionFormat
     }
 
     const checkedAt = Date.now()
@@ -1167,7 +1184,7 @@ async function performOfflineQuestionPackUpdateCheck(
       state,
       ...(state === 'current' ? {
         sourceVersions: currentVersions,
-        sourceVersionFormat: 'storage-metadata-v1'
+        sourceVersionFormat: remote.versionFormat
       } : {
         ...(storedVersionFormat ? { sourceVersionFormat: storedVersionFormat } : {}),
         ...(legacyVersionMigrationChecked ? { legacyVersionMigrationChecked: true } : {})
@@ -1253,7 +1270,7 @@ async function loadFlashcardQuestionsInternal(track: TrackId, competenceId?: str
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     if (!(await hasValidOfflineTrackLease(track))) throw new Error('An active offline license is required for flashcards.')
     const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
-    if (!local.length) throw new Error('Download the full question bank for this track before using flashcards offline.')
+    if (!local.length) throw new Error('Open this track online and wait for automatic offline preparation before using flashcards offline.')
     const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
     return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
   }
@@ -1262,7 +1279,7 @@ async function loadFlashcardQuestionsInternal(track: TrackId, competenceId?: str
     const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
     if (local.length) return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
   }
-  const { data, error } = await supabase.functions.invoke('question-bank', {
+  const { data, error } = await invokeQuestionBank({
     body: { action: 'flashcards', track, competenceId, limit: Math.max(1, Math.min(30, limit)) }
   });
   if (error || !Array.isArray(data?.questions)) {
@@ -1270,7 +1287,7 @@ async function loadFlashcardQuestionsInternal(track: TrackId, competenceId?: str
       const local = (await getOfflineQuestionsByTrack(track, false)) ?? []
       const scoped = competenceId ? local.filter(question => question.competenceId === competenceId) : local
       if (local.length) return shuffleQuestions(scoped).slice(0, Math.max(1, Math.min(30, limit)))
-      throw new Error('Download the full question bank for this track before using flashcards offline.')
+      throw new Error('Open this track online and wait for automatic offline preparation before using flashcards offline.')
     }
     throw error || new Error(data?.error || 'Flashcards are unavailable.');
   }
@@ -1312,7 +1329,13 @@ async function downloadOfflinePackInternal(
   if (sessionError || !userId) {
     throw new Error('Sign in again before preparing a licensed offline pack.')
   }
-  const { data: offlineLicense, error: offlineLicenseError } = await supabase.functions.invoke('question-bank', {
+  let accountActive = true
+  const { data: accountSubscription } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (session?.user.id !== userId) accountActive = false
+  })
+  const assertDownloadAccount = () => { if (!accountActive) throw new Error('The account changed while preparing offline questions. Your existing saved pack is preserved.') }
+  try {
+  const { data: offlineLicense, error: offlineLicenseError } = await invokeQuestionBank({
     body: { action: 'offline-license' }
   })
   if (
@@ -1323,7 +1346,8 @@ async function downloadOfflinePackInternal(
   ) {
     throw new Error('An active license for this track is required to download its offline question bank.')
   }
-  const savedLease = await saveOfflineEntitlements(userId, offlineLicense.token)
+  assertDownloadAccount()
+  const savedLease = await saveOfflineEntitlements(userId, offlineLicense.token, () => accountActive)
   const verifiedAccess = savedLease && await hasValidOfflineTrackLease(track, userId)
   if (!verifiedAccess) {
     throw new Error('Your questions were not prepared for offline access because this device could not verify the track license. Reconnect and retry.')
@@ -1355,8 +1379,9 @@ async function downloadOfflinePackInternal(
     const questions: Question[] = []
     for (let offset = 0; offset < group.count; offset += 200) {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connection lost. Reconnect and retry the offline download.')
+      assertDownloadAccount()
       const pageLimit = Math.min(200, group.count - offset)
-      const { data, error } = await supabase.functions.invoke('question-bank', {
+      const { data, error } = await invokeQuestionBank({
         body: {
           action: 'questions', track, competenceId: group.competenceId, part: group.part,
           freeOnly, offset, limit: pageLimit, randomSample: false
@@ -1397,13 +1422,13 @@ async function downloadOfflinePackInternal(
     freeOnly: boolean
     groups: { competenceId: string; part: number | null; questions: Question[] }[]
     sourceVersions: Record<string, string>
-    sourceVersionFormat: 'storage-metadata-v1'
+    sourceVersionFormat: RemoteQuestionBankVersions['versionFormat']
   }[] = [{
     track,
     freeOnly,
     groups: writtenGroups,
     sourceVersions: freeOnly ? freeVersionsBefore : fullVersionsBefore!,
-    sourceVersionFormat: 'storage-metadata-v1'
+    sourceVersionFormat: versionsAfter.versionFormat
   }]
 
   if (!freeOnly) {
@@ -1423,19 +1448,23 @@ async function downloadOfflinePackInternal(
       freeOnly: true,
       groups: Array.from(sampleGroups.values()),
       sourceVersions: freeVersionsBefore,
-      sourceVersionFormat: 'storage-metadata-v1'
+      sourceVersionFormat: versionsAfter.versionFormat
     })
   }
 
+  assertDownloadAccount()
   await saveOfflineQuestionPackSets(updates)
   return { questionCount: allQuestions.length, groupCount: writtenGroups.length }
+  } finally { accountSubscription.subscription.unsubscribe() }
 }
 
 export async function downloadOfflinePack(
   track: TrackId,
   freeOnly: boolean,
-  onProgress?: (downloaded: number, total: number) => void
+  onProgress?: (downloaded: number, total: number) => void,
+  options?: { background?: boolean }
 ): Promise<{ questionCount: number; groupCount: number }> {
+  if (options?.background) return downloadOfflinePackInternal(track, freeOnly, onProgress)
   return withPageLoading('Downloading question pack', () => downloadOfflinePackInternal(track, freeOnly, onProgress))
 }
 
@@ -1451,7 +1480,7 @@ async function searchQuestionsInternal(
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     if (!(await hasValidOfflineTrackLease(track))) throw new Error('An active offline license is required for question search.')
     const cached = (await getOfflineQuestionsByTrack(track, false)) ?? []
-    if (!cached.length) throw new Error('Download the full question bank for this track before using Search offline.')
+    if (!cached.length) throw new Error('Open this track online and wait for automatic offline preparation before using Search offline.')
     return cached.filter(question =>
       (question.questionText + ' ' + question.topic + ' ' + question.competenceId + ' ' + question.options.join(' '))
         .toLowerCase().includes(q.toLowerCase())
@@ -1467,7 +1496,7 @@ async function searchQuestionsInternal(
       return hits.slice(0, Math.max(1, Math.min(40, limit)))
     }
   }
-  const { data, error } = await supabase.functions.invoke('question-bank', {
+  const { data, error } = await invokeQuestionBank({
     body: { action: 'search', track, query: q, limit: Math.max(1, Math.min(40, limit)) }
   });
   if (error || !Array.isArray(data?.questions)) {

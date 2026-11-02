@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "lib": ["ES2022", "WebWorker"], "module": "ESNext",
+    "moduleResolution": "bundler", "allowImportingTsExtensions": true,
+    "resolveJsonModule": true, "noEmit": true, "strict": true, "skipLibCheck": true
+  },
+  "include": ["worker", "supabase/functions/_shared/bankCodec.ts", "supabase/functions/_shared/githubBankSource.ts"]
+}

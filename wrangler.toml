@@ -1,6 +1,7 @@
 # Optional: only needed if deploy command is `npx wrangler deploy`.
 # Prefer Cloudflare Pages with deploy command left empty (build output = dist).
 name = "hyperion-pwa"
+main = "worker/index.ts"
 compatibility_date = "2025-01-01"
 keep_vars = true
 
@@ -9,5 +10,7 @@ keep_vars = true
 previews = {}
 
 [assets]
+binding = "ASSETS"
+run_worker_first = ["/api/question-bank/*"]
 directory = "./dist"
 not_found_handling = "single-page-application"

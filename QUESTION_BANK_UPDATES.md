@@ -1,54 +1,24 @@
-# Updating Hyperion question banks
+# Hyperion question-bank delivery
 
-The question banks are stored in the private Supabase Storage bucket named `question-banks`. Do not put updated CSVs or encrypted question assets back in `public/questions` or commit them to this repository.
+The active encrypted source is `Nhyle-zunne/hyperion-reviewer/question-banks`, pinned to GitHub commit `91677156579dfea6f092097f324bec96c7c13e5b`. Every source object is verified against `supabase/functions/_shared/github-bank-manifest.json` before decryption.
 
-## Replacement workflow
+Bulk question pages are served by the Cloudflare Worker at `/api/question-bank/questions`. Each request checks current track access through Supabase before returning paid questions. Supabase retains accounts, licenses, study synchronization, and small metadata/search APIs; those APIs read the same GitHub source. Persistent edge caching stores encrypted source objects; a server process may reuse decrypted bank text in memory after each request's access check.
 
-1. Edit the source CSV and preserve its existing header, column order, and answer conventions. Keep a copy of the editable source file outside the repository.
-2. From the repository root, set the local environment variables in PowerShell. Obtain the project URL and **service-role key** from the Supabase project settings. Never paste the service-role key into GitHub, source files, Cloudflare variables, or chat.
+There is no manual question-bank download button. An activated track is prepared automatically for offline use while the user is online and signed in. Existing encrypted packs remain available until a complete replacement is verified and saved atomically. Signed license and expiry checks still apply offline.
 
-   ```powershell
-   $env:SUPABASE_URL = "https://evnjoezffghtrzqacwcj.supabase.co"
-   $env:SUPABASE_SERVICE_ROLE_KEY = "PASTE_YOUR_SERVICE_ROLE_KEY_LOCALLY"
-   ```
+## Existing study data
 
-3. Run the updater with the raw CSV path and the exact existing private object path. Example for OIC-NW competence C1:
+This migration preserves filenames, CSV row order, competence/part mappings, question IDs, choices and correct-answer indices. Bookmarks, mistakes, sessions, account ownership and their storage keys are not migrated or cleared. Compatibility tests cover all 69 files and 25,752 question records.
 
-   ```powershell
-   node scripts/update-question-bank.mjs ".\updates\oic_nw_c1.csv" "deck/oic_nw_c1.csv.enc"
-   ```
+Offline manifests now use `github-content-sha256-v1` versions. Existing packs are compared with current GitHub content before their version metadata is rebased; changed packs are replaced only after successful preparation. A source change never deletes a user's study records.
 
-   The script checks that the target is one of the 69 supported files, encrypts the CSV in the format expected by the Edge Function, saves a rollback copy to the local `question-bank-backups/` folder, and replaces only that object in private storage. If the update fails before upload, the existing object stays in place.
+## Publishing future changes
 
-4. Refresh Hyperion after the 15-second server cache expires. Check the changed competence's question count, several question texts, and answer options before changing other files.
-5. If the new questions should also be available offline, download that track's full/free bank again on each device that needs the update. Existing offline packs are local copies and do not update automatically.
+1. Update the encrypted source in `hyperion-reviewer/question-banks` using compatible encryption. Preserve existing paths, question IDs and row ordering. Append new questions carefully; do not reorder or remove old valid rows during a storage-only migration.
+2. Record the new encrypted byte counts and SHA-256 hashes in the bank manifest. Update the pinned revision/publication time and manifest in the PWA's `_shared` source module.
+3. Deliberately update compatibility fixtures for intended content changes; inspect any question-ID or answer-index changes. Run the generated-codec check, GitHub delivery tests, offline-version migration tests, saved-data browser regression and release checks.
+4. Deploy the Supabase `question-bank` function first, then the verified Cloudflare Worker/frontend. Confirm `/api/question-bank/source`, free question responses, paid denial without a license, and the public deployed build.
 
-Clear the local secrets after the upload:
+The old Supabase upload form is read-only after this source migration. Do not use `scripts/update-question-bank.mjs` to publish new live content: it updates the retained Storage copy, not the GitHub source. Existing Supabase objects remain as rollback copies; do not delete them or the existing metadata tables during rollout.
 
-```powershell
-Remove-Item Env:SUPABASE_SERVICE_ROLE_KEY
-Remove-Item Env:SUPABASE_URL
-```
-
-Keep `question-bank-backups/` private and out of version control. It contains prior encrypted objects for rollback.
-
-## Existing private object paths
-
-Use the exact path for the existing competence or part you are replacing:
-
-| Track | Private object path pattern | Example |
-| --- | --- | --- |
-| Deck OIC-NW | `deck/oic_nw_cN.csv.enc` | `deck/oic_nw_c1.csv.enc` |
-| Engine OIC-EW | `engine_ew/ew_cN.csv.enc` | `engine_ew/ew_c1.csv.enc` |
-| Deck Management | `deck_mgt/dm_cN.csv.enc` | `deck_mgt/dm_c1.csv.enc` |
-| Engine Management | `engine_mgt/em_cN.csv.enc` | `engine_mgt/em_c1.csv.enc` |
-| GMDSS | `gmdss/c1_partN.csv.enc` or `gmdss/c2_partN.csv.enc` | `gmdss/c1_part1.csv.enc` |
-
-This workflow replaces existing assets only. Adding a new competence or a new GMDSS part also requires updating the Edge Function's supported asset list and competence mapping.
-
-## Important
-
-- The upload uses private Storage; it does not put question files back in the public web directory.
-- Online requests use the updated object after the short cache window.
-- Previously downloaded offline banks must be downloaded again to include question changes.
-- Keep the source CSV private too. The encrypted object is for storage, not a file to edit directly.
+If the GitHub repository becomes private, configure a read-only `GITHUB_BANK_READ_TOKEN` in both the Worker and the Supabase function before changing visibility. The token stays server-side and must never enter Vite's public configuration or the repository. Anonymous GitHub reads work only while the selected repository revision is publicly accessible.

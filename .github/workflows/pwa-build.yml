@@ -15,11 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_TOKEN }}
-      # Public browser configuration, not service_role credentials.
-      # Vite requires this at build time; Cloudflare runtime vars cannot repair an unconfigured bundle.
-      VITE_SUPABASE_URL: https://evnjoezffghtrzqacwcj.supabase.co
-      VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV2bmpvZXpmZmdodHJ6cWFjd2NqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4ODIzNjEsImV4cCI6MjEwODQ1ODM2MX0.Yg0z6dOPR9NW3OwC_uvw9dWPI5S-fnZFPKZqunyPqLA
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -39,11 +37,16 @@ jobs:
       - name: Type-check protected question-bank and Google Play subscription functions
         run: deno check --no-lock --node-modules-dir=auto supabase/functions/question-bank/index.ts supabase/functions/learning-progress/index.ts supabase/functions/admin-payment-review/index.ts supabase/functions/link-google-play-subscription/index.ts supabase/functions/google-play-rtdn/index.ts supabase/functions/create-checkout/index.ts supabase/functions/submit-manual-payment/index.ts supabase/functions/admin-license-management/index.ts supabase/functions/expire-inactive-accounts/index.ts supabase/functions/reconcile-google-play-subscriptions/index.ts
       - name: Test Google Play account-binding safeguards
-        run: deno test --no-lock --allow-env --node-modules-dir=auto supabase/tests/google_play_account_binding_test.ts supabase/tests/learning_progress_preservation_test.ts
+        run: deno test --no-lock --allow-env --node-modules-dir=auto supabase/tests/google_play_account_binding_test.ts supabase/tests/learning_progress_preservation_test.ts supabase/tests/github_delivery_access_test.ts
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
       - name: Release-safety smoke checks
-        run: bun run test:security
+        run: |
+          bun run test:security
+          node scripts/tests/production-auth-build-test.mjs
+          node scripts/generate-worker-bank-codec.mjs --check
+          node scripts/tests/github-bank-delivery-test.mjs
+          bun test scripts/tests/github-offline-version.test.ts
       - name: Saved-data database and offline-license regressions
         run: |
           bun run test:saved-data:sql
@@ -53,7 +56,10 @@ jobs:
       - name: Saved-data browser regression
         run: bun run test:saved-data:browser
       - name: Type-check and build
-        run: bun run build
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ]; then unset VITE_SUPABASE_URL; fi
+          if [ -z "$VITE_SUPABASE_ANON_KEY" ]; then unset VITE_SUPABASE_ANON_KEY; fi
+          bun run build
       - name: Verify generated offline app shell
         run: bun run test:offline-build
       - name: Retain the verified production bundle for Cloudflare deployment

@@ -65,7 +65,7 @@ export default function SearchScreen() {
       setResults(hits)
     } catch (error) {
       setResults([])
-      setSearchError(error instanceof Error ? error.message : 'Search is unavailable. Connect to the internet or download this track first.')
+      setSearchError(error instanceof Error ? error.message : 'Search is unavailable. Open this track online to prepare it for offline study.')
     }
     setLoading(false)
   }

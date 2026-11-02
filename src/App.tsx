@@ -481,7 +481,7 @@ export default function App() {
           }}
         >
           <strong>OFFLINE MODE</strong>
-          {' · '}Only downloaded question packs and saved sessions are available. New sign-ins, checkout, license changes, and cloud sync need an internet connection.
+          {' · '}Only questions already saved on this device and saved sessions are available. New sign-ins, checkout, license changes, and cloud sync need an internet connection.
         </div>
       )}
       {(isQuestionRunner || isQuickScanViewer) && (
