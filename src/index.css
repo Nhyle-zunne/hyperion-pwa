@@ -2420,3 +2420,35 @@ a:focus-visible {
   .history-audit-controls > button { font-size: .78rem; }
   .history-audit-palette-trigger { padding: .5rem; font-size: .8rem; }
 }
+
+
+/* Across every review track: keep question progress and elapsed time on one row.
+   The question card starts with the question itself, not redundant topic metadata. */
+.quiz-heading-with-timer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  margin: -.5rem -.25rem .75rem;
+  padding: .45rem .25rem .65rem;
+  border-bottom: 3px solid var(--accent);
+}
+.quiz-heading-info { min-width: 0; flex: 1; }
+.quiz-heading-with-timer [role="timer"] { white-space: nowrap; }
+.quick-scan-progress-timer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  margin-top: .35rem;
+}
+.quick-scan-progress-timer .subtitle { min-width: 0; }
+@media (max-width: 420px) {
+  .quiz-heading-with-timer, .quick-scan-progress-timer { gap: .3rem; }
+  .quiz-heading-info { font-size: .88rem; }
+  .quiz-heading-info > div:last-child { font-size: .75rem !important; }
+  .quiz-heading-with-timer [role="timer"],
+  .quick-scan-progress-timer [role="timer"] { gap: .3rem !important; padding: .35rem .4rem !important; font-size: .75rem; }
+  .quiz-heading-with-timer [role="timer"] span,
+  .quick-scan-progress-timer [role="timer"] span { font-size: .65rem !important; }
+}
