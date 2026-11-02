@@ -24,7 +24,7 @@ export async function getQuestionCountsByTrack() {
 }
 export async function getQuestionsByCompetence(track: TrackId, competenceId: string, part?: number, _freeOnly = false, startItem = 1, limit?: number) {
   if (localStorage.getItem('fixture-flashcard-page-failure')) throw new Error('Synthetic next-page failure')
-  const bank = localStorage.getItem('fixture-full-flashcards') ? fullFlashcards : recoveryQuestions
+  const bank = localStorage.getItem('fixture-full-flashcards') ? fullFlashcards.map(question => ({ ...question, track })) : recoveryQuestions
   const pool = bank.filter((q, index) => q.track === track && q.competenceId === competenceId && (part == null || (index < 32 || index >= 35 ? 1 : 2) === part))
   return pool.slice(startItem - 1, limit == null ? undefined : startItem - 1 + limit)
 }

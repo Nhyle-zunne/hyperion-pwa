@@ -68,6 +68,9 @@ jobs:
           accountId: e4f2b51a3c1a61a5ba56a7d5cf1d8f45
           wranglerVersion: '4'
           command: deploy
+      - name: Verify the public site serves the deployed build
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && env.CLOUDFLARE_API_TOKEN != ''
+        run: node scripts/verify-live-release.mjs
 
   google-play-migration-regression:
     runs-on: ubuntu-latest

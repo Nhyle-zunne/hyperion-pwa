@@ -1,3 +1,4 @@
+import CompetenceDirectory from '../components/CompetenceDirectory'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -159,13 +160,17 @@ export default function FlashcardsScreen() {
     </div>
   }
 
-  return <div className="screen flashcards-screen">
-    {header('Choose your revision deck', () => navigate(`/track?track=${trackParam}`))}
-
-    {error && <div className="flashcard-notice" role="alert">{error}</div>}
-    {!isUnlocked && <div className="flashcard-notice">Activate a key to unlock flashcards.</div>}
-    <button type="button" className="flashcard-mixed" onClick={() => void start()}><span className="flashcard-badge">ALL COMPETENCES</span><span className="flashcard-deck-title">All questions <span aria-hidden="true">→</span></span><span>{counts ? `${counts.reduce((sum, group) => sum + group.count, 0).toLocaleString()} cards · Full selected track` : 'Every question in this track'}</span></button>
-    {countsError && <p role="status" className="flashcard-notice">{countsError}</p>}
-    <section className="flashcard-decks" aria-label="Choose a competence"><h2>Competence directory ({competences.length})</h2><p>Choose a competence to review every question in that set.</p><div className="flashcard-competences">{competences.map(c => <button type="button" key={c.id} onClick={() => void start(c.id)}><span className="flashcard-competence-id">{c.id}</span><span className="flashcard-competence-detail"><strong>{c.label.replace(c.id + ' · ', '')}</strong><span>{counts ? counts.filter(group => group.competenceId === c.id).reduce((sum, group) => sum + group.count, 0).toLocaleString() : '…'} official review questions</span></span><span aria-hidden="true">→</span></button>)}</div></section>
+  return <div className="screen practice-competence-screen flashcards-selection-screen" style={{ padding: '0 0 2rem', color: 'var(--text)' }}>
+    <CompetenceDirectory
+      title={`${TRACK_LABELS[trackId]} Flashcards`}
+      totalCount={counts ? counts.reduce((sum, group) => sum + group.count, 0) : null}
+      countError={countsError}
+      onBack={() => navigate(`/track?track=${trackParam}`)}
+      onSelect={id => void start(id)} allQuestions={() => void start()}
+      items={competences.map(c => ({ ...c, count: counts ? counts.filter(group => group.competenceId === c.id).reduce((sum, group) => sum + group.count, 0) : undefined }))}
+    >
+      {error && <div className="flashcard-notice" role="alert">{error}</div>}
+      {!isUnlocked && <div className="flashcard-notice">Activate a key to unlock flashcards.</div>}
+    </CompetenceDirectory>
   </div>
 }

@@ -59,5 +59,5 @@ Object.assign(window, { recoveryFixture: {
   }
 } })
 createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={['/bookmarks']}>
-  <nav><Link to="/bookmarks">Bookmarks fixture</Link> · <Link to="/vault">Mistakes fixture</Link> · <Link to="/history">History fixture</Link> · <Link to="/flashcards?track=oic_nw">Flashcards fixture</Link></nav><App />
+  <nav><Link to="/bookmarks">Bookmarks fixture</Link> · <Link to="/vault">Mistakes fixture</Link> · <Link to="/history">History fixture</Link> · <Link to="/flashcards?track=oic_nw">Flashcards fixture</Link>{['gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt'].map(track => <React.Fragment key={track}> · <Link to={'/flashcards?track=' + track}>Flashcards {track} fixture</Link></React.Fragment>)}</nav><App />
 </MemoryRouter>)
