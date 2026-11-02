@@ -1,3 +1,4 @@
+import { trackLabel } from '../lib/trackLabels'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStudyTimeStore, formatDurationMs, type StudySegment } from '../stores/studyTimeStore'
@@ -63,7 +64,7 @@ function Donut({ segments }: { segments: StudySegment[] }) {
   let cursor = 0
   const gradient = grouped.map(g=>{const from=cursor; cursor += total ? g.ms/total*100 : 0; return `${g.color} ${from}% ${cursor}%`}).join(', ')
   if (!total) return <p className="st-muted">No track breakdown for this period.</p>
-  return <div className="st-donut-layout"><div className="st-donut" style={{background:`conic-gradient(${gradient})`}} role="img" aria-label="Study time breakdown by track"><div className="st-donut-hole"><strong>{formatDurationMs(total)}</strong><span>TOTAL</span></div></div><div className="st-legend">{grouped.map(g=><div className="st-legend-row" key={g.track}><span className="st-legend-swatch" style={{background:g.color}}/><span className="st-legend-name">{g.track.replace(/_/g, ' ')}</span><strong>{Math.round(g.ms/total*100)}%</strong><small>{formatDurationMs(g.ms)}</small></div>)}</div></div>
+  return <div className="st-donut-layout"><div className="st-donut" style={{background:`conic-gradient(${gradient})`}} role="img" aria-label="Study time breakdown by track"><div className="st-donut-hole"><strong>{formatDurationMs(total)}</strong><span>TOTAL</span></div></div><div className="st-legend">{grouped.map(g=><div className="st-legend-row" key={g.track}><span className="st-legend-swatch" style={{background:g.color}}/><span className="st-legend-name">{trackLabel(g.track)}</span><strong>{Math.round(g.ms/total*100)}%</strong><small>{formatDurationMs(g.ms)}</small></div>)}</div></div>
 }
 function HourGrid({ segments, date }: { segments: StudySegment[]; date: Date }) {
   const values = Array.from({length:24},(_,hour)=>{
