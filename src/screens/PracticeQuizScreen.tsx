@@ -26,7 +26,6 @@ export default function PracticeQuizScreen() {
     error,
     finished,
     mode,
-    streak,
     bestStreak,
     selectAnswer,
     next,
@@ -273,24 +272,16 @@ export default function PracticeQuizScreen() {
           </section>
         </div>
       )}
-      <header style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,margin:'-0.5rem -0.25rem 1rem',padding:'0.4rem 0',borderBottom:'3px solid var(--accent)',position:'relative'}}>
-        <div style={{minWidth:0,flex:1,textAlign:'center'}}>
-          <div style={{fontWeight:800,lineHeight:1.2}}>Question {currentIndex + 1} of {questions.length}</div>
-          <div style={{fontSize:'0.82rem',color:'var(--accent)',fontWeight:700}}>{TRACK_LABELS[q.track]} · {q.competenceId}</div>
+      <header className="quiz-heading-with-timer">
+        <div className="quiz-heading-info">
+          <div style={{ fontWeight: 800, lineHeight: 1.2 }}>Question {currentIndex + 1} of {questions.length}</div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>{TRACK_LABELS[q.track]} · {q.competenceId}</div>
         </div>
-
+        <SessionElapsedTimer startedAt={startedAt} inline />
       </header>
-
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem',fontSize:'0.85rem',color:'var(--text-muted)'}}>
-        <span>Q {currentIndex + 1} / {questions.length}</span>
-        <span>{mode === 'DRILL' && streak > 0 ? 'Streak ' + streak + ' · ' : ''}{q.competenceId}{mode !== 'DRILL' ? ' · ' + q.difficulty : ''}</span>
-      </div>
-
-      <SessionElapsedTimer startedAt={startedAt} />
 
       <div className="card question-protected-card" style={{ marginBottom: '1rem' }}>
         <span className="question-watermark" aria-hidden="true">HYPERION MARITIME</span>
-        <div style={{ fontSize: 'calc(0.8rem * var(--quiz-text-scale))', color: 'var(--text-muted)', marginBottom: 6 }}>{q.topic}</div>
         <div className="question-protected-text" style={{ fontSize: 'calc(1.05rem * var(--quiz-text-scale))', lineHeight: 1.55 }}><KeywordQuestionText question={q} /></div>
       </div>
 
