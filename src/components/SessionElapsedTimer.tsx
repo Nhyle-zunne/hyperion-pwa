@@ -8,7 +8,7 @@ export function formatSessionElapsed(startedAt: number, now: number): string {
 }
 
 /** Display only: existing session history and exam countdown remain authoritative. */
-export default function SessionElapsedTimer({ startedAt }: { startedAt: number | null }) {
+export default function SessionElapsedTimer({ startedAt, inline = false }: { startedAt: number | null, inline?: boolean }) {
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     const update = () => setNow(Date.now())
@@ -23,7 +23,7 @@ export default function SessionElapsedTimer({ startedAt }: { startedAt: number |
       window.removeEventListener('focus', update)
     }
   }, [startedAt])
-  return <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '.5rem 0 1rem' }}>
+  return <div style={{ display: 'flex', justifyContent: 'flex-end', margin: inline ? 0 : '.5rem 0 1rem', flexShrink: 0 }}>
     <div role="timer" aria-label="Session elapsed time" aria-live="off" style={{ display: 'flex', gap: 10, padding: '.45rem .65rem', border: '1px solid var(--border)', background: 'var(--bg-card)', fontVariantNumeric: 'tabular-nums' }}>
       <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', alignSelf: 'center' }}>ELAPSED</span>
       <strong style={{ color: 'var(--success)', fontFamily: 'monospace' }}>{formatSessionElapsed(startedAt || 0, now)}</strong>
