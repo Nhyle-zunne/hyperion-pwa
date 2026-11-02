@@ -1,3 +1,4 @@
+import QuestionBookmarkButton from '../components/QuestionBookmarkButton'
 import KeywordQuestionText from '../components/KeywordQuestionText'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -424,7 +425,7 @@ export default function MockExamScreen() {
 
 export function MockExamRunner() {
   const navigate = useNavigate()
-  const { questions, answers, finished, timeLeftSec, selectMockAnswer, finish, tick, score, reset, track, competenceId, mode } = usePracticeStore()
+  const { questions, answers, finished, timeLeftSec, selectMockAnswer, finish, tick, score, reset, track, competenceId, mode, isFreeSession } = usePracticeStore()
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   const [showLockNotice, setShowLockNotice] = useState(false)
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
@@ -533,7 +534,8 @@ export function MockExamRunner() {
           aria-labelledby={'mock-question-' + index}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: 'var(--text-muted)', fontSize: 'calc(.8rem * var(--quiz-text-scale))', fontWeight: 800, marginBottom: 8 }}>
-            <span>QUESTION {index + 1} OF {questions.length}</span><span>{q.competenceId}</span>
+            <span>QUESTION {index + 1} OF {questions.length}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>{q.competenceId}</span><QuestionBookmarkButton question={q} questionNumber={index + 1} paidAtSave={!isFreeSession} /></span>
           </div>
           {q.topic && <div style={{ color: 'var(--text-muted)', fontSize: 'calc(.82rem * var(--quiz-text-scale))', marginBottom: 6 }}>{q.topic}</div>}
           <div style={{ fontSize: 'calc(1.08rem * var(--quiz-text-scale))', lineHeight: 1.55, margin: '0 0 1rem', fontWeight: 800 }}><KeywordQuestionText question={q} headingId={'mock-question-' + index} /></div>

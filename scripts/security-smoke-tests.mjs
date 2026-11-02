@@ -695,7 +695,9 @@ assert.ok(practiceStore.includes('Avoid resurrecting a History row after this se
 assert.ok(practiceStore.includes('await deleteSessionSnapshot(snapshot.sessionId).catch(() => undefined)'), 'A session snapshot is removed if its History metadata cannot be saved');
 assert.ok(practiceQuizScreen.includes('saved = await saveProgress()') && practiceQuizScreen.includes('Your session is still open') && practiceQuizScreen.includes('disabled={savingProgress}'), 'Save failure keeps the user in the session and prevents duplicate save requests');
 assert.ok(!practiceQuizScreen.includes('aria-label="Back">← Back'), 'The question screen has no redundant second Back button inside the question content');
-assert.ok(app.includes('<path d="M6.75 4.25A1.75 1.75') && app.includes('aria-pressed={bookmarked}'), 'The question header uses a clean accessible outline bookmark SVG');
+const questionBookmarkButton = await read('../src/components/QuestionBookmarkButton.tsx');
+assert.ok(questionBookmarkButton.includes('<path d="M6.75 4.25A1.75 1.75') && questionBookmarkButton.includes('aria-pressed={bookmarked}') && app.includes('QuestionBookmarkButton'), 'The shared question bookmark control uses an accessible outline SVG');
+assert.ok(app.includes('!isMockRunner && <QuestionBookmarkButton') && mockExam.includes('questionNumber={index + 1}') && mockExam.includes('question={q}'), 'Scrolling mock exams bookmark each question rather than a hidden current index');
 assert.ok(app.includes('viewBox="0 0 24 24" width="27" height="27" fill="currentColor"') && app.includes('aria-expanded={settingsOpen}'), 'The question header uses a clean accessible gear SVG for settings');
 assert.ok(!app.includes("'♧'") && !app.includes('>⚙</button>'), 'Emoji-like bookmark and gear glyphs are not used in the question header');
 assert.ok(vaultScreen.includes('const saved = await usePracticeStore.getState().saveProgress()') && vaultScreen.includes('Could not save this drill on the device'), 'Mistakes Vault drills do not navigate as though a failed save succeeded');

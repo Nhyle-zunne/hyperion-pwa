@@ -1,3 +1,4 @@
+import SessionElapsedTimer from '../components/SessionElapsedTimer'
 import KeywordHighlightSetting from '../components/KeywordHighlightSetting'
 import KeywordQuestionText from '../components/KeywordQuestionText'
 import { useCallback, useEffect, useState } from 'react'
@@ -20,6 +21,7 @@ export default function QuickScanViewerScreen() {
   const competenceId = params.get('competence') || ''
   const [questions, setQuestions] = useState<Question[]>([])
   const [index, setIndex] = useState(0)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
   const [pageStart, setPageStart] = useState(0)
   const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -46,6 +48,7 @@ export default function QuickScanViewerScreen() {
 
   useEffect(() => {
     let active = true
+    setStartedAt(null)
     async function loadInitial() {
       setLoading(true)
       setError('')
@@ -57,6 +60,7 @@ export default function QuickScanViewerScreen() {
         const qs = await getQuestionsByCompetence(track, competenceId, undefined, false, 1, PAGE_SIZE)
         if (active) {
           setQuestions(qs)
+          setStartedAt(qs.length ? Date.now() : null)
           setIndex(0)
           setPageStart(0)
         }
@@ -105,6 +109,7 @@ export default function QuickScanViewerScreen() {
       <h1 className="page-title" style={{ margin: '8px 0 4px' }}>{competence?.label || competenceId}</h1>
       <p className="subtitle" style={{ margin: 0 }}>{loading ? 'Loading question…' : questions.length ? `ITEM ${globalIndex + 1} OF ${totalCount}` : 'No questions available'}</p>
     </div>
+    <SessionElapsedTimer startedAt={startedAt} />
     {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
     {!loading && q && <>
       <div className="card" style={{ marginBottom: '1rem' }}>

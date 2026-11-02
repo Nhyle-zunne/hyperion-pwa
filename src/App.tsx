@@ -1,3 +1,4 @@
+import QuestionBookmarkButton from './components/QuestionBookmarkButton'
 import KeywordHighlightSetting from './components/KeywordHighlightSetting'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useLicenseStore } from './stores/licenseStore'
@@ -127,8 +128,6 @@ export default function App() {
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
   const q = usePracticeStore((s) => s.questions[s.currentIndex])
-  const bookmarked = useBookmarksStore((s) => q ? s.isBookmarked(q.id) : false)
-  const toggleBookmark = useBookmarksStore((s) => s.toggle)
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
   const [automations, setAutomations] = useState(() => {
     try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as { directAnswer: boolean; autoNextCorrect: boolean; autoNextWrong: boolean } }
@@ -535,18 +534,7 @@ export default function App() {
             {isMockRunner ? 'MOCK EXAM' : 'PRACTICE'}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
-            <button
-              type="button"
-              onClick={() => { if (q) toggleBookmark(q, !isFreeSession) }}
-              aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'}
-              aria-pressed={bookmarked}
-              title={bookmarked ? 'Bookmarked' : 'Bookmark question'}
-              style={{ display: 'grid', placeItems: 'center', width: 44, height: 44, border: 0, borderRadius: 8, background: 'transparent', color: bookmarked ? 'var(--accent)' : 'var(--text)', padding: 8, cursor: 'pointer' }}
-            >
-              <svg aria-hidden="true" viewBox="0 0 24 24" width="25" height="25" fill={bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6.75 4.25A1.75 1.75 0 0 1 8.5 2.5h7A1.75 1.75 0 0 1 17.25 4.25V21l-5.25-3.6L6.75 21V4.25Z" />
-              </svg>
-            </button>
+            {!isMockRunner && <QuestionBookmarkButton question={q} paidAtSave={!isFreeSession} />}
             <button
               type="button"
               onClick={() => setSettingsOpen(v => !v)}

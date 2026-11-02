@@ -1,3 +1,4 @@
+import SessionElapsedTimer from '../components/SessionElapsedTimer'
 import KeywordHighlightSetting from '../components/KeywordHighlightSetting'
 import KeywordQuestionText from '../components/KeywordQuestionText'
 import { useEffect, useRef, useState } from 'react'
@@ -17,6 +18,7 @@ export default function PracticeQuizScreen() {
   const {
     questions,
     currentIndex,
+    startedAt,
     answers,
     loading,
     error,
@@ -303,6 +305,8 @@ export default function PracticeQuizScreen() {
         <span>Q {currentIndex + 1} / {questions.length}</span>
         <span>{mode === 'DRILL' && streak > 0 ? 'Streak ' + streak + ' · ' : ''}{q.competenceId}{mode !== 'DRILL' ? ' · ' + q.difficulty : ''}</span>
       </div>
+
+      <SessionElapsedTimer startedAt={startedAt} />
 
       <div className="card question-protected-card" style={{ marginBottom: '1rem' }}>
         <span className="question-watermark" aria-hidden="true">HYPERION MARITIME</span>
