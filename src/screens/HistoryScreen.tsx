@@ -175,7 +175,26 @@ export default function HistoryScreen() {
   const [progressDetails, setProgressDetails] = useState<SavedSessionEntry | null>(null)
   const [review, setReview] = useState<ReviewState | null>(null)
   const [reviewAttempt, setReviewAttempt] = useState(0)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [paletteJump, setPaletteJump] = useState('')
+  const paletteRef = useRef<HTMLDivElement>(null)
   const skipNextClick = useRef(false)
+
+  useEffect(() => {
+    if (!paletteOpen) return
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!paletteRef.current?.contains(event.target as Node)) setPaletteOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPaletteOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [paletteOpen])
 
   useEffect(() => { purgeExpiredDeleted() }, [purgeExpiredDeleted])
 
@@ -275,6 +294,8 @@ export default function HistoryScreen() {
   }, [review?.id, review?.snapshot, cloudTrackIds, entitlementsVerified, params, setParams, openPaywall, navigate])
 
   const closeReview = () => {
+    setPaletteOpen(false)
+    setPaletteJump('')
     setReview(null)
     const nextParams = new URLSearchParams(params)
     nextParams.delete('review')
@@ -327,6 +348,14 @@ export default function HistoryScreen() {
   const reviewIndex = Math.max(0, Math.min(review?.index ?? 0, Math.max(0, filteredReviewQuestions.length - 1)))
   const currentQuestion = filteredReviewQuestions[reviewIndex]
   const currentAnswer = currentQuestion ? reviewAnswers[currentQuestion.id] : undefined
+  const missedReviewCount = reviewQuestions.filter(question => !reviewAnswers[question.id]?.isCorrect).length
+
+  const goToReviewQuestion = (index: number) => {
+    if (!Number.isInteger(index) || index < 0 || index >= filteredReviewQuestions.length) return
+    setReview(current => current ? { ...current, index } : current)
+    setPaletteOpen(false)
+    setPaletteJump('')
+  }
 
   const competenceBreakdown = useMemo(() => {
     if (!review?.snapshot) return []
@@ -354,6 +383,133 @@ export default function HistoryScreen() {
     width: 'min(100%, 680px)', maxHeight: '88dvh', overflowY: 'auto',
     background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)',
     borderTop: '3px solid var(--accent)', padding: '1rem', borderRadius: 10
+  }
+
+  // Audit is a normal History route view, not a fullscreen portal. The app's
+  // existing desktop top bar and mobile bottom bar stay visible and usable.
+  if (review) {
+    return (
+          <section className="screen question-runner-screen history-audit-screen" aria-labelledby="session-audit-title">
+            <header className="history-audit-header">
+              <div className="history-audit-heading">
+                <div>
+                  <h2 id="session-audit-title" style={{ margin: 0 }}>EXAM ATTEMPT AUDIT</h2>
+                  <p style={{ ...secondaryText, margin: 0 }}>{reviewEntry ? rowTitle({ ...buildRows([reviewEntry], [])[0], key: 'entry:' + reviewEntry.id }) : 'Completed session'}</p>
+                </div>
+                <button type="button" className="btn btn-primary history-audit-back" onClick={closeReview}>← Back to History</button>
+              </div>
+              {reviewEntry && (
+                <div className="history-audit-score">
+                  <strong style={{ color: reviewEntry.percent >= 70 ? 'var(--success)' : 'var(--danger)' }}>{reviewEntry.percent}%</strong>
+                  <span style={secondaryText}>{reviewEntry.correct}/{reviewEntry.total} correct · {formatDuration(reviewEntry.durationMs)} · {formatDate(reviewEntry.finishedAt)}</span>
+                </div>
+              )}
+            </header>
+            {!review.snapshot ? (
+              <div aria-live="polite">
+                <p role={review.status === 'loading' ? 'status' : undefined} style={secondaryText}>{
+                  review.status === 'loading' ? 'Loading saved questions and answers…' :
+                  review.status === 'offline' ? 'This session’s questions are not downloaded on this device. Reconnect and retry to load the saved audit for offline review.' :
+                  review.status === 'sign-in-required' ? 'Sign in to the account that completed this exam, then retry loading its saved questions and answers.' :
+                  review.status === 'account-changed' ? 'The account changed while loading this session. Return to History and open a session from your current account.' :
+                  review.status === 'unavailable' ? 'The saved audit could not be downloaded. Your session summary is preserved. Retry when the connection and audit service are available.' :
+                  'No detailed question-and-answer snapshot was found on this device or in this account’s cloud archive. The score and session summary are preserved. An older session can only be reviewed if its original snapshot survives.'
+                }</p>
+                {review.status !== 'loading' && <button type="button" className="btn btn-primary" onClick={() => void openReview(review.id)}>Retry loading audit</button>}
+              </div>
+            ) : (
+              <>
+                {review.cached === false && <p role="status" style={secondaryText}>This audit is open online, but could not be saved for offline review. Check device storage and reopen it to retry.</p>}
+                {review.snapshot.mode === 'MOCK' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: '.85rem' }}>
+                    <button className={review.tab === 'breakdown' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setReview(current => current ? { ...current, tab: 'breakdown' } : current)}>Competence breakdown</button>
+                    <button className={review.tab === 'questions' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setReview(current => current ? { ...current, tab: 'questions', index: 0 } : current)}>Question review</button>
+                  </div>
+                )}
+                {review.snapshot.mode === 'MOCK' && review.tab === 'breakdown' ? (
+                  <div style={{ display: 'grid', gap: '.5rem' }}>
+                    {competenceBreakdown.map(item => (
+                      <div key={item.id} className="card" style={{ padding: '.75rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <strong>{item.id}</strong>
+                          <strong style={{ color: item.percent >= 70 ? 'var(--success)' : 'var(--danger)' }}>{item.percent}%</strong>
+                        </div>
+                        <div style={secondaryText}>{item.correct}/{item.total} correct · {item.percent >= 70 ? 'PASSED' : 'BELOW 70%'}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <div className="history-audit-filters" role="tablist" aria-label="Audit question filter">
+                      <button type="button" role="tab" aria-selected={!review.missedOnly} className={!review.missedOnly ? 'is-active' : ''} onClick={() => { setPaletteOpen(false); setReview(current => current ? { ...current, missedOnly: false, index: 0 } : current) }}>
+                        ALL <span>{reviewQuestions.length}</span>
+                      </button>
+                      <button type="button" role="tab" aria-selected={review.missedOnly} className={review.missedOnly ? 'is-active' : ''} onClick={() => { setPaletteOpen(false); setReview(current => current ? { ...current, missedOnly: true, index: 0 } : current) }}>
+                        MISSED <span>{missedReviewCount}</span>
+                      </button>
+                    </div>
+                    {currentQuestion ? (
+                      <div className="card history-audit-question">
+                        <div className="history-audit-question-meta" style={secondaryText}>QUESTION {reviewIndex + 1} OF {filteredReviewQuestions.length} · {currentQuestion.competenceId} · {currentQuestion.topic}</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, margin: '.35rem 0' }}>
+                          <strong style={{ color: currentAnswer?.selectedIndex == null ? 'var(--text-muted)' : currentAnswer.selectedIndex === currentQuestion.correctAnswerIndex ? 'var(--success)' : 'var(--danger)' }}>
+                            {currentAnswer?.selectedIndex == null ? 'UNANSWERED' : currentAnswer.selectedIndex === currentQuestion.correctAnswerIndex ? 'CORRECT' : 'INCORRECT'}
+                          </strong>
+                          <QuestionBookmarkButton question={currentQuestion} paidAtSave={review.snapshot.isFreeSession !== true} />
+                        </div>
+                        <div style={{ fontWeight: 750, lineHeight: 1.5, marginBottom: 8 }}><KeywordQuestionText question={currentQuestion} /></div>
+                        <div style={{ display: 'grid', gap: '.35rem' }}>
+                          {currentQuestion.options.map((option, index) => {
+                            const chosen = currentAnswer?.selectedIndex === index
+                            const correct = currentQuestion.correctAnswerIndex === index
+                            const border = correct ? 'var(--success)' : chosen ? 'var(--danger)' : 'var(--border)'
+                            const background = correct ? 'rgba(34,197,94,.12)' : chosen ? 'rgba(239,68,68,.12)' : 'var(--bg-card)'
+                            return <div key={index} style={{ border: '1px solid ' + border, background, borderRadius: 6, padding: '.55rem .65rem', lineHeight: 1.45 }}>
+                              <strong>{String.fromCharCode(65 + index)}.</strong> {option}
+                              {correct && !chosen && <span style={{ color: 'var(--success)', fontWeight: 900 }}> · CORRECT ANSWER</span>}
+                              {chosen && <span style={{ color: correct ? 'var(--success)' : 'var(--danger)', fontWeight: 900 }}> · YOUR ANSWER</span>}
+                            </div>
+                          })}
+                        </div>
+                        {currentQuestion.explanation && <div style={{ ...secondaryText, marginTop: '.8rem' }}><strong>Explanation:</strong> {currentQuestion.explanation}</div>}
+                      </div>
+                    ) : <p role="status" className="history-audit-empty">No missed or unanswered questions in this session.</p>}
+                    <div className="history-audit-controls">
+                      <button type="button" className="btn btn-outline" disabled={reviewIndex <= 0 || !filteredReviewQuestions.length} onClick={() => goToReviewQuestion(reviewIndex - 1)}>← Previous</button>
+                      <div className="history-audit-palette" ref={paletteRef}>
+                        <button type="button" className="btn btn-outline history-audit-palette-trigger" aria-expanded={paletteOpen} aria-controls="history-audit-palette-panel" aria-label={`Question palette, question ${filteredReviewQuestions.length ? reviewIndex + 1 : 0} of ${filteredReviewQuestions.length}`} disabled={!filteredReviewQuestions.length} onClick={() => setPaletteOpen(open => !open)}>
+                          <span aria-hidden="true">▦</span> Palette <span className="history-audit-counter">{filteredReviewQuestions.length ? reviewIndex + 1 : 0}/{filteredReviewQuestions.length}</span>
+                        </button>
+                        {paletteOpen && (
+                          <div id="history-audit-palette-panel" className="history-audit-palette-panel" role="group" aria-label="Jump to a question">
+                            <strong>QUESTION PALETTE</strong>
+                            <div className="history-audit-palette-grid">
+                              {filteredReviewQuestions.map((question, index) => {
+                                const answer = reviewAnswers[question.id]
+                                const status = answer?.selectedIndex == null ? 'unanswered' : answer.isCorrect ? 'correct' : 'missed'
+                                return (
+                                  <button key={question.id} type="button" className={`history-audit-palette-number is-${status}${index === reviewIndex ? ' is-current' : ''}`} aria-label={`Question ${index + 1}: ${status}`} aria-current={index === reviewIndex ? 'step' : undefined} onClick={() => goToReviewQuestion(index)}>
+                                    {index + 1}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <form className="history-audit-jump-form" onSubmit={event => { event.preventDefault(); goToReviewQuestion(Number(paletteJump) - 1) }}>
+                              <label htmlFor="history-audit-jump-input">Go to number</label>
+                              <input id="history-audit-jump-input" className="input" type="number" inputMode="numeric" min="1" max={filteredReviewQuestions.length} value={paletteJump} onChange={event => setPaletteJump(event.target.value)} placeholder="Question #" />
+                              <button type="submit" className="btn btn-primary" disabled={!paletteJump.trim() || !Number.isInteger(Number(paletteJump)) || Number(paletteJump) < 1 || Number(paletteJump) > filteredReviewQuestions.length}>Go</button>
+                            </form>
+                          </div>
+                        )}
+                      </div>
+                      <button type="button" className="btn btn-outline" disabled={!filteredReviewQuestions.length || reviewIndex >= filteredReviewQuestions.length - 1} onClick={() => goToReviewQuestion(reviewIndex + 1)}>Next →</button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </section>
+    )
   }
 
   return (
@@ -595,104 +751,7 @@ export default function HistoryScreen() {
         document.body
       )}
 
-      {review && createPortal(
-        <div style={{ ...modalBackdrop, alignItems: 'stretch', padding: 0, overflowY: 'auto', background: 'var(--bg)' }} role="presentation">
-          <section className="screen question-runner-screen" style={{ minHeight: '100dvh', paddingBottom: '2rem', background: 'var(--bg)' }} role="dialog" aria-modal="true" aria-labelledby="session-audit-title" onClick={event => event.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-              <div>
-                <h2 id="session-audit-title" style={{ margin: 0 }}>EXAM ATTEMPT AUDIT</h2>
-                <p style={secondaryText}>{reviewEntry ? rowTitle({ ...buildRows([reviewEntry], [])[0], key: 'entry:' + reviewEntry.id }) : 'Completed session'}</p>
-              </div>
-              <button className="btn btn-outline" onClick={closeReview}>← Back to History</button>
-            </div>
-            {reviewEntry && (
-              <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '.8rem', margin: '.8rem 0' }}>
-                <div style={{ fontSize: '1.45rem', fontWeight: 900, color: reviewEntry.percent >= 70 ? 'var(--success)' : 'var(--danger)' }}>{reviewEntry.percent}%</div>
-                <div style={secondaryText}>{reviewEntry.correct}/{reviewEntry.total} correct · {formatDuration(reviewEntry.durationMs)} · {formatDate(reviewEntry.finishedAt)}</div>
-              </div>
-            )}
-            {!review.snapshot ? (
-              <div aria-live="polite">
-                <p role={review.status === 'loading' ? 'status' : undefined} style={secondaryText}>{
-                  review.status === 'loading' ? 'Loading saved questions and answers…' :
-                  review.status === 'offline' ? 'This session’s questions are not downloaded on this device. Reconnect and retry to load the saved audit for offline review.' :
-                  review.status === 'sign-in-required' ? 'Sign in to the account that completed this exam, then retry loading its saved questions and answers.' :
-                  review.status === 'account-changed' ? 'The account changed while loading this session. Return to History and open a session from your current account.' :
-                  review.status === 'unavailable' ? 'The saved audit could not be downloaded. Your session summary is preserved. Retry when the connection and audit service are available.' :
-                  'No detailed question-and-answer snapshot was found on this device or in this account’s cloud archive. The score and session summary are preserved. An older session can only be reviewed if its original snapshot survives.'
-                }</p>
-                {review.status !== 'loading' && <button type="button" className="btn btn-primary" onClick={() => void openReview(review.id)}>Retry loading audit</button>}
-              </div>
-            ) : (
-              <>
-                {review.cached === false && <p role="status" style={secondaryText}>This audit is open online, but could not be saved for offline review. Check device storage and reopen it to retry.</p>}
-                {review.snapshot.mode === 'MOCK' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: '.85rem' }}>
-                    <button className={review.tab === 'breakdown' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setReview(current => current ? { ...current, tab: 'breakdown' } : current)}>Competence breakdown</button>
-                    <button className={review.tab === 'questions' ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => setReview(current => current ? { ...current, tab: 'questions', index: 0 } : current)}>Question review</button>
-                  </div>
-                )}
-                {review.snapshot.mode === 'MOCK' && review.tab === 'breakdown' ? (
-                  <div style={{ display: 'grid', gap: '.5rem' }}>
-                    {competenceBreakdown.map(item => (
-                      <div key={item.id} className="card" style={{ padding: '.75rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                          <strong>{item.id}</strong>
-                          <strong style={{ color: item.percent >= 70 ? 'var(--success)' : 'var(--danger)' }}>{item.percent}%</strong>
-                        </div>
-                        <div style={secondaryText}>{item.correct}/{item.total} correct · {item.percent >= 70 ? 'PASSED' : 'BELOW 70%'}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.85rem', fontWeight: 700, margin: '.8rem 0' }}>
-                      <input type="checkbox" checked={review.missedOnly} onChange={event => setReview(current => current ? { ...current, missedOnly: event.target.checked, index: 0 } : current)} />
-                      Show missed / unanswered questions only
-                    </label>
-                    {currentQuestion ? (
-                      <div className="card" style={{ padding: '.9rem' }}>
-                        <div style={secondaryText}>QUESTION {reviewIndex + 1} OF {filteredReviewQuestions.length} · {currentQuestion.competenceId} · {currentQuestion.topic}</div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, margin: '.7rem 0' }}>
-                          <strong style={{ color: currentAnswer?.selectedIndex == null ? 'var(--text-muted)' : currentAnswer.selectedIndex === currentQuestion.correctAnswerIndex ? 'var(--success)' : 'var(--danger)' }}>
-                            {currentAnswer?.selectedIndex == null ? 'UNANSWERED' : currentAnswer.selectedIndex === currentQuestion.correctAnswerIndex ? 'CORRECT' : 'INCORRECT'}
-                          </strong>
-                          <QuestionBookmarkButton question={currentQuestion} paidAtSave={review.snapshot.isFreeSession !== true} />
-                        </div>
-                        <div style={{ fontWeight: 750, lineHeight: 1.6, marginBottom: 12 }}><KeywordQuestionText question={currentQuestion} /></div>
-                        <div style={{ display: 'grid', gap: '.45rem' }}>
-                          {currentQuestion.options.map((option, index) => {
-                            const chosen = currentAnswer?.selectedIndex === index
-                            const correct = currentQuestion.correctAnswerIndex === index
-                            const border = correct ? 'var(--success)' : chosen ? 'var(--danger)' : 'var(--border)'
-                            const background = correct ? 'rgba(34,197,94,.12)' : chosen ? 'rgba(239,68,68,.12)' : 'var(--bg-card)'
-                            return <div key={index} style={{ border: '1px solid ' + border, background, borderRadius: 6, padding: '.65rem', lineHeight: 1.5 }}>
-                              <strong>{String.fromCharCode(65 + index)}.</strong> {option}
-                              {correct && !chosen && <span style={{ color: 'var(--success)', fontWeight: 900 }}> · CORRECT ANSWER</span>}
-                              {chosen && <span style={{ color: correct ? 'var(--success)' : 'var(--danger)', fontWeight: 900 }}> · YOUR ANSWER</span>}
-                            </div>
-                          })}
-                        </div>
-                        {currentQuestion.explanation && <div style={{ ...secondaryText, marginTop: '.8rem' }}><strong>Explanation:</strong> {currentQuestion.explanation}</div>}
-                      </div>
-                    ) : <p style={secondaryText}>No questions match this filter.</p>}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: '.75rem' }}>
-                      <button className="btn btn-outline" disabled={reviewIndex <= 0} onClick={() => setReview(current => current ? { ...current, index: Math.max(0, current.index - 1) } : current)}>← Previous</button>
-                      <span style={secondaryText}>{filteredReviewQuestions.length ? (reviewIndex + 1) + ' / ' + filteredReviewQuestions.length : '0 / 0'}</span>
-                      <button className="btn btn-outline" disabled={reviewIndex >= filteredReviewQuestions.length - 1} onClick={() => setReview(current => current ? { ...current, index: Math.min(filteredReviewQuestions.length - 1, current.index + 1) } : current)}>Next →</button>
-                    </div>
-                    <button type="button" className="btn btn-outline" disabled={!filteredReviewQuestions.length} style={{ width: '100%', marginTop: 10 }} onClick={() => {
-                      const value = Number(window.prompt(`Go to question (1–${filteredReviewQuestions.length})`))
-                      if (Number.isInteger(value) && value >= 1 && value <= filteredReviewQuestions.length) setReview(current => current ? { ...current, index: value - 1 } : current)
-                    }}>Jump to Question</button>
-                  </>
-                )}
-              </>
-            )}
-          </section>
-        </div>,
-        document.body
-      )}
+
     </div>
   )
 }
