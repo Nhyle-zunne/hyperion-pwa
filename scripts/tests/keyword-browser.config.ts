@@ -12,7 +12,7 @@ export default defineConfig({
     enforce: 'pre',
     resolveId(source, importer) {
       if (fixture === 'recovery-browser' && /(?:\/lib\/|^\.\/)supabase(?:\.ts)?$/.test(source) && !importer?.endsWith('recovery-supabase-fixture.ts')) return fileURLToPath(new URL('./recovery-supabase-fixture.ts', import.meta.url))
-      if (fixture === 'recovery-browser' && /\/lib\/questionBank(?:\.ts)?$/.test(source) && !importer?.endsWith('recovery-bank-fixture.ts')) return fileURLToPath(new URL('./recovery-bank-fixture.ts', import.meta.url))
+      if (fixture === 'recovery-browser' && /(?:\/lib\/|^\.\/)questionBank(?:\.ts)?$/.test(source) && !importer?.endsWith('recovery-bank-fixture.ts')) return fileURLToPath(new URL('./recovery-bank-fixture.ts', import.meta.url))
       if (fixture === 'quickscan-browser' && /\/lib\/questionBank(?:\.ts)?$/.test(source) && !importer?.endsWith('quickscan-bank-fixture.ts')) {
         return fileURLToPath(new URL('./quickscan-bank-fixture.ts', import.meta.url))
       }
