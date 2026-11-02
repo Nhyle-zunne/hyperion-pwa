@@ -1,3 +1,4 @@
+import type { SavedQuestionContext } from '../lib/savedQuestionSets';
 import { create } from 'zustand';
 import type { Question, UserAnswer, TrackId } from '../types/question';
 import { authorizeQuestionSetAccess, getQuestionsByCompetence } from '../lib/questionBank';
@@ -25,8 +26,11 @@ interface PracticeState {
   timeLeftSec: number;
   streak: number;
   bestStreak: number;
+  source: SavedQuestionContext | null;
+  finishing: boolean;
+  completionError: string | null;
 
-  startCustomSession: (opts: { questions: Question[]; track: TrackId; competenceId?: string | null }) => Promise<boolean>;
+  startCustomSession: (opts: { questions: Question[]; track: TrackId; competenceId?: string | null; mode?: 'PRACTICE' | 'DRILL'; randomizeOrder?: boolean; shuffleChoices?: boolean; limit?: number; source?: SavedQuestionContext }) => Promise<boolean>;
   startSession: (opts: {
     mode: SessionMode;
     track: TrackId;
@@ -168,7 +172,7 @@ function snapshotFromState(s: PracticeState, finished = s.finished): SessionSnap
     currentIndex: s.currentIndex, track: s.track, competenceId: s.competenceId,
     part: s.part, mode: s.mode, isFreeSession: s.isFreeSession, startedAt: s.startedAt,
     timeLimitSec: s.timeLimitSec, timeLeftSec: s.timeLeftSec,
-    streak: s.streak, bestStreak: s.bestStreak, finished
+    streak: s.streak, bestStreak: s.bestStreak, source: s.source, finished
   };
 }
 
@@ -203,19 +207,11 @@ function persistActiveSession(s: PracticeState) {
   });
 }
 
-function recordHistory(get: () => PracticeState) {
+async function recordHistory(get: () => PracticeState): Promise<boolean> {
   const s = get();
-  if (!s.track || s.questions.length === 0) return;
+  if (!s.track || s.questions.length === 0) return false;
   let correct = 0;
-  for (const q of s.questions) {
-    const answer = s.answers[q.id];
-    if (answer?.isCorrect) {
-      correct++;
-      if (s.mode === 'MOCK') useVaultStore.getState().recordCorrectAttempt(q.id);
-    } else if (s.mode === 'MOCK' && answer && answer.selectedIndex != null) {
-      useVaultStore.getState().addMistake(q, answer.selectedIndex, s.isFreeSession);
-    }
-  }
+  for (const q of s.questions) if (s.answers[q.id]?.isCorrect) correct++;
   const total = s.questions.length;
   const answered = s.questions.reduce((count, q) => count + (s.answers[q.id]?.selectedIndex != null ? 1 : 0), 0);
   const percent = total === 0 ? 0 : Math.round((correct / total) * 100);
@@ -229,12 +225,20 @@ function recordHistory(get: () => PracticeState) {
     timeLeftSec: s.mode === 'MOCK' && s.timeLeftSec <= 1 ? 0 : s.timeLeftSec
   }, true);
 
+  if (!snapshot) return false;
+  // Do not claim completion or remove the resumable row before its audit is durable.
+  await saveSessionSnapshot(sessionId, { ...snapshot, sessionId, finished: true });
+  if (get().sessionId !== s.sessionId) return false;
   useHistoryStore.getState().removeSavedSessionById(sessionId);
-  const historyId = useHistoryStore.getState().addEntry({
+  useHistoryStore.getState().addEntry({
     id: sessionId, mode: s.mode, track: s.track, competenceId: s.competenceId,
     part: s.part, isFreeSession: s.isFreeSession, correct, total, answered, percent, durationMs, startedAt, finishedAt
   });
-  if (snapshot) void saveSessionSnapshot(historyId, { ...snapshot, sessionId: historyId, finished: true }).catch(() => undefined);
+  if (s.mode === 'MOCK') for (const q of s.questions) {
+    const answer = s.answers[q.id];
+    if (answer?.isCorrect) useVaultStore.getState().recordCorrectAttempt(q.id);
+    else if (answer?.selectedIndex != null) useVaultStore.getState().addMistake(q, answer.selectedIndex, s.isFreeSession);
+  }
 
   try {
     const raw = localStorage.getItem('hyperion-saved-practice');
@@ -247,6 +251,19 @@ function recordHistory(get: () => PracticeState) {
   } catch { /* storage may be unavailable or contain an older payload */ }
 
   useStudyTimeStore.getState().addSegment({ mode: s.mode, track: s.track, durationMs, at: finishedAt });
+  return true;
+}
+
+async function completeSession(set: (state: Partial<PracticeState>) => void, get: () => PracticeState) {
+  if (get().finished || get().finishing) return;
+  const sessionId = get().sessionId;
+  set({ finishing: true, completionError: null });
+  try {
+    const saved = await recordHistory(get);
+    if (get().sessionId === sessionId) set({ finishing: false, finished: saved });
+  } catch {
+    if (get().sessionId === sessionId) set({ finishing: false, completionError: 'Could not save this completed session. Your answers are still open. Retry saving before leaving.' });
+  }
 }
 
 export const usePracticeStore = create<PracticeState>((set, get) => ({
@@ -267,8 +284,11 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   timeLeftSec: 0,
   streak: 0,
   bestStreak: 0,
+  source: null,
+  finishing: false,
+  completionError: null,
 
-  startCustomSession: async ({ questions, track, competenceId }) => {
+  startCustomSession: async ({ questions, track, competenceId, mode = 'PRACTICE', randomizeOrder = true, shuffleChoices = false, limit, source }) => {
     if (questions.length === 0) return false;
     await useLicenseStore.getState().refreshCloudEntitlements();
     const access = await authorizeQuestionSetAccess(track, questions);
@@ -276,7 +296,13 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       set({ loading: false, error: 'These saved questions are no longer available for this account. Renew the track license or use the free reviewer sample.' });
       return false;
     }
-    const selected = shuffle(questions);
+    if (mode === 'DRILL' && access === 'free-sample') {
+      set({ loading: false, error: 'Drill requires an active track license. Your saved questions are preserved.' });
+      return false;
+    }
+    let selected = randomizeOrder ? shuffle(questions) : [...questions];
+    if (limit != null) selected = selected.slice(0, Math.max(1, Math.floor(limit)));
+    if (shuffleChoices) selected = selected.map(shuffleQuestionChoices);
     const startedAt = Date.now();
     const sessionId = makeSessionId();
     set({
@@ -291,7 +317,10 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       isFreeSession: access === 'free-sample',
       sessionId,
       finished: false,
-      mode: 'PRACTICE',
+      mode,
+      source: source ?? null,
+      finishing: false,
+      completionError: null,
       startedAt,
       timeLimitSec: 0,
       timeLeftSec: 0,
@@ -303,6 +332,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   },
 
   startSession: async ({ mode, track, competenceId, limit, timeLimitSec, free, randomizeOrder, shuffleChoices, startItem, part }) => {
+    set({ source: null, finishing: false, completionError: null });
     const defaultLimit = mode === 'MOCK' ? 30 : mode === 'DRILL' ? 12 : 15;
     const finalLimit = Math.max(1, Math.floor(limit ?? defaultLimit));
     const time = Math.max(0, Math.floor(timeLimitSec ?? (mode === 'MOCK' ? finalLimit * 60 : 0)));
@@ -391,6 +421,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   },
 
   selectAnswer: (index) => {
+    if (get().finished || get().finishing || get().completionError) return;
     const { questions, currentIndex, answers, mode, streak, bestStreak, isFreeSession } = get();
     const q = questions[currentIndex];
     if (!q) return;
@@ -425,6 +456,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   // Continuous-scroll mock exams must save each choice by the question being clicked,
   // not by currentIndex (which belongs to the single-question practice layout).
   selectMockAnswer: (questionId, index) => {
+    if (get().finishing || get().completionError) return;
     const { questions, answers, mode, finished } = get();
     if (mode !== 'MOCK' || finished) return;
     const question = questions.find((item) => item.id === questionId);
@@ -480,8 +512,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       set({ currentIndex: currentIndex + 1 });
       persistActiveSession(get());
     } else {
-      recordHistory(get);
-      set({ finished: true });
+      void completeSession(set, get);
     }
   },
 
@@ -495,9 +526,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   },
 
   finish: () => {
-    if (get().finished) return;
-    recordHistory(get);
-    set({ finished: true });
+    void completeSession(set, get);
   },
 
   tick: () => {
@@ -506,8 +535,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     const next = timeLeftSec - 1;
     if (next <= 0) {
       set({ timeLeftSec: 0 });
-      recordHistory(get);
-      set({ finished: true });
+      void completeSession(set, get);
     } else {
       set({ timeLeftSec: next });
       if (next % 15 === 0) persistActiveSession(get());
@@ -532,14 +560,15 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       }
     } catch { /* storage can be unavailable */ }
     set({
-      questions: [], answers: {}, currentIndex: 0, loading: false, error: null,
+      questions: [], answers: {}, currentIndex: 0, loading: false, error: null, finishing: false, completionError: null,
       track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, finished: false,
-      mode: 'PRACTICE', startedAt: 0, timeLimitSec: 0, timeLeftSec: 0, streak: 0, bestStreak: 0
+      mode: 'PRACTICE', source: null, startedAt: 0, timeLimitSec: 0, timeLeftSec: 0, streak: 0, bestStreak: 0
     });
   },
 
   saveProgress: async () => {
     const current = get();
+    if (current.finished || current.finishing) return false;
     const snapshot = snapshotFromState(current, false);
     if (!snapshot || !current.track) return false;
 
@@ -550,6 +579,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       return false;
     }
 
+    if (get().sessionId !== snapshot.sessionId || get().finished || get().finishing) return false;
     const answered = current.questions.reduce(
       (count, question) => count + (current.answers[question.id]?.selectedIndex != null ? 1 : 0),
       0
@@ -607,6 +637,9 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         }
         set({
           ...snapshot,
+          source: snapshot.source ?? null,
+          finishing: false,
+          completionError: null,
           sessionId: selectedSaved.id,
           isFreeSession: access === 'free-sample',
           loading: false,

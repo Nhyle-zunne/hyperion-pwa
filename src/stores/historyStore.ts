@@ -92,7 +92,7 @@ export const useHistoryStore = create<HistoryState>()(
         const id = entry.id || `h-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         const record: HistoryEntry = { ...entry, id }
         set((state) => ({
-          entries: [record, ...state.entries.filter((item) => item.id !== id)].slice(0, 200)
+          entries: [record, ...state.entries.filter((item) => item.id !== id)]
         }))
         return id
       },
@@ -104,7 +104,7 @@ export const useHistoryStore = create<HistoryState>()(
             savedSessions: [
               { ...entry, deletedAt: existing?.deletedAt },
               ...state.savedSessions.filter((item) => item.id !== entry.id)
-            ].slice(0, 200)
+            ]
           }
         })
       },
@@ -154,9 +154,9 @@ export const useHistoryStore = create<HistoryState>()(
       })),
 
       // Entitlement cleanup must not delete resumable sessions created from the free reviewer pool.
-      removePaidSavedSessionsForTrack: (track) => set((state) => ({
-        savedSessions: state.savedSessions.filter((item) => item.track !== track || item.isFreeSession === true)
-      })),
+      removePaidSavedSessionsForTrack: () => {
+        // A license change must not remove saved-session metadata.
+      },
 
       removeSavedSessionById: (id) => set((state) => ({
         savedSessions: state.savedSessions.filter((item) => item.id !== id)

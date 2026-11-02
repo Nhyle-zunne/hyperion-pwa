@@ -1,3 +1,4 @@
+import { savedQuestionsReturnPath } from '../lib/savedQuestionSets'
 import SessionElapsedTimer from '../components/SessionElapsedTimer'
 import KeywordHighlightSetting from '../components/KeywordHighlightSetting'
 import KeywordQuestionText from '../components/KeywordQuestionText'
@@ -19,6 +20,7 @@ export default function PracticeQuizScreen() {
     questions,
     currentIndex,
     startedAt,
+    source,
     answers,
     loading,
     error,
@@ -172,7 +174,8 @@ export default function PracticeQuizScreen() {
             </div>
           )}
         </div>
-        <button className="btn btn-primary" style={{ width: '100%', marginBottom: 8 }} onClick={() => { reset(); navigate(mode === 'DRILL' ? '/drill' : mode === 'MOCK' ? '/mock' : '/practice') }}>Try Again</button>
+        <button className="btn btn-primary" style={{ width: '100%', marginBottom: 8 }} onClick={() => { reset(); navigate(source ? '/saved-questions/config?set=' + source.selectionId : mode === 'DRILL' ? '/drill' : mode === 'MOCK' ? '/mock' : '/practice') }}>Try Again</button>
+        {source && <button className="btn btn-outline" style={{ width: '100%', marginBottom: 8 }} onClick={() => { reset(); navigate(savedQuestionsReturnPath(source)!) }}>Back to {source.collection === 'bookmarks' ? 'Bookmarks' : 'Mistakes Notebook'}</button>}
         <button className="btn btn-outline" style={{ width: '100%', marginBottom: 8 }} onClick={() => { reset(); navigate('/history') }}>View History</button>
         <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => { reset(); navigate('/') }}>Home</button>
       </div>
@@ -274,7 +277,7 @@ export default function PracticeQuizScreen() {
               if (session.part != null) configParams.set('part', String(session.part))
               if (session.isFreeSession) configParams.set('free', '1')
               if (session.mode === 'DRILL') configParams.set('mode', 'drill')
-              navigate('/practice?' + configParams.toString())
+              navigate(savedQuestionsReturnPath(session.source) || '/practice?' + configParams.toString())
             }}>{savingProgress ? 'Saving…' : 'Save Progress & Exit'}</button>
             <button className="btn btn-outline" style={{ width: '100%', marginTop: 8 }} onClick={() => setShowExitDialog(false)}>Continue Reviewing</button>
           </section>

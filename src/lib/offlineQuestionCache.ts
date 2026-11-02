@@ -553,7 +553,7 @@ async function verifyStoredOfflineEntitlements(stored: StoredOfflineEntitlements
   return { claims, effectiveNow: trustedNow, clockRollback: false }
 }
 
-export async function saveOfflineEntitlements(userId: string, token: string): Promise<boolean> {
+export async function saveOfflineEntitlements(userId: string, token: string, canSave: () => boolean = () => true): Promise<boolean> {
   const previous = readStoredOfflineEntitlements()
   const priorHighWater = previous?.userId === userId ? previous.lastVerifiedAt : 0
   const now = Date.now()
@@ -569,6 +569,7 @@ export async function saveOfflineEntitlements(userId: string, token: string): Pr
   if (!claims) return false
   const trustedNow = Math.max(effectiveNow, claims.issuedAt)
   try {
+    if (!canSave()) return false
     const value: StoredOfflineEntitlements = {
       userId,
       savedAt: trustedNow,
@@ -623,9 +624,12 @@ export interface CachedOfflineEntitlementSnapshot {
  * restoration. The embedded user ID is used only as the expected signer subject;
  * the ECDSA signature and per-track real expiry are still verified before use.
  */
-export async function getCachedOfflineEntitlementSnapshot(): Promise<CachedOfflineEntitlementSnapshot | null> {
+export async function getCachedOfflineEntitlementSnapshot(expectedUserId?: string): Promise<CachedOfflineEntitlementSnapshot | null> {
   const stored = readStoredOfflineEntitlements()
   if (!stored) return null
+  let owner = expectedUserId
+  if (!owner) { try { owner = localStorage.getItem('hyperion-progress-owner') || undefined } catch { /* no known owner */ } }
+  if (owner && owner !== stored.userId) return null
   const verified = await verifyStoredOfflineEntitlements(stored, stored.userId)
   if (!verified.claims || verified.effectiveNow === null) {
     if (!verified.clockRollback) clearOfflineEntitlements(stored.userId)

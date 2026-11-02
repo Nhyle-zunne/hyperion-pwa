@@ -1,3 +1,5 @@
+import type { SavedQuestionContext } from './savedQuestionSets'
+import { syncSessionArchives } from './sessionArchive'
 import type { Question, TrackId, UserAnswer } from '../types/question'
 import type { SessionMode } from '../stores/historyStore'
 import { useHistoryStore } from '../stores/historyStore'
@@ -6,7 +8,7 @@ import { useVaultStore } from '../stores/vaultStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase'
-import { readEncryptedPersistedValue, removeEncryptedPersistedValue, writeEncryptedPersistedValue } from './encryptedPersistStorage'
+import { recoverSavedCollections, readEncryptedPersistedValue, removeEncryptedPersistedValue, writeEncryptedPersistedValue } from './encryptedPersistStorage'
 import { filterProgressCollection, mergeProgressDeletionLedgers } from './progressDeletionLedger'
 
 const OWNER_KEY = 'hyperion-progress-owner'
@@ -31,6 +33,7 @@ type ProgressSection = 'history' | 'studyTime' | 'vault' | 'bookmarks' | 'practi
 const ALL_PROGRESS_SECTIONS: ProgressSection[] = ['history', 'studyTime', 'vault', 'bookmarks', 'practice', 'mockPlan', 'attempts', 'deletions']
 
 interface ActiveSessionSnapshot {
+  sessionId?: string
   questions: Question[]
   answers: Record<string, UserAnswer>
   currentIndex: number
@@ -43,6 +46,7 @@ interface ActiveSessionSnapshot {
   timeLeftSec: number
   streak: number
   bestStreak: number
+  source?: SavedQuestionContext | null
 }
 
 export interface LearningProgressSnapshot {
@@ -123,6 +127,7 @@ function captureSnapshot(): LearningProgressSnapshot {
   const state = usePracticeStore.getState()
   const activeSession: ActiveSessionSnapshot | null = state.questions.length > 0 && !state.finished
     ? {
+        sessionId: state.sessionId ?? undefined,
         questions: state.questions,
         answers: state.answers,
         currentIndex: state.currentIndex,
@@ -134,7 +139,8 @@ function captureSnapshot(): LearningProgressSnapshot {
         timeLimitSec: state.timeLimitSec,
         timeLeftSec: state.timeLeftSec,
         streak: state.streak,
-        bestStreak: state.bestStreak
+        bestStreak: state.bestStreak,
+        source: state.source
       }
     : null
 
@@ -374,7 +380,7 @@ function mergePersistedStore(
     && key !== 'hyperion-vault'
     && key !== 'hyperion-bookmarks'
   ) return localRaw
-  if (!allowMigrationMerge && !preferLocalSection) return remoteRaw
+  if (!allowMigrationMerge && !preferLocalSection && !['hyperion-bookmarks', 'hyperion-vault', 'hyperion-history'].includes(key)) return remoteRaw
   const local = parseJson<{ state?: Record<string, unknown>; version?: number }>(localRaw)
   const remote = parseJson<{ state?: Record<string, unknown>; version?: number }>(remoteRaw)
   if (!local || !remote) return localRaw
@@ -391,12 +397,12 @@ function mergePersistedStore(
       state: {
         ...rs,
         ...ls,
-        entries: mergeById(remoteEntries, localEntries, 'finishedAt').sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0)).slice(0, 100),
+        entries: mergeById(remoteEntries, localEntries, 'finishedAt').sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0)),
         // Prefer the local saved-session collection when it has entries. This preserves
         // local removals/resume state rather than resurrecting sessions removed locally.
         savedSessions: preferLocalSection
-          ? localSaved.slice(0, 100)
-          : localSaved.length ? mergeById(remoteSaved, localSaved, 'savedAt').slice(0, 100) : remoteSaved
+          ? localSaved
+          : localSaved.length ? mergeById(remoteSaved, localSaved, 'savedAt') : remoteSaved
       }
     })
   }
@@ -408,7 +414,7 @@ function mergePersistedStore(
     const localItems = Array.isArray(ls[stateKey]) ? ls[stateKey] as { id: string; at?: number; savedAt?: number; lastWrongAt?: number }[] : []
     const remoteItems = Array.isArray(rs[stateKey]) ? rs[stateKey] as { id: string; at?: number; savedAt?: number; lastWrongAt?: number }[] : []
     const timestampKey = key === 'hyperion-study-time' ? 'at' : key === 'hyperion-vault' ? 'lastWrongAt' : 'savedAt'
-    const merged = mergeById(remoteItems, localItems, timestampKey).slice(0, key === 'hyperion-study-time' ? 400 : 500)
+    const merged = mergeById(remoteItems, localItems, timestampKey)
     const state = { ...rs, ...ls, [stateKey]: merged }
     if (key === 'hyperion-study-time') {
       // Select the most recently changed calendar date, not simply the local copy.
@@ -536,6 +542,9 @@ function activeSessionFrom(snapshot: LearningProgressSnapshot): ActiveSessionSna
 
 function resetActiveSession(): void {
   usePracticeStore.setState({
+    source: null,
+    finishing: false,
+    completionError: null,
     questions: [],
     answers: {},
     currentIndex: 0,
@@ -562,7 +571,7 @@ async function rehydratePersistedStores(): Promise<void> {
   ])
 }
 
-async function applySnapshot(snapshot: LearningProgressSnapshot): Promise<void> {
+async function applySnapshot(snapshot: LearningProgressSnapshot, ownerId?: string, generation = currentGeneration): Promise<void> {
   hydrating = true
   try {
     try {
@@ -570,11 +579,12 @@ async function applySnapshot(snapshot: LearningProgressSnapshot): Promise<void> 
       localStorage.setItem(DIRTY_SECTIONS_KEY, JSON.stringify(snapshot.changedSections ?? []))
     } catch { /* ignore storage errors */ }
     for (const key of STORAGE_KEYS) {
+      if (generation !== currentGeneration) throw new Error('Account changed while restoring progress.')
       const value = snapshot.storage[key]
       if (key === 'hyperion-bookmarks' || key === 'hyperion-vault') {
         try {
           if (value == null) await removeEncryptedPersistedValue(key)
-          else await writeEncryptedPersistedValue(key, value)
+          else await writeEncryptedPersistedValue(key, value, ownerId)
           try { localStorage.removeItem(key) } catch { /* remove previous-version cleartext only after encrypted write succeeds */ }
         } catch (error) {
           // Do not apply another account's stale encrypted state if restoring cloud
@@ -589,10 +599,14 @@ async function applySnapshot(snapshot: LearningProgressSnapshot): Promise<void> 
       } catch { /* continue restoring the remaining progress if storage is restricted */ }
     }
 
+    if (generation !== currentGeneration) throw new Error('Account changed while restoring progress.')
+    if (ownerId) localStorage.setItem(OWNER_KEY, ownerId)
     await rehydratePersistedStores()
+    if (generation !== currentGeneration) throw new Error('Account changed while restoring progress.')
     const session = activeSessionFrom(snapshot)
     if (session) {
       usePracticeStore.setState({
+        sessionId: session.sessionId || useHistoryStore.getState().savedSessions.find(row => row.track === session.track && row.competenceId === session.competenceId && row.startedAt === session.startedAt)?.id || crypto.randomUUID(),
         questions: session.questions,
         answers: session.answers,
         currentIndex: Math.min(Math.max(0, session.currentIndex), session.questions.length - 1),
@@ -601,12 +615,15 @@ async function applySnapshot(snapshot: LearningProgressSnapshot): Promise<void> 
         track: session.track,
         competenceId: session.competenceId,
         finished: false,
+        finishing: false,
+        completionError: null,
         mode: session.mode,
         startedAt: session.startedAt,
         timeLimitSec: session.timeLimitSec,
         timeLeftSec: session.timeLeftSec,
         streak: session.streak,
-        bestStreak: session.bestStreak
+        bestStreak: session.bestStreak,
+        source: session.source ?? null
       })
     } else {
       resetActiveSession()
@@ -827,6 +844,7 @@ async function uploadSnapshot(): Promise<void> {
           localStorage.setItem(persistedUploadAtKey(userId), String(lastUploadAt))
         } catch { /* cross-tab hints are optional; server save remains authoritative */ }
         saved = true
+        void syncCurrentSessionArchives(userId)
         break
       }
       if (!writeError) throw new Error('The progress service did not confirm the save.')
@@ -919,9 +937,26 @@ async function initializeUser(userId: string): Promise<void> {
   }
 }
 
+async function waitForProgressHydration(): Promise<void> {
+  await Promise.all([useHistoryStore, useStudyTimeStore, useVaultStore, useBookmarksStore].map(store => {
+    if (store.persist.hasHydrated()) return Promise.resolve()
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => { stop(); reject(new Error('Saved progress is still loading.')) }, 10000)
+      const stop = store.persist.onFinishHydration(() => { clearTimeout(timer); stop(); resolve() })
+      if (store.persist.hasHydrated()) { clearTimeout(timer); stop(); resolve() }
+    })
+  }))
+}
+
 async function initializeUserInternal(userId: string): Promise<void> {
   if (!supabase) return
+  await waitForProgressHydration()
   await migrateLegacyProgressCaches()
+  const currentOwner = (() => { try { return localStorage.getItem(OWNER_KEY) } catch { return null } })()
+  if (currentOwner === userId || currentOwner === null) {
+    const recovered = await recoverSavedCollections(currentOwner)
+    if (recovered) await rehydratePersistedStores()
+  }
   const { data: sessionData } = await supabase.auth.getSession()
   if (!sessionData.session?.user || sessionData.session.user.id !== userId) return
   if (cloudReady && activeUserId === userId) return
@@ -950,6 +985,9 @@ async function initializeUserInternal(userId: string): Promise<void> {
 
   let row: CloudProgressRow | null = null
   try {
+    // New servers can recover this authenticated account's surviving revisions.
+    // Older deployments may not expose the action yet; ordinary restore still runs.
+    try { await supabase.functions.invoke('learning-progress', { body: { action: 'recover-saved' } }) } catch { /* optional recovery service */ }
     const { data, error } = await supabase.functions.invoke('learning-progress', {
       body: { action: 'read' }
     })
@@ -987,7 +1025,10 @@ async function initializeUserInternal(userId: string): Promise<void> {
         || cachedSnapshot != null
     } catch { return cachedSnapshot != null }
   })()
-  const localSnapshot = cachedSnapshot && owner !== userId ? cachedSnapshot : captureSnapshot()
+  const captured = captureSnapshot()
+  const localSnapshot = cachedSnapshot
+    ? owner === userId ? mergeSnapshots(captured, cachedSnapshot, captured.changedSections, true) : cachedSnapshot
+    : captured
   const remoteSnapshot = row && isSnapshot(row.data) ? row.data : null
   cloudSnapshot = remoteSnapshot
   let shouldUpload = false
@@ -1004,7 +1045,8 @@ async function initializeUserInternal(userId: string): Promise<void> {
       shouldUpload = true
     }
   } else if (remoteSnapshot && owner === userId && !localDirty) {
-    snapshotToApply = remoteSnapshot
+    snapshotToApply = mergeSnapshots(localSnapshot, remoteSnapshot, [], true)
+    shouldUpload = progressSignature(snapshotToApply) !== progressSignature(remoteSnapshot)
   } else if (remoteSnapshot && (owner == null || localDirty)) {
     snapshotToApply = mergeSnapshots(localSnapshot, remoteSnapshot, owner === userId ? localSnapshot.changedSections : [], owner == null)
     shouldUpload = true
@@ -1016,7 +1058,7 @@ async function initializeUserInternal(userId: string): Promise<void> {
   }
 
   try {
-    await applySnapshot(snapshotToApply)
+    await applySnapshot(snapshotToApply, userId, generation)
   } catch (error) {
     // Keep this device usable, but never silently mark failed encrypted restoration
     // as complete. A later retry can recover the cloud snapshot safely.
@@ -1029,7 +1071,7 @@ async function initializeUserInternal(userId: string): Promise<void> {
   if (generation !== currentGeneration) return
 
   try {
-    await removeEncryptedPersistedValue(accountCacheKey(userId))
+    await writeEncryptedPersistedValue(accountCacheKey(userId), JSON.stringify(snapshotToApply), userId)
     localStorage.setItem(OWNER_KEY, userId)
     if (!shouldUpload) {
       localStorage.removeItem(dirtyKey(userId))
@@ -1050,6 +1092,7 @@ async function initializeUserInternal(userId: string): Promise<void> {
     } catch { /* cross-tab hint is optional */ }
   }
   cloudReady = true
+  void syncCurrentSessionArchives(userId)
   if (shouldUpload) {
     try {
       localStorage.setItem(dirtyKey(userId), String(Date.now()))
@@ -1057,6 +1100,14 @@ async function initializeUserInternal(userId: string): Promise<void> {
     } catch { /* retry marker optional */ }
     scheduleUpload(200)
   }
+}
+
+async function syncCurrentSessionArchives(userId: string): Promise<void> {
+  try {
+    const state = useHistoryStore.getState()
+    const ids = [...state.entries.filter(row => !row.deletedAt).map(row => row.id), ...state.savedSessions.filter(row => !row.deletedAt).map(row => row.id)]
+    await syncSessionArchives(userId, ids)
+  } catch { /* Local archives stay intact; reconnect or the next save retries. */ }
 }
 
 function markActiveSessionChanged(): void {
@@ -1090,6 +1141,11 @@ function observeStoreChanges(): void {
 }
 
 export function startLearningProgressSync(): () => void {
+  // Local recovery also runs without a session/network; it never crosses owners.
+  void waitForProgressHydration().then(async () => {
+    const owner = localStorage.getItem(OWNER_KEY)
+    if (await recoverSavedCollections(owner)) await rehydratePersistedStores()
+  }).catch(() => undefined)
   const client = supabase
   if (!client || started) return () => undefined
   started = true
@@ -1110,6 +1166,8 @@ export function startLearningProgressSync(): () => void {
   const handleSavedPracticeChange = () => noteLocalChange('practice')
   window.addEventListener('hyperion:progress-local-change', handleMockPlanChange)
   window.addEventListener('hyperion:practice-progress-saved', handleSavedPracticeChange)
+  const handleArchiveSaved = () => { noteLocalChange('history'); if (activeUserId) void syncCurrentSessionArchives(activeUserId) }
+  window.addEventListener('hyperion:session-archive-saved', handleArchiveSaved)
 
   authSubscription = client.auth.onAuthStateChange((_event, session) => {
     // Avoid doing Supabase queries synchronously inside the auth callback.
@@ -1152,6 +1210,7 @@ export function startLearningProgressSync(): () => void {
     window.removeEventListener('online', onOnline)
     window.removeEventListener('hyperion:progress-local-change', handleMockPlanChange)
     window.removeEventListener('hyperion:practice-progress-saved', handleSavedPracticeChange)
+    window.removeEventListener('hyperion:session-archive-saved', handleArchiveSaved)
     authSubscription?.unsubscribe()
     authSubscription = null
     unsubscribeStores.forEach((unsubscribe) => unsubscribe())

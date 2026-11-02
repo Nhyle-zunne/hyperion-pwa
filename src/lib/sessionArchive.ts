@@ -1,5 +1,7 @@
+import type { SavedQuestionContext } from './savedQuestionSets'
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Question, TrackId, UserAnswer } from '../types/question'
+import { supabase } from './supabase'
 import { decryptJsonPayload, encryptJsonPayload } from './jsonPayloadCrypto.mjs'
 
 export type ArchivedSessionMode = 'PRACTICE' | 'DRILL' | 'MOCK'
@@ -20,12 +22,15 @@ export interface SessionSnapshot {
   streak: number
   bestStreak: number
   finished: boolean
+  source?: SavedQuestionContext | null
 }
 
 interface StoredSessionSnapshot {
   id: string
-  // Only non-sensitive fields stay in cleartext so paid snapshots can be deleted
-  // after revocation without decrypting the archived question text.
+  ownerId?: string | null
+  finished?: boolean
+  // Only non-sensitive ownership, completion and track metadata stay in cleartext;
+  // question text and answers remain encrypted.
   track?: TrackId
   isFreeSession?: boolean
   // Legacy DB v1 records are migrated on first archive access.
@@ -91,12 +96,15 @@ async function getOrCreateEncryptionKey(db: IDBPDatabase<SessionArchiveDatabase>
 async function makeEncryptedRecord(
   db: IDBPDatabase<SessionArchiveDatabase>,
   id: string,
-  snapshot: SessionSnapshot
+  snapshot: SessionSnapshot,
+  ownerId: string | null = localStorage.getItem('hyperion-progress-owner')
 ): Promise<StoredSessionSnapshot> {
   const key = await getOrCreateEncryptionKey(db)
   const encrypted = await encryptJsonPayload(snapshot, key)
   return {
     id,
+    ownerId,
+    finished: snapshot.finished,
     track: snapshot.track,
     isFreeSession: snapshot.isFreeSession === true,
     iv: encrypted.iv,
@@ -131,21 +139,33 @@ function isSessionSnapshot(value: unknown): value is SessionSnapshot {
 }
 
 export function saveSessionSnapshot(id: string, snapshot: SessionSnapshot): Promise<void> {
+  const ownerId = localStorage.getItem('hyperion-progress-owner')
   return queueWrite(async () => {
     const db = await database()
     await migrateLegacySnapshots(db)
-    const encrypted = await makeEncryptedRecord(db, id, snapshot)
+    const previous = await db.get('snapshots', id)
+    if (previous && previous.finished !== false && previous.ciphertext && previous.iv) {
+      try {
+        const key = await getOrCreateEncryptionKey(db)
+        const older = await decryptJsonPayload<SessionSnapshot>(previous.iv, previous.ciphertext, key)
+        if (older.finished) return
+      } catch { /* A verified replacement may repair an unreadable local copy. */ }
+    }
+    const encrypted = await makeEncryptedRecord(db, id, snapshot, ownerId)
     await db.put('snapshots', encrypted)
+    window.dispatchEvent(new Event('hyperion:session-archive-saved'))
   })
 }
 
-export function getSessionSnapshot(id: string): Promise<SessionSnapshot | null> {
+function getLocalSessionSnapshot(id: string): Promise<SessionSnapshot | null> {
   return queueWrite(async () => {
     try {
       const db = await database()
       await migrateLegacySnapshots(db)
       const record = await db.get('snapshots', id)
       if (!record) return null
+      const owner = localStorage.getItem('hyperion-progress-owner')
+      if (record.ownerId && record.ownerId !== owner) return null
       if (record.ciphertext && record.iv) {
         const key = await getOrCreateEncryptionKey(db)
         const snapshot = await decryptJsonPayload<unknown>(record.iv, record.ciphertext, key)
@@ -160,21 +180,62 @@ export function getSessionSnapshot(id: string): Promise<SessionSnapshot | null> 
   })
 }
 
-/** Remove locally cached paid question text for a track whose entitlement is no longer active. */
-export function deletePaidQuestionSnapshotsForTrack(track: TrackId): Promise<string[]> {
-  return queueWrite(async () => {
-    const db = await database()
-    await migrateLegacySnapshots(db)
-    const tx = db.transaction('snapshots', 'readwrite')
-    const records = await tx.store.getAll()
-    const expired = records.filter(record =>
-      (record.track ?? record.snapshot?.track) === track &&
-      (record.isFreeSession ?? record.snapshot?.isFreeSession) !== true
-    )
-    await Promise.all(expired.map(record => tx.store.delete(record.id)))
-    await tx.done
-    return expired.map(record => record.id)
-  })
+export async function getSessionSnapshot(id: string, localOnly = false): Promise<SessionSnapshot | null> {
+  const local = await getLocalSessionSnapshot(id)
+  if (local || localOnly || !supabase || navigator.onLine === false) return local
+  try {
+    const { data } = await supabase.auth.getSession()
+    const session = data.session
+    if (!session || localStorage.getItem('hyperion-progress-owner') !== session.user.id) return null
+    const response = await supabase.functions.invoke('learning-progress', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: { action: 'read-session', sessionId: id }
+    })
+    if (response.error || !isSessionSnapshot(response.data?.snapshot)) return null
+    if (localStorage.getItem('hyperion-progress-owner') !== session.user.id) return null
+    await saveSessionSnapshot(id, response.data.snapshot)
+    return response.data.snapshot
+  } catch { return null }
+}
+
+let archiveSyncRunning = false
+let archiveSyncQueued: { userId: string; ids: string[] } | null = null
+/** Upload and cache audits independently so a large history never bloats the progress snapshot. */
+export async function syncSessionArchives(userId: string, ids: string[]): Promise<void> {
+  if (!supabase || navigator.onLine === false) return
+  if (archiveSyncRunning) { archiveSyncQueued = { userId, ids }; return }
+  archiveSyncRunning = true
+  try {
+    const { data } = await supabase.auth.getSession()
+    const session = data.session
+    if (!session || session.user.id !== userId) return
+    for (const id of new Set(ids)) {
+      if (localStorage.getItem('hyperion-progress-owner') !== userId) return
+      const local = await getLocalSessionSnapshot(id)
+      if (!local) { await getSessionSnapshot(id); continue }
+      const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(local))))]
+        .map(byte => byte.toString(16).padStart(2, '0')).join('')
+      const marker = `hyperion-archive-synced:${userId}:${id}`
+      if (localStorage.getItem(marker) === hash) continue
+      const response = await supabase.functions.invoke('learning-progress', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: { action: 'write-session', sessionId: id, snapshot: local }
+      })
+      if (response.error || response.data?.ok !== true) continue
+      if (localStorage.getItem('hyperion-progress-owner') === userId) localStorage.setItem(marker, hash)
+    }
+  } finally {
+    archiveSyncRunning = false
+    const queued = archiveSyncQueued
+    archiveSyncQueued = null
+    if (queued) void syncSessionArchives(queued.userId, queued.ids).catch(() => undefined)
+  }
+}
+
+/** Retained for older callers: license expiry must not delete saved audits. */
+export async function deletePaidQuestionSnapshotsForTrack(_track: TrackId): Promise<string[]> {
+  // Saved audits are user data. Authorization is checked when opening them.
+  return []
 }
 
 export function deleteSessionSnapshot(id: string): Promise<void> {

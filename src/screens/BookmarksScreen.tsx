@@ -1,10 +1,9 @@
+import { createSavedQuestionSelection } from '../lib/savedQuestionSets'
 import SavedQuestionSearch from '../components/SavedQuestionSearch'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBookmarksStore } from '../stores/bookmarksStore'
-import { usePracticeStore } from '../stores/practiceStore'
 import { useLicenseStore } from '../stores/licenseStore'
-import { useUIStore } from '../stores/uiStore'
 import { authorizeQuestionSet } from '../lib/questionBank'
 import type { BookmarkedQuestion } from '../stores/bookmarksStore'
 import type { TrackId } from '../types/question'
@@ -13,10 +12,7 @@ const TRACK_LABELS: Record<TrackId, string> = {
   DECK_OIC_NW: 'OIC-NW', GMDSS_GOC: 'GMDSS', ENGINE_OIC_EW: 'OIC-EW',
   DECK_MGT: 'Deck Mgt', ENGINE_MGT: 'Engine Mgt'
 }
-const TRACK_KEYS: Record<TrackId, string> = {
-  DECK_OIC_NW: 'oic_nw', GMDSS_GOC: 'gmdss', ENGINE_OIC_EW: 'engine_ew',
-  DECK_MGT: 'deck_mgt', ENGINE_MGT: 'engine_mgt'
-}
+
 const sortCompetence = (a: string, b: string) =>
   (Number(a.replace(/^C/i, '')) || Number.MAX_SAFE_INTEGER) - (Number(b.replace(/^C/i, '')) || Number.MAX_SAFE_INTEGER) || a.localeCompare(b)
 
@@ -26,7 +22,6 @@ export default function BookmarksScreen() {
   const remove = useBookmarksStore((s) => s.remove)
   const clear = useBookmarksStore((s) => s.clear)
   const asQuestions = useBookmarksStore((s) => s.asQuestions)
-  const startCustomSession = usePracticeStore((s) => s.startCustomSession)
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
   const entitlementsVerified = useLicenseStore((s) => s.entitlementsVerified)
@@ -34,10 +29,10 @@ export default function BookmarksScreen() {
   const [verifiedFreeItems, setVerifiedFreeItems] = useState<string[]>([])
   const [validatingBookmarks, setValidatingBookmarks] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectionError, setSelectionError] = useState('')
   const [expandedTracks, setExpandedTracks] = useState<string[]>([])
   const [expandedCompetencies, setExpandedCompetencies] = useState<string[]>([])
   const [expandedQuestions, setExpandedQuestions] = useState<string[]>([])
-  const openPaywall = useUIStore((s) => s.openPaywall)
 
   useEffect(() => {
     let cancelled = false
@@ -89,18 +84,16 @@ export default function BookmarksScreen() {
     const ids = new Set(selected.map(item => item.id))
     const questions = asQuestions().filter(q => q.track === track && ids.has(q.id))
     if (!questions.length) return
-    const started = await startCustomSession({ questions, track, competenceId })
-    if (started) navigate('/practice/quiz')
-    else {
-      navigate(`/track?track=${TRACK_KEYS[track]}`)
-      openPaywall('These saved questions could not be authorized. Renew access or remove unavailable bookmarks.')
-    }
+    setSelectionError('')
+    try { navigate(await createSavedQuestionSelection('bookmarks', track, [...ids], competenceId)) }
+    catch { setSelectionError('Could not prepare this selection. Your saved bookmarks remain on this device.') }
   }
   const toggle = (list: string[], setList: (v: string[]) => void, key: string) =>
     setList(list.includes(key) ? list.filter(v => v !== key) : [...list, key])
 
   return <div className="screen">
     <h1 className="page-title">Bookmarked Questions</h1>
+    {selectionError && <p role="alert" style={{ color: 'var(--danger)' }}>{selectionError}</p>}
     <p className="subtitle">{visibleItems.length} saved items · grouped by track and competence</p>
     <div className="card" style={{ marginBottom: '1rem' }}>
       <strong>Saved question collection</strong>

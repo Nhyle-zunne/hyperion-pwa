@@ -476,6 +476,7 @@ export default function AccountScreen() {
       if (error) throw error
       if (data?.error) throw new Error(data.error)
       if (data?.success !== true) throw new Error('Account deletion could not be confirmed. Please try again or contact support.')
+      useLicenseStore.getState().clearLicense()
       await supabase.auth.signOut()
       setDeleteConfirmOpen(false)
       setDeleteConfirmation('')

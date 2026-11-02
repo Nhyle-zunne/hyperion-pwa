@@ -75,7 +75,7 @@ export const useVaultStore = create<VaultState>()(
           lastSelectedIndex: selectedIndex,
           isFreeSession: isFreeSession === true
         };
-        set({ items: [entry, ...get().items].slice(0, 500) });
+        set({ items: [entry, ...get().items] });
       },
 
       recordCorrectAttempt: (questionId, requiredPasses = 2) => {
@@ -91,15 +91,13 @@ export const useVaultStore = create<VaultState>()(
         }
       },
 
-      purgePaidForTracks: (tracks) => {
-        const denied = new Set(tracks);
-        // Legacy entries without explicit free-session provenance are treated as paid.
-        set((state) => ({ items: state.items.filter(item => !denied.has(item.track) || item.isFreeSession === true) }));
+      purgePaidForTracks: () => {
+        // Kept for older callers. Expiry is an access decision, never a deletion.
       },
 
       remove: (id) => {
         if (get().items.some(item => item.id === id)) markProgressItemDeleted('vault', id);
-        set({ items: get().items.filter((i) => i.id !== id) });
+        set({ items: get().items.filter(item => item.id !== id) });
       },
 
       clear: () => {

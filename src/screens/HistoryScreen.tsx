@@ -1,3 +1,5 @@
+import KeywordQuestionText from '../components/KeywordQuestionText'
+import QuestionBookmarkButton from '../components/QuestionBookmarkButton'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
@@ -593,14 +595,14 @@ export default function HistoryScreen() {
       )}
 
       {review && createPortal(
-        <div style={modalBackdrop} role="presentation" onClick={closeReview}>
-          <section style={modalStyle} role="dialog" aria-modal="true" aria-labelledby="session-audit-title" onClick={event => event.stopPropagation()}>
+        <div style={{ ...modalBackdrop, alignItems: 'stretch', padding: 0, overflowY: 'auto', background: 'var(--bg)' }} role="presentation">
+          <section className="screen question-runner-screen" style={{ minHeight: '100dvh', paddingBottom: '2rem', background: 'var(--bg)' }} role="dialog" aria-modal="true" aria-labelledby="session-audit-title" onClick={event => event.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
               <div>
                 <h2 id="session-audit-title" style={{ margin: 0 }}>EXAM ATTEMPT AUDIT</h2>
                 <p style={secondaryText}>{reviewEntry ? rowTitle({ ...buildRows([reviewEntry], [])[0], key: 'entry:' + reviewEntry.id }) : 'Completed session'}</p>
               </div>
-              <button className="btn btn-outline" onClick={closeReview}>Close</button>
+              <button className="btn btn-outline" onClick={closeReview}>← Back to History</button>
             </div>
             {reviewEntry && (
               <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '.8rem', margin: '.8rem 0' }}>
@@ -639,7 +641,13 @@ export default function HistoryScreen() {
                     {currentQuestion ? (
                       <div className="card" style={{ padding: '.9rem' }}>
                         <div style={secondaryText}>QUESTION {reviewIndex + 1} OF {filteredReviewQuestions.length} · {currentQuestion.competenceId} · {currentQuestion.topic}</div>
-                        <p style={{ fontWeight: 750, lineHeight: 1.6 }}>{currentQuestion.questionText}</p>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, margin: '.7rem 0' }}>
+                          <strong style={{ color: currentAnswer?.selectedIndex == null ? 'var(--text-muted)' : currentAnswer.selectedIndex === currentQuestion.correctAnswerIndex ? 'var(--success)' : 'var(--danger)' }}>
+                            {currentAnswer?.selectedIndex == null ? 'UNANSWERED' : currentAnswer.selectedIndex === currentQuestion.correctAnswerIndex ? 'CORRECT' : 'INCORRECT'}
+                          </strong>
+                          <QuestionBookmarkButton question={currentQuestion} paidAtSave={review.snapshot.isFreeSession !== true} />
+                        </div>
+                        <div style={{ fontWeight: 750, lineHeight: 1.6, marginBottom: 12 }}><KeywordQuestionText question={currentQuestion} /></div>
                         <div style={{ display: 'grid', gap: '.45rem' }}>
                           {currentQuestion.options.map((option, index) => {
                             const chosen = currentAnswer?.selectedIndex === index
@@ -649,7 +657,7 @@ export default function HistoryScreen() {
                             return <div key={index} style={{ border: '1px solid ' + border, background, borderRadius: 6, padding: '.65rem', lineHeight: 1.5 }}>
                               <strong>{String.fromCharCode(65 + index)}.</strong> {option}
                               {correct && <span style={{ color: 'var(--success)', fontWeight: 900 }}> · CORRECT ANSWER</span>}
-                              {chosen && !correct && <span style={{ color: 'var(--danger)', fontWeight: 900 }}> · YOUR ANSWER</span>}
+                              {chosen && <span style={{ color: correct ? 'var(--success)' : 'var(--danger)', fontWeight: 900 }}> · YOUR ANSWER</span>}
                             </div>
                           })}
                         </div>
@@ -661,6 +669,10 @@ export default function HistoryScreen() {
                       <span style={secondaryText}>{filteredReviewQuestions.length ? (reviewIndex + 1) + ' / ' + filteredReviewQuestions.length : '0 / 0'}</span>
                       <button className="btn btn-outline" disabled={reviewIndex >= filteredReviewQuestions.length - 1} onClick={() => setReview(current => current ? { ...current, index: Math.min(filteredReviewQuestions.length - 1, current.index + 1) } : current)}>Next →</button>
                     </div>
+                    <button type="button" className="btn btn-outline" disabled={!filteredReviewQuestions.length} style={{ width: '100%', marginTop: 10 }} onClick={() => {
+                      const value = Number(window.prompt(`Go to question (1–${filteredReviewQuestions.length})`))
+                      if (Number.isInteger(value) && value >= 1 && value <= filteredReviewQuestions.length) setReview(current => current ? { ...current, index: value - 1 } : current)
+                    }}>Jump to Question</button>
                   </>
                 )}
               </>

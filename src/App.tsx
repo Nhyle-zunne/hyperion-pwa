@@ -1,3 +1,4 @@
+import { savedQuestionsReturnPath } from './lib/savedQuestionSets'
 import type { Question } from './types/question'
 import QuestionBookmarkButton from './components/QuestionBookmarkButton'
 import KeywordHighlightSetting from './components/KeywordHighlightSetting'
@@ -12,18 +13,14 @@ import BottomNav from './components/BottomNav'
 import TopLoadingIndicator from './components/TopLoadingIndicator'
 import { useUIStore } from './stores/uiStore'
 import { usePracticeStore } from './stores/practiceStore'
-import { useBookmarksStore } from './stores/bookmarksStore'
-import { useVaultStore } from './stores/vaultStore'
-import { useHistoryStore } from './stores/historyStore'
 import { supabase } from './lib/supabase'
 import { startLearningProgressSync } from './lib/progressSync'
 import { useStudyTimeStore } from './stores/studyTimeStore'
 import { withPageLoading } from './lib/pageLoading'
 import { clearPaidQuestionCache } from './lib/questionBank'
-import { deletePaidQuestionSnapshotsForTrack } from './lib/sessionArchive'
-import { deletePaidOfflineQuestionPacksForTrack } from './lib/offlineQuestionCache'
 import { buyNowCheckoutPath, clearMatchingBuyNowReturn, clearPendingBuyNow, readPendingBuyNow } from './lib/pendingBuyNow'
 
+const SavedQuestionConfigScreen = lazy(() => import('./screens/SavedQuestionConfigScreen'))
 const HomeScreen = lazy(() => import('./screens/HomeScreen'))
 const TrackSelectionScreen = lazy(() => import('./screens/TrackSelectionScreen'))
 const AccountScreen = lazy(() => import('./screens/AccountScreen'))
@@ -117,6 +114,10 @@ export default function App() {
   const entitlementsVerified = useLicenseStore((s) => s.entitlementsVerified)
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
   const currentTrack = usePracticeStore((s) => s.track)
+  const sessionSource = usePracticeStore(s => s.source)
+  const sessionFinished = usePracticeStore(s => s.finished)
+  const completionError = usePracticeStore(s => s.completionError)
+  const finishing = usePracticeStore(s => s.finishing)
   const isFreeSession = usePracticeStore((s) => s.isFreeSession)
   const sessionLoading = usePracticeStore((s) => s.loading)
   const sessionQuestionCount = usePracticeStore((s) => s.questions.length)
@@ -196,7 +197,11 @@ export default function App() {
       window.setTimeout(() => { void refresh(false, true) }, 0)
     })
     const refreshOnWake = () => {
-      if (document.visibilityState === 'visible') void refresh()
+      if (document.visibilityState === 'visible') {
+        // Browser timers may be suspended during sleep. Local expiry checks must
+        // run on every wake, independently of the cloud refresh throttle.
+        void useLicenseStore.getState().refreshCachedEntitlements().then(() => refresh())
+      }
     }
     // Recheck when the account changes, the app returns to the foreground,
     // or connectivity returns. Do not poll licenses on a fixed interval.
@@ -394,25 +399,9 @@ export default function App() {
     if (hadTrackAccessRemoved || !entitlementsVerified) clearPaidQuestionCache()
     lastCloudTrackIds.current = cloudTrackIds
   }, [cloudTrackIds, entitlementsVerified])
-  useEffect(() => {
-    if (!entitlementsVerified) return
-    const tracks = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'] as const
-    const unavailable = isAllAccessUnlocked ? [] : tracks.filter(track => !cloudTrackIds.includes(track))
-    for (const track of unavailable) {
-      useBookmarksStore.getState().purgePaidForTracks([track])
-      useVaultStore.getState().purgePaidForTracks([track])
-      useHistoryStore.getState().removePaidSavedSessionsForTrack(track)
-      void deletePaidQuestionSnapshotsForTrack(track).catch(() => undefined)
-      void deletePaidOfflineQuestionPacksForTrack(track).catch(() => undefined)
-      try {
-        const raw = localStorage.getItem('hyperion-saved-practice')
-        if (raw) {
-          const saved = JSON.parse(raw) as { track?: string; isFreeSession?: boolean }
-          if (saved.track === track && saved.isFreeSession !== true) localStorage.removeItem('hyperion-saved-practice')
-        }
-      } catch { /* Local storage may be unavailable or contain old data. */ }
-    }
-  }, [cloudTrackIds, entitlementsVerified, isAllAccessUnlocked])
+  // License changes gate access in the screens and question-bank authorization.
+  // They must never erase the user's saved study data or offline recovery copies.
+
 
   useEffect(() => {
     if (!entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer && !isFlashcards) || !guardedTrack) return
@@ -515,8 +504,8 @@ export default function App() {
         >
           <button
             type="button"
-            onClick={() => { if (isQuickScanViewer) navigate('/quick-scan?track=' + (new URLSearchParams(location.search).get('track') || 'oic_nw')); else if (isPracticeQuiz) window.dispatchEvent(new Event('hyperion:request-exit-practice')); else window.dispatchEvent(new Event('hyperion:request-exit-mock')) }}
-            aria-label={isQuickScanViewer ? 'Back to Quick Scan competences' : isMockRunner ? 'Back to mock exam overview' : 'Back to practice setup'}
+            onClick={() => { if (isQuickScanViewer) navigate('/quick-scan?track=' + (new URLSearchParams(location.search).get('track') || 'oic_nw')); else if (isPracticeQuiz && sessionFinished) navigate(savedQuestionsReturnPath(sessionSource) || '/practice'); else if (isPracticeQuiz) window.dispatchEvent(new Event('hyperion:request-exit-practice')); else window.dispatchEvent(new Event('hyperion:request-exit-mock')) }}
+            aria-label={isQuickScanViewer ? 'Back to Quick Scan competences' : isMockRunner ? 'Back to mock exam overview' : sessionSource?.collection === 'bookmarks' ? 'Back to Bookmarks' : sessionSource?.collection === 'mistakes' ? 'Back to Mistakes Notebook' : 'Back to practice setup'}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -563,6 +552,9 @@ export default function App() {
           </div>
         </header>
       )}
+      {completionError && <div role="alert" style={{ padding: '1rem', color: 'var(--danger)', background: 'var(--bg-card)' }}>
+        <p>{completionError}</p><button type="button" className="btn btn-primary" disabled={finishing} onClick={() => usePracticeStore.getState().finish()}>Retry saving completed session</button>
+      </div>}
       <main style={{ flex: 1, minHeight: 0, background: 'var(--bg)' }}>
         <div key={`${location.pathname}${location.search}`} className="route-transition" style={{ minHeight: "100%" }}>
         <RouteErrorBoundary>
@@ -586,6 +578,7 @@ export default function App() {
           <Route path="/privacy-policy" element={<PrivacyPolicyScreen />} />
           <Route path="/practice/competences" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <PracticeCompetenceScreen />} />
           <Route path="/practice" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <PracticeConfigScreen />} />
+          <Route path="/saved-questions/config" element={<SavedQuestionConfigScreen />} />
           <Route path="/practice/quiz" element={<PracticeQuizScreen />} />
           <Route path="/drill" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <DrillScreen />} />
           <Route path="/quick-scan" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <QuickScanCompetenceScreen />} />

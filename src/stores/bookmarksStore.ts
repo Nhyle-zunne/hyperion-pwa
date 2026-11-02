@@ -58,7 +58,7 @@ export const useBookmarksStore = create<BookmarksState>()(
             savedAt: Date.now(),
             paidAtSave
           };
-          set({ items: [entry, ...get().items].slice(0, 500) });
+          set({ items: [entry, ...get().items] });
         }
       },
 
@@ -67,9 +67,8 @@ export const useBookmarksStore = create<BookmarksState>()(
         set({ items: get().items.filter((i) => i.id !== id) });
       },
 
-      purgePaidForTracks: (tracks) => {
-        const denied = new Set(tracks);
-        set((state) => ({ items: state.items.filter(item => !denied.has(item.track) || item.paidAtSave === false) }));
+      purgePaidForTracks: () => {
+        // Kept for older callers. Expiry is an access decision, never a deletion.
       },
 
       clear: () => {

@@ -335,6 +335,20 @@ async function loadAllowedTracks(
   return new Set(rows.map(row => row.track_id).filter(isTrackId))
 }
 
+/** Historical ownership permits backup, not opening or studying expired paid content. */
+async function loadStorageTracks(admin: any, user: { id: string; email?: string }): Promise<Set<TrackId>> {
+  const tracks = await loadAllowedTracks(admin, user)
+  if (tracks.size === TRACKS.length) return tracks
+  const [website, play] = await Promise.all([
+    admin.from('entitlements').select('track_id').eq('user_id', user.id),
+    admin.from('google_play_entitlements').select('track_id').eq('user_id', user.id)
+  ])
+  if (website.error) throw new Error('Previous website ownership could not be checked.')
+  if (play.error && !['42P01', 'PGRST205'].includes(play.error.code)) throw new Error('Previous Play ownership could not be checked.')
+  for (const row of [...(website.data ?? []), ...(play.data ?? [])]) if (isTrackId(row.track_id)) tracks.add(row.track_id)
+  return tracks
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: headers(req) })
   if (req.method !== 'POST') return json(req, { error: 'Method not allowed.' }, 405)
@@ -364,6 +378,34 @@ Deno.serve(async req => {
       return json(req, { error: 'Progress payload is too large.' }, 413)
     }
     return json(req, { error: 'Invalid request.' }, 400)
+  }
+
+  if (body.action === 'recover-saved') {
+    const { data, error } = await admin.rpc('recover_learning_progress_collections', { p_user_id: user.id, p_apply: true })
+    if (error) return json(req, { error: 'Saved-data recovery is not available yet. Existing data has not been changed.' }, 503)
+    progressRowCache.delete(user.id)
+    return json(req, { ok: true, recovery: data })
+  }
+
+  if (body.action === 'read-session' || body.action === 'write-session') {
+    const sessionId = body.sessionId
+    if (typeof sessionId !== 'string' || sessionId.length < 1 || sessionId.length > 180) return json(req, { error: 'Invalid session ID.' }, 400)
+    try {
+      const allowed = body.action === 'write-session' ? await loadStorageTracks(admin, user) : await loadAllowedTracks(admin, user)
+      if (body.action === 'read-session') {
+        const { data: row, error } = await admin.from('user_learning_session_archives').select('data').eq('user_id', user.id).eq('session_id', sessionId).maybeSingle()
+        if (error) throw error
+        if (!row) return json(req, { snapshot: null })
+        const verified = await sanitizeSnapshot(client, { version: 1, storage: {}, activeSession: row.data }, allowed)
+        return json(req, { snapshot: verified.activeSession })
+      }
+      if (!isRecord(body.snapshot) || body.snapshot.sessionId !== sessionId) return json(req, { error: 'Invalid session snapshot.' }, 400)
+      const verified = await sanitizeSnapshot(client, { version: 1, storage: {}, activeSession: body.snapshot }, allowed)
+      if (!verified.activeSession) return json(req, { error: 'Saved session access could not be verified.' }, 403)
+      const { error } = await admin.from('user_learning_session_archives').upsert({ user_id: user.id, session_id: sessionId, data: verified.activeSession, updated_at: new Date().toISOString() }, { onConflict: 'user_id,session_id' })
+      if (error) throw error
+      return json(req, { ok: true })
+    } catch { return json(req, { error: 'Session archive could not be synchronized. The local copy is preserved.' }, 503) }
   }
 
   if (body.action === 'read') {
@@ -466,7 +508,7 @@ Deno.serve(async req => {
 
       let allowedTracks: Set<TrackId>
       try {
-        allowedTracks = await loadAllowedTracks(admin, user)
+        allowedTracks = await loadStorageTracks(admin, user)
       } catch {
         return json(req, { error: 'Current license access could not be verified.' }, 503)
       }
@@ -486,7 +528,7 @@ Deno.serve(async req => {
           return json(req, { error: 'Could not save progress.' }, 500)
         }
         if (typeof data?.updated_at === 'string') {
-          rememberProgressRow(user.id, sanitized, data.updated_at)
+          progressRowCache.delete(user.id)
         }
         return json(req, {
           ok: true,
@@ -507,7 +549,7 @@ Deno.serve(async req => {
         progressRowCache.delete(user.id)
         return json(req, { error: 'Progress changed on another device. Re-read and merge before retrying.', conflict: true }, 409)
       }
-      rememberProgressRow(user.id, sanitized, data.updated_at)
+      progressRowCache.delete(user.id)
       return json(req, {
         ok: true,
         updated_at: data.updated_at,

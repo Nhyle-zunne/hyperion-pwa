@@ -1,9 +1,9 @@
+import { createSavedQuestionSelection } from '../lib/savedQuestionSets'
 import SavedQuestionSearch from '../components/SavedQuestionSearch'
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useUIStore } from '../stores/uiStore'
 import { useVaultStore } from '../stores/vaultStore'
-import { usePracticeStore } from '../stores/practiceStore'
 import { useLicenseStore } from '../stores/licenseStore'
 import type { TrackId } from '../types/question'
 import type { VaultItem } from '../stores/vaultStore'
@@ -67,12 +67,8 @@ export default function VaultScreen() {
     const questions=asQuestions().filter(q=>q.track===track&&ids.has(q.id))
     if(!questions.length) return
     setSaveError(null)
-    const started=await usePracticeStore.getState().startCustomSession({questions,track,competenceId})
-    if(!started) return
-    usePracticeStore.setState({mode:'DRILL',startedAt:Date.now(),finished:false,loading:false,error:null})
-    const saved = await usePracticeStore.getState().saveProgress()
-    if(!saved){setSaveError('Could not save this drill on the device. Check storage and try again before starting it.');return}
-    navigate('/practice/quiz')
+    try { navigate(await createSavedQuestionSelection('mistakes',track,[...ids],competenceId)) }
+    catch { setSaveError('Could not prepare this selection. Your saved mistakes remain on this device.') }
   }
   const toggle=(list:string[],setList:(v:string[])=>void,key:string)=>setList(list.includes(key)?list.filter(v=>v!==key):[...list,key])
 
