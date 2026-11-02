@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path'
 const PROJECT_REF = 'evnjoezffghtrzqacwcj'
 const EXPECTED_URL = `https://${PROJECT_REF}.supabase.co`
 const env = loadEnv('production', process.cwd(), 'VITE_')
-const url = typeof env.VITE_SUPABASE_URL === 'string' ? env.VITE_SUPABASE_URL.trim().replace(/\\/+$/, '') : ''
+const url = typeof env.VITE_SUPABASE_URL === 'string' ? env.VITE_SUPABASE_URL.trim().replace(new RegExp('/+$'), '') : ''
 const key = typeof env.VITE_SUPABASE_ANON_KEY === 'string' ? env.VITE_SUPABASE_ANON_KEY.trim() : ''
 
 function fail(message) {
