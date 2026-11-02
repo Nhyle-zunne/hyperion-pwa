@@ -241,7 +241,28 @@ try {
   assert.equal(await page.evaluate(() => window.recoveryFixture.calls.filter(call => call.action === 'offline-license').length), prepCalls, 'Failed background preparation must not loop')
   assert.deepEqual(await page.evaluate(() => ({ collections: window.recoveryFixture.ids(), history: window.recoveryFixture.finished().map(row => row.id) })), savedBeforePreparation)
   assert.deepEqual(errors, [])
-  console.log('PASS: upgrade hydration, license-loss preservation, backup recovery, intentional deletes, offline saves/reload, reconnect sync, account isolation, shared Practice config/range/return, missing vs unavailable audits and retry, completed audit answers/cloud restore/offline review, immutable completed audits, failed-completion retry and full-track flashcards across parts, next-page failure recovery, offline flipping, bookmarks and grading.')
+  // A backend rejecting the archive API must not receive one failed request per
+  // archive on every save. Pending encrypted snapshots survive and retry later.
+  await page.clock.fastForward(901000)
+  const retryIds = await page.evaluate(() => window.recoveryFixture.seedRetryArchives())
+  const writesBeforeFailure = await page.evaluate(() => window.recoveryFixture.calls.filter(c => c.action === 'write-session').length)
+  await page.evaluate(async ids => {
+    localStorage.setItem('fixture-archive-error', '400')
+    await window.recoveryFixture.syncRetryArchives(ids)
+    await window.recoveryFixture.syncRetryArchives(ids)
+  }, retryIds)
+  await page.waitForFunction(before => window.recoveryFixture.calls.filter(c => c.action === 'write-session').length > before, writesBeforeFailure)
+  await page.evaluate(ids => window.recoveryFixture.syncRetryArchives(ids), retryIds)
+  assert.equal(await page.evaluate(() => window.recoveryFixture.calls.filter(c => c.action === 'write-session').length) - writesBeforeFailure, 1, 'Unsupported backend pauses the archive batch and repeated attempts')
+  assert.equal(await page.evaluate(async ids => (await Promise.all(ids.map(id => window.recoveryFixture.localArchive(id)))).filter(Boolean).length, retryIds), 3, 'Failed sync preserves every local archive')
+  await page.clock.fastForward(901000)
+  await page.evaluate(async ids => {
+    localStorage.removeItem('fixture-archive-error')
+    await window.recoveryFixture.syncRetryArchives(ids)
+  }, retryIds)
+  await page.waitForFunction(ids => ids.every(id => localStorage.getItem(`fixture-archive:${localStorage.getItem('hyperion-progress-owner')}:${id}`)), retryIds)
+  assert.equal(await page.evaluate(ids => ids.filter(id => localStorage.getItem(`fixture-archive:${localStorage.getItem('hyperion-progress-owner')}:${id}`)).length, retryIds), 3, 'All pending archives sync after backoff when the backend recovers')
+  console.log('PASS: upgrade hydration, license-loss preservation, backup recovery, intentional deletes, offline saves/reload, reconnect sync, account isolation, shared Practice config/range/return, missing vs unavailable audits and retry, completed audit answers/cloud restore/offline review, immutable completed audits, failed-completion retry and full-track flashcards across parts, next-page failure recovery, offline flipping, bookmarks, grading, archive failure backoff and pending-archive recovery.')
 } catch (error) {
   for (const context of browser.contexts()) for (const page of context.pages()) { console.error((await page.locator('[role=dialog]').allTextContents()).join('\n')) }
   throw error

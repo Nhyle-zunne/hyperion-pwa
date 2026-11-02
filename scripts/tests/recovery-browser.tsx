@@ -1,4 +1,4 @@
-import { getSessionSnapshot, saveSessionSnapshot } from '../../src/lib/sessionArchive'
+import { getSessionSnapshot, saveSessionSnapshot, syncSessionArchives } from '../../src/lib/sessionArchive'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Link } from 'react-router-dom'
@@ -52,6 +52,13 @@ Object.assign(window, { recoveryFixture: {
       await saveSessionSnapshot(id, { ...snapshot, finished: true, answers: {} })
     }
   },
+  seedRetryArchives: async () => {
+    const ids = ['retry-audit-1', 'retry-audit-2', 'retry-audit-3']
+    for (const sessionId of ids) await saveSessionSnapshot(sessionId, { sessionId, questions: [recoveryQuestions[0]], answers: {}, currentIndex: 0, track: 'DECK_OIC_NW', competenceId: 'C1', part: null, mode: 'PRACTICE', startedAt: Date.now(), timeLimitSec: 0, timeLeftSec: 0, streak: 0, bestStreak: 0, finished: true })
+    return ids
+  },
+  syncRetryArchives: async (ids: string[]) => syncSessionArchives(localStorage.getItem('hyperion-progress-owner')!, ids),
+  localArchive: (id: string) => getSessionSnapshot(id, true),
   clearLocalArchives: async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('hyperion-session-archive'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error) })
     await new Promise<void>((resolve, reject) => { const tx = db.transaction('snapshots', 'readwrite'); tx.objectStore('snapshots').clear(); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error) })

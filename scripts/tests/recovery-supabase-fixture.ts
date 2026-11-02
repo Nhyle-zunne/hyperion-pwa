@@ -5,7 +5,7 @@ export const supabaseAnonKey = undefined
 export const fixtureUsers = { a: '11111111-1111-4111-8111-111111111111', b: '22222222-2222-4222-8222-222222222222' }
 let userId = localStorage.getItem('fixture-user') || fixtureUsers.a
 const listeners = new Set<(event: string, session: unknown) => void>()
-export const fixtureCalls: { userId: string; action: string }[] = []
+export const fixtureCalls: { userId: string; action: string; sessionId?: string }[] = []
 const session = () => ({ user: { id: userId, email: 'synthetic@example.invalid' }, access_token: 'fixture-' + userId })
 export function fixtureCloud(id = userId) { const raw = localStorage.getItem('fixture-cloud:' + id); return raw ? JSON.parse(raw) : null }
 export function fixtureSetUser(id: string) { userId = id; localStorage.setItem('fixture-user', id); for (const listener of listeners) listener('SIGNED_IN', session()) }
@@ -19,7 +19,7 @@ export const supabase = {
       if (navigator.onLine === false) return { data: null, error: new Error('Synthetic offline connection') }
       const body = request.body ?? {}
       const bound = request.headers?.Authorization?.replace('Bearer fixture-', '') || userId
-      fixtureCalls.push({ userId: bound, action: body.action ?? name })
+      fixtureCalls.push({ userId: bound, action: body.action ?? name, sessionId: body.sessionId })
       if (name !== 'learning-progress') return { data: { ok: true, isAdmin: true }, error: null }
       if (body.action === 'read') {
         const saved = fixtureCloud(bound)
@@ -34,6 +34,7 @@ export const supabase = {
       }
       if (body.action === 'recover-saved') return { data: { ok: true }, error: null }
       const archiveKey = `fixture-archive:${bound}:${body.sessionId}`
+      if (body.action === 'write-session' && localStorage.getItem('fixture-archive-error')) return { data: null, error: Object.assign(new Error('Unknown progress action.'), { context: { status: Number(localStorage.getItem('fixture-archive-error')) } }) }
       if (body.action === 'write-session') {
         localStorage.setItem(archiveKey, JSON.stringify(body.snapshot))
         return { data: { ok: true }, error: null }
