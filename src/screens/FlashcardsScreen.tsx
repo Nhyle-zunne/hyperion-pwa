@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
 import { useUIStore } from '../stores/uiStore'
-import { useBookmarksStore } from '../stores/bookmarksStore'
+import QuestionBookmarkButton from '../components/QuestionBookmarkButton'
+import { TRACK_LABELS } from '../lib/trackLabels'
+import './FlashcardsScreen.css'
 import { getFlashcardQuestions, listAvailableCompetences } from '../lib/questionBank'
 import type { Question, TrackId } from '../types/question'
 
@@ -12,14 +14,6 @@ const TRACK_MAP: Record<string, TrackId> = {
   engine_ew: 'ENGINE_OIC_EW',
   deck_mgt: 'DECK_MGT',
   engine_mgt: 'ENGINE_MGT'
-}
-
-const TRACK_LABELS: Record<TrackId, string> = {
-  DECK_OIC_NW: 'OIC-NW Deck',
-  GMDSS_GOC: 'GMDSS GOC',
-  ENGINE_OIC_EW: 'OIC-EW Engine',
-  DECK_MGT: 'Deck Management',
-  ENGINE_MGT: 'Engine Management'
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -49,8 +43,6 @@ export default function FlashcardsScreen() {
   const [unknown, setUnknown] = useState(0)
 
   const competences = listAvailableCompetences(trackId)
-  const toggleBookmark = useBookmarksStore((s) => s.toggle)
-  const isBookmarked = useBookmarksStore((s) => s.isBookmarked)
 
   const start = async (competenceId?: string) => {
     if (!isUnlocked) {
@@ -77,224 +69,53 @@ export default function FlashcardsScreen() {
     setLoading(false)
   }
 
-  if (loading) {
-    return (
-      <div className="screen">
-        <p>Loading flashcards…</p>
-      </div>
-    )
-  }
+  const header = (subtitle: string, back: () => void) => <header className="flashcard-heading">
+    <button type="button" className="flashcard-back" onClick={back} aria-label="Back from flashcards">← Back</button>
+    <div><p className="flashcard-eyebrow">ACTIVE RECALL</p><h1>Flashcard Revision Mode</h1><p className="flashcard-subtitle">{TRACK_LABELS[trackId]} · {subtitle}</p></div>
+  </header>
+
+  if (loading) return <div className="screen flashcards-screen">{header('Preparing your deck', () => navigate(`/track?track=${trackParam}`))}<p className="flashcard-empty" role="status">Loading flashcards…</p></div>
 
   if (session && session.length > 0) {
-    if (index >= session.length) {
-      return (
-        <div className="screen">
-          <h1 className="page-title">Flashcards done</h1>
-          <div className="card" style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
-            <div style={{ fontSize: '1.1rem', marginBottom: 8 }}>
-              Knew: <strong style={{ color: 'var(--success)' }}>{known}</strong>
-              {' · '}
-              Review: <strong style={{ color: 'var(--warning)' }}>{unknown}</strong>
-            </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-              {session.length} cards
-            </div>
-          </div>
-          <button
-            className="btn btn-primary"
-            style={{ width: '100%', marginBottom: 8 }}
-            onClick={() => setSession(null)}
-          >
-            New set
-          </button>
-          <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => navigate('/')}>
-            Home
-          </button>
-        </div>
-      )
-    }
+    if (index >= session.length) return <div className="screen flashcards-screen">
+      {header('Session complete', () => setSession(null))}
+      <section className="flashcard-summary">
+        <span className="flashcard-badge">REVISION COMPLETE</span><h2>Flashcards done</h2><p>{session.length} cards reviewed</p>
+        <div className="flashcard-totals"><div><strong>{known}</strong><span>Knew it</span></div><div><strong>{unknown}</strong><span>Still learning</span></div></div>
+      </section>
+      <div className="flashcard-actions"><button type="button" className="btn btn-outline" onClick={() => navigate('/')}>Home</button><button type="button" className="btn btn-primary" onClick={() => setSession(null)}>New set</button></div>
+    </div>
 
     const q = session[index]
-    const bookmarked = isBookmarked(q.id)
-
-    return (
-      <div className="screen" style={{ paddingBottom: '5rem' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            marginBottom: '0.75rem',
-            fontSize: '0.85rem',
-            color: 'var(--text-muted)'
-          }}
-        >
-          <span>
-            Card {index + 1} / {session.length}
-          </span>
-          <span>
-            ✓ {known} · ? {unknown}
-          </span>
+    return <div className="screen flashcards-screen">
+      {header(`${session.length} cards · Active recall`, () => setSession(null))}
+      <div className="flashcard-progress" role="progressbar" aria-label="Flashcard progress" aria-valuemin={0} aria-valuemax={session.length} aria-valuenow={index + 1}><span style={{ width: `${(index + 1) / session.length * 100}%` }} /></div>
+      <div className="flashcard-meta"><span>CARD {index + 1} OF {session.length} · {q.competenceId}</span><QuestionBookmarkButton question={q} /></div>
+      <button type="button" className={`flashcard-face${flipped ? ' is-flipped' : ''}`} onClick={() => setFlipped(value => !value)} aria-label={flipped ? 'Show question' : 'Reveal answer'}>
+        <div className="flashcard-content">
+          <div className="flashcard-face-meta"><span className="flashcard-badge">{flipped ? 'CORRECT ANSWER' : 'QUESTION PROMPT'}</span>{!flipped && <span className="flashcard-difficulty">{q.difficulty === 'EASY' ? 'Easy' : q.difficulty === 'MODERATE' ? 'Moderate' : 'Difficult'}</span>}</div>
+          {!flipped ? <><p className="flashcard-topic">{q.topic}</p><p className="flashcard-question">{q.questionText}</p></> : <>
+            <div className="flashcard-answer"><span className="flashcard-answer-letter">{String.fromCharCode(65 + q.correctAnswerIndex)}</span><strong>{q.options[q.correctAnswerIndex]}</strong></div>
+            <div className="flashcard-options">{q.options.map((option, optionIndex) => <div key={optionIndex} className={optionIndex === q.correctAnswerIndex ? 'is-correct' : ''}>{String.fromCharCode(65 + optionIndex)}. {option}</div>)}</div>
+            {q.explanation && <p className="flashcard-explanation">{q.explanation}</p>}
+          </>}
         </div>
-
-        <button
-          type="button"
-          onClick={() => setFlipped((f) => !f)}
-          className="card"
-          style={{
-            width: '100%',
-            minHeight: 220,
-            textAlign: 'left',
-            cursor: 'pointer',
-            marginBottom: '1rem',
-            borderColor: flipped ? 'var(--accent)' : 'var(--border)'
-          }}
-        >
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-            {flipped ? 'ANSWER' : 'QUESTION'} · {q.competenceId} · tap to flip
-          </div>
-          {!flipped ? (
-            <div style={{ fontSize: '1.05rem', lineHeight: 1.55 }}>{q.questionText}</div>
-          ) : (
-            <div>
-              <div style={{ fontWeight: 600, color: 'var(--success)', marginBottom: 8 }}>
-                {String.fromCharCode(65 + q.correctAnswerIndex)}. {q.options[q.correctAnswerIndex]}
-              </div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                {q.options.map((o, i) => (
-                  <div key={i} style={{ opacity: i === q.correctAnswerIndex ? 1 : 0.55 }}>
-                    {String.fromCharCode(65 + i)}. {o}
-                  </div>
-                ))}
-              </div>
-              {q.explanation && (
-                <p style={{ marginTop: 12, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  {q.explanation}
-                </p>
-              )}
-            </div>
-          )}
-        </button>
-
-        <button
-          className="btn btn-outline"
-          style={{ width: '100%', marginBottom: 12, fontSize: '0.85rem' }}
-          onClick={() => toggleBookmark(q)}
-        >
-          {bookmarked ? '★ Bookmarked' : '☆ Bookmark'}
-        </button>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            className="btn btn-outline"
-            style={{ flex: 1 }}
-            onClick={() => {
-              setUnknown((u) => u + 1)
-              setFlipped(false)
-              setIndex((i) => i + 1)
-            }}
-          >
-            Still learning
-          </button>
-          <button
-            className="btn btn-primary"
-            style={{ flex: 1 }}
-            onClick={() => {
-              setKnown((k) => k + 1)
-              setFlipped(false)
-              setIndex((i) => i + 1)
-            }}
-          >
-            Knew it
-          </button>
-        </div>
-
-        <button
-          style={{
-            marginTop: 16,
-            background: 'none',
-            border: 'none',
-            color: 'var(--text-muted)',
-            fontSize: '0.85rem',
-            cursor: 'pointer',
-            width: '100%'
-          }}
-          onClick={() => setSession(null)}
-        >
-          End session
-        </button>
-      </div>
-    )
+        <span className="flashcard-flip-hint">↻ Tap to flip to {flipped ? 'question' : 'answer'}</span>
+      </button>
+      <footer className="flashcard-footer">
+        <div className="flashcard-counts"><span><strong>{known}</strong> Knew it</span><span><strong>{unknown}</strong> Still learning</span></div>
+        <div className="flashcard-actions"><button type="button" className="btn btn-outline" onClick={() => { setUnknown(value => value + 1); setFlipped(false); setIndex(value => value + 1) }}>Still learning</button><button type="button" className="btn btn-primary" onClick={() => { setKnown(value => value + 1); setFlipped(false); setIndex(value => value + 1) }}>Knew it →</button></div>
+        <button type="button" className="flashcard-end" onClick={() => setSession(null)}>End session</button>
+      </footer>
+    </div>
   }
 
-  return (
-    <div className="screen">
-      <button
-        onClick={() => navigate('/')}
-        style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}
-      >
-        ← Home
-      </button>
-
-      <h1 className="page-title">Flashcards</h1>
-      <p className="subtitle">
-        {TRACK_LABELS[trackId]} · flip for answer · mark Knew / Still learning
-      </p>
-
-      {error && (
-        <div className="card" style={{ marginBottom: '1rem', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
-
-      {!isUnlocked && (
-        <div
-          className="card"
-          style={{ marginBottom: '1rem', borderColor: 'var(--warning)', color: 'var(--warning)' }}
-        >
-          Activate a key to unlock flashcards.
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gap: '0.75rem' }}>
-        <button className="card" style={{ textAlign: 'left', width: '100%' }} onClick={() => start()}>
-          <div style={{ fontWeight: 600 }}>Mixed deck (20 cards)</div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Random from this track
-          </div>
-        </button>
-        {competences.map((c) => (
-          <button
-            key={c.id}
-            className="card"
-            style={{ textAlign: 'left', width: '100%' }}
-            onClick={() => start(c.id)}
-          >
-            <div style={{ fontWeight: 600 }}>Competence {c.id}</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{c.label}</div>
-          </button>
-        ))}
-      </div>
-
-      <div style={{ marginTop: '1.25rem' }}>
-        <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Track</label>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-          {Object.entries(TRACK_MAP).map(([key, id]) => (
-            <button
-              key={key}
-              className="btn btn-outline"
-              style={{
-                padding: '0.4rem 0.7rem',
-                fontSize: '0.8rem',
-                borderColor: trackId === id ? 'var(--accent)' : undefined,
-                color: trackId === id ? 'var(--accent)' : undefined
-              }}
-              onClick={() => navigate(`/flashcards?track=${key}`)}
-            >
-              {TRACK_LABELS[id]}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
+  return <div className="screen flashcards-screen">
+    {header('Choose your revision deck', () => navigate(`/track?track=${trackParam}`))}
+    <nav className="flashcard-track-selector" aria-label="Flashcard track">{Object.entries(TRACK_MAP).map(([key, id]) => <button type="button" key={key} aria-pressed={trackId === id} onClick={() => navigate(`/flashcards?track=${key}`)}>{TRACK_LABELS[id]}</button>)}</nav>
+    {error && <div className="flashcard-notice" role="alert">{error}</div>}
+    {!isUnlocked && <div className="flashcard-notice">Activate a key to unlock flashcards.</div>}
+    <button type="button" className="flashcard-mixed" onClick={() => void start()}><span className="flashcard-badge">ALL COMPETENCES</span><span className="flashcard-deck-title">Mixed deck <span aria-hidden="true">→</span></span><span>20 cards · Random from this track</span></button>
+    <section className="flashcard-decks" aria-label="Choose a competence"><h2>Choose a competence</h2><p>Focus your recall on one competence, then tap each card to reveal its answer.</p><div className="flashcard-competences">{competences.map(c => <button type="button" key={c.id} onClick={() => void start(c.id)}><span className="flashcard-competence-id">{c.id}</span><span>{c.label.replace(c.id + ' · ', '')}</span><span aria-hidden="true">→</span></button>)}</div></section>
+  </div>
 }

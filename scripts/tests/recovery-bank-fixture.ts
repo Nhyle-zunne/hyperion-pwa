@@ -9,3 +9,7 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   return questions.length > 0 && questions.every(q => q.track === track && q.id.startsWith('recovery-fixture-')) ? 'licensed' : null
 }
 export async function authorizeQuestionSet(track: TrackId, questions: Question[]) { return (await authorizeQuestionSetAccess(track, questions)) !== null }
+
+export async function getFlashcardQuestions(track: TrackId, competenceId?: string, limit = 20) {
+  return recoveryQuestions.filter(question => question.track === track && (!competenceId || question.competenceId === competenceId)).slice(0, limit)
+}
