@@ -10,6 +10,47 @@ import { getPublicQuestionCountByTrack } from '../lib/questionBank'
 
 const FB = 'https://www.facebook.com/hyperionbynhyle/'
 
+/**
+ * Android parity: Material Filled icon vectors used by TrackSelectionScreen.kt.
+ * Explore, CellTower, Build, Construction, Navigation (24dp Material icons).
+ * Rendering vectors instead of platform-dependent emoji keeps all five tracks
+ * visually consistent with the Android app on mobile and desktop.
+ */
+const ANDROID_TRACK_ICON_PATHS = {
+  explore: [
+    'M12 10.9c-.61 0-1.1.49-1.1 1.1s.49 1.1 1.1 1.1c.61 0 1.1-.49 1.1-1.1s-.49-1.1-1.1-1.1zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm2.19 12.19L6 18l3.81-8.19L18 6l-3.81 8.19z'
+  ],
+  cellTower: [
+    'M7.3,14.7l1.2-1.2c-1-1-1.5-2.3-1.5-3.5c0-1.3,0.5-2.6,1.5-3.5L7.3,5.3c-1.3,1.3-2,3-2,4.7S6,13.4,7.3,14.7z',
+    'M19.1,2.9l-1.2,1.2c1.6,1.6,2.4,3.8,2.4,5.9c0,2.1-0.8,4.3-2.4,5.9l1.2,1.2c2-2,2.9-4.5,2.9-7.1C22,7.4,21,4.9,19.1,2.9z',
+    'M6.1,4.1L4.9,2.9C3,4.9,2,7.4,2,10c0,2.6,1,5.1,2.9,7.1l1.2-1.2c-1.6-1.6-2.4-3.8-2.4-5.9C3.7,7.9,4.5,5.7,6.1,4.1z',
+    'M16.7,14.7c1.3-1.3,2-3,2-4.7c-0.1-1.7-0.7-3.4-2-4.7l-1.2,1.2c1,1,1.5,2.3,1.5,3.5c0,1.3-0.5,2.6-1.5,3.5L16.7,14.7z',
+    'M14.5,10c0-1.38-1.12-2.5-2.5-2.5S9.5,8.62,9.5,10c0,0.76,0.34,1.42,0.87,1.88L7,22h2l0.67-2h4.67L15,22h2l-3.37-10.12 C14.16,11.42,14.5,10.76,14.5,10z M10.33,18L12,13l1.67,5H10.33z'
+  ],
+  build: [
+    'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z'
+  ],
+  construction: [
+    'M17.5,10c1.93,0,3.5-1.57,3.5-3.5c0-0.58-0.16-1.12-0.41-1.6l-2.7,2.7L16.4,6.11l2.7-2.7C18.62,3.16,18.08,3,17.5,3 C15.57,3,14,4.57,14,6.5c0,0.41,0.08,0.8,0.21,1.16l-1.85,1.85l-1.78-1.78l0.71-0.71L9.88,5.61L12,3.49 c-1.17-1.17-3.07-1.17-4.24,0L4.22,7.03l1.41,1.41H2.81L2.1,9.15l3.54,3.54l0.71-0.71V9.15l1.41,1.41l0.71-0.71l1.78,1.78 l-7.41,7.41l2.12,2.12L16.34,9.79C16.7,9.92,17.09,10,17.5,10z'
+  ],
+  navigation: [
+    'M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z'
+  ]
+} as const
+
+type AndroidTrackIconName = keyof typeof ANDROID_TRACK_ICON_PATHS
+
+function AndroidTrackIcon({ name }: { name: AndroidTrackIconName }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+      {ANDROID_TRACK_ICON_PATHS[name].map((path, index) => <path key={index} d={path} />)}
+      {name === 'construction' && (
+        <rect x="16.34" y="12.87" width="3" height="8.48" transform="matrix(0.7071 -0.7071 0.7071 0.7071 -6.8717 17.6255)" />
+      )}
+    </svg>
+  )
+}
+
 const TRACKS: {
   id: string
   trackId: TrackId
@@ -17,15 +58,15 @@ const TRACKS: {
   regulation: string
   questions: string
   meta: string
-  icon: string
+  icon: AndroidTrackIconName
   tierCheck: string
   mock: string
 }[] = [
-  { id: 'oic_nw', trackId: 'DECK_OIC_NW', title: 'DECK OIC-NW', regulation: 'STCW REGULATION II/1', questions: '', meta: '12 COMPETENCIES · 200-ITEM MOCK', icon: '🧭', tierCheck: 'OIC', mock: '200' },
-  { id: 'gmdss', trackId: 'GMDSS_GOC', title: 'GMDSS RADIO (GOC)', regulation: 'STCW REGULATION IV/2', questions: '', meta: '2 COMPETENCIES · 100-ITEM MOCK', icon: '📡', tierCheck: 'GOC', mock: '100' },
-  { id: 'engine_ew', trackId: 'ENGINE_OIC_EW', title: 'ENGINE OIC-EW', regulation: 'STCW REGULATION III/1', questions: '', meta: '13 COMPETENCIES · 200-ITEM MOCK', icon: '🔧', tierCheck: 'EW', mock: '200' },
-  { id: 'engine_mgt', trackId: 'ENGINE_MGT', title: 'ENGINE MANAGEMENT', regulation: 'STCW REGULATION III/2', questions: '', meta: '14 COMPETENCIES · 200-ITEM MOCK', icon: '⚙️', tierCheck: 'EM', mock: '200' },
-  { id: 'deck_mgt', trackId: 'DECK_MGT', title: 'DECK MANAGEMENT', regulation: 'STCW REGULATION II/2', questions: '', meta: '18 COMPETENCIES · 200-ITEM MOCK', icon: '▲', tierCheck: 'DM', mock: '200' }
+  { id: 'oic_nw', trackId: 'DECK_OIC_NW', title: 'DECK OIC-NW', regulation: 'STCW REGULATION II/1', questions: '', meta: '12 COMPETENCIES · 200-ITEM MOCK', icon: 'explore', tierCheck: 'OIC', mock: '200' },
+  { id: 'gmdss', trackId: 'GMDSS_GOC', title: 'GMDSS RADIO (GOC)', regulation: 'STCW REGULATION IV/2', questions: '', meta: '2 COMPETENCIES · 100-ITEM MOCK', icon: 'cellTower', tierCheck: 'GOC', mock: '100' },
+  { id: 'engine_ew', trackId: 'ENGINE_OIC_EW', title: 'ENGINE OIC-EW', regulation: 'STCW REGULATION III/1', questions: '', meta: '13 COMPETENCIES · 200-ITEM MOCK', icon: 'build', tierCheck: 'EW', mock: '200' },
+  { id: 'engine_mgt', trackId: 'ENGINE_MGT', title: 'ENGINE MANAGEMENT', regulation: 'STCW REGULATION III/2', questions: '', meta: '14 COMPETENCIES · 200-ITEM MOCK', icon: 'construction', tierCheck: 'EM', mock: '200' },
+  { id: 'deck_mgt', trackId: 'DECK_MGT', title: 'DECK MANAGEMENT', regulation: 'STCW REGULATION II/2', questions: '', meta: '18 COMPETENCIES · 200-ITEM MOCK', icon: 'navigation', tierCheck: 'DM', mock: '200' }
 ]
 
 function dayKey(ts = Date.now()) {
@@ -216,7 +257,7 @@ export default function TrackSelectionScreen() {
           return (
             <button key={t.id} type="button" className="track-card" onClick={() => select(t)}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 4 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', flexShrink: 0 }}>{t.icon}</span>
+                <span style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-elevated)', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} aria-hidden="true"><AndroidTrackIcon name={t.icon} /></span>
                 <span className="badge-verified" style={{ fontSize: '0.58rem', padding: '0.15rem 0.35rem' }}>{unlocked ? 'VERIFIED' : 'FREE TIER'}</span>
               </div>
               <div className="track-title">{t.title}</div>
