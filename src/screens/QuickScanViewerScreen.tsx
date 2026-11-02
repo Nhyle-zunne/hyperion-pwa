@@ -1,3 +1,5 @@
+import KeywordHighlightSetting from '../components/KeywordHighlightSetting'
+import KeywordQuestionText from '../components/KeywordQuestionText'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getQuestionCountsByTrack, getQuestionsByCompetence, listAvailableCompetences } from '../lib/questionBank'
@@ -11,6 +13,7 @@ const PAGE_SIZE = 50
 
 export default function QuickScanViewerScreen() {
   const navigate = useNavigate()
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [params] = useSearchParams()
   const key = params.get('track') || 'oic_nw'
   const track = TRACK_MAP[key] || 'DECK_OIC_NW'
@@ -92,6 +95,10 @@ export default function QuickScanViewerScreen() {
   }
 
   return <div className="screen" style={{ paddingBottom: '2rem' }}>
+    <div style={{ display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
+      <button type="button" className="btn btn-outline" aria-label="Question settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(open => !open)}>⚙</button>
+      {settingsOpen && <section aria-label="Question settings" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 30, background: 'var(--bg-card)', border: '1px solid var(--border)', minWidth: 240 }}><KeywordHighlightSetting /></section>}
+    </div>
     <button type="button" onClick={() => navigate(`/quick-scan?track=${key}`)} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>← Competences</button>
     <div className="card" style={{ borderRadius: 2, borderTop: '3px solid var(--accent)', marginBottom: '1rem' }}>
       <div style={{ color: 'var(--text-muted)', fontSize: '.72rem', letterSpacing: '.1em', fontWeight: 800 }}>QUICK SCAN · {competenceId}</div>
@@ -102,7 +109,7 @@ export default function QuickScanViewerScreen() {
     {!loading && q && <>
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div style={{ color: 'var(--accent)', fontSize: '.8rem', marginBottom: 8 }}>{q.topic}</div>
-        <div style={{ fontSize: '1.05rem', lineHeight: 1.6 }}>{q.questionText}</div>
+        <div style={{ fontSize: '1.05rem', lineHeight: 1.6 }}><KeywordQuestionText question={q} /></div>
       </div>
       <div style={{ display: 'grid', gap: 8, marginBottom: '1rem' }}>
         {q.options.map((option, i) => <div key={i} className="card" style={{ borderRadius: 2, border: `1px solid ${i === q.correctAnswerIndex ? 'var(--success)' : 'var(--border)'}`, background: i === q.correctAnswerIndex ? 'rgba(34,197,94,.12)' : 'var(--bg-card)', padding: '1rem', display: 'flex', gap: 10 }}>
