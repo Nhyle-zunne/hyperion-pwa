@@ -1,3 +1,4 @@
+import SavedQuestionSearch from '../components/SavedQuestionSearch'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBookmarksStore } from '../stores/bookmarksStore'
@@ -111,10 +112,7 @@ export default function BookmarksScreen() {
         </button>
       })}
     </div>
-    <label style={{ display:'block', marginBottom:'.8rem' }}>
-      <span className="sr-only">Search bookmarks</span>
-      <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search bookmarks by question, item code, function, competence, option…" style={{ width:'100%' }} />
-    </label>
+    <SavedQuestionSearch value={searchQuery} onChange={setSearchQuery} collection="bookmarks" />
     <h2 className="section-title">{query ? `Search results (${filteredItems.length})` : 'Bookmarks by track & competence'}</h2>
     {validatingBookmarks ? <div className="card" role="status">Verifying saved question access…</div> :
       visibleItems.length === 0 ? <div className="card" style={{textAlign:'center',color:'var(--text-muted)'}}>No available bookmarks. Bookmarks from paid question banks require an active license; free-sample bookmarks are verified before display.</div> :

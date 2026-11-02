@@ -1,3 +1,4 @@
+import SavedQuestionSearch from '../components/SavedQuestionSearch'
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useUIStore } from '../stores/uiStore'
@@ -101,10 +102,7 @@ export default function VaultScreen() {
           <p style={{color:'var(--text-muted)',margin:'.35rem 0 .8rem'}}>A mistake is automatically redeemed and removed after 2 consecutive correct answers. Wrong answers reset its progress.</p>
           {groups.map(([track,comps])=><button key={track} className="btn btn-outline" style={{width:'100%',marginTop:'.35rem'}} onClick={()=>void practiceVault(track,comps.flatMap(([,list])=>list))}>Drill all {TRACK_LABELS[track]} mistakes ({comps.reduce((n,[,list])=>n+list.length,0)})</button>)}
         </div>
-        <label style={{display:'block',marginBottom:'.8rem'}}>
-          <span className="sr-only">Search mistakes</span>
-          <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Search mistakes by question, item code, function, competence, option…" style={{width:'100%'}}/>
-        </label>
+        <SavedQuestionSearch value={searchQuery} onChange={setSearchQuery} collection="mistakes" />
         <h2 className="section-title">{query? `Search results (${filteredItems.length})`:'Mistakes by track & competence'}</h2>
         {filteredItems.length===0?<div className="card" style={{textAlign:'center',color:'var(--text-muted)'}}>No matching mistakes found.</div>:
           <div style={{display:'grid',gap:'.65rem'}}>
