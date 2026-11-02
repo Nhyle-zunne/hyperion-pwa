@@ -109,13 +109,14 @@ export default function QuickScanViewerScreen({ onQuestionChange }: { onQuestion
     <div className="card" style={{ borderRadius: 2, borderTop: '3px solid var(--accent)', marginBottom: '1rem' }}>
       <div style={{ color: 'var(--text-muted)', fontSize: '.72rem', letterSpacing: '.1em', fontWeight: 800 }}>QUICK SCAN · {competenceId}</div>
       <h1 className="page-title" style={{ margin: '8px 0 4px' }}>{competence?.label || competenceId}</h1>
-      <p className="subtitle" style={{ margin: 0 }}>{loading ? 'Loading question…' : questions.length ? `ITEM ${globalIndex + 1} OF ${totalCount}` : 'No questions available'}</p>
+      <div className="quick-scan-progress-timer">
+        <p className="subtitle" style={{ margin: 0 }}>{loading ? 'Loading question…' : questions.length ? `ITEM ${globalIndex + 1} OF ${totalCount}` : 'No questions available'}</p>
+        <SessionElapsedTimer startedAt={startedAt} inline />
+      </div>
     </div>
-    <SessionElapsedTimer startedAt={startedAt} />
     {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
     {!loading && q && <>
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <div style={{ color: 'var(--accent)', fontSize: '.8rem', marginBottom: 8 }}>{q.topic}</div>
         <div style={{ fontSize: `${1.05 * textScale / 100}rem`, lineHeight: 1.6 }}><KeywordQuestionText question={q} /></div>
       </div>
       <div style={{ display: 'grid', gap: 8, marginBottom: '1rem' }}>
