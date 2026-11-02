@@ -537,7 +537,6 @@ export function MockExamRunner() {
             <span>QUESTION {index + 1} OF {questions.length}</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>{q.competenceId}</span><QuestionBookmarkButton question={q} questionNumber={index + 1} paidAtSave={!isFreeSession} /></span>
           </div>
-          {q.topic && <div style={{ color: 'var(--text-muted)', fontSize: 'calc(.82rem * var(--quiz-text-scale))', marginBottom: 6 }}>{q.topic}</div>}
           <div style={{ fontSize: 'calc(1.08rem * var(--quiz-text-scale))', lineHeight: 1.55, margin: '0 0 1rem', fontWeight: 800 }}><KeywordQuestionText question={q} headingId={'mock-question-' + index} /></div>
           <div role="radiogroup" aria-label={'Answers for question ' + (index + 1)} style={{ display: 'grid', gap: 10 }}>
             {q.options.map((option, optionIndex) => {
