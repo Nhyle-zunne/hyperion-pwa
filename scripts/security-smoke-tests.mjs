@@ -695,6 +695,14 @@ assert.ok(practiceStore.includes('Avoid resurrecting a History row after this se
 assert.ok(practiceStore.includes('await deleteSessionSnapshot(snapshot.sessionId).catch(() => undefined)'), 'A session snapshot is removed if its History metadata cannot be saved');
 assert.ok(practiceQuizScreen.includes('saved = await saveProgress()') && practiceQuizScreen.includes('Your session is still open') && practiceQuizScreen.includes('disabled={savingProgress}'), 'Save failure keeps the user in the session and prevents duplicate save requests');
 assert.ok(!practiceQuizScreen.includes('aria-label="Back">← Back'), 'The question screen has no redundant second Back button inside the question content');
+
+const sessionElapsedTimer = await read('../src/components/SessionElapsedTimer.tsx');
+assert.ok(practiceQuizScreen.includes('quiz-heading-with-timer') && practiceQuizScreen.includes('<SessionElapsedTimer startedAt={startedAt} inline />'), 'Practice and drill place the elapsed timer alongside the main question count for every track');
+assert.ok(!practiceQuizScreen.includes('Q {currentIndex + 1} / {questions.length}') && !practiceQuizScreen.includes('{q.topic}'), 'Practice and drill do not show a duplicate question-count row or repeat the topic inside the question box');
+assert.ok(quickScanViewerScreen.includes('quick-scan-progress-timer') && quickScanViewerScreen.includes('<SessionElapsedTimer startedAt={startedAt} inline />') && !quickScanViewerScreen.includes('{q.topic}'), 'Quick Scan aligns its timer with item progress and does not repeat topic text in the question card');
+assert.ok(!mockExam.includes('{q.topic}') && mockExam.includes('QUESTION {index + 1} OF {questions.length}'), 'Mock exam retains per-question numbering but removes topic titles from question content');
+assert.ok(sessionElapsedTimer.includes('inline = false') && sessionElapsedTimer.includes('margin: inline ? 0'), 'Inline elapsed display is optional and existing timer callers preserve previous layout');
+assert.ok(indexCss.includes('.quiz-heading-with-timer') && indexCss.includes('.quick-scan-progress-timer'), 'Question headings have responsive compact timer-aligned styling');
 const questionBookmarkButton = await read('../src/components/QuestionBookmarkButton.tsx');
 assert.ok(questionBookmarkButton.includes('<path d="M6.75 4.25A1.75 1.75') && questionBookmarkButton.includes('aria-pressed={bookmarked}') && app.includes('QuestionBookmarkButton'), 'The shared question bookmark control uses an accessible outline SVG');
 assert.ok(app.includes('!isMockRunner && <QuestionBookmarkButton') && mockExam.includes('questionNumber={index + 1}') && mockExam.includes('question={q}'), 'Scrolling mock exams bookmark each question rather than a hidden current index');
