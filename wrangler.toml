@@ -1,12 +1,16 @@
-# Optional: only needed if deploy command is `npx wrangler deploy`.
-# Prefer Cloudflare Pages with deploy command left empty (build output = dist).
+# Cloudflare Worker and static PWA deployment configuration.
 name = "hyperion-pwa"
 main = "worker/index.ts"
 compatibility_date = "2025-01-01"
 keep_vars = true
 
+# Keep these disabled on every deployment; dashboard toggles alone are overwritten.
+# Production is served through the existing hyperionmaritime.org custom domain.
+workers_dev = false
+preview_urls = false
+
 # Required by Cloudflare Workers Builds for branch/PR preview deployments.
-# This static PWA has no preview-specific runtime bindings.
+# No preview-specific runtime bindings. Preview URL exposure is disabled above.
 previews = {}
 
 [assets]

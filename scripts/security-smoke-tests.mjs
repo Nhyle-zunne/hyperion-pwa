@@ -6,6 +6,10 @@ import { fingerprintQuestion } from '../src/lib/questionFingerprint.mjs';
 import { isGmdssFreeSampleQuestion, isOfflinePackSetComplete } from '../src/lib/offlinePackIntegrity.mjs';
 import { createSerialAsyncQueue } from '../src/lib/serializedAsyncQueue.mjs';
 
+const workerDeployment = await readFile(new URL('../wrangler.toml', import.meta.url), 'utf8');
+assert.match(workerDeployment, /^workers_dev\s*=\s*false\s*$/m, 'Production deployments must keep workers.dev disabled');
+assert.match(workerDeployment, /^preview_urls\s*=\s*false\s*$/m, 'Production deployments must keep preview URLs disabled');
+
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
   pricing, checkout, verify, webhook, questionBank, learningProgressFn, questionBankMigration,
