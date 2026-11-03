@@ -19,6 +19,10 @@ const paths = {
   "filterList": [
     "M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"
   ],
+  // Android PracticeQuizScreen.kt: Icons.Default.GridView for the question palette.
+  "gridView": [
+    "M3 3h7v7H3zM3 14h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7z"
+  ],
   "school": [
     "M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3 1 9l11 6 9-4.91V17h2V9L12 3z"
   ],
