@@ -12,6 +12,7 @@ create table if not exists public.user_learning_progress_revision_retention (
   protected_through_id bigint not null check (protected_through_id >= 0),
   max_future_per_account integer not null default 10
     check (max_future_per_account between 5 and 20),
+  enabled boolean not null default true,
   activated_at timestamptz not null default now()
 );
 
@@ -34,6 +35,7 @@ language plpgsql security definer set search_path = '' as $$
 declare
   safe_through bigint;
   keep_future integer;
+  pruning_enabled boolean;
 begin
   if new.user_id is distinct from old.user_id then
     raise exception using errcode='22023',message='Progress ownership cannot be changed.';
@@ -46,13 +48,13 @@ begin
     insert into public.user_learning_progress_revisions(user_id,data)
     values(old.user_id,old.data);
 
-    select protected_through_id, max_future_per_account
-      into safe_through, keep_future
+    select protected_through_id, max_future_per_account, enabled
+      into safe_through, keep_future, pruning_enabled
     from public.user_learning_progress_revision_retention
     where singleton = true;
 
     -- Missing or invalid policy fails safely for preservation: do not delete.
-    if safe_through is not null and keep_future between 5 and 20 then
+    if pruning_enabled is true and safe_through is not null and keep_future between 5 and 20 then
       delete from public.user_learning_progress_revisions
       where id in (
         select id
