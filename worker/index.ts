@@ -112,18 +112,27 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
     const random = body.randomSample === true, freeOnly = body.freeOnly === true
     if (!['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'].includes(track) || !/^C\d+$/.test(competence) || !Number.isSafeInteger(offset) || offset < 0 || offset > 100000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 200 || (part !== null && (!Number.isSafeInteger(part) || part < 1)) || (random && offset !== 0)) return reply({ error: 'Invalid question range.' }, 400)
     try {
-      const configuration = await env.ASSETS.fetch(new Request(new URL('/hyperion-public-config.json', url)))
-      if (!configuration.ok) throw new Error('Public configuration unavailable.')
-      const config = await configuration.json() as Config
-      if (config.supabaseUrl !== 'https://evnjoezffghtrzqacwcj.supabase.co' || typeof config.supabaseAnonKey !== 'string' || !config.supabaseAnonKey) throw new Error('Invalid public configuration.')
-      const headers = new Headers({ 'Content-Type': 'application/json', apikey: config.supabaseAnonKey })
-      const authorization = request.headers.get('Authorization')
-      if (authorization) headers.set('Authorization', authorization)
-      // Access checks are never cached. The server resolves Auth + current entitlement.
-      const verified = await fetcher(`${config.supabaseUrl}/functions/v1/question-bank`, { method: 'POST', headers, body: JSON.stringify({ action: 'github-delivery-access', track, freeOnly, deliveryRoot: GITHUB_BANK_ROOT }), signal: AbortSignal.timeout(15000) })
-      if (!verified.ok) return reply({ error: verified.status === 401 || verified.status === 403 ? 'An active license is required for this track.' : 'Could not verify question access.' }, verified.status === 401 || verified.status === 403 ? verified.status : 503)
-      const grant = await verified.json() as { allowed?: boolean; track?: string; access?: string }
-      if (grant.allowed !== true || grant.track !== track || (freeOnly ? grant.access !== 'free-sample' : !['admin', 'licensed'].includes(grant.access || ''))) return reply({ error: 'Could not verify question access.' }, 503)
+      // Free Reviewer is a public, deterministic subset from immutable GitHub
+      // assets. It needs neither Supabase Auth nor a license lookup. Removing
+      // that redundant verification avoids Supabase egress/invocations for all
+      // guest and signed-in free question pages. Paid requests still verify
+      // live entitlements before reading any question bytes, with no caching.
+      let access: 'free-sample' | 'admin' | 'licensed' = 'free-sample'
+      if (!freeOnly) {
+        const configuration = await env.ASSETS.fetch(new Request(new URL('/hyperion-public-config.json', url)))
+        if (!configuration.ok) throw new Error('Public configuration unavailable.')
+        const config = await configuration.json() as Config
+        if (config.supabaseUrl !== 'https://evnjoezffghtrzqacwcj.supabase.co' || typeof config.supabaseAnonKey !== 'string' || !config.supabaseAnonKey) throw new Error('Invalid public configuration.')
+        const headers = new Headers({ 'Content-Type': 'application/json', apikey: config.supabaseAnonKey })
+        const authorization = request.headers.get('Authorization')
+        if (authorization) headers.set('Authorization', authorization)
+        // Paid checks are never cached: the backend resolves Auth and current entitlement.
+        const verified = await fetcher(`${config.supabaseUrl}/functions/v1/question-bank`, { method: 'POST', headers, body: JSON.stringify({ action: 'github-delivery-access', track, freeOnly: false, deliveryRoot: GITHUB_BANK_ROOT }), signal: AbortSignal.timeout(15000) })
+        if (!verified.ok) return reply({ error: verified.status === 401 || verified.status === 403 ? 'An active license is required for this track.' : 'Could not verify question access.' }, verified.status === 401 || verified.status === 403 ? verified.status : 503)
+        const grant = await verified.json() as { allowed?: boolean; track?: string; access?: string }
+        if (grant.allowed !== true || grant.track !== track || (grant.access !== 'admin' && grant.access !== 'licensed')) return reply({ error: 'Could not verify question access.' }, 503)
+        access = grant.access
+      }
       const release = await source.release()
       if (body.bankRevision && body.bankRevision !== release.revision) return reply({ error: 'The question bank changed. Reload this question set and retry.' }, 409)
       const paths = SOURCE_ASSETS.filter(path => { const info = sourceInfo(path); return info?.track === track && info.competenceId === competence && (part === null || info.part === part) }).sort((a, b) => (sourceInfo(a)?.part ?? 0) - (sourceInfo(b)?.part ?? 0))
@@ -133,7 +142,7 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         questions.push(...toSearchQuestions(path, freeOnly ? sampleFreeCsv(path, text) : text))
       }
       if (random) for (let index = questions.length - 1; index > 0; index--) { const next = Math.floor(Math.random() * (index + 1)); [questions[index], questions[next]] = [questions[next], questions[index]] }
-      return reply({ questions: questions.slice(offset, offset + limit), totalCount: questions.length, offset, limit, access: grant.access, source: 'github', bankRevision: release.revision })
+      return reply({ questions: questions.slice(offset, offset + limit), totalCount: questions.length, offset, limit, access, source: 'github', bankRevision: release.revision })
     } catch { return reply({ error: 'The GitHub question bank could not be loaded. Your saved study data is preserved; retry when connected.' }, 503) }
   }
 }

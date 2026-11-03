@@ -222,8 +222,9 @@ export default function PracticeConfigScreen({ savedSelection }: { savedSelectio
         navigate('/practice/quiz')
         return
       }
-      // Re-check access at the action boundary instead of trusting a stale UI flag.
-      await refreshCloudEntitlements()
+      // Free Reviewer needs no license/network check. Paid modes must still
+      // refresh at the action boundary instead of trusting a stale UI flag.
+      if (!freeMode) await refreshCloudEntitlements()
       const entitlement = useLicenseStore.getState()
       const hasLicense = entitlement.entitlementsVerified && (
         entitlement.isAllAccessUnlocked ||
