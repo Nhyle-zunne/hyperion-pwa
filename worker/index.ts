@@ -45,7 +45,10 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
             const counts: Counts = []
             for (const path of paths) {
               const info = sourceInfo(path)!
-              const text = await snapshotSource.read(path, release)
+              // Largest track has 18 files. Cache lookup + fetch + asset put
+              // would exceed the Free plan's 50-subrequest budget on a cold load.
+              // Reuse existing asset cache entries, then persist only aggregates.
+              const text = await snapshotSource.read(path, release, false)
               counts.push({ competenceId: info.competenceId, part: info.part,
                 fullCount: validQuestionCount(path, text, false), freeCount: validQuestionCount(path, text, true) })
             }

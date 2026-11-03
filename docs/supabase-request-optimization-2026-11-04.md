@@ -59,3 +59,13 @@ The reduction is per operation: one general license call replaces two, and publi
 counts make zero Supabase metadata calls. Total billing savings depend on actual
 traffic after clients load this release; no fixed percentage or quota clearance
 is promised.
+
+## Cold-load limit correction
+
+Live verification found an initial Deck Management counts failure; retries with
+warm caches succeeded. A regression reproduced the cold path exceeding the
+Cloudflare Free limit of 50 subrequests: each of the 18 bank files performed a
+cache lookup, upstream fetch and cache write. Counts now reuse existing asset
+cache hits but skip individual asset cache writes, persisting only the aggregate
+result. Normal question delivery retains its original asset-cache behavior. The
+cold largest-track regression and production build pass with this correction.

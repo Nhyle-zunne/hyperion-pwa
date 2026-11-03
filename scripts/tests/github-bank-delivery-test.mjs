@@ -126,3 +126,13 @@ assert.equal((await countsRequest('DECK_MGT', false, undefined, retryWorker)).st
 corrupt = false
 assert.equal((await countsRequest('DECK_MGT', false, undefined, retryWorker)).status, 200, 'Failed metadata computations must not poison the cache')
 console.log('PASS: Cloudflare aggregate reuse across isolates and recovery after corrupt upstream assets.')
+
+let subrequests = 0
+const spend = () => { if (++subrequests > 50) throw Error('Too many subrequests') }
+const limitedFetch = async (...args) => { spend(); return fakeFetch(...args) }
+const limitedCache = { match: async () => { spend(); return undefined }, put: async () => { spend() } }
+const boundedWorker = createBankWorker(limitedFetch, limitedCache)
+const boundedResponse = await countsRequest('DECK_MGT', false, undefined, boundedWorker)
+assert.equal(boundedResponse.status, 200, 'Cold counts must fit the Cloudflare Free subrequest limit')
+assert.ok(subrequests <= 50)
+console.log('PASS: cold largest-track counts fit the Cloudflare Free subrequest budget.')

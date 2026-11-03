@@ -83,7 +83,7 @@ export function createGithubBankSource(fetcher: typeof fetch = fetch, cache?: Ca
     })()
     try { return await pending } finally { pending = undefined }
   }
-  async function read(path: string, snapshot: BankRelease): Promise<string> {
+  async function read(path: string, snapshot: BankRelease, persistToEdgeCache = true): Promise<string> {
     const file = snapshot.files.find(item => item.path === path)
     if (!paths.has(path) || !file) throw new Error('Unsupported GitHub question-bank path.')
     const key = file.sha256 + ':' + path
@@ -95,7 +95,7 @@ export function createGithubBankSource(fetcher: typeof fetch = fetch, cache?: Ca
       const bytes = await readBounded(response.body, 1048576)
       if (bytes.length !== file.bytes || await sha256(bytes) !== file.sha256) throw new IntegrityError('GitHub question-bank integrity check failed.')
       const text = await decryptToText(bytes)
-      if (!cached && cache) { try { await cache.put(request, new Response(new Uint8Array(bytes).buffer, { headers: { 'Cache-Control': 'public, max-age=31536000, immutable' } })) } catch { /* Verified content remains usable if edge caching is unavailable. */ } }
+      if (!cached && cache && persistToEdgeCache) { try { await cache.put(request, new Response(new Uint8Array(bytes).buffer, { headers: { 'Cache-Control': 'public, max-age=31536000, immutable' } })) } catch { /* Verified content remains usable if edge caching is unavailable. */ } }
       return text
     })()
     if (memory.size >= paths.size * 2) memory.delete(memory.keys().next().value!)
