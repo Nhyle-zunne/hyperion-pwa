@@ -19,7 +19,9 @@ Deno.test('archive batches authenticate owners and validate every item before on
     const req = new Request(input, init), url = new URL(req.url)
     if (url.pathname.endsWith('/entitlements')) {
       entitlementReads++
-      return json((url.searchParams.has('status') ? allowed : historical) ? [{ track_id: 'DECK_OIC_NW' }] : [])
+      // An active entitlement is always present in the complete historical query.
+      // `historical` models ownership after expiry, while `allowed` is current.
+      return json((url.searchParams.has('status') ? allowed : (allowed || historical)) ? [{ track_id: 'DECK_OIC_NW' }] : [])
     }
     if (url.pathname.endsWith('/google_play_entitlements')) return json([])
     if (url.pathname.endsWith('/question-bank')) return json({ bookmarkAllowedIndexes: [], vaultAllowedIndexes: [], legacySavedPracticeAllowed: false, activeSessionAllowed: false })
@@ -44,7 +46,7 @@ Deno.test('archive batches authenticate owners and validate every item before on
     assert.equal(writes[0].length, 2)
     assert.ok(writes[0].every((row: any) => row.user_id === user))
     assert.equal(writes[0][1].data.answers.q1.selectedIndex, 1)
-    assert.equal(entitlementReads, 2, 'Active and historical ownership are each checked once per batch')
+    assert.equal(entitlementReads, 1, 'Historical ownership already includes active entitlements; query only once per batch')
 
     const reads = entitlementReads
     for (const invalid of [[], Array.from({ length: 11 }, (_, i) => item('s' + i)), [item('same'), item('same')], [{ ...item('bad'), snapshot: item('different').snapshot }]]) {
