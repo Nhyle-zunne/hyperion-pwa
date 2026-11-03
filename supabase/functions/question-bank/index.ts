@@ -1171,6 +1171,13 @@ Deno.serve(async (req: Request) => {
 
     // This route exposes only the existing official free sample. One compressed
     // response replaces one Edge Function invocation per source CSV file.
+    // Do not offer a whole-track free CSV payload to guests or unlicensed users.
+    // Free practice/mock exams use the paginated "questions" API instead.
+    try {
+      if (!await authorizeTrack(admin, user, isAdmin, track)) {
+        return json(req, { error: "Bulk question-file downloads require an active track license. Use Free Reviewer online instead." }, user ? 403 : 401);
+      }
+    } catch { return json(req, { error: "Could not verify your license." }, 503); }
     const trackPaths = SOURCE_ASSETS.filter(path => trackForPath(path) === track);
     let paths = trackPaths;
     if (body.paths !== undefined) {
@@ -1345,6 +1352,13 @@ Deno.serve(async (req: Request) => {
   // one-time migration bridge. Paid question files are never returned as CSV.
   const track = trackForPath(body.path);
   if (!track) return json(req, { error: "Invalid track." }, 400);
+  // The legacy raw-CSV compatibility route is not a free bulk-download route.
+  // Current free review loads only selected question pages through "questions".
+  try {
+    if (!await authorizeTrack(admin, user, isAdmin, track)) {
+      return json(req, { error: "Question-file downloads require an active track license. Use Free Reviewer online instead." }, user ? 403 : 401);
+    }
+  } catch { return json(req, { error: "Could not verify your license." }, 503); }
   try {
     const text = await privateText(admin, body.path);
     return json(req, { text: sampleFreeCsv(body.path, text), access: "free-sample" });
