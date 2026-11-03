@@ -2,6 +2,7 @@ import type { SavedQuestionContext } from './savedQuestionSets'
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Question, TrackId, UserAnswer } from '../types/question'
 import { supabase } from './supabase'
+import { archiveBatches, archiveBatchAcknowledged } from './sessionArchiveBatch'
 import { decryptJsonPayload, encryptJsonPayload } from './jsonPayloadCrypto.mjs'
 
 export type ArchivedSessionMode = 'PRACTICE' | 'DRILL' | 'MOCK'
@@ -187,7 +188,24 @@ export type SessionSnapshotLoad = {
 }
 
 /** Missing archives and failed downloads need different recovery actions in History. */
+const archiveReadJobs = new Map<string, Promise<SessionSnapshotLoad>>()
 export async function loadSessionSnapshot(id: string): Promise<SessionSnapshotLoad> {
+  const key = (localStorage.getItem('hyperion-progress-owner') || '') + ':' + id
+  const existing = archiveReadJobs.get(key)
+  if (existing) return existing
+  const job = loadSessionSnapshotInternal(id)
+  archiveReadJobs.set(key, job)
+  try { return await job }
+  finally { if (archiveReadJobs.get(key) === job) archiveReadJobs.delete(key) }
+}
+
+async function archiveSnapshotHash(snapshot: SessionSnapshot): Promise<string> {
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(snapshot))))]
+    .map(byte => byte.toString(16).padStart(2, '0')).join('')
+}
+const archiveMarker = (userId: string, id: string) => `hyperion-archive-synced:${userId}:${id}`
+
+async function loadSessionSnapshotInternal(id: string): Promise<SessionSnapshotLoad> {
   const owner = localStorage.getItem('hyperion-progress-owner')
   const local = await getLocalSessionSnapshot(id)
   if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
@@ -213,6 +231,11 @@ export async function loadSessionSnapshot(id: string): Promise<SessionSnapshotLo
     try {
       await saveSessionSnapshot(id, response.data.snapshot)
       if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+      // This exact snapshot came from the cloud. Mark its hash, not a possibly
+      // newer local edit, so downloading an audit never immediately reuploads it.
+      const hash = await archiveSnapshotHash(response.data.snapshot)
+      if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+      try { localStorage.setItem(archiveMarker(session.user.id, id), hash) } catch { /* Optional sync hint; the encrypted archive was saved. */ }
       return { snapshot: response.data.snapshot, status: 'ready', cached: true }
     } catch {
       // An online review can still open when the device cannot cache it.
@@ -238,59 +261,77 @@ function deferArchiveSync(userId: string, status?: number): void {
   archiveRetryState.set(userId, { failures, nextAt: Date.now() + delay })
 }
 
-let archiveSyncRunning = false
-let archiveSyncQueued: { userId: string; ids: string[] } | null = null
-/** Upload and cache audits independently so a large history never bloats the progress snapshot. */
+const archiveSyncJobs = new Map<string, { ids: Set<string>; promise: Promise<void> }>()
+/** Coalesce pending IDs; encrypted local records remain the source of retry work. */
 export async function syncSessionArchives(userId: string, ids: string[]): Promise<void> {
-  if (!supabase || navigator.onLine === false) return
+  if (!supabase || navigator.onLine === false || !ids.length) return
   if ((archiveRetryState.get(userId)?.nextAt ?? 0) > Date.now()) return
-  if (archiveSyncRunning) { archiveSyncQueued = { userId, ids }; return }
-  archiveSyncRunning = true
-  try {
-    const { data } = await supabase.auth.getSession()
-    const session = data.session
-    if (!session || session.user.id !== userId) return
-    for (const id of new Set(ids)) {
-      if (localStorage.getItem('hyperion-progress-owner') !== userId) return
-      const local = await getLocalSessionSnapshot(id)
-      if (localStorage.getItem('hyperion-progress-owner') !== userId) return
-      if (!local) {
-        const retryKey = userId + ':' + id
-        if ((missingArchiveRetryAt.get(retryKey) ?? 0) > Date.now()) continue
-        const result = await loadSessionSnapshot(id)
-        if (result.status === 'unavailable' || result.status === 'sign-in-required') {
-          deferArchiveSync(userId)
-          return
-        }
-        if (result.status === 'account-changed') return
-        if (result.status === 'not-found') missingArchiveRetryAt.set(retryKey, Date.now() + 15 * 60_000)
-        else missingArchiveRetryAt.delete(retryKey)
-        continue
+  const existing = archiveSyncJobs.get(userId)
+  if (existing) { ids.forEach(id => existing.ids.add(id)); return existing.promise }
+  const job = { ids: new Set(ids), promise: Promise.resolve() }
+  archiveSyncJobs.set(userId, job)
+  job.promise = (async () => {
+    try {
+      while (job.ids.size && localStorage.getItem('hyperion-progress-owner') === userId) {
+        const pending = [...job.ids]
+        job.ids.clear()
+        await syncArchivePass(userId, pending)
+        if ((archiveRetryState.get(userId)?.nextAt ?? 0) > Date.now()) break
       }
-      const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(local))))]
-        .map(byte => byte.toString(16).padStart(2, '0')).join('')
-      if (localStorage.getItem('hyperion-progress-owner') !== userId) return
-      const marker = `hyperion-archive-synced:${userId}:${id}`
-      if (localStorage.getItem(marker) === hash) continue
-      const response = await supabase.functions.invoke('learning-progress', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: { action: 'write-session', sessionId: id, snapshot: local }
-      })
-      if (response.error || response.data?.ok !== true) {
-        deferArchiveSync(userId, (response.error as { context?: { status?: number } } | null)?.context?.status)
-        return
-      }
-      if (localStorage.getItem('hyperion-progress-owner') === userId) localStorage.setItem(marker, hash)
+    } catch { deferArchiveSync(userId) }
+    finally { if (archiveSyncJobs.get(userId) === job) archiveSyncJobs.delete(userId) }
+  })()
+  await job.promise
+}
+
+async function syncArchivePass(userId: string, ids: string[]): Promise<void> {
+  if (!supabase || navigator.onLine === false) return
+  const { data } = await supabase.auth.getSession()
+  const session = data.session
+  if (!session || session.user.id !== userId) return
+  let uploads: { sessionId: string; snapshot: SessionSnapshot; hash: string }[] = []
+  const flushUploads = async (): Promise<boolean> => {
+    if (!uploads.length) return true
+    if (localStorage.getItem('hyperion-progress-owner') !== userId) return false
+    const response = await supabase!.functions.invoke('learning-progress', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: { action: 'write-sessions', sessions: uploads.map(({ sessionId, snapshot }) => ({ sessionId, snapshot })) }
+    })
+    if (response.error || !archiveBatchAcknowledged(response.data, uploads.map(item => item.sessionId))) {
+      deferArchiveSync(userId, (response.error as { context?: { status?: number } } | null)?.context?.status)
+      return false
     }
-    archiveRetryState.delete(userId)
-  } catch {
-    deferArchiveSync(userId)
-  } finally {
-    archiveSyncRunning = false
-    const queued = archiveSyncQueued
-    archiveSyncQueued = null
-    if (queued) void syncSessionArchives(queued.userId, queued.ids).catch(() => undefined)
+    if (localStorage.getItem('hyperion-progress-owner') !== userId) return false
+    for (const item of uploads) localStorage.setItem(archiveMarker(userId, item.sessionId), item.hash)
+    uploads = []
+    return true
   }
+  for (const id of ids) {
+    if (localStorage.getItem('hyperion-progress-owner') !== userId) return
+    const local = await getLocalSessionSnapshot(id)
+    if (localStorage.getItem('hyperion-progress-owner') !== userId) return
+    if (!local) {
+      const retryKey = userId + ':' + id
+      if ((missingArchiveRetryAt.get(retryKey) ?? 0) > Date.now()) continue
+      const result = await loadSessionSnapshot(id)
+      if (result.status === 'unavailable' || result.status === 'sign-in-required') {
+        deferArchiveSync(userId); return
+      }
+      if (result.status === 'account-changed') return
+      if (result.status === 'not-found') missingArchiveRetryAt.set(retryKey, Date.now() + 15 * 60_000)
+      else missingArchiveRetryAt.delete(retryKey)
+      continue
+    }
+    const hash = await archiveSnapshotHash(local)
+    if (localStorage.getItem(archiveMarker(userId, id)) === hash) continue
+    const candidate = { sessionId: id, snapshot: local, hash }
+    // Stream bounded batches instead of decrypting an entire large history at once.
+    if (uploads.length && archiveBatches([...uploads, candidate]).length > 1 && !await flushUploads()) return
+    uploads.push(candidate)
+    if (uploads.length === 10 && !await flushUploads()) return
+  }
+  if (!await flushUploads()) return
+  archiveRetryState.delete(userId)
 }
 
 /** Retained for older callers: license expiry must not delete saved audits. */

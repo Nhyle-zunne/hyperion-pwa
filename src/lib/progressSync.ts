@@ -1,5 +1,6 @@
 import type { SavedQuestionContext } from './savedQuestionSets'
 import { syncSessionArchives } from './sessionArchive'
+import { ProgressRequestPolicy } from './progressRequestPolicy'
 import type { Question, TrackId, UserAnswer } from '../types/question'
 import type { SessionMode } from '../stores/historyStore'
 import { useHistoryStore } from '../stores/historyStore'
@@ -66,9 +67,13 @@ interface CloudProgressRow {
 let started = false
 let hydrating = false
 let activeUserId: string | null = null
+let authIdentity: string | null | undefined
+let authEpoch = 0
 let cloudReady = false
 let uploadTimer: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
+let archiveTimer: ReturnType<typeof setTimeout> | null = null
+const requestPolicy = new ProgressRequestPolicy({ getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) })
 let currentGeneration = 0
 let cloudUpdatedAt: string | null = null
 let cloudVersionLoaded = false
@@ -700,7 +705,7 @@ async function invokeCompressedProgressWrite(
     !supabaseAnonKey ||
     new TextEncoder().encode(serialized).byteLength < 4096
   ) {
-    return supabase!.functions.invoke('learning-progress', { body })
+    return supabase!.functions.invoke('learning-progress', { headers: { Authorization: `Bearer ${accessToken}` }, body })
   }
 
   const compressedBody = await new Response(
@@ -730,10 +735,11 @@ async function invokeCompressedProgressWrite(
 }
 
 async function uploadSnapshot(): Promise<void> {
+  if (navigator.onLine === false) return
   if (!supabase || !activeUserId || !cloudReady || hydrating) return
   const expectedUserId = activeUserId
   const { data: sessionData } = await supabase.auth.getSession()
-  if (!sessionData.session?.user || sessionData.session.user.id !== expectedUserId || activeUserId !== expectedUserId) return
+  if (!sessionData.session?.user || sessionData.session.user.id !== expectedUserId || activeUserId !== expectedUserId || (authIdentity !== undefined && authIdentity !== expectedUserId)) return
   if (uploadInFlight) {
     uploadQueued = true
     return
@@ -766,6 +772,8 @@ async function uploadSnapshot(): Promise<void> {
   }
 
   uploadInFlight = true
+  const generation = currentGeneration
+  const isCurrent = () => activeUserId === userId && currentGeneration === generation && (authIdentity === undefined || authIdentity === userId)
   const key = dirtyKey(userId)
   const dirtyAtStart = (() => { try { return localStorage.getItem(key) } catch { return null } })()
   const snapshot = captureSnapshot()
@@ -773,6 +781,7 @@ async function uploadSnapshot(): Promise<void> {
 
   try {
     const signatureHash = await hashProgressSignature(snapshotSignature)
+    if (!isCurrent()) return
     const sharedSignature = (() => {
       try { return localStorage.getItem(persistedSignatureKey(userId)) } catch { return null }
     })()
@@ -807,8 +816,9 @@ async function uploadSnapshot(): Promise<void> {
     let latestSnapshot: LearningProgressSnapshot | null = cloudSnapshot
     if (!cloudVersionLoaded) {
       const { data: latestResult, error: readError } = await supabase.functions.invoke('learning-progress', {
-        body: { action: 'read' }
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: { action: 'read' }
       })
+      if (!isCurrent()) return
       if (readError) throw readError
       expectedUpdatedAt = typeof latestResult?.updated_at === 'string' ? latestResult.updated_at : null
       latestSnapshot = latestResult?.data && isSnapshot(latestResult.data)
@@ -831,7 +841,9 @@ async function uploadSnapshot(): Promise<void> {
         expected_updated_at: expectedUpdatedAt
       }, sessionData.session.access_token)
 
+      if (!isCurrent()) return
       if (!writeError && writeResult?.ok === true) {
+        requestPolicy.succeeded(userId)
         expectedUpdatedAt = typeof writeResult.updated_at === 'string' ? writeResult.updated_at : expectedUpdatedAt
         cloudUpdatedAt = expectedUpdatedAt
         cloudVersionLoaded = true
@@ -854,8 +866,9 @@ async function uploadSnapshot(): Promise<void> {
       if (!isConflict || attempt === 2) throw writeError
 
       const refreshed = await supabase.functions.invoke('learning-progress', {
-        body: { action: 'read' }
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: { action: 'read' }
       })
+      if (!isCurrent()) return
       if (refreshed.error) throw refreshed.error
       expectedUpdatedAt = typeof refreshed.data?.updated_at === 'string'
         ? refreshed.data.updated_at
@@ -883,9 +896,10 @@ async function uploadSnapshot(): Promise<void> {
       }
     } catch { /* successful cloud write is not undone by local storage failures */ }
   } catch (error) {
+    if (!isCurrent()) return
     cloudReady = false
     console.warn('[Hyperion progress sync] Cloud save failed; progress remains local.', error)
-    if (navigator.onLine !== false) retryTimer = setTimeout(() => { void initializeUser(userId) }, 5000)
+    scheduleProgressRetry(userId)
   } finally {
     uploadInFlight = false
     lock.release()
@@ -922,18 +936,49 @@ async function migrateLegacyProgressCaches(): Promise<void> {
   await legacyProgressCacheMigration
 }
 
-const initializationPromises = new Map<string, Promise<void>>()
+function armProgressRetry(userId: string, at: number): void {
+  if (retryTimer) clearTimeout(retryTimer)
+  retryTimer = null
+  if (navigator.onLine === false) return
+  retryTimer = setTimeout(() => { retryTimer = null; void initializeUser(userId) }, Math.max(0, at - Date.now()))
+}
 
-async function initializeUser(userId: string): Promise<void> {
-  const existing = initializationPromises.get(userId)
-  if (existing) return existing
+function scheduleProgressRetry(userId: string): void {
+  armProgressRetry(userId, requestPolicy.fail(userId))
+}
 
-  const pending = initializeUserInternal(userId)
-  initializationPromises.set(userId, pending)
+async function recoverCloudCollections(userId: string, accessToken: string, missingRow = false): Promise<boolean> {
+  if (!requestPolicy.needsRecovery(userId, missingRow)) return false
   try {
-    await pending
+    const result = await supabase!.functions.invoke('learning-progress', { headers: { Authorization: `Bearer ${accessToken}` }, body: { action: 'recover-saved' } })
+    if (result.error || result.data?.ok !== true) throw result.error || new Error('Recovery was not acknowledged.')
+    requestPolicy.recovered(userId)
+    return true
+  } catch { requestPolicy.recoveryFailed(userId); return false }
+}
+
+const initializationPromises = new Map<string, { epoch: number; promise: Promise<void> }>()
+
+async function initializeUser(userId: string, force = false): Promise<void> {
+  if (authIdentity !== undefined && authIdentity !== userId) return
+  const existing = initializationPromises.get(userId)
+  if (existing?.epoch === authEpoch) return existing.promise
+
+  if (navigator.onLine === false) { window.dispatchEvent(new Event('hyperion:learning-progress-ready')); return }
+  if (requestPolicy.retryAt(userId) > Date.now()) { armProgressRetry(userId, requestPolicy.retryAt(userId)); return }
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
+  const epoch = authEpoch
+  const job = { epoch, promise: initializeUserInternal(userId, force, epoch) }
+  initializationPromises.set(userId, job)
+  try {
+    await job.promise
+  } catch (error) {
+    if (epoch !== authEpoch || (authIdentity !== undefined && authIdentity !== userId)) return
+    console.warn('[Hyperion progress sync] Local preparation failed; saved progress is retained.', error)
+    window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
+    scheduleProgressRetry(userId)
   } finally {
-    if (initializationPromises.get(userId) === pending) initializationPromises.delete(userId)
+    if (initializationPromises.get(userId) === job) initializationPromises.delete(userId)
   }
 }
 
@@ -948,18 +993,21 @@ async function waitForProgressHydration(): Promise<void> {
   }))
 }
 
-async function initializeUserInternal(userId: string): Promise<void> {
+async function initializeUserInternal(userId: string, force: boolean, epoch: number): Promise<void> {
   if (!supabase) return
   await waitForProgressHydration()
+  if (epoch !== authEpoch) return
   await migrateLegacyProgressCaches()
+  if (epoch !== authEpoch) return
   const currentOwner = (() => { try { return localStorage.getItem(OWNER_KEY) } catch { return null } })()
   if (currentOwner === userId || currentOwner === null) {
     const recovered = await recoverSavedCollections(currentOwner)
+    if (epoch !== authEpoch) return
     if (recovered) await rehydratePersistedStores()
   }
   const { data: sessionData } = await supabase.auth.getSession()
-  if (!sessionData.session?.user || sessionData.session.user.id !== userId) return
-  if (cloudReady && activeUserId === userId) return
+  if (epoch !== authEpoch || !sessionData.session?.user || sessionData.session.user.id !== userId || (authIdentity !== undefined && authIdentity !== userId)) return
+  if (!force && cloudReady && activeUserId === userId) return
   const generation = ++currentGeneration
   if (uploadTimer) { clearTimeout(uploadTimer); uploadTimer = null }
   cloudReady = false
@@ -985,25 +1033,30 @@ async function initializeUserInternal(userId: string): Promise<void> {
 
   let row: CloudProgressRow | null = null
   try {
-    // New servers can recover this authenticated account's surviving revisions.
-    // Older deployments may not expose the action yet; ordinary restore still runs.
-    try { await supabase.functions.invoke('learning-progress', { body: { action: 'recover-saved' } }) } catch { /* optional recovery service */ }
-    const { data, error } = await supabase.functions.invoke('learning-progress', {
-      body: { action: 'read' }
+    await recoverCloudCollections(userId, sessionData.session.access_token)
+    if (generation !== currentGeneration) return
+    let { data, error } = await supabase.functions.invoke('learning-progress', {
+      headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: { action: 'read' }
     })
+    if (generation !== currentGeneration) return
     if (error) throw error
+    if (!data?.data && await recoverCloudCollections(userId, sessionData.session.access_token, true)) {
+      const reread = await supabase.functions.invoke('learning-progress', { headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: { action: 'read' } })
+      if (generation !== currentGeneration) return
+      if (reread.error) throw reread.error
+      data = reread.data
+    }
     row = data?.data && isSnapshot(data.data)
       ? { data: data.data as LearningProgressSnapshot, updated_at: typeof data.updated_at === 'string' ? data.updated_at : '' }
       : null
   } catch (error) {
+    if (generation !== currentGeneration) return
     // Do not overwrite a local account's data when the cloud read fails. The user
     // can continue locally; reconnecting or re-authenticating will retry hydration.
     console.warn('[Hyperion progress sync] Cloud restore failed; keeping local progress.', error)
     window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
     if (localStorage.getItem(OWNER_KEY) === userId) activeUserId = userId
-    if (navigator.onLine !== false) {
-      retryTimer = setTimeout(() => { void initializeUser(userId) }, 8000)
-    }
+    scheduleProgressRetry(userId)
     return
   }
   if (generation !== currentGeneration) return
@@ -1060,18 +1113,20 @@ async function initializeUserInternal(userId: string): Promise<void> {
   try {
     await applySnapshot(snapshotToApply, userId, generation)
   } catch (error) {
+    if (generation !== currentGeneration) return
     // Keep this device usable, but never silently mark failed encrypted restoration
     // as complete. A later retry can recover the cloud snapshot safely.
     console.warn('[Hyperion progress sync] Encrypted progress restore failed.', error)
     window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
     if (retryTimer) clearTimeout(retryTimer)
-    if (navigator.onLine !== false) retryTimer = setTimeout(() => { void initializeUser(userId) }, 8000)
+    scheduleProgressRetry(userId)
     return
   }
   if (generation !== currentGeneration) return
 
   try {
     await writeEncryptedPersistedValue(accountCacheKey(userId), JSON.stringify(snapshotToApply), userId)
+    if (generation !== currentGeneration) return
     localStorage.setItem(OWNER_KEY, userId)
     if (!shouldUpload) {
       localStorage.removeItem(dirtyKey(userId))
@@ -1091,7 +1146,9 @@ async function initializeUserInternal(userId: string): Promise<void> {
       )
     } catch { /* cross-tab hint is optional */ }
   }
+  if (generation !== currentGeneration) return
   cloudReady = true
+  requestPolicy.succeeded(userId)
   void syncCurrentSessionArchives(userId)
   if (shouldUpload) {
     try {
@@ -1149,15 +1206,16 @@ export function startLearningProgressSync(): () => void {
   const client = supabase
   if (!client || started) return () => undefined
   started = true
+  authIdentity = undefined
   observeStoreChanges()
 
   const onOnline = () => {
     if (activeUserId) {
-      cloudReady = false
-      void initializeUser(activeUserId)
+      requestPolicy.wake(activeUserId)
+      void initializeUser(activeUserId, true)
     } else {
       void client.auth.getSession().then(({ data }) => {
-        if (data.session?.user) void initializeUser(data.session.user.id)
+        if (data.session?.user) { requestPolicy.wake(data.session.user.id); void initializeUser(data.session.user.id, true) }
       })
     }
   }
@@ -1166,12 +1224,30 @@ export function startLearningProgressSync(): () => void {
   const handleSavedPracticeChange = () => noteLocalChange('practice')
   window.addEventListener('hyperion:progress-local-change', handleMockPlanChange)
   window.addEventListener('hyperion:practice-progress-saved', handleSavedPracticeChange)
-  const handleArchiveSaved = () => { noteLocalChange('history'); if (activeUserId) void syncCurrentSessionArchives(activeUserId) }
+  const handleArchiveSaved = () => {
+    // History metadata has its own store subscription. Archive-only writes must
+    // not dirty and re-upload the entire progress snapshot.
+    if (archiveTimer) return
+    archiveTimer = setTimeout(() => {
+      archiveTimer = null
+      if (activeUserId) void syncCurrentSessionArchives(activeUserId)
+    }, 750)
+  }
   window.addEventListener('hyperion:session-archive-saved', handleArchiveSaved)
 
   authSubscription = client.auth.onAuthStateChange((_event, session) => {
+    // Invalidate old responses immediately, without querying inside Auth's lock.
+    const nextIdentity = session?.user?.id ?? null
+    if (authIdentity !== nextIdentity) {
+      authIdentity = nextIdentity
+      authEpoch++
+      currentGeneration++
+      cloudReady = false
+      if (nextIdentity) requestPolicy.succeeded(nextIdentity)
+    }
     // Avoid doing Supabase queries synchronously inside the auth callback.
     window.setTimeout(() => {
+      if (!started || authIdentity !== nextIdentity) return
       const userId = session?.user?.id ?? null
       if (!userId) {
         currentGeneration++
@@ -1184,6 +1260,8 @@ export function startLearningProgressSync(): () => void {
         lastUploadedSignature = null
         cloudSnapshot = null
         if (uploadTimer) { clearTimeout(uploadTimer); uploadTimer = null }
+        if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
+        if (archiveTimer) { clearTimeout(archiveTimer); archiveTimer = null }
         return
       }
       if (userId !== activeUserId || !cloudReady) void initializeUser(userId)
@@ -1191,16 +1269,21 @@ export function startLearningProgressSync(): () => void {
   }).data.subscription
 
   void client.auth.getSession().then(({ data }) => {
-    if (data.session?.user) void initializeUser(data.session.user.id)
+    const userId = data.session?.user.id ?? null
+    if (authIdentity === undefined) authIdentity = userId
+    if (data.session?.user && authIdentity === userId) void initializeUser(data.session.user.id)
   }).catch((error) => console.warn('[Hyperion progress sync] Unable to read current auth session.', error))
 
   return () => {
     started = false
+    authEpoch++
     currentGeneration++
     activeUserId = null
     cloudReady = false
     if (uploadTimer) clearTimeout(uploadTimer)
     if (retryTimer) clearTimeout(retryTimer)
+    if (archiveTimer) clearTimeout(archiveTimer)
+    uploadTimer = retryTimer = archiveTimer = null
     cloudUpdatedAt = null
     lastUploadedUserId = null
     lastUploadedSignature = null

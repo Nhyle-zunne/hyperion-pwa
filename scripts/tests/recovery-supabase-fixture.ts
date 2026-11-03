@@ -5,7 +5,15 @@ export const supabaseAnonKey = undefined
 export const fixtureUsers = { a: '11111111-1111-4111-8111-111111111111', b: '22222222-2222-4222-8222-222222222222' }
 let userId = localStorage.getItem('fixture-user') || fixtureUsers.a
 const listeners = new Set<(event: string, session: unknown) => void>()
-export const fixtureCalls: { userId: string; action: string; sessionId?: string }[] = []
+export const fixtureCalls: { userId: string; action: string; sessionId?: string; sessionIds?: string[] }[] = []
+let nextReadGate: Promise<void> | null = null
+let releaseRead: (() => void) | undefined
+export function fixtureHoldNextRead() { nextReadGate = new Promise(resolve => { releaseRead = resolve }) }
+export function fixtureReleaseRead() { releaseRead?.() }
+let archiveGate: Promise<void> | null = null
+let releaseArchive: (() => void) | undefined
+export function fixturePauseArchives() { archiveGate = new Promise(resolve => { releaseArchive = resolve }) }
+export function fixtureReleaseArchives() { archiveGate = null; releaseArchive?.() }
 const session = () => ({ user: { id: userId, email: 'synthetic@example.invalid' }, access_token: 'fixture-' + userId })
 export function fixtureCloud(id = userId) { const raw = localStorage.getItem('fixture-cloud:' + id); return raw ? JSON.parse(raw) : null }
 export function fixtureSetUser(id: string) { userId = id; localStorage.setItem('fixture-user', id); for (const listener of listeners) listener('SIGNED_IN', session()) }
@@ -19,9 +27,11 @@ export const supabase = {
       if (navigator.onLine === false) return { data: null, error: new Error('Synthetic offline connection') }
       const body = request.body ?? {}
       const bound = request.headers?.Authorization?.replace('Bearer fixture-', '') || userId
-      fixtureCalls.push({ userId: bound, action: body.action ?? name, sessionId: body.sessionId })
+      fixtureCalls.push({ userId: bound, action: body.action ?? name, sessionId: body.sessionId, sessionIds: body.sessions?.map((entry: any) => entry.sessionId) })
       if (name !== 'learning-progress') return { data: { ok: true, isAdmin: true }, error: null }
+      if (body.action === 'read' && localStorage.getItem('fixture-progress-error')) return { data: null, error: Object.assign(new Error('Synthetic progress outage'), { context: { status: 503 } }) }
       if (body.action === 'read') {
+        const gate = nextReadGate; nextReadGate = null; await gate
         const saved = fixtureCloud(bound)
         return { data: { data: saved?.data ?? null, updated_at: saved?.updated_at ?? null }, error: null }
       }
@@ -33,8 +43,13 @@ export const supabase = {
         return { data: { ok: true, updated_at }, error: null }
       }
       if (body.action === 'recover-saved') return { data: { ok: true }, error: null }
+      if (body.action === 'write-session' || body.action === 'write-sessions') await archiveGate
       const archiveKey = `fixture-archive:${bound}:${body.sessionId}`
-      if (body.action === 'write-session' && localStorage.getItem('fixture-archive-error')) return { data: null, error: Object.assign(new Error('Unknown progress action.'), { context: { status: Number(localStorage.getItem('fixture-archive-error')) } }) }
+      if ((body.action === 'write-session' || body.action === 'write-sessions') && localStorage.getItem('fixture-archive-error')) return { data: null, error: Object.assign(new Error('Unknown progress action.'), { context: { status: Number(localStorage.getItem('fixture-archive-error')) } }) }
+      if (body.action === 'write-sessions') {
+        for (const entry of body.sessions) localStorage.setItem(`fixture-archive:${bound}:${entry.sessionId}`, JSON.stringify(entry.snapshot))
+        return { data: { ok: true, sessionIds: body.sessions.map((entry: any) => entry.sessionId) }, error: null }
+      }
       if (body.action === 'write-session') {
         localStorage.setItem(archiveKey, JSON.stringify(body.snapshot))
         return { data: { ok: true }, error: null }

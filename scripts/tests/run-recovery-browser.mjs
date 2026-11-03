@@ -9,8 +9,9 @@ const root = fileURLToPath(new URL('../../', import.meta.url))
 const vite = fileURLToPath(new URL('../../node_modules/vite/bin/vite.js', import.meta.url))
 const out = await mkdtemp(join(tmpdir(), 'hyperion-recovery-test-'))
 const publisher = process.env.HYPERION_BROWSER_FIXTURE === 'publisher'
-const entry = publisher ? 'publisher-browser' : 'recovery-browser'
-const env = { ...process.env, HYPERION_BROWSER_FIXTURE: publisher ? 'publisher' : 'recovery', HYPERION_BROWSER_TEST_OUTPUT: out }
+const sync = process.env.HYPERION_BROWSER_FIXTURE === 'sync'
+const entry = sync ? 'sync-browser' : publisher ? 'publisher-browser' : 'recovery-browser'
+const env = { ...process.env, HYPERION_BROWSER_FIXTURE: sync ? 'sync' : publisher ? 'publisher' : 'recovery', HYPERION_BROWSER_TEST_OUTPUT: out, VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '', VITE_QUESTION_BANK_DELIVERY: '' }
 const run = args => new Promise((resolve, reject) => {
   const child = spawn(process.execPath, args, { cwd: root, env, stdio: 'inherit' })
   child.once('error', reject)

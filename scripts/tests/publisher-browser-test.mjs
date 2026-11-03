@@ -3,6 +3,12 @@ import assert from 'node:assert/strict'
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']})
 try {
  const page=await browser.newPage({viewport:{width:1191,height:800}}),calls=[];let configured=true,failValidation=false,failPublishOnce=true
+ const externalRequests=[]
+ await page.route('**/*',route=>{
+  const host=new URL(route.request().url()).hostname
+  if(!['localhost','127.0.0.1','[::1]'].includes(host)){externalRequests.push(host);return route.abort()}
+  return route.continue()
+ })
  await page.route('**/api/question-bank/admin',async route=>{
   const body=route.request().postDataJSON();calls.push(body)
   assert.equal(route.request().headers().authorization.startsWith('Bearer fixture-'),true)
@@ -33,5 +39,6 @@ try {
  await page.setViewportSize({width:375,height:812});await page.screenshot({path:'/tmp/hyperion-publisher-mobile.png'})
  configured=false;await page.reload();await upload();await page.getByRole('status').getByText(/GITHUB_BANK_WRITE_TOKEN/).waitFor();assert.equal(await page.getByRole('button',{name:'VALIDATE BATCH',exact:true}).isDisabled(),true)
  configured=true;failValidation=true;await page.reload();await upload();await page.getByRole('button',{name:'VALIDATE BATCH',exact:true}).click();await page.getByRole('status').getByText('Reordered questions are not allowed.').waitFor();assert.equal(calls.filter(call=>call.action==='publish').length,2)
+ assert.deepEqual(externalRequests,[],'Publisher fixture must never contact production')
  console.log('PASS: mapped GitHub upload, validation preview with answer corrections, explicit publish, commit link, missing-secret guard and validation failure preservation.')
 }finally{await browser.close()}

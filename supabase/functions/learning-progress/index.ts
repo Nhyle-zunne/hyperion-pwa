@@ -387,6 +387,31 @@ Deno.serve(async req => {
     return json(req, { ok: true, recovery: data })
   }
 
+  if (body.action === 'write-sessions') {
+    const entries = body.sessions
+    if (!Array.isArray(entries) || entries.length < 1 || entries.length > 10 ||
+        entries.some(entry => !isRecord(entry) || typeof entry.sessionId !== 'string' ||
+          entry.sessionId.length < 1 || entry.sessionId.length > 180 ||
+          !isRecord(entry.snapshot) || entry.snapshot.sessionId !== entry.sessionId) ||
+        new Set(entries.map(entry => entry.sessionId)).size !== entries.length) {
+      return json(req, { error: 'Invalid session archive batch.' }, 400)
+    }
+    try {
+      const allowed = await loadStorageTracks(admin, user)
+      const rows = []
+      // Verify every item before the single atomic database statement. An invalid
+      // later item must never leave an acknowledged, partially written batch.
+      for (const entry of entries) {
+        const verified = await sanitizeSnapshot(client, { version: 1, storage: {}, activeSession: entry.snapshot }, allowed)
+        if (!verified.activeSession) return json(req, { error: 'Saved session access could not be verified.' }, 403)
+        rows.push({ user_id: user.id, session_id: entry.sessionId, data: verified.activeSession, updated_at: new Date().toISOString() })
+      }
+      const { error } = await admin.from('user_learning_session_archives').upsert(rows, { onConflict: 'user_id,session_id' })
+      if (error) throw error
+      return json(req, { ok: true, sessionIds: entries.map(entry => entry.sessionId) })
+    } catch { return json(req, { error: 'Session archives could not be synchronized. The local copies are preserved.' }, 503) }
+  }
+
   if (body.action === 'read-session' || body.action === 'write-session') {
     const sessionId = body.sessionId
     if (typeof sessionId !== 'string' || sessionId.length < 1 || sessionId.length > 180) return json(req, { error: 'Invalid session ID.' }, 400)
