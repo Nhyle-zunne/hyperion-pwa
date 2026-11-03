@@ -573,7 +573,7 @@ async function loadQuestionsByCompetenceInternal(
     track, competenceId, part, freeOnly, startItem, limit, randomSample
   )
   if (cachedCurrent) return cachedCurrent
-  if (!supabase) return getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
+  if (!supabase && !(freeOnly && import.meta.env.PROD && import.meta.env.VITE_QUESTION_BANK_DELIVERY === 'github')) return getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
   const firstOffset = Math.max(0, Math.floor(startItem || 1) - 1)
   let rangeRevision: string | undefined
   let totalWanted = limit == null ? 0 : Math.max(0, Math.floor(limit))
@@ -905,7 +905,7 @@ async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = fals
   if (cachedOnlineCounts && Date.now() - cachedOnlineCounts.cachedAt < ONLINE_QUESTION_CACHE_TTL_MS) {
     return cachedOnlineCounts.counts
   }
-  if (!supabase) throw new Error('Protected question service is not configured.');
+  if (!supabase && !(import.meta.env.PROD && import.meta.env.VITE_QUESTION_BANK_DELIVERY === 'github')) throw new Error('Protected question service is not configured.');
   const { data, error } = await invokeQuestionBank({
     body: { action: 'counts', track, freeOnly }
   });
@@ -926,7 +926,7 @@ async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = fals
 }
 /** Returns the published full-bank total for catalog display. This endpoint exposes counts only, never question content. */
 export async function getPublicQuestionCountByTrack(track: TrackId): Promise<number> {
-  if (!supabase) throw new Error('Protected question service is not configured.');
+  if (!supabase && !(import.meta.env.PROD && import.meta.env.VITE_QUESTION_BANK_DELIVERY === 'github')) throw new Error('Protected question service is not configured.');
   const { data, error } = await invokeQuestionBank({
     body: { action: 'catalog-counts', track }
   });
