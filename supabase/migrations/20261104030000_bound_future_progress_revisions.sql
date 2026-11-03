@@ -1,3 +1,4 @@
+begin;
 -- Future-only, account-scoped recovery retention.
 -- Preserve EVERY revision that already existed when this migration was installed.
 -- Only subsequent snapshots are eligible for the bounded 10-revision rolling window.
@@ -69,3 +70,4 @@ begin
 end $$;
 revoke all on function public.preserve_learning_progress() from public, anon, authenticated;
 grant execute on function public.preserve_learning_progress() to service_role;
+commit;
