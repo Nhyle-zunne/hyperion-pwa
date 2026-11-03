@@ -7,7 +7,7 @@ import { useHistoryStore } from '../stores/historyStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useVaultStore } from '../stores/vaultStore'
 import type { TrackId } from '../types/question'
-import { checkOfflineQuestionPackUpdates, downloadOfflinePack, ensureOfflineFreeSamplePack, getQuestionCountsByTrack, getPublicQuestionCountByTrack } from '../lib/questionBank'
+import { checkOfflineQuestionPackUpdates, downloadOfflinePack, getQuestionCountsByTrack, getPublicQuestionCountByTrack } from '../lib/questionBank'
 import { getCachedOfflineEntitlementSnapshot, getOfflinePackStatus } from '../lib/offlineQuestionCache'
 import { supabase } from '../lib/supabase'
 import './TrackHubScreen.css'
@@ -223,13 +223,15 @@ export default function TrackHubScreen() {
       setOfflineLicenseAdmin(accountMatches && snapshot?.isAdmin === true)
     }
     const loadStatus = async () => {
-      const status = await getOfflinePackStatus(track, !unlocked)
+      const status = await getOfflinePackStatus(track, false)
       if (isCurrent()) setOfflineStatus(status?.complete ? status : null)
       return status?.complete ? status : null
     }
     const prepareOffline = async () => {
       try {
-        if (!unlocked && !online) await ensureOfflineFreeSamplePack(track)
+        // Guests, signed-out users and expired tracks never read/download
+        // offline packs. Free Reviewer is intentionally online-only.
+        if (!unlocked) return
         await loadStatus()
         await loadLicense()
         if (!isCurrent() || !unlocked || !online || !accountUserId) return
@@ -260,7 +262,17 @@ export default function TrackHubScreen() {
                 ...transfer, downloaded, total,
                 phase: total > 0 && downloaded >= total ? 'saving' : 'downloading'
               })
-            }, { background: true })
+            }, {
+              background: true,
+              canContinue: () => {
+                const access = useLicenseStore.getState()
+                return latestOfflineContext.current === offlineContext &&
+                  accountGeneration.current === generation &&
+                  access.entitlementsVerified &&
+                  (access.isAllAccessUnlocked || access.isTrackUnlocked(track)) &&
+                  navigator.onLine !== false
+              }
+            })
             if (!isCurrent()) return
             await loadStatus()
             await loadLicense()
@@ -439,7 +451,9 @@ export default function TrackHubScreen() {
                   ? online
                     ? 'Offline study prepares automatically while you are online and signed in.'
                     : 'Connect to prepare offline study automatically.'
-                  : 'Activate a track to prepare licensed offline study automatically.'}
+                  : online
+                    ? 'Free Reviewer is online-only. Downloading questions for offline use requires an active license.'
+                    : 'Connect to the internet to use Free Reviewer. Offline downloads require an active license.'}
         </p>
         {(transferActive || checkingOffline || offlinePreparing || offlineStatus) && (
           <div className="hub-offline-progress">
