@@ -2,7 +2,7 @@
 import {spawn} from 'node:child_process'
 import {readFile,writeFile} from 'node:fs/promises'
 import assert from 'node:assert/strict'
-import {guardedProgressRevisionSql} from '../lib/progressRevisionDeployment.mjs'
+import {guardedProgressRevisionSql,migrationBodyForGuard} from '../lib/progressRevisionDeployment.mjs'
 const container=process.env.HYPERION_REVISION_TEST_CONTAINER
 const base=process.env.DATABASE_URL
 if(container&&!/^hyperion-revision-test-[a-z0-9-]+$/.test(container))throw Error('Use an isolated revision test container.')
@@ -19,6 +19,7 @@ const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222
 const baseline=['20261026071721_create_user_learning_progress.sql','20261028181820_revoke_client_execute_on_learning_progress_trigger.sql','20261029032520_revoke_client_access_to_learning_progress.sql','20261031094513_add_low_egress_progress_snapshot_comparison.sql','20261102090000_preserve_saved_progress_and_session_audits.sql']
 const migration=await readFile('supabase/migrations/20261104010000_optimize_progress_revision_storage.sql','utf8')
 const exactNoops=await readFile('supabase/migrations/20261104020000_preserve_exact_progress_noops.sql','utf8')
+const retention=await readFile('supabase/migrations/20261104030000_bound_future_progress_revisions.sql','utf8')
 const rollback=await readFile('supabase/rollbacks/20261104010000_revision_storage.sql','utf8')
 const question=i=>({id:'synthetic-'+i,track:'DECK_OIC_NW',questionText:Array.from({length:70},(_,n)=>`Synthetic navigation ${i} sector ${(n*17+i)%997}.`).join(' '),options:['Port '+i,'Starboard '+i],correctAnswerIndex:i%2,savedAt:100+i})
 const snapshot={version:1,savedAt:100,changedSections:[],activeSessionChangedAt:10,activeSession:null,storage:{'hyperion-bookmarks':JSON.stringify({version:0,state:{items:Array.from({length:75},(_,i)=>question(i))}}),'hyperion-vault':JSON.stringify({version:0,state:{items:[{...question(90),lastWrongAt:100,wrongCount:1}]}}),'hyperion-history':JSON.stringify({version:0,state:{entries:[{id:'audit',answers:{q1:1}}],savedSessions:[]}}),'hyperion-progress-deletions':JSON.stringify({version:1,bookmarks:{},vault:{}})}}
@@ -54,12 +55,34 @@ const retry=structuredClone(before.data);retry.storage.deviceB='offline B'
 await query(db,`update user_learning_progress set data=${lit(JSON.stringify(retry))}::jsonb where user_id='${a}'and updated_at=${lit(after.updated_at)}::timestamptz;`)
 const merged=JSON.parse(await query(db,`select data from user_learning_progress where user_id='${a}';`))
 assert.equal(merged.storage.deviceA,'offline A');assert.equal(merged.storage.deviceB,'offline B')
+// The future-only policy must not change existing records when installed.
+const protectedBefore=await query(db,"select md5(string_agg(id::text||user_id::text||data::text||captured_at::text,'' order by id)) from user_learning_progress_revisions")
+await query(db,guardedProgressRevisionSql(migrationBodyForGuard(retention)))
+const cutoff=Number(await query(db,"select protected_through_id from user_learning_progress_revision_retention"))
+assert.ok(cutoff>0,'Capture a real existing-revision watermark')
+assert.equal(
+ await query(db,`select md5(string_agg(id::text||user_id::text||data::text||captured_at::text,'' order by id)) from user_learning_progress_revisions where id<=${cutoff}`),
+ protectedBefore,
+ 'Installing the future cap cannot touch previously retained progress'
+)
+await query(db,`do $revisions$ begin for i in 1..25 loop
+ update user_learning_progress set data=jsonb_set(data,'{futureWrite}',to_jsonb(i))
+ where user_id='${a}';
+end loop;end $revisions$;`)
+const futures=Number(await query(db,`select count(*) from user_learning_progress_revisions where user_id='${a}' and id>${cutoff}`))
+assert.equal(futures,10,'Keep the ten newest future full snapshots for each account')
+assert.equal(
+ await query(db,`select md5(string_agg(id::text||user_id::text||data::text||captured_at::text,'' order by id)) from user_learning_progress_revisions where id<=${cutoff}`),
+ protectedBefore,
+ 'Future pruning may never delete an older recovery snapshot'
+)
+results.futureRetention='25 genuine future updates -> 10 newest snapshots; all pre-migration records intact'
 const stateSql=`select json_build_object('current',md5(string_agg(user_id::text||data::text||updated_at::text,''order by user_id)),'revisions',(select md5(string_agg(id::text||user_id::text||data::text||captured_at::text,''order by id))from user_learning_progress_revisions))from user_learning_progress;`
 const fingerprints=await query(db,stateSql)
 await assert.rejects(query(db,guardedProgressRevisionSql("update user_learning_progress set data=jsonb_set(data,'{guardProbe}','true'::jsonb);")),/Non-destructive migration guard/)
 assert.equal(await query(db,stateSql),fingerprints,'Guard rejection must roll back all record changes')
 await query(db,guardedProgressRevisionSql(rollback));assert.equal(await query(db,stateSql),fingerprints,'Safety rollback must not modify records')
-await query(db,guardedProgressRevisionSql(migration+exactNoops));assert.equal(await query(db,stateSql),fingerprints,'Reapplying definitions must not modify records')
+await query(db,guardedProgressRevisionSql(migration+exactNoops+migrationBodyForGuard(retention)));assert.equal(await query(db,stateSql),fingerprints,'Reapplying definitions must not modify records')
 results.concurrency='two real PostgreSQL sessions: one winner, stale writer rejected, retry preserves both devices'
 results.rollback='definition-only rollback/reapply retain every current/revision fingerprint'
 console.log(JSON.stringify(results,null,2))
