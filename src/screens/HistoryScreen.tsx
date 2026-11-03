@@ -1,3 +1,4 @@
+import MaterialIcon from '../components/MaterialIcon'
 import KeywordQuestionText from '../components/KeywordQuestionText'
 import QuestionBookmarkButton from '../components/QuestionBookmarkButton'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -478,7 +479,7 @@ export default function HistoryScreen() {
                       <button type="button" className="btn btn-outline" disabled={reviewIndex <= 0 || !filteredReviewQuestions.length} onClick={() => goToReviewQuestion(reviewIndex - 1)}>← Previous</button>
                       <div className="history-audit-palette" ref={paletteRef}>
                         <button type="button" className="btn btn-outline history-audit-palette-trigger" aria-expanded={paletteOpen} aria-controls="history-audit-palette-panel" aria-label={`Question palette, question ${filteredReviewQuestions.length ? reviewIndex + 1 : 0} of ${filteredReviewQuestions.length}`} disabled={!filteredReviewQuestions.length} onClick={() => setPaletteOpen(open => !open)}>
-                          <span aria-hidden="true">▦</span> Palette <span className="history-audit-counter">{filteredReviewQuestions.length ? reviewIndex + 1 : 0}/{filteredReviewQuestions.length}</span>
+                          <MaterialIcon name="filterList" size={20} /> Palette <span className="history-audit-counter">{filteredReviewQuestions.length ? reviewIndex + 1 : 0}/{filteredReviewQuestions.length}</span>
                         </button>
                         {paletteOpen && (
                           <div id="history-audit-palette-panel" className="history-audit-palette-panel" role="group" aria-label="Jump to a question">

@@ -13,6 +13,7 @@ export default function PrivacyPolicyScreen() {
     <div className="screen" style={{ maxWidth: 900, margin: '0 auto', width: '100%' }}>
       <button onClick={() => navigate(-1)} style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>← Back</button>
       <h1 className="page-title">Privacy Policy</h1>
+      <button type="button" className="btn btn-outline" style={{ marginBottom: 12 }} onClick={() => window.dispatchEvent(new Event('hyperion:open-cookie-preferences'))}>Cookie preferences</button>
       <p className="subtitle">Hyperion Maritime Reviewer · Android, Website and PWA</p>
 
       <div className="card" style={{ marginBottom: '1rem', lineHeight: 1.65 }}>

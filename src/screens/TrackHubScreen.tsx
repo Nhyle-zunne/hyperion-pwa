@@ -1,3 +1,4 @@
+import MaterialIcon, { type MaterialIconName } from '../components/MaterialIcon'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -59,7 +60,7 @@ interface Mode {
   title: string
   desc: string
   badge: string
-  icon: string
+  icon: MaterialIconName
   locked: boolean
   className?: string
   onClick: () => void
@@ -268,7 +269,7 @@ export default function TrackHubScreen() {
         ? 'Loading verified free-question count…'
         : `${freeQuestionCount.toLocaleString()} valid questions in the free pool`,
       badge: 'FREE ACCESS',
-      icon: '▰',
+      icon: 'school',
       locked: false,
       className: 'hub-mode-free',
       onClick: () => navigate(`/practice/competences?track=${key}&free=1`)
@@ -277,7 +278,7 @@ export default function TrackHubScreen() {
       title: 'PRACTICE ALL QUESTIONS',
       desc: 'Full question bank, by competence or mixed.',
       badge: unlocked ? 'CUSTOMIZABLE' : 'LOCKED',
-      icon: '☷',
+      icon: 'tune',
       locked: !unlocked,
       onClick: gated('Practice', `/practice/competences?track=${key}`)
     },
@@ -285,7 +286,7 @@ export default function TrackHubScreen() {
       title: 'QUICK SCAN MODE',
       desc: 'Browse questions sequentially with correct answers highlighted. Select a competence to begin.',
       badge: unlocked ? 'READ-ONLY REVIEW' : 'LOCKED',
-      icon: '⌕',
+      icon: 'menuBook',
       locked: !unlocked,
       onClick: gated('Quick Scan', `/quick-scan?track=${key}`)
     },
@@ -293,7 +294,7 @@ export default function TrackHubScreen() {
       title: 'TIMED MOCK EXAM',
       desc: '70% cutoff · timed · MARINA format.',
       badge: 'FREE ACCESS',
-      icon: '◴',
+      icon: 'timer',
       locked: false,
       onClick: () => navigate(`/mock?track=${key}`)
     },
@@ -301,7 +302,7 @@ export default function TrackHubScreen() {
       title: 'FLASHCARD REVISION',
       desc: 'Active recall · tap to flip cards.',
       badge: unlocked ? 'ACTIVE RECALL' : 'LOCKED',
-      icon: '▱',
+      icon: 'style',
       locked: !unlocked,
       onClick: gated('Flashcards', `/flashcards?track=${key}`)
     },
@@ -309,7 +310,7 @@ export default function TrackHubScreen() {
       title: 'MISTAKES NOTEBOOK',
       desc: `${trackMistakes.length} questions to review. Track your wrong answers.`,
       badge: !unlocked ? 'LICENSE REQUIRED' : trackMistakes.length ? `${trackMistakes.length} SAVED` : 'EMPTY',
-      icon: '✧',
+      icon: 'autoFixHigh',
       locked: !unlocked,
       onClick: gated('Mistakes Notebook', `/vault?track=${key}`)
     },
@@ -317,7 +318,7 @@ export default function TrackHubScreen() {
       title: 'SESSION LOG',
       desc: 'Past practice sessions, mock attempts and scores.',
       badge: `${trackHistory.length} LOGS`,
-      icon: '▥',
+      icon: 'analytics',
       locked: false,
       onClick: () => navigate(`/history?track=${key}`)
     },
@@ -325,7 +326,7 @@ export default function TrackHubScreen() {
       title: 'SEARCH QUESTION BANK',
       desc: 'Search by keyword, item code, or competence.',
       badge: unlocked ? 'DATABASE' : 'LOCKED',
-      icon: '⌕',
+      icon: 'search',
       locked: !unlocked,
       onClick: gated('Search', `/search?track=${key}`)
     }
@@ -423,7 +424,7 @@ export default function TrackHubScreen() {
               aria-label={`${mode.title}${mode.locked ? ', locked' : ''}`}
             >
               <div className="hub-mode-top">
-                <span className="hub-mode-icon" aria-hidden="true">{mode.icon}</span>
+                <span className="hub-mode-icon" aria-hidden="true"><MaterialIcon name={mode.locked ? 'lock' : mode.icon} size={22} /></span>
                 <span className={`hub-mode-badge ${mode.locked ? 'badge-muted' : ''} ${mode.className ?? ''}`}>
                   {mode.badge}
                 </span>

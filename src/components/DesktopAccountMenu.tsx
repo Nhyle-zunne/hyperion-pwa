@@ -138,7 +138,8 @@ export default function DesktopAccountMenu() {
         aria-haspopup="true"
         aria-expanded={open}
         aria-controls="desktop-account-dropdown"
-        onClick={() => setOpen(current => !current)}
+        onClick={() => { setOpen(false); navigate('/account?tab=payments') }}
+        onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true) } }}
       >
         <span aria-hidden="true">👤</span>
         Account

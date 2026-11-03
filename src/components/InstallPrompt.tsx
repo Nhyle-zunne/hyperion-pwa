@@ -1,3 +1,4 @@
+import { hasCookieChoice } from './CookieConsent'
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.nhyle.hyperionmaritime'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -9,6 +10,20 @@ type InstallPromptProps = { force?: boolean; variant?: 'card' | 'modal'; iosOnly
 
 export default function InstallPrompt({ force = false, variant = 'card', iosOnly = false }: InstallPromptProps) {
   const { canNativePrompt, installed, isIos, isAndroid, dismissed, promptInstall, dismiss, showInstallUi } = useInstallPrompt()
+  const [cookieChoiceMade, setCookieChoiceMade] = useState(hasCookieChoice)
+  useEffect(() => {
+    const chosen = () => setCookieChoiceMade(true)
+    const reopened = () => setCookieChoiceMade(false)
+    const changed = () => setCookieChoiceMade(hasCookieChoice())
+    window.addEventListener('hyperion:cookie-choice', chosen)
+    window.addEventListener('hyperion:open-cookie-preferences', reopened)
+    window.addEventListener('storage', changed)
+    return () => {
+      window.removeEventListener('hyperion:cookie-choice', chosen)
+      window.removeEventListener('hyperion:open-cookie-preferences', reopened)
+      window.removeEventListener('storage', changed)
+    }
+  }, [])
   const [busy, setBusy] = useState(false)
   const [installMessage, setInstallMessage] = useState('')
 
@@ -21,6 +36,8 @@ export default function InstallPrompt({ force = false, variant = 'card', iosOnly
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [variant, dismissed, force, dismiss])
 
+  // Offer privacy choices before the automatic installation modal. Manual install remains available.
+  if (variant === 'modal' && !force && !cookieChoiceMade) return null
   if (installed || !showInstallUi || (!force && dismissed) || (iosOnly && !isIos)) return null
 
   const startInstall = async () => {
