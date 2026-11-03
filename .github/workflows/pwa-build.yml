@@ -56,6 +56,7 @@ jobs:
       - name: Saved-data database and offline-license regressions
         run: |
           bun run test:saved-data:sql
+          bun run test:progress-revisions
           bun run test:offline-licenses
           bun test scripts/tests/license-refresh.test.ts
           bun test scripts/tests/question-bank-transport.test.ts
@@ -246,3 +247,13 @@ jobs:
           END;
           $tests$;
           SQL
+
+      - name: Set up Node.js for revision concurrency tests
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Revision storage concurrency and rollback (synthetic PostgreSQL)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hyperion_test
+        run: node scripts/tests/progress-revision-pg-test.mjs
