@@ -384,7 +384,30 @@ assert.ok(questionBank.includes('if (body.action === "authorize-session")') && q
 assert.ok(questionBank.includes('fullQuestionFingerprints') && questionBank.includes('questionIds.every(id => questionIdBelongsToTrack(id, track))'), 'Licensed legacy sessions require private-bank fingerprint matches when old question IDs do not match the current track prefix');
 assert.ok(questionBank.includes('const canonicalOptions') && learningProgressFunction.includes('const canonicalOptions'), 'Question access and cloud-progress filtering use stable option-order-independent fingerprints');
 assert.ok(questionBankClient.includes("saveOfflineEntitlements") && questionBankClient.includes("body: { action: 'offline-license' }") && questionBankClient.includes('await hasValidOfflineTrackLease(track, userId)'), 'Paid offline-pack downloads save and verify a signed, track-specific offline entitlement lease');
-assert.ok(questionBankClient.includes("if (await matchesCachedPack(true)) return 'free-sample'") && questionBankClient.includes('if (await hasValidOfflineTrackLease(track)) return \'licensed\''), 'Saved-session fallback supports verified free samples and paid full-bank leases after network/server failures');
+assert.ok(
+  questionBankClient.includes('return hasValidOfflineTrackLease(track)') &&
+  questionBankClient.includes('if (offline) {\n    // Free users must reconnect to review.') &&
+  questionBankClient.includes('Free reviewing is online-only. Open a Free Reviewer competence') &&
+  !questionBankClient.includes("if (await matchesCachedPack(true)) return 'free-sample'"),
+  'Free users cannot access saved free packs offline or trigger bulk fallback downloads; paid tracks require signed offline leases'
+);
+assert.ok(
+  trackHubScreen.includes('if (!isCurrent() || !unlocked || !online || !accountUserId) return') &&
+  trackHubScreen.includes('if (!unlocked) return') &&
+  trackHubScreen.includes('canContinue: () => {') &&
+  !trackHubScreen.includes('if (!unlocked && !online) await ensureOfflineFreeSamplePack(track)'),
+  'Unlicensed track hubs do not prepare/download offline banks, and active transfers stop if their license is revoked'
+);
+assert.ok(
+  questionBank.includes('Bulk question-file downloads require an active track license.') &&
+  questionBank.includes('Question-file downloads require an active track license.'),
+  'Backend rejects bulk and raw CSV file downloads for guests and unlicensed users'
+);
+assert.ok(
+  questionBankClient.includes("if (freeOnly) throw new Error('Offline downloads require an active license for this track.')") &&
+  questionBankClient.includes('assertDownloadAccount()\n  await saveOfflineQuestionPackSets(updates)'),
+  'Paid offline download requires license verification and rechecks account/access before encrypted save'
+);
 assert.ok(
   questionBankClient.includes('QUESTION_BANK_VERSION_CHECK_COOLDOWN_MS = 5 * 60 * 1000') &&
   questionBankClient.includes('offlineQuestionVersionChecksInFlight') &&
@@ -726,6 +749,7 @@ assert.ok(offlineHubScreen.includes('currentOfflineTransfer') && offlineHubScree
 assert.ok(offlineHubScreen.includes('role="progressbar"') && offlineHubScreen.includes('aria-valuenow=') && offlineHubScreen.includes('hub-offline-spinner'), 'Offline readiness exposes accessible progress and a spinner while checking or downloading');
 assert.ok(offlineHubStyles.includes('.hub-offline-progress-track') && offlineHubStyles.includes('hyperion-offline-indeterminate') && offlineHubStyles.includes('hyperion-offline-spin'), 'Offline track UI styles include determinate and indeterminate progress animations');
 
+const trackHubScreen = await read('../src/screens/TrackHubScreen.tsx');
 const questionBookmarkButton = await read('../src/components/QuestionBookmarkButton.tsx');
 assert.ok(questionBookmarkButton.includes('<path d="M6.75 4.25A1.75 1.75') && questionBookmarkButton.includes('aria-pressed={bookmarked}') && app.includes('QuestionBookmarkButton'), 'The shared question bookmark control uses an accessible outline SVG');
 assert.ok(app.includes('!isMockRunner && <QuestionBookmarkButton') && mockExam.includes('questionNumber={index + 1}') && mockExam.includes('question={q}'), 'Scrolling mock exams bookmark each question rather than a hidden current index');
