@@ -1,5 +1,6 @@
 import { savedQuestionsReturnPath } from '../lib/savedQuestionSets'
 import SessionElapsedTimer from '../components/SessionElapsedTimer'
+import MaterialIcon from '../components/MaterialIcon'
 import { TRACK_LABELS } from '../lib/trackLabels'
 import KeywordQuestionText from '../components/KeywordQuestionText'
 import { useEffect, useRef, useState } from 'react'
@@ -325,7 +326,7 @@ export default function PracticeQuizScreen() {
       </div>}
       <div style={{position:'fixed',bottom:0,left:0,right:0,padding:'0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom))',background:'var(--bg-card)',borderTop:'1px solid var(--border)',display:'flex',gap:'0.6rem',maxWidth:720,margin:'0 auto'}}>
         <button className="btn btn-outline" style={{ flex: 1, minWidth: 0 }} onClick={prev} disabled={currentIndex === 0}>← Previous</button>
-        <button className="btn btn-outline" style={{ minWidth: 54, padding: '0.65rem' }} onClick={() => { setPaletteOpen(true); setJumpNumber('') }} aria-label="Question palette" title="Question palette">▦</button>
+        <button className="btn btn-outline" style={{ minWidth: 54, padding: '0.65rem' }} onClick={() => { setPaletteOpen(true); setJumpNumber('') }} aria-label="Question palette" title="Question palette"><MaterialIcon name="gridView" size={22} /></button>
         {mode === 'MOCK' ? <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={() => next()} disabled={!hasAnswered}>{currentIndex === questions.length - 1 ? 'Finish' : 'Next'}</button> : hasAnswered ? <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={() => next()}>{currentIndex === questions.length - 1 ? 'Finish' : 'Next'}</button> : <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={confirmAnswer} disabled={pendingAnswer == null || automations.directAnswer}>Check Answer</button>}
       </div>
     </div>
