@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createBankWorker } from '../../worker/index.ts'
-import { createGithubBankSource, GITHUB_BANK_REVISION } from '../../supabase/functions/_shared/githubBankSource.ts'
+import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_ROOT, githubAssetPath } from '../../supabase/functions/_shared/githubBankSource.ts'
 import { SOURCE_ASSETS, toSearchQuestions, sampleFreeCsv } from '../../supabase/functions/_shared/bankCodec.ts'
 const manifest = JSON.parse(await readFile(new URL('../../supabase/functions/_shared/github-bank-manifest.json', import.meta.url), 'utf8'))
 const folder = join(tmpdir(), 'hyperion-bank-' + GITHUB_BANK_REVISION)
@@ -15,7 +15,7 @@ for (let i = 0; i < manifest.files.length; i += 4) await Promise.all(manifest.fi
   let bytes
   try { bytes = await readFile(path) } catch {}
   if (!bytes || createHash('sha256').update(bytes).digest('hex') !== file.sha256) {
-    const response = await fetch(`https://raw.githubusercontent.com/Nhyle-zunne/hyperion-reviewer/${GITHUB_BANK_REVISION}/question-banks/${file.path}`)
+    const response = await fetch(`https://raw.githubusercontent.com/Nhyle-zunne/hyperion-reviewer/${GITHUB_BANK_REVISION}/${GITHUB_BANK_ROOT}/${githubAssetPath(file.path)}`)
     if (!response.ok) throw new Error('Could not fetch encrypted bank test fixture: ' + response.status)
     bytes = Buffer.from(await response.arrayBuffer())
     await writeFile(path, bytes)
@@ -34,9 +34,10 @@ const fakeFetch = async (input, options) => {
     const allowed = body.freeOnly || (licensed && headers.get('Authorization') === 'Bearer test-user')
     return new Response(JSON.stringify({ allowed, track: body.track, access: body.freeOnly ? 'free-sample' : 'licensed' }), { status: !backendAvailable ? 503 : allowed ? 200 : 403 })
   }
+  if (url.pathname.endsWith('/hyperion-release.json')) return new Response('', { status: 404 })
   assert.equal(url.hostname, 'raw.githubusercontent.com')
   assert.ok(url.pathname.includes(GITHUB_BANK_REVISION))
-  const path = url.pathname.split('/question-banks/')[1]
+  const path = url.pathname.split('/' + GITHUB_BANK_ROOT + '/')[1].replace(/^pro\//, 'gmdss/')
   upstreamBankReads++
   const bytes = bank.get(path)
   return new Response(corrupt ? new Uint8Array([1, 2, 3]) : bytes, { status: bytes ? 200 : 404 })

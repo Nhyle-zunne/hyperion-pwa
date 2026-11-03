@@ -45,8 +45,12 @@ jobs:
           bun run test:security
           node scripts/tests/production-auth-build-test.mjs
           node scripts/generate-worker-bank-codec.mjs --check
+          node scripts/tests/github-release-source-test.mjs
+          node scripts/tests/github-bank-publisher-test.mjs
+          node scripts/tests/github-publisher-transaction-test.mjs
           node scripts/tests/github-bank-delivery-test.mjs
           bun test scripts/tests/github-offline-version.test.ts
+          bun test scripts/tests/github-download-revision.test.ts
       - name: Saved-data database and offline-license regressions
         run: |
           bun run test:saved-data:sql
@@ -54,6 +58,10 @@ jobs:
       - name: Install Chromium for saved-data regression
         run: bunx playwright install --with-deps chromium
       - name: Saved-data browser regression
+        run: bun run test:saved-data:browser
+      - name: GitHub publisher browser regression
+        env:
+          HYPERION_BROWSER_FIXTURE: publisher
         run: bun run test:saved-data:browser
       - name: Type-check and build
         run: |
@@ -83,7 +91,9 @@ jobs:
         run: node scripts/verify-worker-domains.mjs
       - name: Verify the public site serves the deployed build
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && env.CLOUDFLARE_API_TOKEN != ''
-        run: node scripts/verify-live-release.mjs
+        run: |
+          node scripts/verify-live-release.mjs
+          node scripts/verify-bank-release.mjs
 
   google-play-migration-regression:
     runs-on: ubuntu-latest

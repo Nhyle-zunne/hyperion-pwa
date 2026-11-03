@@ -1,24 +1,31 @@
-# Hyperion question-bank delivery
+# Shared Android and website question banks
 
-The active encrypted source is `Nhyle-zunne/hyperion-reviewer/question-banks`, pinned to GitHub commit `91677156579dfea6f092097f324bec96c7c13e5b`. Every source object is verified against `supabase/functions/_shared/github-bank-manifest.json` before decryption.
+The active source is `Nhyle-zunne/hyperion-reviewer/app/src/main/assets/questions`. Website uploads change these same encrypted files directly in GitHub. No question-bank files are uploaded to Supabase Storage. Supabase continues to provide administrator authentication, licenses, saved progress and small derived metadata caches.
 
-Bulk question pages are served by the Cloudflare Worker at `/api/question-bank/questions`. Each request checks current track access through Supabase before returning paid questions. Supabase retains accounts, licenses, study synchronization, and small metadata/search APIs; those APIs read the same GitHub source. Persistent edge caching stores encrypted source objects; a server process may reuse decrypted bank text in memory after each request's access check.
+Android's physical GMDSS folder is `pro/`. The website keeps its historical logical `gmdss/` mapping so question IDs, bookmarks, mistakes and session references remain stable. Existing installed Android versions retain their bundled bank until an app update; new builds bundle the shared assets.
 
-There is no manual question-bank download button. An activated track is prepared automatically for offline use while the user is online and signed in. Existing encrypted packs remain available until a complete replacement is verified and saved atomically. Signed license and expiry checks still apply offline.
+## Publish from the website
 
-## Existing study data
+1. Sign in as an administrator and open **Account → Question Bank**.
+2. Select up to 10 raw `.csv` or compatible `.csv.enc` files. Verify each mapped destination.
+3. Choose **Validate batch**. Review question counts, appended rows, and corrections, including changed choices and answers.
+4. Choose **Publish verified batch to GitHub**. The files and checked manifest enter an immutable bank commit; a release pointer is committed and `main` advances once without forcing it. Concurrent updates fail safely. Previous encrypted versions remain in GitHub history.
+5. Open the resulting GitHub commit link. Online readers refresh the small release pointer on a bounded interval. Offline packs refresh automatically after a complete replacement is verified; version checks are cached for five minutes. Existing sessions keep their saved snapshots.
 
-This migration preserves filenames, CSV row order, competence/part mappings, question IDs, choices and correct-answer indices. Bookmarks, mistakes, sessions, account ownership and their storage keys are not migrated or cleared. Compatibility tests cover all 69 files and 25,752 question records.
+Raw CSV limit: 700 KB per file. Encrypted limit: 1 MiB per file. Combined encrypted files: 8 MiB per batch. The 10-file limit keeps each operation within Worker subrequest limits; larger updates can be divided into several reviewed batches.
 
-Offline manifests now use `github-content-sha256-v1` versions. Existing packs are compared with current GitHub content before their version metadata is rebased; changed packs are replaced only after successful preparation. A source change never deletes a user's study records.
+The publisher blocks shorter valid-question lists and known questions moving positions. It cannot distinguish every arbitrary rewrite from a legitimate correction, because IDs derive from positions. Review corrections carefully and append new questions at the end. It also checks all existing bank blob identities, including unselected files, so an unrelated unpublished GitHub edit cannot silently enter a release.
 
-## Publishing future changes
+## Credentials and authorization
 
-1. Update the encrypted source in `hyperion-reviewer/question-banks` using compatible encryption. Preserve existing paths, question IDs and row ordering. Append new questions carefully; do not reorder or remove old valid rows during a storage-only migration.
-2. Record the new encrypted byte counts and SHA-256 hashes in the bank manifest. Update the pinned revision/publication time and manifest in the PWA's `_shared` source module.
-3. Deliberately update compatibility fixtures for intended content changes; inspect any question-ID or answer-index changes. Run the generated-codec check, GitHub delivery tests, offline-version migration tests, saved-data browser regression and release checks.
-4. Deploy the Supabase `question-bank` function first, then the verified Cloudflare Worker/frontend. Confirm `/api/question-bank/source`, free question responses, paid denial without a license, and the public deployed build.
+Configure **GITHUB_BANK_WRITE_TOKEN** as a production Cloudflare Worker secret: a fine-grained token limited to `hyperion-reviewer`, with Contents read/write. No token belongs in Vite variables, browser storage, source files or chat. Every admin operation obtains a fresh server-verified administrator decision before parsing uploads or calling GitHub. Missing/expired credentials disable publishing without removing saved data.
 
-The old Supabase upload form is read-only after this source migration. Do not use `scripts/update-question-bank.mjs` to publish new live content: it updates the retained Storage copy, not the GitHub source. Existing Supabase objects remain as rollback copies; do not delete them or the existing metadata tables during rollout.
+Student delivery does not depend on the publishing token. While the repository is public, readers fetch public encrypted assets. If it becomes private, first configure a separate server-only **GITHUB_BANK_READ_TOKEN** in both the Worker and Supabase `question-bank` function.
 
-If the GitHub repository becomes private, configure a read-only `GITHUB_BANK_READ_TOKEN` in both the Worker and the Supabase function before changing visibility. The token stays server-side and must never enter Vite's public configuration or the repository. Anonymous GitHub reads work only while the selected repository revision is publicly accessible.
+## Release metadata and integrity
+
+`hyperion-manifest.json` and `hyperion-release.json` live beside the shared asset folders. The release pointer identifies an immutable bank commit and the manifest's SHA-256; the manifest identifies all 69 encrypted files by path, byte count and SHA-256. Source bytes are verified before decryption. Only a genuine initial missing pointer selects the embedded initial snapshot; a warm upstream outage retains the last verified release and a cold outage fails safely.
+
+Metadata, fresh counts and pages are pinned to one release. Mismatched versions abort a replacement rather than committing a partial or mixed offline pack. Publishing never deletes or resets bookmarks, mistakes, session logs, completed audits or local packs. Paid access is verified on every request independently of content caches.
+
+Manual edits to bank files outside the publisher remain unpublished and block publication until reconciled. Do not use the legacy Supabase uploader or Storage migration scripts for live bank updates. Supabase's retained old objects are rollback copies, not the active source.

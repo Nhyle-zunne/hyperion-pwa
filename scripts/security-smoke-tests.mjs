@@ -871,7 +871,7 @@ const offlineDownloadStart = questionBankClient.indexOf('async function download
 const offlineDownloadSessionGate = questionBankClient.indexOf('await supabase.auth.getSession()', offlineDownloadStart);
 const offlineDownloadLicenseGate = questionBankClient.indexOf("body: { action: 'offline-license' }", offlineDownloadStart);
 const offlineDownloadVersionRequest = questionBankClient.indexOf('const versionsBefore = await fetchRemoteQuestionBankVersions(track)', offlineDownloadStart);
-const offlineDownloadCountsRequest = questionBankClient.indexOf('const counts = await getQuestionCountsByTrack(track, false)', offlineDownloadStart);
+const offlineDownloadCountsRequest = questionBankClient.indexOf('await fetchRevisionQuestionCounts(track, false, versionsBefore.bankRevision)', offlineDownloadStart);
 assert.ok(
   offlineDownloadStart >= 0 &&
   questionBankClient.includes("if (freeOnly) throw new Error('Offline downloads require an active license for this track.')") &&

@@ -1,4 +1,4 @@
-import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_FILES, GITHUB_BANK_PUBLISHED_AT } from "../_shared/githubBankSource.ts";
+import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_FILES, GITHUB_BANK_PUBLISHED_AT, GITHUB_BANK_ROOT, type BankRelease } from "../_shared/githubBankSource.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { canAccessPaidTrack } from "./access.mjs";
 
@@ -273,16 +273,20 @@ async function cachedMigrationState(admin: any) {
 }
 
 type SourceInfo = { track: string; competenceId: string; part: number | null; format: "standard" | "gmdss"; functionId: string; idPrefix: string };
-// Cached question text is reusable across requests in a warm Edge isolate. The
-// migration-state timestamp is a cross-isolate content epoch: successful admin
-// publications bump it, so a long cache lifetime does not delay updated questions.
+// Cached text is reusable only for the immutable release captured by this request.
+// GitHub release resolution provides the cross-runtime publication epoch.
 const PRIVATE_TEXT_CACHE_TTL_MS = 60 * 60_000;
 const privateTextCache = new Map<string, { text: string; cachedAt: number; bankEpoch: string }>();
-function currentQuestionBankEpoch(): string {
-  return typeof migrationStateCache?.data?.updated_at === "string"
-    ? GITHUB_BANK_REVISION + ":" + migrationStateCache.data.updated_at
-    : GITHUB_BANK_REVISION;
+const requestBankReleases = new WeakMap<object, Promise<BankRelease>>();
+async function bankReleaseFor(admin: object): Promise<BankRelease> {
+  let pending = requestBankReleases.get(admin);
+  if (!pending) { pending = githubBankText.release(); requestBankReleases.set(admin, pending); }
+  return pending;
 }
+async function currentQuestionBankEpoch(admin: object): Promise<string> {
+  return (await bankReleaseFor(admin)).revision;
+}
+
 function sourceInfo(path: string): SourceInfo | null {
   const track = trackForPath(path);
   if (!track) return null;
@@ -323,12 +327,12 @@ async function privateText(admin: any, path: string): Promise<string> {
   // its local cache. Without this, a cold isolate would have an empty epoch and
   // would unnecessarily download every encrypted source file on every request.
   await cachedMigrationState(admin);
-  const bankEpoch = currentQuestionBankEpoch();
+  const bankEpoch = await currentQuestionBankEpoch(admin);
   const cached = privateTextCache.get(path);
   if (bankEpoch && cached &&
       cached.bankEpoch === bankEpoch &&
       Date.now() - cached.cachedAt < PRIVATE_TEXT_CACHE_TTL_MS) return cached.text;
-  const text = await githubBankText(path);
+  const text = await githubBankText.read(path, await bankReleaseFor(admin));
   privateTextCache.set(path, { text, cachedAt: Date.now(), bankEpoch });
   return text;
 }
@@ -362,9 +366,10 @@ const trackAssetVersionCache = new Map<string, {
   bankEpoch: string;
 }>();
 
-async function trackAssetVersions(_admin: any, track: string): Promise<QuestionAssetVersion[]> {
-  return GITHUB_BANK_FILES.filter(file => trackForPath(file.path) === track).map(file => ({
-    path: file.path, updatedAt: GITHUB_BANK_PUBLISHED_AT, etag: file.sha256, size: file.bytes
+async function trackAssetVersions(admin: any, track: string): Promise<QuestionAssetVersion[]> {
+  const release = await bankReleaseFor(admin);
+  return release.files.filter(file => trackForPath(file.path) === track).map(file => ({
+    path: file.path, updatedAt: release.publishedAt, etag: file.sha256, size: file.bytes
   }));
 }
 
@@ -400,7 +405,6 @@ async function cachedQuestionCounts(admin: any, track: string) {
     if (!info) continue;
     const cached = cachedByPath.get(version.path);
     const versionMatches = cached &&
-      Date.parse(String(cached.source_updated_at)) === Date.parse(version.updatedAt) &&
       cached.source_etag === `${version.etag}:${QUESTION_COUNT_ALGORITHM_VERSION}` &&
       Number(cached.source_size) === version.size;
 
@@ -796,7 +800,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceKey) return json(req, { error: "Question service is not configured." }, 503);
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let body: { action?: string; path?: string; csvText?: string; uploadFormat?: string; encryptedBase64?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; questionIds?: unknown; fingerprints?: unknown; items?: unknown; paths?: unknown };
+  let body: { action?: string; path?: string; csvText?: string; uploadFormat?: string; encryptedBase64?: string; track?: string; competenceId?: string; part?: number; query?: string; offset?: number; limit?: number; randomSample?: boolean; freeOnly?: boolean; bankRevision?: string; deliveryRoot?: string; questionIds?: unknown; fingerprints?: unknown; items?: unknown; paths?: unknown };
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
   let user: any = null, isAdmin = false;
   const authHeader = req.headers.get("Authorization");
@@ -809,7 +813,13 @@ Deno.serve(async (req: Request) => {
     if (!result.error && result.data.user) { user = result.data.user; isAdmin = isAdminEmail(user.email); }
   }
 
+  if (body.action === "github-admin-access") {
+    if (!user || !isAdmin) return json(req, { error: "Administrator access is required." }, user ? 403 : 401);
+    return json(req, { allowed: true, access: "admin" });
+  }
+
   if (body.action === "github-delivery-access") {
+    if (body.deliveryRoot !== GITHUB_BANK_ROOT) return json(req, { error: "Question delivery is being upgraded. Existing offline study and saved progress are preserved; retry shortly." }, 503);
     const track = body.track || "";
     if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) return json(req, { error: "Invalid track." }, 400);
     try {
@@ -829,7 +839,7 @@ Deno.serve(async (req: Request) => {
       return info ? { path, track: info.track, competenceId: info.competenceId, part: info.part, format: info.format,
         label: labels[info.track] + " · " + info.competenceId + (info.part == null ? "" : " · Part " + info.part) } : null;
     }).filter(Boolean);
-    return json(req, { assets, readOnly: true, source: "github", bankRevision: GITHUB_BANK_REVISION });
+    return json(req, { assets, readOnly: true, source: "github", root: GITHUB_BANK_ROOT, bankRevision: (await bankReleaseFor(admin)).revision });
   }
 
   if (body.action === "update-csv") {
@@ -881,6 +891,11 @@ Deno.serve(async (req: Request) => {
   try { state = await cachedMigrationState(admin); } catch { return json(req, { error: "Question service is not ready." }, 503); }
   if (state.status !== "complete" || state.asset_count !== SOURCE_ASSETS.length) return json(req, { error: "Protected question bank is not ready yet." }, 503);
 
+  if (body.bankRevision) {
+    try { if (body.bankRevision !== (await bankReleaseFor(admin)).revision) return json(req, { error: "The question bank changed. Reload this question set and retry." }, 409); }
+    catch { return json(req, { error: "The GitHub release is temporarily unavailable." }, 503); }
+  }
+
   if (body.action === "content-versions") {
     const track = typeof body.track === "string" ? body.track : "";
     if (!["DECK_OIC_NW","GMDSS_GOC","ENGINE_OIC_EW","DECK_MGT","ENGINE_MGT"].includes(track)) {
@@ -928,6 +943,7 @@ Deno.serve(async (req: Request) => {
       return json(req, {
         track,
         versions,
+        bankRevision: (await bankReleaseFor(admin)).revision,
         versionFormat: "github-content-sha256-v1",
         checkedAt: Date.now(),
         fullBankIncluded: canReadFullBank
@@ -1244,7 +1260,7 @@ Deno.serve(async (req: Request) => {
         }
       }
       const questions = randomSample ? allQuestions.slice(0, limit) : allQuestions.slice(offset, offset + limit);
-      return json(req, { questions, totalCount: allQuestions.length, offset, limit, access: freeOnly ? "free-sample" : isAdmin ? "admin" : "licensed" });
+      return json(req, { questions, bankRevision: (await bankReleaseFor(admin)).revision, totalCount: allQuestions.length, offset, limit, access: freeOnly ? "free-sample" : isAdmin ? "admin" : "licensed" });
     } catch {
       return json(req, { error: "The requested questions could not be loaded from private storage." }, 503);
     }
@@ -1266,7 +1282,7 @@ Deno.serve(async (req: Request) => {
         part: item.part,
         count: freeOnly ? item.freeCount : item.fullCount
       }));
-      return json(req, { counts, access: freeOnly ? "free-sample-counts" : isAdmin ? "admin" : "licensed" });
+      return json(req, { counts, bankRevision: (await bankReleaseFor(admin)).revision, access: freeOnly ? "free-sample-counts" : isAdmin ? "admin" : "licensed" });
     } catch {
       return json(req, { error: "Could not read question metadata from private storage." }, 503);
     }

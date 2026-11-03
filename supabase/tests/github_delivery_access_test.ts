@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict'
 Deno.test('GitHub delivery broker verifies identity and current track access without reading question files', async () => {
   const originalFetch = globalThis.fetch, originalServe = Deno.serve
-  const values = { SUPABASE_URL: 'https://test-project.supabase.co', SUPABASE_ANON_KEY: 'test-anon', SUPABASE_SERVICE_ROLE_KEY: 'test-service' }
+  const values = { SUPABASE_URL: 'https://test-project.supabase.co', SUPABASE_ANON_KEY: 'test-anon', SUPABASE_SERVICE_ROLE_KEY: 'test-service', ADMIN_EMAILS: 'admin@example.invalid' }
   const saved = Object.fromEntries(Object.keys(values).map(name => [name, Deno.env.get(name)]))
   for (const [name, value] of Object.entries(values)) Deno.env.set(name, value)
   let handler: ((request: Request) => Promise<Response>) | undefined
+  let administrator = false
   let licensed = true, unavailable = false, wrongOwner = false, bankReads = 0
   const userId = '11111111-1111-4111-8111-111111111111'
   const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })
   Object.assign(Deno, { serve: (fn: typeof handler) => { handler = fn; return {} } })
   globalThis.fetch = async (input, init) => {
     const request = new Request(input, init), url = new URL(request.url)
-    if (url.pathname === '/auth/v1/user') return request.headers.get('Authorization') === 'Bearer valid-user' ? json({ id: userId, email: 'licensed@example.invalid' }) : json({ message: 'Invalid JWT' }, 401)
+    if (url.pathname === '/auth/v1/user') return request.headers.get('Authorization') === 'Bearer valid-user' ? json({ id: userId, email: administrator ? 'admin@example.invalid' : 'licensed@example.invalid' }) : json({ message: 'Invalid JWT' }, 401)
     if (url.pathname.includes('/rest/v1/')) {
       if (unavailable) return json({ message: 'Unavailable' }, 503)
       if (url.pathname.endsWith('/entitlements')) return json(licensed ? [{ user_id: wrongOwner ? 'another-user' : userId, track_id: 'DECK_OIC_NW', status: 'active', expires_at: '2099-01-01T00:00:00Z' }] : [])
@@ -26,7 +27,7 @@ Deno.test('GitHub delivery broker verifies identity and current track access wit
   try {
     await import('../functions/question-bank/index.ts?github-delivery-test')
     assert.ok(handler)
-    const call = (freeOnly = false, token = 'valid-user', track = 'DECK_OIC_NW') => handler!(new Request('https://test-project.supabase.co/functions/v1/question-bank', { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: JSON.stringify({ action: 'github-delivery-access', track, freeOnly }) }))
+    const call = (freeOnly = false, token = 'valid-user', track = 'DECK_OIC_NW') => handler!(new Request('https://test-project.supabase.co/functions/v1/question-bank', { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: JSON.stringify({ action: 'github-delivery-access', track, freeOnly, deliveryRoot: 'app/src/main/assets/questions' }) }))
     assert.equal((await call()).status, 200)
     licensed = false
     assert.equal((await call()).status, 403)
@@ -52,6 +53,15 @@ Deno.test('GitHub delivery broker verifies identity and current track access wit
     wrongOwner = false; unavailable = true
     assert.equal((await call()).status, 503)
     assert.equal((await call(false, 'valid-user', 'UNKNOWN')).status, 400)
+    const adminCall = (token = 'valid-user') => handler!(new Request('https://test-project.supabase.co/functions/v1/question-bank', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify({ action: 'github-admin-access' }) }))
+    assert.equal((await adminCall()).status, 403)
+    administrator = true
+    const grant = await adminCall()
+    assert.equal(grant.status, 200)
+    assert.equal((await grant.json()).access, 'admin')
+    assert.equal((await adminCall('expired-user')).status, 401)
+    const legacyWorker = await handler!(new Request('https://test-project.supabase.co/functions/v1/question-bank', { method: 'POST', body: JSON.stringify({ action: 'github-delivery-access', track: 'DECK_OIC_NW', freeOnly: true }) }))
+    assert.equal(legacyWorker.status, 503, 'Legacy delivery cannot mix old source bytes with new version metadata during rollout')
     assert.equal(bankReads, 0)
   } finally {
     globalThis.fetch = originalFetch

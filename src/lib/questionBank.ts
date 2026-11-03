@@ -27,7 +27,10 @@ async function invokeQuestionBank(options: { body: Record<string, unknown> }) {
     const token = data.session?.access_token || supabaseAnonKey
     if (token) headers.Authorization = `Bearer ${token}`
     const response = await fetch('/api/question-bank/questions', { method: 'POST', headers, body: JSON.stringify(options.body) })
-    if (!response.ok) return { data: null as any, error: Object.assign(new Error('Question access could not be verified.'), { context: response }) as any }
+    if (!response.ok) {
+      const failure = await response.clone().json().catch(() => null)
+      return { data: null as any, error: Object.assign(new Error(failure?.error || 'Question access could not be verified.'), { context: response }) as any }
+    }
     return { data: await response.json() as any, error: null as any }
   } catch (error) { return { data: null as any, error: error as any } }
 }
@@ -252,7 +255,7 @@ const SOURCES: BankSource[] = [
 type LoadedSource = { questions: Question[]; sampledByServer: boolean };
 const cache = new Map<string, LoadedSource>();
 const ONLINE_QUESTION_CACHE_TTL_MS = 5 * 60 * 1000;
-const onlineQuestionPageCache = new Map<string, { questions: Question[]; cachedAt: number }>();
+const onlineQuestionPageCache = new Map<string, { questions: Question[]; cachedAt: number; bankRevision?: string }>();
 const onlineQuestionCountsCache = new Map<string, { counts: QuestionBankCount[]; cachedAt: number }>();
 
 function clearOnlineQuestionCacheForTrack(track: TrackId, includeFree = true) {
@@ -582,9 +585,12 @@ async function loadQuestionsByCompetenceInternal(
   if (cachedCurrent) return cachedCurrent
   if (!supabase) return getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
   const firstOffset = Math.max(0, Math.floor(startItem || 1) - 1)
+  let rangeRevision: string | undefined
   let totalWanted = limit == null ? 0 : Math.max(0, Math.floor(limit))
   if (limit == null) {
-    const counts = await getQuestionCountsByTrack(track, freeOnly)
+    const snapshotCounts = await fetchRevisionQuestionCounts(track, freeOnly)
+    const counts = snapshotCounts.counts
+    rangeRevision = snapshotCounts.bankRevision
     const totalAvailable = counts
       .filter(item => item.competenceId === competenceId && (part == null || item.part === part))
       .reduce((sum, item) => sum + item.count, 0)
@@ -594,30 +600,34 @@ async function loadQuestionsByCompetenceInternal(
   if (randomSample && totalWanted > 200) throw new Error('Random exam samples are limited to 200 questions.')
 
   const requestPage = async (offset: number, pageLimit: number, random: boolean) => {
-    const pageCacheKey = `${track}:${freeOnly ? 'free' : 'full'}:${competenceId}:${part ?? ''}:${offset}:${pageLimit}`
+    const pageCacheKey = `${track}:${freeOnly ? 'free' : 'full'}:${rangeRevision ?? 'latest'}:${competenceId}:${part ?? ''}:${offset}:${pageLimit}`
     if (!random) {
       const cached = onlineQuestionPageCache.get(pageCacheKey)
       if (cached && Date.now() - cached.cachedAt < ONLINE_QUESTION_CACHE_TTL_MS) {
         onlineQuestionPageCache.delete(pageCacheKey)
         onlineQuestionPageCache.set(pageCacheKey, cached)
+        rangeRevision = cached.bankRevision || rangeRevision
         return cached.questions.slice()
       }
     }
     const { data, error } = await invokeQuestionBank({
-      body: { action: 'questions', track, competenceId, part, freeOnly, offset, limit: pageLimit, randomSample: random }
+      body: { action: 'questions', track, competenceId, part, freeOnly, offset, limit: pageLimit, randomSample: random, bankRevision: rangeRevision }
     })
     if (!error && Array.isArray(data?.questions)) {
+      if (rangeRevision && data.bankRevision && data.bankRevision !== rangeRevision) throw new Error('The question bank changed while loading. Reload this question set.')
+      rangeRevision = typeof data.bankRevision === 'string' ? data.bankRevision : rangeRevision
       const questions = data.questions as Question[]
       if (!random) {
         if (onlineQuestionPageCache.size >= 40) {
           const oldestKey = onlineQuestionPageCache.keys().next().value
           if (oldestKey) onlineQuestionPageCache.delete(oldestKey)
         }
-        onlineQuestionPageCache.set(pageCacheKey, { questions, cachedAt: Date.now() })
+        onlineQuestionPageCache.set(pageCacheKey, { questions, cachedAt: Date.now(), bankRevision: rangeRevision })
       }
       return questions.slice()
     }
     if (error && canFallbackToOffline(error)) {
+      if (rangeRevision || totalWanted > pageLimit) throw new Error('Connection changed while loading the question set. Your offline pack is preserved; restart this session to use it consistently.')
       try {
         return await getCachedCompetenceRange(track, competenceId, part, freeOnly, random ? 1 : offset + 1, pageLimit, random)
       } catch {
@@ -873,6 +883,18 @@ export async function authorizeQuestionSet(track: TrackId, questions: Question[]
   return (await authorizeQuestionSetAccess(track, questions)) !== null;
 }
 
+/** Fresh counts for a single immutable release; never substitute an older offline/cache count. */
+async function fetchRevisionQuestionCounts(track: TrackId, freeOnly: boolean, bankRevision?: string): Promise<{ counts: QuestionBankCount[]; bankRevision?: string }> {
+  const { data, error } = await invokeQuestionBank({ body: { action: 'counts', track, freeOnly, bankRevision } })
+  if (error || !Array.isArray(data?.counts)) throw error || new Error('Fresh question counts are unavailable.')
+  if (bankRevision && data.bankRevision !== bankRevision) throw new Error('The question-bank release changed while checking counts. Retry shortly.')
+  const counts: QuestionBankCount[] = data.counts.map((item: { competenceId: string; part: number | null; count: number }) => {
+    if (!Number.isSafeInteger(item.count) || item.count < 0) throw new Error('The server returned invalid question counts.')
+    return { competenceId: String(item.competenceId), part: item.part == null ? null : Number(item.part), count: item.count }
+  })
+  return { counts, bankRevision: typeof data.bankRevision === 'string' ? data.bankRevision : undefined }
+}
+
 /** Returns question counts only; paid question text stays on the protected question endpoint. */
 async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -942,6 +964,7 @@ interface RemoteQuestionBankVersions {
   versions: RemoteQuestionSourceVersion[]
   versionFormat: 'content-sha256-v1' | 'storage-metadata-v1' | 'github-content-sha256-v1'
   checkedAt: number
+  bankRevision?: string
 }
 
 export interface OfflinePackUpdateCheck {
@@ -970,7 +993,7 @@ async function fetchRemoteQuestionBankVersions(track: TrackId, legacyContentHash
     typeof item.freeHash !== 'string' || !/^[a-f0-9]{64}$/.test(item.freeHash) ||
     (item.fullHash != null && (typeof item.fullHash !== 'string' || !/^[a-f0-9]{64}$/.test(item.fullHash)))
   )) throw new Error('The server returned invalid question-bank version metadata.')
-  return { track, versions, versionFormat: expectedFormat, checkedAt: Number(data.checkedAt) || Date.now() }
+  return { track, versions, versionFormat: expectedFormat, checkedAt: Number(data.checkedAt) || Date.now(), bankRevision: typeof data.bankRevision === 'string' ? data.bankRevision : undefined }
 }
 
 function sourceVersionMap(remote: RemoteQuestionBankVersions, freeOnly: boolean): Record<string, string> {
@@ -1183,7 +1206,7 @@ async function performOfflineQuestionPackUpdateCheck(
   }
 }
 
-const OFFLINE_PACK_VERSION_CHECK_TTL_MS = 30 * 60 * 1000
+const OFFLINE_PACK_VERSION_CHECK_TTL_MS = 5 * 60 * 1000
 
 async function hasFreshCurrentOfflinePack(track: TrackId, freeOnly: boolean): Promise<boolean> {
   const manifest = await getOfflinePackManifest(track, freeOnly)
@@ -1345,7 +1368,8 @@ async function downloadOfflinePackInternal(
   const fullVersionsBefore = sourceVersionMap(versionsBefore, false)
   const freeVersionsBefore = sourceVersionMap(versionsBefore, true)
 
-  const counts = await getQuestionCountsByTrack(track, false)
+  if (!versionsBefore.bankRevision) throw new Error('Question delivery is being upgraded. Your existing offline pack is preserved; retry shortly.')
+  const counts = (await fetchRevisionQuestionCounts(track, false, versionsBefore.bankRevision)).counts
   const totalExpected = counts.reduce((sum, item) => sum + item.count, 0)
   if (!counts.length || totalExpected <= 0) throw new Error('No questions are available to download for this track.')
 
@@ -1367,10 +1391,11 @@ async function downloadOfflinePackInternal(
       const { data, error } = await invokeQuestionBank({
         body: {
           action: 'questions', track, competenceId: group.competenceId, part: group.part,
-          freeOnly, offset, limit: pageLimit, randomSample: false
+          freeOnly, offset, limit: pageLimit, randomSample: false, bankRevision: versionsBefore.bankRevision
         }
       })
       if (error || !Array.isArray(data?.questions)) throw error || new Error(data?.error || 'The offline question download failed.')
+      if (versionsBefore.bankRevision && data.bankRevision !== versionsBefore.bankRevision) throw new Error('The question-bank release changed. Your previous offline pack is preserved; retry shortly.')
       const page = data.questions as Question[]
       if (!page.length) throw new Error('The server returned an incomplete question pack. Retry while online.')
       questions.push(...page)
@@ -1387,6 +1412,7 @@ async function downloadOfflinePackInternal(
   if (downloaded !== totalExpected) throw new Error(`Downloaded ${downloaded} of ${totalExpected} expected questions. Retry while online.`)
   // Ensure the bank did not change while pages were being downloaded.
   const versionsAfter = await fetchRemoteQuestionBankVersions(track)
+  if (versionsAfter.bankRevision !== versionsBefore.bankRevision) throw new Error('The question-bank release changed while preparing offline study. Your previous pack is preserved; retry shortly.')
   const freeVersionsAfter = sourceVersionMap(versionsAfter, true)
   if (changedVersionPaths(freeVersionsBefore, freeVersionsAfter).length > 0) {
     throw new Error('The question bank changed while downloading. Your previous offline pack is safe; please retry the update.')

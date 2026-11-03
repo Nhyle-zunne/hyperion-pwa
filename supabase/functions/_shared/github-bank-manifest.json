@@ -1,7 +1,7 @@
 {
   "version": 1,
   "encrypted": true,
-  "source": "Existing private question-banks objects; byte-for-byte copies",
+  "source": "Android shared question assets; logical GMDSS paths map to pro/",
   "files": [
     {
       "path": "deck_mgt/dm_c1.csv.enc",
@@ -145,8 +145,8 @@
     },
     {
       "path": "deck/oic_nw_c7.csv.enc",
-      "bytes": 134559,
-      "sha256": "132d399b5dcec970a4b9840557565ce9febda1208d3fa847e8d2a4be36a81f4e"
+      "bytes": 134531,
+      "sha256": "1ba63c9ebb31261dc15041c00d01b438c7ca0cd2854755b638e085062824730c"
     },
     {
       "path": "deck/oic_nw_c9.csv.enc",

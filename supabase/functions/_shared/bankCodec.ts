@@ -240,6 +240,24 @@ function validGmdssRows(text: string): string[][] {
   }
   return chunks;
 }
+function validQuestionCount(path: string, text: string, freeOnly: boolean): number {
+  let count = 0;
+  const info = sourceInfo(path);
+  if (!info) return 0;
+  if (info.format === "gmdss") {
+    count = validGmdssRows(text).length;
+    if (freeOnly) count = Math.min(count, info.competenceId === "C1" ? 90 : 65);
+    return count;
+  }
+  const rows = parseCsv(text);
+  count = validStandardRows(rows, path).length;
+  if (!freeOnly) return count;
+  if (info.track === "DECK_OIC_NW") {
+    const quotas: Record<string, number> = { C1:420,C2:221,C3:258,C4:160,C5:100,C7:196,C9:176,C10:109,C11:96,C12:110,C13:122,C17:97 };
+    return Math.min(count, quotas[info.competenceId] ?? 1);
+  }
+  return Math.min(count, Math.max(1, Math.round(count * 0.4)));
+}
 const COMPETENCE_TITLES: Record<string, string> = {
   "DECK_OIC_NW:C1": "Plan and conduct a passage and determine position",
   "DECK_OIC_NW:C2": "Maintain a safe navigational watch",
@@ -358,4 +376,4 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
     difficulty: difficulty(i + 1)
   }));
 }
-export { SOURCE_ASSETS, decryptToText, sampleFreeCsv, toSearchQuestions, trackForPath, sourceInfo };
+export { SOURCE_ASSETS, decryptToText, sampleFreeCsv, toSearchQuestions, trackForPath, sourceInfo, deriveKeyBytes, validQuestionCount };

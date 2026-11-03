@@ -7,7 +7,7 @@ for (const statement of ast.statements) {
   if (statement.name && ts.isIdentifier(statement.name)) declarations.set(statement.name.text, statement)
   if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) if (ts.isIdentifier(declaration.name)) declarations.set(declaration.name.text, statement)
 }
-const roots = ['SOURCE_ASSETS', 'decryptToText', 'sampleFreeCsv', 'toSearchQuestions', 'trackForPath', 'sourceInfo']
+const roots = ['SOURCE_ASSETS', 'decryptToText', 'sampleFreeCsv', 'toSearchQuestions', 'trackForPath', 'sourceInfo', 'deriveKeyBytes', 'validQuestionCount']
 const names = new Set(roots)
 for (const name of names) {
   const statement = declarations.get(name)
