@@ -145,7 +145,11 @@ begin
   if p_incoming ? 'activeSession' and p_incoming->'activeSession'='null'::jsonb and jsonb_typeof(p_previous->'activeSession')='object' and
      coalesce((p_incoming->>'activeSessionChangedAt')::numeric,0)<=coalesce((p_previous->>'activeSessionChangedAt')::numeric,0) then
     result := jsonb_set(result,array['activeSession'],p_previous->'activeSession',true);
-    result := jsonb_set(result,array['activeSessionChangedAt'],p_previous->'activeSessionChangedAt',true);
+    if p_previous ? 'activeSessionChangedAt' then
+      result := jsonb_set(result,array['activeSessionChangedAt'],p_previous->'activeSessionChangedAt',true);
+    else
+      result := result - 'activeSessionChangedAt';
+    end if;
     if previous_storage ? 'hyperion-saved-practice' and storage->'hyperion-saved-practice'='null'::jsonb then
       storage := jsonb_set(storage,array['hyperion-saved-practice'],previous_storage->'hyperion-saved-practice',true);
     end if;

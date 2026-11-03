@@ -63,6 +63,15 @@ try{
  const legacyActive=structuredClone((await row(a)).data);legacyActive.activeSession=snapshot().activeSession;legacyActive.activeSessionChangedAt=0;await write(legacyActive)
  const emptyLegacy=structuredClone(legacyActive);emptyLegacy.activeSession=null;await write(emptyLegacy)
  assert.deepEqual((await row(a)).data.activeSession,legacyActive.activeSession,'Legacy clock-zero answers remain protected')
+ // Actual legacy row: clock key predates this protocol, not merely numeric zero.
+ await db.exec('alter table user_learning_progress disable trigger preserve_learning_progress')
+ await db.query("update user_learning_progress set data=data-'activeSessionChangedAt' where user_id=$1",[a])
+ await db.exec('alter table user_learning_progress enable trigger preserve_learning_progress')
+ const missingClock=structuredClone((await row(a)).data);missingClock.activeSession=null
+ const missingCount=await count();await write(missingClock)
+ assert.deepEqual((await row(a)).data.activeSession,legacyActive.activeSession)
+ assert.equal('activeSessionChangedAt' in (await row(a)).data,false,'Preserve an absent legacy clock without SQL NULL propagation')
+ assert.equal(await count(),missingCount)
  const safe=await row(a);const safeCount=await count()
  for(const invalid of [{},{version:1,storage:null},{version:2,storage:{}},{version:1,storage:{'hyperion-history':'corrupt'}},{version:1,storage:{'hyperion-history':JSON.stringify({state:{entries:[null]}})}},{version:1,storage:{'hyperion-study-time':JSON.stringify({state:{segments:[{}]}})}},{version:1,storage:{'hyperion-question-attempt-history':JSON.stringify({state:{entries:{q:null}}})}},{version:1,storage:{},activeSession:{}},{version:1,storage:{},activeSessionChangedAt:'bad'}]){
   await assert.rejects(write(invalid));assert.deepEqual((await row(a)).data,safe.data);assert.equal(await count(),safeCount)
