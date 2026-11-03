@@ -1,7 +1,7 @@
 // DDL-only rollout; historical cleanup is never supported by this tool.
 import {readFile,writeFile} from 'node:fs/promises'
 import {createHash} from 'node:crypto'
-import {guardedProgressRevisionSql} from './lib/progressRevisionDeployment.mjs'
+import {guardedProgressRevisionSql,migrationBodyForGuard} from './lib/progressRevisionDeployment.mjs'
 const migrations=[]
 for(const [version,name]of [
  ['20261104010000','optimize_progress_revision_storage'],
@@ -48,7 +48,7 @@ if(!completed.length)throw Error('No completed backup is available. Do not apply
 const apply=process.argv.includes('--apply')&&pending.length>0
 if(apply){
  const ledger=pending.map(x=>`insert into supabase_migrations.schema_migrations(version,name,statements)select ${lit(x.version)},${lit(x.name)},array[${lit(x.source)},format('-- Guard verified unchanged current records=%s and revisions=%s',(select count(*)from revision_record_guard where kind='current'),(select count(*)from revision_record_guard where kind='revision'))];`).join('\n')
- await query(guardedProgressRevisionSql(pending.map(x=>x.source).join('\n'),ledger),false)
+ await query(guardedProgressRevisionSql(pending.map(x=>migrationBodyForGuard(x.source)).join('\n'),ledger),false)
 }
 verifyDefinitions(await definitions(),apply?migrations:installed)
 const security=await query(`select c.relname,c.relrowsecurity,has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') anon_access,has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE') user_access from pg_class c where c.oid in ('public.user_learning_progress'::regclass,'public.user_learning_progress_revisions'::regclass,'public.user_learning_session_archives'::regclass)`)
