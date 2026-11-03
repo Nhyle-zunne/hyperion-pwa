@@ -240,6 +240,7 @@ function validGmdssRows(text: string): string[][] {
   }
   return chunks;
 }
+const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v5";
 function validQuestionCount(path: string, text: string, freeOnly: boolean): number {
   let count = 0;
   const info = sourceInfo(path);
@@ -376,4 +377,4 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
     difficulty: difficulty(i + 1)
   }));
 }
-export { SOURCE_ASSETS, decryptToText, sampleFreeCsv, toSearchQuestions, trackForPath, sourceInfo, deriveKeyBytes, validQuestionCount };
+export { SOURCE_ASSETS, decryptToText, sampleFreeCsv, toSearchQuestions, trackForPath, sourceInfo, deriveKeyBytes, validQuestionCount, QUESTION_COUNT_ALGORITHM_VERSION };

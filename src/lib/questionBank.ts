@@ -1,4 +1,5 @@
 import { supabase, supabaseAnonKey } from './supabase';
+import { invokeBankTransport } from './questionBankTransport';
 import { withPageLoading } from './pageLoading';
 import {
   getCachedOfflineEntitlementSnapshot,
@@ -19,21 +20,10 @@ import type { Question, TrackId, Difficulty } from '../types/question';
 
 /** Bulk question bytes come from the GitHub-backed Worker; account data stays in Supabase. */
 async function invokeQuestionBank(options: { body: Record<string, unknown> }) {
-  if (!supabase) return { data: null as any, error: new Error('Question access is not configured.') as any }
-  if (options.body.action !== 'questions' || !import.meta.env.PROD || import.meta.env.VITE_QUESTION_BANK_DELIVERY !== 'github') return supabase.functions.invoke('question-bank', options)
-  try {
-    const { data } = await supabase.auth.getSession()
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    const token = data.session?.access_token || supabaseAnonKey
-    if (token) headers.Authorization = `Bearer ${token}`
-    const response = await fetch('/api/question-bank/questions', { method: 'POST', headers, body: JSON.stringify(options.body) })
-    if (!response.ok) {
-      const failure = await response.clone().json().catch(() => null)
-      return { data: null as any, error: Object.assign(new Error(failure?.error || 'Question access could not be verified.'), { context: response }) as any }
-    }
-    return { data: await response.json() as any, error: null as any }
-  } catch (error) { return { data: null as any, error: error as any } }
+  return invokeBankTransport(options, supabase, supabaseAnonKey,
+    import.meta.env.PROD && import.meta.env.VITE_QUESTION_BANK_DELIVERY === 'github')
 }
+
 
 interface BankSource {
   path: string;

@@ -28,6 +28,10 @@ interface LicenseState {
 const TRACK_IDS = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'] as const;
 
 let refreshGeneration = 0;
+let invalidationEpoch = 0;
+let authRequestSequence = 0;
+let latestResolvedAuthRequest = 0;
+let cloudRefresh: { userId: string; generation: number; promise: Promise<void> } | null = null;
 let entitlementExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
 function clearEntitlementExpiryTimer() {
@@ -143,7 +147,8 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
   },
 
   refreshCloudEntitlements: async () => {
-    const generation = ++refreshGeneration;
+    const observedEpoch = invalidationEpoch;
+    const authRequest = ++authRequestSequence;
     // A signed server lease is the common entitlement source for both purchase
     // channels. Offline startup never depends on Supabase session restoration.
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -164,62 +169,48 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       return;
     }
 
-    if (generation !== refreshGeneration) return;
+    // Coalesce only after resolving the account. A pending refresh for another
+    // account must never be reused, and explicit sign-out invalidates its grant.
+    if (observedEpoch !== invalidationEpoch) return;
+    // A newer account lookup can supersede a running old-account refresh. An
+    // older lookup resolving late must never replace that newer account again.
+    if (authRequest < latestResolvedAuthRequest) return cloudRefresh?.promise;
+    latestResolvedAuthRequest = authRequest;
+    if (session?.user && cloudRefresh?.userId === session.user.id &&
+        cloudRefresh.generation === refreshGeneration) return cloudRefresh.promise;
     if (!session?.user) {
-      // An expired/missing auth session is not an intentional sign-out. Keep the
-      // signed owner-bound offline grant until its real expiry, as Android does.
+      // Missing authentication is not an intentional sign-out: preserve the
+      // verified owner-bound offline lease until its actual expiry.
       await applyCachedOfflineEntitlements();
       return;
     }
-
-    // Keep expiry enforcement armed while remote checks are pending. A browser
-    // can report online while the auth/backend service is unreachable.
-    await applyCachedOfflineEntitlements(session.user.id);
-
-    let isAdmin = false;
-    try {
-      const { data, error } = await supabase.functions.invoke('admin-payment-review', {
-        body: { action: 'check-admin' }
-      });
-      isAdmin = !error && data?.isAdmin === true;
-    } catch {
-      // An unavailable admin check must not block ordinary signed-license refresh.
-    }
-
-    try {
-      if (generation !== refreshGeneration) return;
-      const signedLease = await refreshSignedOfflineLease(session.user.id, generation);
-      if (generation !== refreshGeneration) return;
-      if (isAdmin || signedLease.isAdmin) {
-        // Admin UI remains all-access online and offline. The signed role claim
-        // has no subscription expiry because administrator access is not a plan.
+    const userId = session.user.id;
+    const generation = ++refreshGeneration;
+    const promise = (async () => {
+      // Keep local expiry enforcement running while the network is pending.
+      await applyCachedOfflineEntitlements(userId);
+      try {
+        if (generation !== refreshGeneration) return;
+        const signedLease = await refreshSignedOfflineLease(userId, generation);
+        if (generation !== refreshGeneration) return;
+        // The cryptographically verified lease includes the administrator role;
+        // a second admin-payment-review invocation grants no additional assurance.
         set({
-          cloudTrackIds: [...TRACK_IDS],
-          ...accessFlags([...TRACK_IDS]),
+          cloudTrackIds: signedLease.trackIds,
+          ...accessFlags(signedLease.trackIds),
           entitlementsVerified: true
         });
-        return;
+      } catch {
+        if (generation !== refreshGeneration) return;
+        const restored = await applyCachedOfflineEntitlements(userId);
+        if (generation !== refreshGeneration) return;
+        if (!restored) set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
       }
-      set({
-        cloudTrackIds: signedLease.trackIds,
-        ...accessFlags(signedLease.trackIds),
-        entitlementsVerified: true
-      });
-    } catch {
-      if (generation !== refreshGeneration) return;
-      // Preserve the last valid lease for this exact account when refresh/signing
-      // fails. Never erase a paid offline grant before a replacement is verified.
-      const restored = await applyCachedOfflineEntitlements(session.user.id);
-      if (isAdmin) {
-        set({
-          cloudTrackIds: [...TRACK_IDS],
-          ...accessFlags([...TRACK_IDS]),
-          entitlementsVerified: true
-        });
-      } else if (!restored) {
-        set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
-      }
-    }
+    })();
+    const job = { userId, generation, promise };
+    cloudRefresh = job;
+    try { await promise; }
+    finally { if (cloudRefresh === job) cloudRefresh = null; }
   },
 
   checkLicenseStatus: () => {
@@ -258,6 +249,8 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
 
   clearLicense: () => {
     refreshGeneration++;
+    invalidationEpoch++;
+    cloudRefresh = null;
     clearEntitlementExpiryTimer();
     clearOfflineEntitlements();
     set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });

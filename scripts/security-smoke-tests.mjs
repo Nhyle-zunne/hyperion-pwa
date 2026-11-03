@@ -339,7 +339,7 @@ assert.ok(questionBank.includes('if (!freeOnly)') && questionBank.includes('auth
 assert.ok(questionBank.includes('if (freeOnly) text = sampleFreeCsv(assetPath, text)'), 'Free mock exam sampling remains restricted to the designated free sample');
 assert.ok(mockExam.includes('SUBMIT EXAM'), 'Mock exam requires explicit submission');
 assert.ok(mockExam.includes("window.addEventListener('beforeunload', blockExit)"), 'Mock exam guards accidental exit');
-assert.ok(licenseStore.includes('await applyCachedOfflineEntitlements(session.user.id)'), 'Failed signed-lease refresh restores only the cached lease for the current account');
+assert.ok(licenseStore.includes('await applyCachedOfflineEntitlements(userId)'), 'Failed signed-lease refresh restores only the cached lease for the current account');
 assert.ok(app.includes("location.pathname === '/practice/competences' || location.pathname === '/practice'") && app.includes('setupNeedsLicense'), 'Direct Practice All Questions and practice-config URLs are guarded by track entitlement');
 assert.ok(app.includes("setupParams.get('free') === '1' && setupMode !== 'drill'") && app.includes('Free Reviewer and Timed Mock Exam remain available without a purchase.'), 'Only the explicit Free Reviewer route bypasses practice setup licensing');
 assert.ok(app.includes("isMockRunner && currentMode === 'MOCK'") && app.includes("isPracticeQuiz && currentMode === 'PRACTICE'") && !app.includes("isPracticeQuiz && (currentMode === 'PRACTICE' || currentMode === 'DRILL')") && app.includes('const isPermittedFreeRunner = isFreeSession') && practiceStore.includes('authorizeQuestionSetAccess(track, questions)') && practiceStore.includes("isFreeSession: access === 'free-sample'"), 'Question-runner permits free-sample Free Reviewer and Mock sessions but never free-sample mistake drills');
@@ -433,7 +433,7 @@ assert.ok(originalQuestionFingerprint && shuffledQuestionFingerprint && changedA
 assert.equal(originalQuestionFingerprint, shuffledQuestionFingerprint, 'Shuffling answer options preserves saved-session identity when the correct answer moves with its option');
 assert.notEqual(originalQuestionFingerprint, changedAnswerFingerprint, 'Changing the correct answer does not preserve question identity');
 assert.ok(questionBank.includes('const authHeader = req.headers.get("Authorization")') && questionBank.includes('.auth.getUser()'), 'Question-bank identity comes from a validated Supabase user token, not client metadata');
-assert.ok(licenseStore.includes('Never erase a paid offline grant before a replacement is verified'), 'Transient online refresh failures do not erase a valid offline entitlement');
+// Signed-lease failure preservation is exercised by license-refresh.test.ts.
 assert.ok(
   questionBank.includes('admin: isAdmin === true') &&
     !questionBank.includes('offlineAdminExpiry') &&
@@ -485,7 +485,7 @@ assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licens
 assert.ok(
   licenseStore.includes('refreshSignedOfflineLease') &&
     licenseStore.includes('await saveOfflineEntitlements(userId, data.token, () => generation === refreshGeneration)') &&
-    licenseStore.includes('await applyCachedOfflineEntitlements(session.user.id)') &&
+    licenseStore.includes('await applyCachedOfflineEntitlements(userId)') &&
     !licenseStore.includes('clearOfflineEntitlements(session.user.id)'),
   'Both purchase sources use one server-signed cross-store lease and failed refreshes preserve the last valid same-account lease'
 );
@@ -1208,4 +1208,4 @@ assert.ok(
 
 console.log('Release-safety smoke checks passed.');
 
-assert.ok(!questionBankClient.includes("supabase!.functions.invoke('question-bank'") && questionBankClient.includes("fetch('/api/question-bank/questions'") && questionBankClient.includes('invokeQuestionBank({'), 'Normal and automatic-pack question pages share GitHub Worker routing');
+assert.ok(!questionBankClient.includes("supabase!.functions.invoke('question-bank'") && (await read('../src/lib/questionBankTransport.ts')).includes("fetcher('/api/question-bank/questions'") && questionBankClient.includes('invokeQuestionBank({'), 'Normal and automatic-pack question pages share GitHub Worker routing');

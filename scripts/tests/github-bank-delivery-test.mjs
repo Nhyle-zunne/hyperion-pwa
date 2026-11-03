@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createBankWorker } from '../../worker/index.ts'
 import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_ROOT, githubBankRequest } from '../../supabase/functions/_shared/githubBankSource.ts'
-import { SOURCE_ASSETS, toSearchQuestions, sampleFreeCsv } from '../../supabase/functions/_shared/bankCodec.ts'
+import { SOURCE_ASSETS, toSearchQuestions, sampleFreeCsv, sourceInfo } from '../../supabase/functions/_shared/bankCodec.ts'
 const manifest = JSON.parse(await readFile(new URL('../../supabase/functions/_shared/github-bank-manifest.json', import.meta.url), 'utf8'))
 const folder = join(tmpdir(), 'hyperion-bank-' + GITHUB_BANK_REVISION)
 await mkdir(folder, { recursive: true })
@@ -24,10 +24,11 @@ for (let i = 0; i < manifest.files.length; i += 4) await Promise.all(manifest.fi
   bank.set(file.path, bytes)
 }))
 assert.deepEqual([...bank.keys()].sort(), SOURCE_ASSETS.slice().sort())
-let licensed = true, backendAvailable = true, corrupt = false, upstreamBankReads = 0
+let licensed = true, backendAvailable = true, corrupt = false, upstreamBankReads = 0, supabaseRequests = 0
 const fakeFetch = async (input, options) => {
   const url = new URL(typeof input === 'string' ? input : input.url)
   if (url.hostname.endsWith('.supabase.co')) {
+    supabaseRequests++
     const body = JSON.parse(options.body)
     assert.equal(body.action, 'github-delivery-access')
     const headers = new Headers(options.headers)
@@ -87,3 +88,41 @@ for (const path of SOURCE_ASSETS) {
   total += questions.length
 }
 console.log(`PASS: all ${SOURCE_ASSETS.length} GitHub bank hashes/parsers (${total} questions), original IDs/content, anonymous denial, paid/free gating, revocation despite warm cache, failed authorization, integrity failure and range validation.`)
+
+const countsRequest = (track, freeOnly = false, revision, handler = worker) => handler(new Request('https://hyperionmaritime.org/api/question-bank/counts?track=' + track + '&freeOnly=' + Number(freeOnly) + (revision ? '&bankRevision=' + revision : '')), { ASSETS: assets })
+const beforeCountAuth = supabaseRequests
+for (const [track, expectedTotal] of Object.entries({ DECK_OIC_NW: 6448, GMDSS_GOC: 2260, ENGINE_OIC_EW: 5380, DECK_MGT: 6075, ENGINE_MGT: 5589 })) {
+  const result = await countsRequest(track)
+  assert.equal(result.status, 200)
+  assert.match(result.headers.get('Cache-Control'), /public/)
+  const metadata = await result.json()
+  assert.equal(metadata.bankRevision, GITHUB_BANK_REVISION)
+  assert.equal(metadata.counts.reduce((sum, item) => sum + item.count, 0), expectedTotal)
+  const expected = SOURCE_ASSETS.filter(path => sourceInfo(path)?.track === track).map(path => ({ competenceId: sourceInfo(path).competenceId, part: sourceInfo(path).part, count: compatibility.files[path].count }))
+  assert.deepEqual(metadata.counts, expected)
+  assert.equal(JSON.stringify(metadata).includes('questionText'), false)
+}
+const freeMetadata = await (await countsRequest('GMDSS_GOC', true)).json()
+assert.equal(freeMetadata.counts.reduce((sum, item) => sum + item.count, 0), 1030)
+const beforeRepeated = upstreamBankReads
+await Promise.all(Array.from({ length: 5 }, () => countsRequest('DECK_OIC_NW')))
+assert.equal(upstreamBankReads, beforeRepeated, 'Warm counts must not re-read bank assets')
+assert.equal(supabaseRequests, beforeCountAuth, 'Public metadata must never invoke Supabase auth or counts')
+assert.equal((await countsRequest('invalid')).status, 400)
+assert.equal((await countsRequest('DECK_OIC_NW', false, 'a'.repeat(40))).status, 409)
+console.log('PASS: public release-pinned full/free counts for all tracks, immutable caches and zero Supabase metadata/auth requests.')
+
+const persistent = new Map()
+const fakeEdgeCache = { match: async request => persistent.get(request.url)?.clone(), put: async (request, response) => { persistent.set(request.url, response.clone()) } }
+const coldCounts = createBankWorker(fakeFetch, fakeEdgeCache)
+await countsRequest('GMDSS_GOC', false, undefined, coldCounts)
+const readsBeforeNewIsolate = upstreamBankReads
+const nextIsolate = createBankWorker(fakeFetch, fakeEdgeCache)
+assert.equal((await countsRequest('GMDSS_GOC', false, undefined, nextIsolate)).status, 200)
+assert.equal(upstreamBankReads, readsBeforeNewIsolate, 'A new isolate reuses Cloudflare cached aggregates')
+corrupt = true
+const retryWorker = createBankWorker(fakeFetch)
+assert.equal((await countsRequest('DECK_MGT', false, undefined, retryWorker)).status, 503)
+corrupt = false
+assert.equal((await countsRequest('DECK_MGT', false, undefined, retryWorker)).status, 200, 'Failed metadata computations must not poison the cache')
+console.log('PASS: Cloudflare aggregate reuse across isolates and recovery after corrupt upstream assets.')

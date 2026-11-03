@@ -57,6 +57,8 @@ jobs:
         run: |
           bun run test:saved-data:sql
           bun run test:offline-licenses
+          bun test scripts/tests/license-refresh.test.ts
+          bun test scripts/tests/question-bank-transport.test.ts
       - name: Install Chromium for saved-data regression
         run: bunx playwright install --with-deps chromium
       - name: Saved-data browser regression

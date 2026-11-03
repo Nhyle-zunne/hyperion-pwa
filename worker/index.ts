@@ -1,6 +1,6 @@
 import { PublisherError, publisherState, validateGithubBatch, publishGithubBatch, type PublishInput } from './githubBankPublisher.ts'
 import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, githubAssetPath, readBounded } from '../supabase/functions/_shared/githubBankSource.ts'
-import { SOURCE_ASSETS, sourceInfo, toSearchQuestions, sampleFreeCsv } from '../supabase/functions/_shared/bankCodec.ts'
+import { SOURCE_ASSETS, sourceInfo, toSearchQuestions, sampleFreeCsv, validQuestionCount, QUESTION_COUNT_ALGORITHM_VERSION } from '../supabase/functions/_shared/bankCodec.ts'
 
 type Env = { ASSETS: { fetch: typeof fetch }; GITHUB_BANK_READ_TOKEN?: string; GITHUB_BANK_WRITE_TOKEN?: string }
 type Config = { supabaseUrl: string; supabaseAnonKey: string }
@@ -9,13 +9,61 @@ const reply = (value: unknown, status = 200) => new Response(JSON.stringify(valu
 export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
   let source: ReturnType<typeof createGithubBankSource> | undefined
   let sourceToken: string | undefined
+  type Counts = { competenceId: string; part: number | null; fullCount: number; freeCount: number }[]
+  const countJobs = new Map<string, Promise<Counts>>()
   return async (request: Request, env: Env): Promise<Response> => {
     const url = new URL(request.url)
     const readToken = env.GITHUB_BANK_READ_TOKEN
-    if (!source || sourceToken !== readToken) { sourceToken = readToken; source = createGithubBankSource(fetcher, cache, readToken) }
+    if (!source || sourceToken !== readToken) { sourceToken = readToken; source = createGithubBankSource(fetcher, cache, readToken); countJobs.clear() }
     if (url.pathname === '/api/question-bank/source' && request.method === 'GET') {
       try { const release = await source.release(); return reply({ source: 'github', repository: GITHUB_BANK_REPOSITORY, root: GITHUB_BANK_ROOT, revision: release.revision, publishedAt: release.publishedAt, files: release.files.length }) }
       catch { return reply({ error: 'The GitHub release is temporarily unavailable.' }, 503) }
+    }
+    if (url.pathname === '/api/question-bank/counts') {
+      if (request.method !== 'GET') return reply({ error: 'Method not allowed.' }, 405)
+      const track = url.searchParams.get('track') || ''
+      const freeOnly = url.searchParams.get('freeOnly') === '1'
+      const pinned = url.searchParams.get('bankRevision')
+      if (!['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'].includes(track) ||
+          (pinned !== null && !/^[a-f0-9]{40}$/.test(pinned))) return reply({ error: 'Invalid question-count request.' }, 400)
+      try {
+        const release = await source.release()
+        if (pinned && pinned !== release.revision) return reply({ error: 'The question bank changed. Reload and retry.' }, 409)
+        const key = QUESTION_COUNT_ALGORITHM_VERSION + ':' + release.revision + ':' + track
+        let job = countJobs.get(key)
+        if (!job) {
+          const snapshotSource = source
+          job = (async (): Promise<Counts> => {
+            // Cache aggregates only. The namespace includes parser version and an
+            // immutable release; no account identity or question text is stored.
+            const cacheKey = new Request(new URL('/__hyperion-counts/' + QUESTION_COUNT_ALGORITHM_VERSION + '/' + release.revision + '/' + track, url.origin))
+            try {
+              const stored = await cache?.match(cacheKey)
+              if (stored) return await stored.json() as Counts
+            } catch { /* Recompute if the optional edge cache is unavailable. */ }
+            const paths = SOURCE_ASSETS.filter(path => sourceInfo(path)?.track === track)
+            const counts: Counts = []
+            for (const path of paths) {
+              const info = sourceInfo(path)!
+              const text = await snapshotSource.read(path, release)
+              counts.push({ competenceId: info.competenceId, part: info.part,
+                fullCount: validQuestionCount(path, text, false), freeCount: validQuestionCount(path, text, true) })
+            }
+            if (cache) try {
+              await cache.put(cacheKey, new Response(JSON.stringify(counts), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=31536000, immutable' } }))
+            } catch { /* Verified counts remain usable without persistent caching. */ }
+            return counts
+          })()
+          countJobs.set(key, job)
+          while (countJobs.size > 10) countJobs.delete(countJobs.keys().next().value!)
+        }
+        let all: Counts
+        try { all = await job } catch (error) { countJobs.delete(key); throw error }
+        const counts = all.map(item => ({ competenceId: item.competenceId, part: item.part, count: freeOnly ? item.freeCount : item.fullCount }))
+        return new Response(JSON.stringify({ counts, bankRevision: release.revision, source: 'github', access: 'public-catalog-metadata' }), {
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', 'ETag': '"' + QUESTION_COUNT_ALGORITHM_VERSION + ':' + release.revision + ':' + track + ':' + Number(freeOnly) + '"' }
+        })
+      } catch { return reply({ error: 'Published question counts are temporarily unavailable.' }, 503) }
     }
     if (url.pathname === '/api/question-bank/admin') {
       if (request.method !== 'POST') return reply({ error: 'Method not allowed.' }, 405)
