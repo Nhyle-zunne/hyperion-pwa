@@ -297,8 +297,10 @@ async function hasValidOfflineTrackLease(track: TrackId, expectedUserId?: string
 /**
  * Starting new offline sessions still requires an integrity-checked downloaded pack.
  */
-async function mayUseOfflineTrack(track: TrackId, freeOnly: boolean): Promise<boolean> {
-  return freeOnly || await hasValidOfflineTrackLease(track)
+async function mayUseOfflineTrack(track: TrackId, _freeOnly: boolean): Promise<boolean> {
+  // Free reviewer access is online-only. A signed and unexpired paid-track lease
+  // is mandatory even if a previous subscription left a free sample on this device.
+  return hasValidOfflineTrackLease(track)
 }
 
 function canFallbackToOffline(error: unknown): boolean {
@@ -791,8 +793,12 @@ async function loadQuestionsByTrackInternal(track: TrackId, freeOnly = false): P
     if (cached) return cached
     throw new Error('Full-track question preloading is disabled. Select a competence or download an offline pack.')
   }
-  // A verified downloaded free pack is already the exact official sample.
-  // Reuse it online as well so a track revisit does not re-fetch every CSV.
+  // Never download every free source file for an unlicensed caller.
+  // Free Reviewer uses the per-competence online, paginated question endpoint.
+  if (!(await hasValidOfflineTrackLease(track))) {
+    throw new Error('Free reviewing is online-only. Open a Free Reviewer competence to load the selected questions; offline and bulk downloads require a licensed track.')
+  }
+  // A licensed track may reuse its previously downloaded official free sample.
   if (await hasFreshCurrentOfflinePack(track, true)) {
     const cached = await getOfflineQuestionsByTrack(track, true)
     if (cached) return cached
@@ -834,37 +840,10 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   if (fingerprintResults.some((fingerprint) => fingerprint === null)) return null;
   const fingerprints = fingerprintResults as string[];
 
-  const matchesCachedPack = async (freeOnly: boolean) => {
-    // A resumed free session usually contains one competence (or a small set),
-    // so decrypt only those cached groups rather than the entire free bank.
-    const requestedGroups = new Map<string, { competenceId: string; part?: number }>()
-    for (const question of questions) {
-      if (typeof question.competenceId !== 'string' || !question.competenceId) return false
-      const partMatch = track === 'GMDSS_GOC' ? question.id.match(/-P(\d+)-/) : null
-      const part = partMatch ? Number(partMatch[1]) : undefined
-      const key = `${question.competenceId}:${part ?? 'all'}`
-      requestedGroups.set(key, { competenceId: question.competenceId, part })
-    }
-
-    const cachedGroups = await Promise.all(Array.from(requestedGroups.values(), group =>
-      getOfflineQuestionsByCompetence(track, group.competenceId, group.part, freeOnly)
-    ))
-    if (cachedGroups.some(group => !group)) return false
-    const allowedFingerprints = new Set<string>()
-    for (const group of cachedGroups) {
-      for (const question of group ?? []) {
-        const fingerprint = await fingerprintQuestion(question)
-        if (!fingerprint) return false
-        allowedFingerprints.add(fingerprint)
-      }
-    }
-    return fingerprints.every(fingerprint => allowedFingerprints.has(fingerprint))
-  }
 
   if (offline) {
-    // Non-paying users are restricted to the exact downloaded official free sample.
-    await ensureOfflineFreeSamplePack(track)
-    if (await matchesCachedPack(true)) return 'free-sample'
+    // Free users must reconnect to review. Old locally saved free samples never
+    // authorize offline sessions after sign-out, revocation, or license expiry.
     return null
   }
 
@@ -882,14 +861,9 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
     // Safari/iOS and installed PWAs can report online while the API is unreachable.
     // Prefer the local signed lease after a genuine network/server failure.
     if (await hasValidOfflineTrackLease(track)) return 'licensed'
-    await ensureOfflineFreeSamplePack(track)
-    if (await matchesCachedPack(true)) return 'free-sample'
-
-    const freeQuestions = await getQuestionsByTrack(track, true);
-    const freeFingerprintResults = await Promise.all(freeQuestions.map(fingerprintQuestion));
-    if (freeFingerprintResults.some((fingerprint) => fingerprint === null)) return null;
-    const freeFingerprints = new Set(freeFingerprintResults as string[]);
-    if (fingerprints.every(fingerprint => freeFingerprints.has(fingerprint))) return 'free-sample'
+    // Never bulk-fetch every free CSV as an authentication fallback. Free
+    // sessions are authorized by the live service and consume no background
+    // question-bank download traffic if that service is unavailable.
     return null
   } catch {
     return null;
@@ -910,7 +884,7 @@ async function loadQuestionCountsByTrackInternal(track: TrackId, freeOnly = fals
   }
   // Counts are already included in a complete offline pack. Reuse them while
   // the manifest is known current instead of requesting the same metadata again.
-  if (await hasFreshCurrentOfflinePack(track, freeOnly) && await mayUseOfflineTrack(track, freeOnly)) {
+  if (await mayUseOfflineTrack(track, freeOnly) && await hasFreshCurrentOfflinePack(track, freeOnly)) {
     const cachedCounts = await getOfflineQuestionCounts(track, freeOnly)
     if (cachedCounts) return cachedCounts
   }
@@ -1233,6 +1207,9 @@ async function getCurrentCachedCompetenceRange(
   limit: number | undefined,
   randomSample: boolean
 ): Promise<Question[] | null> {
+  // A free viewer without a signed local license must use the online service,
+  // not inspect previously encrypted offline packs or fetch their update metadata.
+  if (!(await hasValidOfflineTrackLease(track))) return null
   if (!(await hasFreshCurrentOfflinePack(track, freeOnly))) return null
   try {
     return await getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
