@@ -2,7 +2,7 @@
 import {spawn} from 'node:child_process'
 import {readFile,writeFile} from 'node:fs/promises'
 import assert from 'node:assert/strict'
-import {guardedProgressRevisionSql} from '../lib/progressRevisionDeployment.mjs'
+import {guardedProgressRevisionSql,migrationBodyForGuard} from '../lib/progressRevisionDeployment.mjs'
 const container=process.env.HYPERION_REVISION_TEST_CONTAINER
 const base=process.env.DATABASE_URL
 if(container&&!/^hyperion-revision-test-[a-z0-9-]+$/.test(container))throw Error('Use an isolated revision test container.')
@@ -57,7 +57,7 @@ const merged=JSON.parse(await query(db,`select data from user_learning_progress 
 assert.equal(merged.storage.deviceA,'offline A');assert.equal(merged.storage.deviceB,'offline B')
 // The future-only policy must not change existing records when installed.
 const protectedBefore=await query(db,"select md5(string_agg(id::text||user_id::text||data::text||captured_at::text,'' order by id)) from user_learning_progress_revisions")
-await query(db,guardedProgressRevisionSql(retention))
+await query(db,guardedProgressRevisionSql(migrationBodyForGuard(retention)))
 const cutoff=Number(await query(db,"select protected_through_id from user_learning_progress_revision_retention"))
 assert.ok(cutoff>0,'Capture a real existing-revision watermark')
 assert.equal(
@@ -82,7 +82,7 @@ const fingerprints=await query(db,stateSql)
 await assert.rejects(query(db,guardedProgressRevisionSql("update user_learning_progress set data=jsonb_set(data,'{guardProbe}','true'::jsonb);")),/Non-destructive migration guard/)
 assert.equal(await query(db,stateSql),fingerprints,'Guard rejection must roll back all record changes')
 await query(db,guardedProgressRevisionSql(rollback));assert.equal(await query(db,stateSql),fingerprints,'Safety rollback must not modify records')
-await query(db,guardedProgressRevisionSql(migration+exactNoops+retention));assert.equal(await query(db,stateSql),fingerprints,'Reapplying definitions must not modify records')
+await query(db,guardedProgressRevisionSql(migration+exactNoops+migrationBodyForGuard(retention)));assert.equal(await query(db,stateSql),fingerprints,'Reapplying definitions must not modify records')
 results.concurrency='two real PostgreSQL sessions: one winner, stale writer rejected, retry preserves both devices'
 results.rollback='definition-only rollback/reapply retain every current/revision fingerprint'
 console.log(JSON.stringify(results,null,2))
