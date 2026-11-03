@@ -85,8 +85,11 @@ const publicResponse = await publicWorker(
 )
 assert.equal(publicResponse.status, 200, 'Public Free Reviewer must not require Supabase configuration')
 assert.equal(supabaseRequests, beforeFreeAuth)
+// Public delivery may legitimately read the encrypted GitHub source; only a
+// subsequent failed PAID authorization must not trigger any additional bank fetch.
+const readsBeforeDeniedPaid = upstreamBankReads
 assert.equal((await request(selection)).status, 503)
-assert.equal(upstreamBankReads, reads, 'Failed authorization must not fetch or disclose bank data')
+assert.equal(upstreamBankReads, readsBeforeDeniedPaid, 'Failed paid authorization must not fetch or disclose bank data')
 backendAvailable = true; corrupt = true
 assert.equal((await request(selection, createBankWorker(fakeFetch))).status, 503)
 corrupt = false
