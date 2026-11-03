@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createBankWorker } from '../../worker/index.ts'
-import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_ROOT, githubAssetPath } from '../../supabase/functions/_shared/githubBankSource.ts'
+import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_ROOT, githubBankRequest } from '../../supabase/functions/_shared/githubBankSource.ts'
 import { SOURCE_ASSETS, toSearchQuestions, sampleFreeCsv } from '../../supabase/functions/_shared/bankCodec.ts'
 const manifest = JSON.parse(await readFile(new URL('../../supabase/functions/_shared/github-bank-manifest.json', import.meta.url), 'utf8'))
 const folder = join(tmpdir(), 'hyperion-bank-' + GITHUB_BANK_REVISION)
@@ -15,8 +15,8 @@ for (let i = 0; i < manifest.files.length; i += 4) await Promise.all(manifest.fi
   let bytes
   try { bytes = await readFile(path) } catch {}
   if (!bytes || createHash('sha256').update(bytes).digest('hex') !== file.sha256) {
-    const response = await fetch(`https://raw.githubusercontent.com/Nhyle-zunne/hyperion-reviewer/${GITHUB_BANK_REVISION}/${GITHUB_BANK_ROOT}/${githubAssetPath(file.path)}`)
-    if (!response.ok) throw new Error('Could not fetch encrypted bank test fixture: ' + response.status)
+    const response = await fetch(githubBankRequest(file.path, GITHUB_BANK_REVISION, process.env.GITHUB_BANK_READ_TOKEN))
+    if (!response.ok) throw new Error('Could not fetch encrypted bank test fixture (HTTP ' + response.status + '). For a private bank repository, configure the BANK_READ_TOKEN Actions secret with Contents read access to hyperion-reviewer.')
     bytes = Buffer.from(await response.arrayBuffer())
     await writeFile(path, bytes)
   }

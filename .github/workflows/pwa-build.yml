@@ -41,6 +41,8 @@ jobs:
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
       - name: Release-safety smoke checks
+        env:
+          GITHUB_BANK_READ_TOKEN: ${{ secrets.BANK_READ_TOKEN }}
         run: |
           bun run test:security
           node scripts/tests/production-auth-build-test.mjs

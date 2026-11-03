@@ -22,6 +22,12 @@ Configure **GITHUB_BANK_WRITE_TOKEN** as a production Cloudflare Worker secret: 
 
 Student delivery does not depend on the publishing token. While the repository is public, readers fetch public encrypted assets. If it becomes private, first configure a separate server-only **GITHUB_BANK_READ_TOKEN** in both the Worker and Supabase `question-bank` function.
 
+## Private-repository build checks
+
+The private bank also needs authenticated access during website build checks. Add the read-only token to the **hyperion-pwa repository → Settings → Secrets and variables → Actions** as **BANK_READ_TOKEN**. GitHub reserves repository secret names beginning with GITHUB_; the workflow maps BANK_READ_TOKEN to the test process variable GITHUB_BANK_READ_TOKEN only for the bank regression step. Cloudflare and Supabase runtime secret names remain GITHUB_BANK_READ_TOKEN. Never use a VITE_ prefix or put token values in source/configuration files.
+
+Private repositories consume the account's included GitHub Actions allowance. Runtime question delivery and build-test access use separate configured secret locations; neither requires making the repositories public.
+
 ## Release metadata and integrity
 
 `hyperion-manifest.json` and `hyperion-release.json` live beside the shared asset folders. The release pointer identifies an immutable bank commit and the manifest's SHA-256; the manifest identifies all 69 encrypted files by path, byte count and SHA-256. Source bytes are verified before decryption. Only a genuine initial missing pointer selects the embedded initial snapshot; a warm upstream outage retains the last verified release and a cold outage fails safely.
