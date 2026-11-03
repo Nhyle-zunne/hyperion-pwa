@@ -65,6 +65,7 @@ try {
   assert.equal(policy.length,1)
   assert.equal(Number(policy[0].protected_through_id),Number(highestOriginalId))
   assert.equal(policy[0].max_future_per_account,10)
+  assert.equal(policy[0].enabled,true)
   assert.deepEqual((await allRevisions()).rows,original,
     'Applying retention must never change or remove a pre-existing revision')
 
@@ -99,12 +100,21 @@ try {
   assert.equal(check.rows[0].recovery.found,true)
   assert.deepEqual(await userRow(a),beforeRecovery)
 
+  // An operator can pause pruning without interrupting study progress.
+  await db.exec('update public.user_learning_progress_revision_retention set enabled=false')
+  for(let n=50;n<55;n++) await update(a,n,'futureOrdinal')
+  assert.equal((await future(a,highestOriginalId)).length,15)
+  await db.exec('update public.user_learning_progress_revision_retention set enabled=true')
+  await update(a,55,'futureOrdinal')
+  assert.equal((await future(a,highestOriginalId)).length,10)
+  assert.deepEqual((await allRevisions()).rows.filter(x=>x.id<=highestOriginalId),original)
+
   // Missing-policy fallback preserves progress, never deletes it.
   await db.exec('delete from public.user_learning_progress_revision_retention')
   const beforeMissing = (await allRevisions()).rows.length
-  await update(a,50,'futureOrdinal')
+  await update(a,56,'futureOrdinal')
   assert.equal((await allRevisions()).rows.length,beforeMissing+1)
-  assert.equal((await userRow(a)).futureOrdinal,50)
+  assert.equal((await userRow(a)).futureOrdinal,56)
   // Reapplying the migration restores a new policy, but does not touch records.
   const priorToReplay = (await allRevisions()).rows
   await db.exec(migration)
