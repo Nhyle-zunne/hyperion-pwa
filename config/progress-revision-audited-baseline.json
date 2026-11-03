@@ -1,0 +1,11 @@
+{
+  "project": "evnjoezffghtrzqacwcj",
+  "functionDefinitionSha256": {
+    "compare_user_learning_progress": "dfdf1921b1327269e2fd954a5b323268f221df2a8b380cd7f79e112b0cda1619",
+    "merge_preserved_progress_items": "1878a83b2c124f20231ed56b9ad0ea5befdfc9b557e4d8071f4fb23cf2f19bc8",
+    "preserve_completed_session_audit": "8acc56df53b63623e3b557bb5463446ea1dea679e8c56ad71bff16057af02b19",
+    "preserve_learning_progress": "7670f30f9d159f29ddf7d5b83753f88d5911ba82a326d23d7f3faec4fd2a9766",
+    "recover_learning_progress_collections": "bb95302136f2a5b4179c128b8c957f87ce3d3dba116c92ec5bd3cc47fd4f0cac",
+    "set_user_learning_progress_updated_at": "3af119367ad73cc68b6254c386c9b004964fdb423dae3b77bf896235572f15bd"
+  }
+}
