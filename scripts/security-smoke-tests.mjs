@@ -718,6 +718,14 @@ assert.ok(quickScanViewerScreen.includes('quick-scan-progress-timer') && quickSc
 assert.ok(!mockExam.includes('{q.topic}') && mockExam.includes('QUESTION {index + 1} OF {questions.length}'), 'Mock exam retains per-question numbering but removes topic titles from question content');
 assert.ok(sessionElapsedTimer.includes('inline = false') && sessionElapsedTimer.includes('margin: inline ? 0'), 'Inline elapsed display is optional and existing timer callers preserve previous layout');
 assert.ok(indexCss.includes('.quiz-heading-with-timer') && indexCss.includes('.quick-scan-progress-timer'), 'Question headings have responsive compact timer-aligned styling');
+const offlineHubScreen = await read('../src/screens/TrackHubScreen.tsx');
+const offlineHubStyles = await read('../src/screens/TrackHubScreen.css');
+assert.ok(offlineHubScreen.includes('await downloadOfflinePack(track, false, (downloaded, total) =>') && offlineHubScreen.includes('downloaded, total,') && offlineHubScreen.includes("phase: total > 0 && downloaded >= total ? 'saving' : 'downloading'"), 'Background licensed offline packs report real question counts and wait for verified save before completion');
+assert.ok(offlineHubScreen.includes("const downloadPercent = hasMeasuredProgress") && offlineHubScreen.includes('Math.min(99,') && offlineHubScreen.includes('offlineStatus?.questionCount.toLocaleString()'), 'Offline progress never claims 100% before the complete encrypted pack is saved and then shows real saved counts');
+assert.ok(offlineHubScreen.includes('currentOfflineTransfer') && offlineHubScreen.includes('hyperion:offline-transfer') && offlineHubScreen.includes('accountUserId && transfer.trackId === info.trackId && transfer.userId === accountUserId'), 'Offline progress survives a track page remount and is scoped to the current track and signed-in account');
+assert.ok(offlineHubScreen.includes('role="progressbar"') && offlineHubScreen.includes('aria-valuenow=') && offlineHubScreen.includes('hub-offline-spinner'), 'Offline readiness exposes accessible progress and a spinner while checking or downloading');
+assert.ok(offlineHubStyles.includes('.hub-offline-progress-track') && offlineHubStyles.includes('hyperion-offline-indeterminate') && offlineHubStyles.includes('hyperion-offline-spin'), 'Offline track UI styles include determinate and indeterminate progress animations');
+
 const questionBookmarkButton = await read('../src/components/QuestionBookmarkButton.tsx');
 assert.ok(questionBookmarkButton.includes('<path d="M6.75 4.25A1.75 1.75') && questionBookmarkButton.includes('aria-pressed={bookmarked}') && app.includes('QuestionBookmarkButton'), 'The shared question bookmark control uses an accessible outline SVG');
 assert.ok(app.includes('!isMockRunner && <QuestionBookmarkButton') && mockExam.includes('questionNumber={index + 1}') && mockExam.includes('question={q}'), 'Scrolling mock exams bookmark each question rather than a hidden current index');
