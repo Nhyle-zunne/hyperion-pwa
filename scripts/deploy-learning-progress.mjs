@@ -30,7 +30,7 @@ if (!process.argv.includes('--verify-only')) {
 const metadata = await (await checked(await fetch(base + '/functions/learning-progress', { headers }), 'Progress metadata check')).json()
 if (metadata.verify_jwt !== true) throw new Error('Progress gateway JWT verification must remain enabled.')
 const deployed = await (await checked(await fetch(base + '/functions/learning-progress/body', { headers }), 'Deployed progress contract check')).text()
-for (const feature of ['recover-saved', 'read-session', 'write-session', 'DecompressionStream']) {
+for (const feature of ['recover-saved', 'read-session', 'write-session', 'DecompressionStream', 'known_snapshot_hash']) {
   if (!deployed.includes(feature)) throw new Error(`Deployed progress backend is missing ${feature}. Do not publish a frontend requiring it.`)
 }
 console.log('Verified deployed recovery, archive read/write, gzip support and gateway JWT enforcement.')

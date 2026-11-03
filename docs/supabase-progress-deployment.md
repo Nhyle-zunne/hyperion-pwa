@@ -30,3 +30,27 @@ Production had progress backend v124 without the recovery/archive handlers and n
 Background archive synchronization now pauses after a failure, uses increasing delays for transient failures and a longer pause for unsupported/unauthorized requests, and avoids repeatedly fetching absent historical archives. Failed snapshots remain encrypted locally and retain their pending state. User-initiated audit reads remain available independently of background backoff. A browser regression reproduces the prior request flood, checks one failed request pauses the batch, and verifies that all pending snapshots upload once the backend recovers.
 
 Validation: PostgreSQL preservation/recovery/permissions regression, Deno owner/expiry/archive/recovery checks, full saved-data browser suite, production build, security and offline build checks, nine offline-license tests, and five GitHub version migration tests passed. Question source, question IDs and quiz interfaces are unchanged by this repair.
+
+## Conditional Android reads (November 3, 2026)
+
+Android can send `known_snapshot_hash` with an ordinary `read`. The backend still
+checks current entitlements and sanitizes saved questions, then hashes the
+account ID, row revision and authorized snapshot. A match returns only
+`not_modified`, `snapshot_hash` and `updated_at`; legacy requests receive the full
+snapshot as before. This reduces unchanged Edge response bytes, not invocation
+counts, and does not bypass the existing database or authorization checks.
+
+The Android client retains a single serialized cloud response in process memory,
+scoped to its owner. It reconstructs a fresh JSON copy before the normal local
+merge and version-checked writes. Writes, conflicts and sign-out invalidate the
+cache; an unavailable/mismatched copy causes one full-read retry. Process restart
+also requires a full read. No records, migrations, or local storage are changed.
+Savings begin only after installation of the updated Android app.
+
+Regression coverage: conditional Edge replies, revision/account isolation,
+license expiry and failed authorization, old clients, missing rows, immutable
+Android copies, cache clearing and old-server compatibility. Independent review
+found no blocking defects. Minor lifecycle caveat: a full read already in flight
+at sign-out can repopulate the memory cache; account-scoping and fresh server
+checks still prevent cross-account reuse, and a subsequent different-account
+request clears it.

@@ -461,7 +461,17 @@ Deno.serve(async req => {
 
     try {
       const sanitized = await sanitizeSnapshot(client, snapshotData, allowedTracks)
-      return json(req, { data: sanitized, updated_at: snapshotUpdatedAt })
+      // Compare only after fresh entitlement/question authorization. A DB revision
+      // alone cannot detect license expiry or changes to the free question pool.
+      // Include the account and row revision so confirmations cannot cross accounts
+      // or silently retain an obsolete optimistic-write version.
+      const hashBytes = new Uint8Array(await crypto.subtle.digest('SHA-256',
+        new TextEncoder().encode(JSON.stringify([user.id, snapshotUpdatedAt, sanitized]))))
+      const snapshotHash = Array.from(hashBytes, byte => byte.toString(16).padStart(2, '0')).join('')
+      if (body.known_snapshot_hash === snapshotHash) {
+        return json(req, { not_modified: true, snapshot_hash: snapshotHash, updated_at: snapshotUpdatedAt })
+      }
+      return json(req, { data: sanitized, snapshot_hash: snapshotHash, updated_at: snapshotUpdatedAt })
     } catch {
       return json(req, { error: 'Could not safely verify saved question access.' }, 503)
     }
