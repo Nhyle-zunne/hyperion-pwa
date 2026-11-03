@@ -63,12 +63,28 @@ assert.equal(response.status, 403)
 assert.equal(upstreamBankReads, reads, 'A warm cache must not bypass a revoked license')
 response = await request(selection, worker, '')
 assert.equal(response.status, 403)
+const beforeFreeAuth = supabaseRequests
 response = await request({ ...selection, freeOnly: true }, worker, '')
 assert.equal(response.status, 200)
 page = await response.json()
 assert.equal(page.access, 'free-sample')
 assert.deepEqual(page.questions, toSearchQuestions('deck/oic_nw_c1.csv.enc', sampleFreeCsv('deck/oic_nw_c1.csv.enc', text)).slice(0, 20))
+assert.equal(supabaseRequests, beforeFreeAuth, 'Guest free pages must not invoke Supabase')
 licensed = true; backendAvailable = false
+// Public free questions remain available during an Auth/licensing outage.
+const freeDuringOutage = await request({ ...selection, freeOnly: true }, worker, '')
+assert.equal(freeDuringOutage.status, 200)
+assert.equal(supabaseRequests, beforeFreeAuth, 'Free pages must not depend on Supabase uptime')
+const unavailableConfig = { fetch: async () => { throw Error('Free Reviewer must never load Supabase public configuration') } }
+const publicWorker = createBankWorker(fakeFetch)
+const publicResponse = await publicWorker(
+  new Request('https://hyperionmaritime.org/api/question-bank/questions', {
+    method: 'POST', body: JSON.stringify({ ...selection, freeOnly: true })
+  }),
+  { ASSETS: unavailableConfig }
+)
+assert.equal(publicResponse.status, 200, 'Public Free Reviewer must not require Supabase configuration')
+assert.equal(supabaseRequests, beforeFreeAuth)
 assert.equal((await request(selection)).status, 503)
 assert.equal(upstreamBankReads, reads, 'Failed authorization must not fetch or disclose bank data')
 backendAvailable = true; corrupt = true
@@ -87,7 +103,7 @@ for (const path of SOURCE_ASSETS) {
   assert.equal(createHash('sha256').update(JSON.stringify(questions)).digest('hex'), compatibility.files[path].semanticSha256, 'Saved-question compatibility changed: ' + path)
   total += questions.length
 }
-console.log(`PASS: all ${SOURCE_ASSETS.length} GitHub bank hashes/parsers (${total} questions), original IDs/content, anonymous denial, paid/free gating, revocation despite warm cache, failed authorization, integrity failure and range validation.`)
+console.log(`PASS: all ${SOURCE_ASSETS.length} GitHub bank hashes/parsers (${total} questions), original IDs/content, anonymous denial, paid/free gating, zero-Supabase guest free pages and outage resilience, revocation despite warm cache, failed authorization, integrity failure and range validation.`)
 
 const countsRequest = (track, freeOnly = false, revision, handler = worker) => handler(new Request('https://hyperionmaritime.org/api/question-bank/counts?track=' + track + '&freeOnly=' + Number(freeOnly) + (revision ? '&bankRevision=' + revision : '')), { ASSETS: assets })
 const beforeCountAuth = supabaseRequests
