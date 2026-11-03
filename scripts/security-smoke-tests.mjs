@@ -955,7 +955,7 @@ const offlineAuthEnd = questionBankClient.indexOf('\n\n  if (supabase)', offline
 const offlineAuthBlock = questionBankClient.slice(offlineAuthStart, offlineAuthEnd);
 const paidLeaseFastPath = questionBankClient.indexOf('if (offline && await hasValidOfflineTrackLease(track)) return \'licensed\'', accessQuestionSetStart);
 const fingerprintWorkStart = questionBankClient.indexOf('const fingerprintResults = await Promise.all(questions.map(fingerprintQuestion))', accessQuestionSetStart);
-assert.ok(paidLeaseFastPath > accessQuestionSetStart && fingerprintWorkStart > paidLeaseFastPath && offlineAuthBlock.includes('matchesCachedPack(true)'), 'Paid offline sessions check the signed lease before expensive hashing, while unlicensed sessions are still matched to the official free sample');
+assert.ok(paidLeaseFastPath > accessQuestionSetStart && fingerprintWorkStart > paidLeaseFastPath && offlineAuthBlock.includes('return null') && !offlineAuthBlock.includes("return 'free-sample'"), 'Paid offline sessions check a signed lease before hashing; unlicensed offline free samples cannot authorize saved sessions');
 assert.ok(offlineQuestionCache.includes("const DB_VERSION = 3") && offlineQuestionCache.includes('packMeta: { key: string; value: StoredOfflineQuestionPackMetadata }') && offlineQuestionCache.includes('MAX_DECRYPTED_PACK_CACHE'), 'Offline cache uses a lightweight metadata store and a bounded decrypted-pack cache');
 const localCompetenceStart = offlineQuestionCache.indexOf('export async function getOfflineQuestionsByCompetence(');
 const localCompetenceEnd = offlineQuestionCache.indexOf('export async function getOfflineQuestionsByTrack(', localCompetenceStart);
