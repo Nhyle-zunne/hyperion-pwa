@@ -1291,10 +1291,12 @@ async function requestPersistentStorageIfSupported(): Promise<void> {
 async function downloadOfflinePackInternal(
   track: TrackId,
   freeOnly: boolean,
-  onProgress?: (downloaded: number, total: number) => void
+  onProgress?: (downloaded: number, total: number) => void,
+  canContinue: () => boolean = () => true
 ): Promise<{ questionCount: number; groupCount: number }> {
   // Offline downloads are a licensed feature. Free users study the free sample online only.
   if (freeOnly) throw new Error('Offline downloads require an active license for this track.')
+  if (!canContinue()) throw new Error('The track license is no longer active. Offline preparation was stopped.')
   if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect to the internet before downloading an offline pack.')
   if (!supabase) throw new Error('Protected question service is not configured.')
 
@@ -1310,7 +1312,11 @@ async function downloadOfflinePackInternal(
   const { data: accountSubscription } = supabase.auth.onAuthStateChange((_event, session) => {
     if (session?.user.id !== userId) accountActive = false
   })
-  const assertDownloadAccount = () => { if (!accountActive) throw new Error('The account changed while preparing offline questions. Your existing saved pack is preserved.') }
+  const assertDownloadAccount = () => {
+    if (!accountActive || !canContinue()) {
+      throw new Error('The account or track license changed during offline preparation. Your existing saved pack is preserved.')
+    }
+  }
   try {
   const { data: offlineLicense, error: offlineLicenseError } = await invokeQuestionBank({
     body: { action: 'offline-license' }
@@ -1430,6 +1436,9 @@ async function downloadOfflinePackInternal(
   }
 
   assertDownloadAccount()
+  // A revoked/expired license cannot finish committing a pack if access changed
+  // while its final pages were in flight. Existing saved packs are untouched.
+  assertDownloadAccount()
   await saveOfflineQuestionPackSets(updates)
   return { questionCount: allQuestions.length, groupCount: writtenGroups.length }
   } finally { accountSubscription.subscription.unsubscribe() }
@@ -1439,10 +1448,10 @@ export async function downloadOfflinePack(
   track: TrackId,
   freeOnly: boolean,
   onProgress?: (downloaded: number, total: number) => void,
-  options?: { background?: boolean }
+  options?: { background?: boolean; canContinue?: () => boolean }
 ): Promise<{ questionCount: number; groupCount: number }> {
-  if (options?.background) return downloadOfflinePackInternal(track, freeOnly, onProgress)
-  return withPageLoading('Downloading question pack', () => downloadOfflinePackInternal(track, freeOnly, onProgress))
+  if (options?.background) return downloadOfflinePackInternal(track, freeOnly, onProgress, options.canContinue)
+  return withPageLoading('Downloading question pack', () => downloadOfflinePackInternal(track, freeOnly, onProgress, options?.canContinue))
 }
 
 /** Search within a track on the server and return only the limited matching results. */
