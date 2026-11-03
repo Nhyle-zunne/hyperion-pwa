@@ -19,8 +19,17 @@ try{
  const before=await db.query('select id,user_id,data,captured_at::text from user_learning_progress_revisions order by id')
  // An absent migration is RED: run remaining checks against current behavior first.
  let source;try{source=await readFile('supabase/migrations/'+migration,'utf8')}catch{}
- if(source)await db.exec(source)
+ if(source){await db.exec(source);await db.exec(await readFile('supabase/migrations/20261104020000_preserve_exact_progress_noops.sql','utf8'))}
  assert.deepEqual((await db.query('select id,user_id,data,captured_at::text from user_learning_progress_revisions order by id')).rows,before.rows,'Migration must not alter existing recovery records')
+ // Preserve exact no-ops even when a first-inserted legacy collection is unsorted.
+ const raw=snapshot();raw.storage['hyperion-vault']=wrap([{id:'older',lastWrongAt:1},{id:'newer',lastWrongAt:2}]);delete raw.storage['hyperion-bookmarks']
+ await db.exec('alter table user_learning_progress disable trigger preserve_learning_progress')
+ await db.query('update user_learning_progress set data=$2 where user_id=$1',[a,raw])
+ await db.exec('alter table user_learning_progress enable trigger preserve_learning_progress')
+ const rawRow=await row(a),rawCount=await count()
+ assert.equal((await db.query('select compare_user_learning_progress($1,$2,$3) value',[a,rawRow.updated_at,raw])).rows[0].value,'unchanged')
+ await write(raw);assert.equal(await count(),rawCount);assert.deepEqual((await row(a)).data,raw)
+ await write(snapshot())
  const saved=await row(a),noOp=structuredClone(saved.data);noOp.savedAt=999;noOp.changedSections=['bookmarks']
  for(const [key,value] of Object.entries(noOp.storage))if(typeof value==='string'){const parsed=JSON.parse(value);noOp.storage[key]=JSON.stringify(parsed,null,2)}
  const comparison=(await db.query('select compare_user_learning_progress($1,$2,$3) value',[a,saved.updated_at,noOp])).rows[0].value
@@ -76,6 +85,18 @@ try{
  for(const invalid of [{},{version:1,storage:null},{version:2,storage:{}},{version:1,storage:{'hyperion-history':'corrupt'}},{version:1,storage:{'hyperion-history':JSON.stringify({state:{entries:[null]}})}},{version:1,storage:{'hyperion-study-time':JSON.stringify({state:{segments:[{}]}})}},{version:1,storage:{'hyperion-question-attempt-history':JSON.stringify({state:{entries:{q:null}}})}},{version:1,storage:{},activeSession:{}},{version:1,storage:{},activeSessionChangedAt:'bad'}]){
   await assert.rejects(write(invalid));assert.deepEqual((await row(a)).data,safe.data);assert.equal(await count(),safeCount)
  }
+ const historyDraft=structuredClone((await row(a)).data)
+ const historyWrapper=JSON.parse(historyDraft.storage['hyperion-history']);historyWrapper.futureWrapper='keep'
+ historyWrapper.state.entries[0].deletedAt=700
+ historyDraft.storage['hyperion-history']=JSON.stringify(historyWrapper);await write(historyDraft)
+ const historyRestore=structuredClone((await row(a)).data);const restoredHistory=JSON.parse(historyRestore.storage['hyperion-history']);delete restoredHistory.state.entries[0].deletedAt;historyRestore.storage['hyperion-history']=JSON.stringify(restoredHistory);await write(historyRestore)
+ assert.equal(JSON.parse((await row(a)).data.storage['hyperion-history']).state.entries[0].deletedAt,undefined,'Intentional history restore remains valid')
+ const historyDelete={version:1,storage:{'hyperion-history':JSON.stringify({version:0,state:{entries:[],savedSessions:[]}})}}
+ await write(historyDelete)
+ const clearedHistory=JSON.parse((await row(a)).data.storage['hyperion-history'])
+ assert.deepEqual(clearedHistory.state.entries,[],'Explicit history deletion must not resurrect records')
+ assert.deepEqual(clearedHistory.state.savedSessions,[],'Explicit saved-session discard remains valid')
+ assert.equal(clearedHistory.futureWrapper,'keep','Older clients retain unknown wrapper metadata')
  for(let i=0;i<25;i++){const progress=structuredClone((await row(a)).data);progress.storage['hyperion-study-time']=JSON.stringify({version:0,state:{segments:[{id:'time-'+i,durationMs:i+1000}]}});await write(progress)}
  assert.ok(await count()>20,'Initial rollout must not delete historical points at the old boundary')
  for(const old of before.rows)assert.deepEqual((await db.query('select id,user_id,data,captured_at::text from user_learning_progress_revisions where id=$1',[old.id])).rows[0],old)
@@ -93,6 +114,7 @@ try{
  assert.deepEqual((await db.query('select id,user_id,data,captured_at::text from user_learning_progress_revisions order by id')).rows,backupsBeforeRollback)
  await write((await row(a)).data);assert.equal(await count(),backupsBeforeRollback.length+1,'Safety rollback restores revision-on-update without deleting old points')
  await db.exec(source)
+ await db.exec(await readFile('supabase/migrations/20261104020000_preserve_exact_progress_noops.sql','utf8'))
  await db.exec('set role authenticated')
  for(const sql of ['select * from user_learning_progress','select * from user_learning_progress_revisions',"select canonical_learning_progress('{}'::jsonb)","select prepare_learning_progress('{}'::jsonb,'{}'::jsonb)",`select recover_learning_progress_collections('${a}',true)`])await assert.rejects(db.query(sql),/permission denied/)
  await db.exec('reset role')
