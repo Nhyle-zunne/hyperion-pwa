@@ -72,6 +72,7 @@ try {
   await page.getByRole('button', { name: /Start Reviewing/ }).click()
   await page.getByText('OIC-NW Deck · C1', { exact: true }).waitFor()
   assert.equal(await page.getByRole('button', { name: 'Question settings', exact: true }).count(), 1)
+  assert.equal(await page.getByRole('button', { name: 'Question palette', exact: true }).locator('svg[data-icon="gridView"]').count(), 1, 'Practice uses the Android GridView palette icon')
   await page.getByRole('button', { name: 'Question settings', exact: true }).click()
   const directAnswer = page.getByRole('switch', { name: 'Direct Answer', exact: true })
   await directAnswer.click()
