@@ -65,10 +65,10 @@ assert.equal(
  protectedBefore,
  'Installing the future cap cannot touch previously retained progress'
 )
-await query(db,`do $begin for i in 1..25 loop
+await query(db,`do $revisions$ begin for i in 1..25 loop
  update user_learning_progress set data=jsonb_set(data,'{futureWrite}',to_jsonb(i))
  where user_id='${a}';
-end loop;end $;`)
+end loop;end $revisions$;`)
 const futures=Number(await query(db,`select count(*) from user_learning_progress_revisions where user_id='${a}' and id>${cutoff}`))
 assert.equal(futures,10,'Keep the ten newest future full snapshots for each account')
 assert.equal(
