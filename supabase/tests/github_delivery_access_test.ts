@@ -30,6 +30,20 @@ Deno.test('GitHub delivery broker verifies identity and current track access wit
     assert.equal((await call(false, '')).status, 401)
     assert.equal((await call(false, 'expired-user')).status, 401)
     assert.equal((await call(true, '')).status, 200)
+    // Online free sessions are still allowed, but bulk file/CSV extraction is not.
+    const rawRequest = (action: 'free-track-files' | 'get', token = 'valid-user') =>
+      handler!(new Request('https://test-project.supabase.co/functions/v1/question-bank', {
+        method: 'POST',
+        headers: token ? { Authorization: 'Bearer ' + token } : {},
+        body: JSON.stringify(action === 'get'
+          ? { action, path: 'deck/oic_nw_c1.csv.enc', freeOnly: true }
+          : { action, track: 'DECK_OIC_NW' })
+      }))
+    assert.equal((await rawRequest('free-track-files')).status, 403)
+    assert.equal((await rawRequest('free-track-files', '')).status, 401)
+    assert.equal((await rawRequest('get')).status, 403)
+    assert.equal((await rawRequest('get', '')).status, 401)
+    assert.equal(bankReads, 0, 'Denied bulk requests cannot fetch question-bank bytes')
     licensed = true; wrongOwner = true
     assert.equal((await call()).status, 403)
     wrongOwner = false; unavailable = true
