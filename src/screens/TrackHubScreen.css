@@ -396,3 +396,114 @@
   background: var(--accent-dim);
   color: var(--btn-primary-text);
 }
+
+
+/* Licensed question packs: real transfer progress and device-ready state. */
+.hub-offline-readiness {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+.hub-offline-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem 1rem;
+  flex-wrap: wrap;
+  margin-bottom: .55rem;
+}
+.hub-offline-heading h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text);
+}
+.hub-offline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .32rem .55rem;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: .73rem;
+  font-weight: 850;
+  letter-spacing: .035em;
+  white-space: nowrap;
+}
+.hub-offline-badge.is-busy { color: var(--accent); border-color: var(--accent); }
+.hub-offline-badge.is-ready { color: var(--success); border-color: var(--success); }
+.hub-offline-spinner {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: hyperion-offline-spin .75s linear infinite;
+}
+@keyframes hyperion-offline-spin { to { transform: rotate(360deg); } }
+.hub-offline-description {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: .9rem;
+  line-height: 1.5;
+}
+.hub-offline-progress {
+  margin-top: .85rem;
+}
+.hub-offline-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .35rem;
+  font-size: .79rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.hub-offline-progress-meta > span { min-width: 0; }
+.hub-offline-progress-meta > strong { color: var(--text); white-space: nowrap; }
+.hub-offline-progress-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+.hub-offline-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width .22s ease;
+}
+.hub-offline-progress-track.is-complete .hub-offline-progress-fill { background: var(--success); }
+.hub-offline-progress-track.is-indeterminate .hub-offline-progress-fill {
+  width: 35% !important;
+  animation: hyperion-offline-indeterminate 1.3s ease-in-out infinite;
+}
+@keyframes hyperion-offline-indeterminate {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(300%); }
+}
+.hub-offline-license, .hub-offline-previous, .hub-offline-error {
+  margin: .55rem 0 0;
+  color: var(--text-muted);
+  font-size: .82rem;
+  line-height: 1.45;
+}
+.hub-offline-device {
+  margin: .55rem 0 0;
+  color: var(--text-muted);
+  font-size: .75rem;
+  line-height: 1.45;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-offline-spinner, .hub-offline-progress-track.is-indeterminate .hub-offline-progress-fill {
+    animation-duration: 2.5s;
+  }
+  .hub-offline-progress-fill { transition: none; }
+}
