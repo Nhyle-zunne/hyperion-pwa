@@ -749,7 +749,6 @@ assert.ok(offlineHubScreen.includes('currentOfflineTransfer') && offlineHubScree
 assert.ok(offlineHubScreen.includes('role="progressbar"') && offlineHubScreen.includes('aria-valuenow=') && offlineHubScreen.includes('hub-offline-spinner'), 'Offline readiness exposes accessible progress and a spinner while checking or downloading');
 assert.ok(offlineHubStyles.includes('.hub-offline-progress-track') && offlineHubStyles.includes('hyperion-offline-indeterminate') && offlineHubStyles.includes('hyperion-offline-spin'), 'Offline track UI styles include determinate and indeterminate progress animations');
 
-const trackHubScreen = await read('../src/screens/TrackHubScreen.tsx');
 const questionBookmarkButton = await read('../src/components/QuestionBookmarkButton.tsx');
 assert.ok(questionBookmarkButton.includes('<path d="M6.75 4.25A1.75 1.75') && questionBookmarkButton.includes('aria-pressed={bookmarked}') && app.includes('QuestionBookmarkButton'), 'The shared question bookmark control uses an accessible outline SVG');
 assert.ok(app.includes('!isMockRunner && <QuestionBookmarkButton') && mockExam.includes('questionNumber={index + 1}') && mockExam.includes('question={q}'), 'Scrolling mock exams bookmark each question rather than a hidden current index');
@@ -945,7 +944,7 @@ assert.ok(
   !trackHubScreen.includes('DOWNLOAD FULL BANK FOR OFFLINE') &&
   trackHubScreen.includes('!unlocked || !online || !accountUserId') &&
   trackHubScreen.includes("gated('Mistakes Notebook'") &&
-  trackHubScreen.includes('{ background: true }'),
+  trackHubScreen.includes('background: true,') && trackHubScreen.includes('canContinue: () => {'),
   'Manual bank downloads are removed and automatic encrypted preparation requires an online licensed account'
 );
 assert.ok(questionBankClient.includes('export async function ensureOfflineFreeSamplePack') && questionBankClient.includes('const fullBank = await getOfflineQuestionsByTrack(track, false)') && questionBankClient.includes('freeSample(fullBank, track)'), 'An old Deck OIC offline free sample is repaired only from the complete cached bank and the current server-matched sampler');
