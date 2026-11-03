@@ -69,6 +69,21 @@ interface Mode {
 // Serialize background preparation across track changes and screen remounts.
 let offlinePreparationInFlight: Promise<void> | null = null
 
+// Keep the in-progress transfer visible when a track screen remounts or regains focus.
+// Only a count and its account/track scope are shared. No question text is exposed.
+type OfflineTransfer = {
+  trackId: TrackId
+  userId: string
+  downloaded: number
+  total: number
+  phase: 'starting' | 'downloading' | 'saving'
+}
+let currentOfflineTransfer: OfflineTransfer | null = null
+function publishOfflineTransfer(progress: OfflineTransfer | null) {
+  currentOfflineTransfer = progress
+  window.dispatchEvent(new Event('hyperion:offline-transfer'))
+}
+
 export default function TrackHubScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -76,6 +91,7 @@ export default function TrackHubScreen() {
   const key = requestedKey && TRACKS[requestedKey] ? requestedKey : 'oic_nw'
   const info = TRACKS[key]
   const [offlinePreparing, setOfflinePreparing] = useState(false)
+  const [offlineTransfer, setOfflineTransfer] = useState<OfflineTransfer | null>(null)
   const [offlineStatus, setOfflineStatus] = useState<{ questionCount: number; groupCount: number; savedAt: number } | null>(null)
   const [offlineError, setOfflineError] = useState('')
   const [accountUserId, setAccountUserId] = useState<string | null | undefined>(undefined)
@@ -169,6 +185,19 @@ export default function TrackHubScreen() {
     }
   }, [])
 
+  useEffect(() => {
+    const refresh = () => {
+      const transfer = currentOfflineTransfer
+      setOfflineTransfer(
+        transfer && accountUserId && transfer.trackId === info.trackId && transfer.userId === accountUserId
+          ? transfer : null
+      )
+    }
+    refresh()
+    window.addEventListener('hyperion:offline-transfer', refresh)
+    return () => window.removeEventListener('hyperion:offline-transfer', refresh)
+  }, [info.trackId, accountUserId])
+
   const offlineContext = `${info.trackId}:${accountUserId ?? ''}:${unlocked}:${online}`
   const latestOfflineContext = useRef(offlineContext)
   latestOfflineContext.current = offlineContext
@@ -219,10 +248,27 @@ export default function TrackHubScreen() {
           if (!isCurrent() || navigator.onLine === false) return
           if (status && check?.status !== 'available') return
           setOfflinePreparing(true)
-          await downloadOfflinePack(track, false, undefined, { background: true })
-          if (!isCurrent()) return
-          await loadStatus()
-          await loadLicense()
+          // Backend reports real questions received. Do not claim completion before
+          // encryption, version verification and the atomic local save finish.
+          const transfer: OfflineTransfer = {
+            trackId: track, userId: accountUserId, downloaded: 0, total: 0, phase: 'starting'
+          }
+          publishOfflineTransfer(transfer)
+          try {
+            await downloadOfflinePack(track, false, (downloaded, total) => {
+              publishOfflineTransfer({
+                ...transfer, downloaded, total,
+                phase: total > 0 && downloaded >= total ? 'saving' : 'downloading'
+              })
+            }, { background: true })
+            if (!isCurrent()) return
+            await loadStatus()
+            await loadLicense()
+          } finally {
+            if (currentOfflineTransfer?.trackId === track && currentOfflineTransfer.userId === accountUserId) {
+              publishOfflineTransfer(null)
+            }
+          }
         }
         // Handle failure inside the shared promise so waiting effects can proceed.
         const pending = prepare().catch(() => {
@@ -246,6 +292,17 @@ export default function TrackHubScreen() {
     void prepareOffline()
     return () => { active = false }
   }, [info.trackId, unlocked, online, accountUserId, offlineRefreshKey, offlineContext])
+
+  const transferActive = Boolean(offlineTransfer && unlocked)
+  const checkingOffline = unlocked && online && accountUserId !== undefined && !offlineLicenseChecked && !transferActive && !offlinePreparing
+  const offlineBusy = transferActive || offlinePreparing || checkingOffline
+  const receivedCount = offlineTransfer?.downloaded ?? 0
+  const expectedCount = offlineTransfer?.total ?? 0
+  const hasMeasuredProgress = transferActive && expectedCount > 0
+  // The final percentage is reserved for a fully verified and saved pack.
+  const downloadPercent = hasMeasuredProgress
+    ? Math.min(99, Math.max(0, Math.floor(100 * receivedCount / expectedCount)))
+    : 0
 
   const trackHistory = history.filter((entry) => entry.track === info.trackId)
   const trackMistakes = mistakes.filter((item) => item.track === info.trackId)
@@ -359,25 +416,64 @@ export default function TrackHubScreen() {
         </div>
       </section>
 
-      <section
-        aria-label="Offline study readiness"
-        style={{ margin: '1rem 0', padding: '1rem', border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-card)' }}
-      >
-        <h2 style={{ margin: '0 0 .5rem', fontSize: '1rem', color: 'var(--text)' }}>OFFLINE STUDY</h2>
-        <p role="status" style={{ margin: 0, color: 'var(--text-muted)', fontSize: '.9rem' }}>
-          {offlinePreparing
-            ? 'Preparing encrypted offline study automatically…'
-            : offlineStatus
-              ? unlocked
-                ? 'Questions are saved on this device for licensed offline study.'
-                : 'Free reviewer questions are available on this device.'
-              : unlocked
-                ? online
-                  ? 'Offline study prepares automatically while you are online and signed in.'
-                  : 'Connect to prepare offline study automatically.'
-                : 'Activate a track to prepare licensed offline study automatically.'}
+      <section aria-label="Offline study readiness" className="hub-offline-readiness">
+        <div className="hub-offline-heading">
+          <h2>OFFLINE STUDY</h2>
+          <span className={`hub-offline-badge${offlineBusy ? ' is-busy' : offlineStatus ? ' is-ready' : ''}`}>
+            {offlineBusy && <span className="hub-offline-spinner" aria-hidden="true" />}
+            {transferActive ? 'DOWNLOADING' : checkingOffline || offlinePreparing ? 'CHECKING' : offlineStatus ? 'SAVED ON DEVICE' : online ? 'NOT YET SAVED' : 'OFFLINE'}
+          </span>
+        </div>
+        <p role="status" className="hub-offline-description">
+          {transferActive
+            ? offlineTransfer?.phase === 'saving'
+              ? 'All questions received. Verifying and securely saving the offline pack…'
+              : 'Downloading and encrypting questions for offline study…'
+            : offlinePreparing || checkingOffline
+              ? 'Checking the question bank and preparing licensed offline access…'
+              : offlineStatus
+                ? unlocked
+                  ? 'Questions are saved on this device for licensed offline study.'
+                  : 'Free reviewer questions are available on this device.'
+                : unlocked
+                  ? online
+                    ? 'Offline study prepares automatically while you are online and signed in.'
+                    : 'Connect to prepare offline study automatically.'
+                  : 'Activate a track to prepare licensed offline study automatically.'}
         </p>
-        {offlineStatus && unlocked && <p style={{ margin: '.5rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>
+        {(transferActive || checkingOffline || offlinePreparing || offlineStatus) && (
+          <div className="hub-offline-progress">
+            <div className="hub-offline-progress-meta" aria-live="off">
+              <span>
+                {transferActive
+                  ? expectedCount > 0
+                    ? offlineTransfer?.phase === 'saving'
+                      ? 'Verifying and saving downloaded questions'
+                      : `${receivedCount.toLocaleString()} of ${expectedCount.toLocaleString()} questions downloaded`
+                    : 'Connecting to question service…'
+                  : offlinePreparing || checkingOffline
+                    ? 'Checking offline question bank…'
+                    : `${offlineStatus?.questionCount.toLocaleString()} questions saved on this device`}
+              </span>
+              <strong>
+                {transferActive ? (hasMeasuredProgress ? `${downloadPercent}%` : '…') : offlineBusy ? '…' : '100%'}
+              </strong>
+            </div>
+            <div
+              className={`hub-offline-progress-track${offlineBusy && !hasMeasuredProgress ? ' is-indeterminate' : ''}${!offlineBusy && offlineStatus ? ' is-complete' : ''}`}
+              role="progressbar"
+              aria-label="Offline question bank preparation"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={offlineBusy && !hasMeasuredProgress ? undefined : transferActive ? downloadPercent : 100}
+              aria-valuetext={offlineBusy ? hasMeasuredProgress ? `${receivedCount} of ${expectedCount} downloaded; verifying save before completion` : 'Preparing offline questions' : 'Offline question bank saved on device'}
+            >
+              <div className="hub-offline-progress-fill" style={{ width: `${offlineBusy ? downloadPercent : 100}%` }} />
+            </div>
+            {transferActive && offlineStatus && <p className="hub-offline-previous">Your previously saved question pack remains available during this update.</p>}
+          </div>
+        )}
+        {offlineStatus && unlocked && <p className="hub-offline-license">
           {!offlineLicenseChecked
             ? 'Checking this device’s offline license…'
             : offlineLicenseAdmin
@@ -386,8 +482,8 @@ export default function TrackHubScreen() {
                 ? `Offline access is verified until ${new Date(offlineLicenseExpiry).toLocaleString()}. Reconnect before expiry to refresh your license.`
                 : 'A valid offline license could not be verified on this device. Reconnect to refresh access before studying offline.'}
         </p>}
-        <p style={{ margin: '.5rem 0 0', color: 'var(--text-muted)', fontSize: '.75rem' }}>{online ? 'DEVICE ONLINE' : 'DEVICE OFFLINE'}{offlineStatus ? ` · Last saved on this device: ${new Date(offlineStatus.savedAt).toLocaleString()}` : ''}</p>
-        {offlineError && <p role="status" style={{ margin: '.5rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>{offlineError}</p>}
+        <p className="hub-offline-device">{online ? 'DEVICE ONLINE' : 'DEVICE OFFLINE'}{offlineStatus ? ` · Last saved on this device: ${new Date(offlineStatus.savedAt).toLocaleString()}` : ''}</p>
+        {offlineError && <p role="status" className="hub-offline-error">{offlineError}</p>}
       </section>
 
       <section className="hub-performance" aria-labelledby="hub-performance-title">
