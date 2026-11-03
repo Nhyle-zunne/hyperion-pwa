@@ -700,6 +700,17 @@ assert.ok(practiceStore.includes('await deleteSessionSnapshot(snapshot.sessionId
 assert.ok(practiceQuizScreen.includes('saved = await saveProgress()') && practiceQuizScreen.includes('Your session is still open') && practiceQuizScreen.includes('disabled={savingProgress}'), 'Save failure keeps the user in the session and prevents duplicate save requests');
 assert.ok(!practiceQuizScreen.includes('aria-label="Back">← Back'), 'The question screen has no redundant second Back button inside the question content');
 
+const androidMaterialIcons = await read('../src/components/MaterialIcon.tsx');
+const desktopAccountTrigger = await read('../src/components/DesktopAccountMenu.tsx');
+const firstVisitCookieConsent = await read('../src/components/CookieConsent.tsx');
+const allTrackHubModes = await read('../src/screens/TrackHubScreen.tsx');
+assert.ok(practiceQuizScreen.includes('<MaterialIcon name="gridView" size={22} />') && !practiceQuizScreen.includes('>▦</button>') && androidMaterialIcons.includes('"gridView"'), 'Practice and drill use the same GridView palette vector as the Android application');
+assert.ok(historyScreen.includes('<MaterialIcon name="filterList" size={20} />') && androidMaterialIcons.includes('"filterList"'), 'History audit uses the Android FilterList palette vector');
+assert.ok(desktopAccountTrigger.includes("onClick={() => { setOpen(false); navigate('/account?tab=payments') }}") && desktopAccountTrigger.includes('onMouseEnter={() => setOpen(true)}'), 'Desktop Account clicks open Bond Store while hovering shows its dropdown');
+assert.ok(['school','tune','menuBook','timer','style','autoFixHigh','analytics','search'].every(icon => allTrackHubModes.includes("icon: '" + icon + "'")) && allTrackHubModes.includes("<MaterialIcon name={mode.locked ? 'lock' : mode.icon}"), 'Every track reuses the eight Android Material mode icons including lock-state parity');
+assert.ok(firstVisitCookieConsent.includes("useState(() => !hasCookieChoice())") && firstVisitCookieConsent.includes("'hyperion-cookie-consent'") && firstVisitCookieConsent.includes("choose('essential')") && firstVisitCookieConsent.includes("choose('accepted')"), 'First visit without a stored cookie choice shows Accept/Essential-only banner and persists the explicit selection');
+
+
 const sessionElapsedTimer = await read('../src/components/SessionElapsedTimer.tsx');
 assert.ok(practiceQuizScreen.includes('quiz-heading-with-timer') && practiceQuizScreen.includes('<SessionElapsedTimer startedAt={startedAt} inline />'), 'Practice and drill place the elapsed timer alongside the main question count for every track');
 assert.ok(!practiceQuizScreen.includes('Q {currentIndex + 1} / {questions.length}') && !practiceQuizScreen.includes('{q.topic}'), 'Practice and drill do not show a duplicate question-count row or repeat the topic inside the question box');
