@@ -82,6 +82,10 @@ jobs:
         env:
           HYPERION_BROWSER_FIXTURE: publisher
         run: bun run test:saved-data:browser
+      - name: Account profile layout browser regression
+        env:
+          HYPERION_BROWSER_FIXTURE: account
+        run: bun run test:saved-data:browser
       - name: Type-check and build
         run: |
           if [ -z "$VITE_SUPABASE_URL" ]; then unset VITE_SUPABASE_URL; fi

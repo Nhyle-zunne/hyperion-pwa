@@ -69,7 +69,8 @@ function isCurrentLicense(item: OwnedTrack, now = Date.now()) {
   const expiresAt = item.expires_at ? Date.parse(item.expires_at) : 0
   return item.status === 'active' && Number.isFinite(expiresAt) && expiresAt > now
 }
-export default function AccountScreen() {
+export default function AccountScreen({ children }: { children?: React.ReactNode }) {
+  const isLayout = children !== undefined
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
@@ -119,11 +120,13 @@ export default function AccountScreen() {
   const entitlementExpiryRevision = useLicenseStore(s => s.entitlementExpiryRevision)
 
   useEffect(() => {
+    // Checkout owns cart persistence when this screen supplies only the profile layout.
+    if (isLayout) return
     try {
       if (basket.length) localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(basket))
       else localStorage.removeItem('hyperion-account-basket-v1')
     } catch { /* basket remains available for this page session */ }
-  }, [basket])
+  }, [basket, isLayout])
 
   const buyNow = (code: PaidTrack, term: LicenseTerm) => {
     const nextItem: BasketItem = { code, term }
@@ -204,6 +207,7 @@ export default function AccountScreen() {
     finally { setBusy(false) }
   })
   const refreshAccount = async (quiet = false, refreshEntitlements = true) => {
+    if (isLayout) return
     const loadAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setInactiveLicenses([]); setOrders([]); setRenewalGraceUntil(null); return }
     const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note,checkout_batch_id'
@@ -291,14 +295,15 @@ export default function AccountScreen() {
     }
     return quiet ? loadAccount() : withPageLoading('Loading account and licenses', loadAccount)
   }
-  useEffect(() => { void refreshAccount() }, [session?.user.id])
+  useEffect(() => { void refreshAccount() }, [session?.user.id, isLayout])
   useEffect(() => {
     if (entitlementExpiryRevision > 0) void refreshAccount(true, false)
-  }, [entitlementExpiryRevision])
+  }, [entitlementExpiryRevision, isLayout])
 
   // A checkout return triggers direct server-to-PayMongo verification. The return URL
   // itself grants nothing; only a paid session checked by the server or signed webhook can activate a license.
   useEffect(() => {
+    if (isLayout) return
     const paymentState = params.get('payment')
     const orderId = params.get('order_id')
     if (!session) return
@@ -345,7 +350,7 @@ export default function AccountScreen() {
     }
     void checkPayment()
     return () => { cancelled = true }
-  }, [session?.user.id, params])
+  }, [session?.user.id, params, isLayout])
   const signInWithGoogle = async () => {
     if (!supabase) {
       setMessage('Sign-in is temporarily unavailable. Please try again later.')
@@ -394,6 +399,7 @@ export default function AccountScreen() {
   // Keep checking pending PayMongo sessions while the user is in their account.
   // The signed webhook remains primary; this server-side verification is the automatic fallback.
   useEffect(() => {
+    if (isLayout) return
     const client = supabase
     if (!client || !session?.user.id || !pendingCheckoutIds) return
     let active = true
@@ -428,7 +434,7 @@ export default function AccountScreen() {
     void checkPending()
     const timer = window.setInterval(() => { void checkPending() }, 8000)
     return () => { active = false; window.clearInterval(timer) }
-  }, [session?.user.id, pendingCheckoutIds])
+  }, [session?.user.id, pendingCheckoutIds, isLayout])
 
   const signOut = async () => withPageLoading('Signing out', async () => {
     if (!supabase) {
@@ -499,6 +505,8 @@ export default function AccountScreen() {
       .account-page .account-layout{display:grid;grid-template-columns:minmax(250px,300px) minmax(0,1fr);gap:1.25rem;align-items:start;margin-top:1.1rem}
       .account-page .account-sidebar{display:grid;gap:1rem;align-content:start;position:sticky;top:80px;min-width:0;align-self:start}
       .account-page .account-main{min-width:0}
+      .account-page .account-main > .screen{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+      @media(max-width:1180px){.account-page .basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.account-page .basket-page .basket-summary{position:static}}
       .account-page .account-toolbar{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin:1rem 0}
       .account-page .account-section-tabs{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;min-width:0}
       .account-page .account-section-tabs button{min-height:44px;padding:.65rem 1rem;font-weight:850;border-radius:9px;white-space:nowrap}
@@ -655,6 +663,7 @@ export default function AccountScreen() {
         </aside>
 
         <main className="account-main">
+          {isLayout ? children : <>
           {session && <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />}
           {session && accountTab === 'licenses' ? <>
           <section style={card}>
@@ -767,6 +776,7 @@ export default function AccountScreen() {
             </section>
 
 
+          </>}
           </>}
         </main>
       </div>
