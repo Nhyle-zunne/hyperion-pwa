@@ -49,7 +49,7 @@ export default function ResultsProcessing() {
 
   if (!visible) return null
   return createPortal(<div className="results-processing-backdrop">
-    <section ref={dialog} className="results-processing-card" role="dialog" aria-modal="true" aria-labelledby="results-processing-title" aria-busy="true" tabIndex={-1} onKeyDown={event => { if (event.key === 'Tab' || event.key === 'Escape') { event.preventDefault(); event.stopPropagation() } }}>
+    <section ref={dialog} className="results-processing-card" role="dialog" aria-modal="true" aria-labelledby="results-processing-title" tabIndex={-1} onKeyDown={event => { if (event.key === 'Tab' || event.key === 'Escape') { event.preventDefault(); event.stopPropagation() } }}>
       <div className="results-processing-spinner" aria-hidden="true" />
       <h2 id="results-processing-title">Processing Results</h2>
       <div role="status" aria-live="polite" className="results-processing-status">{stages[step]}…</div>

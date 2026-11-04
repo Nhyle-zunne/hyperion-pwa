@@ -50,7 +50,7 @@ export default function SessionResults({ onTryAgain, onHistory, onHome, extraAct
         <h2 className="results-section-title">Competence evaluation · 70% target</h2>
         <div className="results-breakdown">{groups.map(group => {
           const percent = Math.round(group.correct / group.total * 100)
-          return <button type="button" key={group.id} className={`results-competence-card ${percent >= 70 ? 'is-passed' : 'is-review-needed'}`} onClick={() => { setCompetence(group.id); setMissedOnly(false); setTab('review') }} aria-label={`Review ${group.id} questions`}>
+          return <button type="button" key={group.id} className={`results-competence-card ${percent >= 70 ? 'is-passed' : 'is-review-needed'}`} onClick={() => { setCompetence(group.id); setMissedOnly(false); setTab('review'); document.getElementById('results-review-tab')?.focus() }} aria-label={`Review ${group.id} questions`}>
             <div className="results-score-meta"><strong>{group.id}</strong><span>{percent >= 70 ? 'PASSED' : 'NEEDS REVIEW'}</span></div>
             <p>{group.correct} / {group.total} correct · {percent}%</p>
             <progress max={100} value={percent} aria-label={`${group.id} score`} />
