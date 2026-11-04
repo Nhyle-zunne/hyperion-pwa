@@ -17,12 +17,12 @@ const envelope = (items: unknown[]) => JSON.stringify({ state: { items }, versio
 // These two stores are deliberately seeded through legacy localStorage before
 // their automatic hydration completes, just as an older installed app upgrades.
 // The runner's init script supplies the initial local and remote copies.
-useLicenseStore.setState({ entitlementsVerified: true, isAllAccessUnlocked: true, cloudTrackIds: ['DECK_OIC_NW'], refreshCloudEntitlements: async () => {}, refreshCachedEntitlements: async () => {} })
+useLicenseStore.setState({ entitlementsVerified: true, cloudSyncVerified: true, entitlementUserId: localStorage.getItem('fixture-user') || fixtureUsers.a, cloudSyncExpiresAt: Infinity, isAllAccessUnlocked: true, cloudTrackIds: ['DECK_OIC_NW'], refreshCloudEntitlements: async () => { const state=useLicenseStore.getState();useLicenseStore.setState({cloudSyncVerified:true,entitlementUserId:localStorage.getItem('fixture-user')||fixtureUsers.a,cloudSyncExpiresAt:state.cloudTrackIds.length?Infinity:0}) }, refreshCachedEntitlements: async () => {} })
 Object.assign(window, { recoveryFixture: {
   ids: () => ({ bookmarks: useBookmarksStore.getState().items.map(q => q.id), mistakes: useVaultStore.getState().items.map(q => q.id), owner: localStorage.getItem('hyperion-progress-owner') }),
-  license: (enabled: boolean) => useLicenseStore.setState({ entitlementsVerified: true, isAllAccessUnlocked: enabled, cloudTrackIds: enabled ? ['DECK_OIC_NW'] : [] }),
+  license: (enabled: boolean) => useLicenseStore.setState({ entitlementsVerified: true, cloudSyncVerified: true, entitlementUserId: localStorage.getItem('fixture-user') || fixtureUsers.a, cloudSyncExpiresAt: enabled ? Infinity : 0, isAllAccessUnlocked: enabled, cloudTrackIds: enabled ? ['DECK_OIC_NW'] : [] }),
   cloud: () => fixtureCloud(), users: fixtureUsers, calls: fixtureCalls,
-  switchUser: fixtureSetUser,
+  switchUser: (id: string) => { fixtureSetUser(id); useLicenseStore.setState({ entitlementUserId: id }) },
   addOffline: () => useBookmarksStore.getState().toggle(recoveryQuestions[3]),
   flush: () => readEncryptedPersistedValue('hyperion-bookmarks'),
   recover: async () => {

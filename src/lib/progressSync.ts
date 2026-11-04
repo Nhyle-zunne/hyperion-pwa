@@ -1,5 +1,8 @@
+import { useLicenseStore } from '../stores/licenseStore'
+import { setLocalProgressIdentity, markLocalProgressReady } from './localProgressIdentity'
+import { canSyncCloudProgress } from './cloudProgressAccess'
 import type { SavedQuestionContext } from './savedQuestionSets'
-import { syncSessionArchives } from './sessionArchive'
+import { syncSessionArchives, claimLocalSessionSnapshots } from './sessionArchive'
 import { ProgressRequestPolicy } from './progressRequestPolicy'
 import type { Question, TrackId, UserAnswer } from '../types/question'
 import type { SessionMode } from '../stores/historyStore'
@@ -35,6 +38,8 @@ const ALL_PROGRESS_SECTIONS: ProgressSection[] = ['history', 'studyTime', 'vault
 
 interface ActiveSessionSnapshot {
   sessionId?: string
+  part?: number | null
+  isFreeSession?: boolean
   questions: Question[]
   answers: Record<string, UserAnswer>
   currentIndex: number
@@ -72,6 +77,10 @@ let authEpoch = 0
 let cloudReady = false
 let uploadTimer: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
+let localCacheTimer: ReturnType<typeof setTimeout> | null = null
+let localPreparationQueue: Promise<void> = Promise.resolve()
+let pendingLocalRestore: {owner: string; snapshot: LearningProgressSnapshot} | null = null
+let localReadyIdentity: string | null | undefined
 let archiveTimer: ReturnType<typeof setTimeout> | null = null
 const requestPolicy = new ProgressRequestPolicy({ getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) })
 let currentGeneration = 0
@@ -133,6 +142,8 @@ function captureSnapshot(): LearningProgressSnapshot {
   const activeSession: ActiveSessionSnapshot | null = state.questions.length > 0 && !state.finished
     ? {
         sessionId: state.sessionId ?? undefined,
+        part: state.part,
+        isFreeSession: state.isFreeSession,
         questions: state.questions,
         answers: state.answers,
         currentIndex: state.currentIndex,
@@ -172,6 +183,33 @@ function isSnapshot(value: unknown): value is LearningProgressSnapshot {
 
 // Exclude transport metadata that changes on every capture, but retain all actual
 // study data, including the active-session resume position and changed-at watermark.
+const knownCloudSavedSessions = new Map<string, Set<string>>()
+const savedSessionsBaselineKey = (userId: string) => accountCacheKey(userId) + ':cloud-session-ids'
+function savedSessionIds(snapshot: LearningProgressSnapshot): string[] {
+  const history = parseJson<{state?: {savedSessions?: {id?: string}[]}}>(snapshot.storage['hyperion-history'])
+  return (history?.state?.savedSessions ?? []).map(row => row.id).filter((id): id is string => typeof id === 'string' && !!id)
+}
+async function loadSavedSessionBaseline(userId: string): Promise<void> {
+  if (knownCloudSavedSessions.has(userId)) return
+  const stored = parseJson<unknown>(await readEncryptedPersistedValue(savedSessionsBaselineKey(userId)))
+  const ids = new Set<string>(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [])
+  // Existing versions already record downloaded/uploaded archives per account.
+  // Use those hints when upgrading, without confusing another owner's IDs.
+  const prefix = `hyperion-archive-synced:${userId}:`
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key?.startsWith(prefix)) ids.add(key.slice(prefix.length))
+  }
+  knownCloudSavedSessions.set(userId, ids)
+}
+async function rememberCloudSavedSessions(userId: string, snapshot: LearningProgressSnapshot): Promise<void> {
+  const current = knownCloudSavedSessions.get(userId) ?? new Set<string>()
+  const merged = new Set([...current, ...savedSessionIds(snapshot)])
+  if (merged.size === current.size) return
+  await writeEncryptedPersistedValue(savedSessionsBaselineKey(userId), JSON.stringify([...merged]), userId)
+  knownCloudSavedSessions.set(userId, merged)
+}
+
 function progressSignature(snapshot: LearningProgressSnapshot): string {
   return JSON.stringify({
     version: snapshot.version,
@@ -323,7 +361,8 @@ function mergePersistedStore(
   localRaw: string | null,
   remoteRaw: string | null,
   preferLocalSection: boolean,
-  allowMigrationMerge: boolean
+  allowMigrationMerge: boolean,
+  knownSavedSessions?: ReadonlySet<string>
 ): string | null {
   if (key === 'hyperion-progress-deletions') {
     return mergeProgressDeletionLedgers(localRaw, remoteRaw)
@@ -395,18 +434,20 @@ function mergePersistedStore(
     const rs = remote.state ?? {}
     const localEntries = Array.isArray(ls.entries) ? ls.entries as { id: string; finishedAt?: number }[] : []
     const remoteEntries = Array.isArray(rs.entries) ? rs.entries as { id: string; finishedAt?: number }[] : []
-    const localSaved = Array.isArray(ls.savedSessions) ? ls.savedSessions as { id: string; savedAt?: number }[] : []
+    const localSaved = Array.isArray(ls.savedSessions) ? ls.savedSessions as { id: string; savedAt?: number; deletedAt?: number }[] : []
     const remoteSaved = Array.isArray(rs.savedSessions) ? rs.savedSessions as { id: string; savedAt?: number }[] : []
+    const localSavedById = new Map(localSaved.map(row => [row.id, row]))
     return JSON.stringify({
       version: local.version ?? remote.version ?? 0,
       state: {
         ...rs,
         ...ls,
         entries: mergeById(remoteEntries, localEntries, 'finishedAt').sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0)),
-        // Prefer the local saved-session collection when it has entries. This preserves
-        // local removals/resume state rather than resurrecting sessions removed locally.
-        savedSessions: preferLocalSection
-          ? localSaved
+        // Keep explicit local removals of previously seen cloud IDs, while retaining
+        // sessions created on another device during the local-only period.
+        savedSessions: knownSavedSessions && preferLocalSection
+          ? mergeById(remoteSaved.filter(row => { const saved = localSavedById.get(row.id); return saved ? !saved.deletedAt : !knownSavedSessions.has(row.id) }), localSaved, 'savedAt')
+          : preferLocalSection ? localSaved
           : localSaved.length ? mergeById(remoteSaved, localSaved, 'savedAt') : remoteSaved
       }
     })
@@ -476,7 +517,8 @@ function mergeSnapshots(
   local: LearningProgressSnapshot,
   remote: LearningProgressSnapshot,
   preferLocalSections: ProgressSection[] = [],
-  allowMigrationMerge = false
+  allowMigrationMerge = false,
+  knownSavedSessions?: ReadonlySet<string>
 ): LearningProgressSnapshot {
   const prefer = new Set(preferLocalSections)
   const storage = {} as Record<ProgressStorageKey, string | null>
@@ -486,7 +528,8 @@ function mergeSnapshots(
       local.storage[key],
       remote.storage[key],
       prefer.has(sectionForStorageKey(key)),
-      allowMigrationMerge
+      allowMigrationMerge,
+      knownSavedSessions
     )
   }
 
@@ -576,15 +619,18 @@ async function rehydratePersistedStores(): Promise<void> {
   ])
 }
 
-async function applySnapshot(snapshot: LearningProgressSnapshot, ownerId?: string, generation = currentGeneration): Promise<void> {
+async function applySnapshot(snapshot: LearningProgressSnapshot, ownerId?: string, generation = currentGeneration, canApply: () => boolean = () => true): Promise<void> {
+  if (generation !== currentGeneration || !canApply()) throw new Error('Account changed while restoring progress.')
+  if (ownerId) localStorage.setItem(OWNER_KEY, ownerId)
   hydrating = true
+  let restoredSession: ActiveSessionSnapshot | null = null
   try {
     try {
       localStorage.setItem(SESSION_CHANGED_AT_KEY, String(snapshot.activeSessionChangedAt ?? 0))
       localStorage.setItem(DIRTY_SECTIONS_KEY, JSON.stringify(snapshot.changedSections ?? []))
     } catch { /* ignore storage errors */ }
     for (const key of STORAGE_KEYS) {
-      if (generation !== currentGeneration) throw new Error('Account changed while restoring progress.')
+      if (generation !== currentGeneration || !canApply()) throw new Error('Account changed while restoring progress.')
       const value = snapshot.storage[key]
       if (key === 'hyperion-bookmarks' || key === 'hyperion-vault') {
         try {
@@ -604,12 +650,13 @@ async function applySnapshot(snapshot: LearningProgressSnapshot, ownerId?: strin
       } catch { /* continue restoring the remaining progress if storage is restricted */ }
     }
 
-    if (generation !== currentGeneration) throw new Error('Account changed while restoring progress.')
+    if (generation !== currentGeneration || !canApply()) throw new Error('Account changed while restoring progress.')
     if (ownerId) localStorage.setItem(OWNER_KEY, ownerId)
     await rehydratePersistedStores()
-    if (generation !== currentGeneration) throw new Error('Account changed while restoring progress.')
+    if (generation !== currentGeneration || !canApply()) throw new Error('Account changed while restoring progress.')
     const session = activeSessionFrom(snapshot)
-    if (session) {
+    if (session && useLicenseStore.getState().entitlementsVerified && useLicenseStore.getState().entitlementUserId === ownerId && useLicenseStore.getState().cloudSyncExpiresAt > Date.now() && useLicenseStore.getState().isTrackUnlocked(session.track!)) {
+      restoredSession = session
       usePracticeStore.setState({
         sessionId: session.sessionId || useHistoryStore.getState().savedSessions.find(row => row.track === session.track && row.competenceId === session.competenceId && row.startedAt === session.startedAt)?.id || crypto.randomUUID(),
         questions: session.questions,
@@ -619,6 +666,8 @@ async function applySnapshot(snapshot: LearningProgressSnapshot, ownerId?: strin
         error: null,
         track: session.track,
         competenceId: session.competenceId,
+        part: session.part ?? null,
+        isFreeSession: session.isFreeSession === true,
         finished: false,
         finishing: false,
         completionError: null,
@@ -639,10 +688,10 @@ async function applySnapshot(snapshot: LearningProgressSnapshot, ownerId?: strin
 
   window.dispatchEvent(new CustomEvent('hyperion:learning-progress-restored', {
     detail: {
-      hasActiveSession: !!activeSessionFrom(snapshot),
-      mode: activeSessionFrom(snapshot)?.mode ?? null,
-      track: activeSessionFrom(snapshot)?.track ?? null,
-      competenceId: activeSessionFrom(snapshot)?.competenceId ?? null
+      hasActiveSession: !!restoredSession,
+      mode: restoredSession?.mode ?? null,
+      track: restoredSession?.track ?? null,
+      competenceId: restoredSession?.competenceId ?? null
     }
   }))
   window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
@@ -678,11 +727,20 @@ function noteLocalChange(section: ProgressSection = 'other'): void {
     sections.add(section)
     localStorage.setItem(DIRTY_SECTIONS_KEY, JSON.stringify([...sections]))
   } catch { /* local-only mode remains available */ }
+  if (owner && activeUserId === owner) {
+    if (localCacheTimer) clearTimeout(localCacheTimer)
+    const epoch = authEpoch
+    localCacheTimer = setTimeout(() => {
+      localCacheTimer = null
+      if (epoch !== authEpoch || localStorage.getItem(OWNER_KEY) !== owner) return
+      void writeEncryptedPersistedValue(accountCacheKey(owner), JSON.stringify(captureSnapshot()), owner).catch(() => undefined)
+    }, 250)
+  }
   if (activeUserId && cloudReady && activeUserId === owner) scheduleUpload()
 }
 
 function scheduleUpload(delay = 800): void {
-  if (!activeUserId || !cloudReady || hydrating) return
+  if (!activeUserId || !cloudReady || hydrating || !canSyncCloudProgress(activeUserId)) return
   try { localStorage.setItem(dirtyKey(activeUserId), String(Date.now())) } catch { /* progress remains local */ }
   // Coalesce frequent store updates into one write. The snapshot is captured when
   // the timer fires, so it includes the latest local state without repeated resets.
@@ -696,8 +754,10 @@ function scheduleUpload(delay = 800): void {
 
 async function invokeCompressedProgressWrite(
   body: Record<string, unknown>,
-  accessToken: string
+  accessToken: string,
+  canSend: () => boolean
 ): Promise<{ data: any; error: any }> {
+  if (!canSend()) return {data:null,error:new Error('Cloud synchronization paused.')}
   const serialized = JSON.stringify(body)
   if (
     typeof CompressionStream === 'undefined' ||
@@ -712,6 +772,7 @@ async function invokeCompressedProgressWrite(
     new Blob([serialized]).stream().pipeThrough(new CompressionStream('gzip'))
   ).arrayBuffer()
 
+  if (!canSend()) return {data:null,error:new Error('Cloud synchronization paused.')}
   const response = await fetch(`${supabaseUrl}/functions/v1/learning-progress`, {
     method: 'POST',
     headers: {
@@ -736,10 +797,10 @@ async function invokeCompressedProgressWrite(
 
 async function uploadSnapshot(): Promise<void> {
   if (navigator.onLine === false) return
-  if (!supabase || !activeUserId || !cloudReady || hydrating) return
+  if (!supabase || !activeUserId || !cloudReady || hydrating || !canSyncCloudProgress(activeUserId)) return
   const expectedUserId = activeUserId
   const { data: sessionData } = await supabase.auth.getSession()
-  if (!sessionData.session?.user || sessionData.session.user.id !== expectedUserId || activeUserId !== expectedUserId || (authIdentity !== undefined && authIdentity !== expectedUserId)) return
+  if (!sessionData.session?.user || sessionData.session.user.id !== expectedUserId || activeUserId !== expectedUserId || !canSyncCloudProgress(expectedUserId) || (authIdentity !== undefined && authIdentity !== expectedUserId)) return
   if (uploadInFlight) {
     uploadQueued = true
     return
@@ -753,7 +814,7 @@ async function uploadSnapshot(): Promise<void> {
     scheduleUpload(MIN_UPLOAD_INTERVAL_MS)
     return
   }
-  if (activeUserId !== userId || !cloudReady || hydrating) {
+  if (activeUserId !== userId || !cloudReady || hydrating || !canSyncCloudProgress(userId)) {
     lock.release()
     return
   }
@@ -773,7 +834,7 @@ async function uploadSnapshot(): Promise<void> {
 
   uploadInFlight = true
   const generation = currentGeneration
-  const isCurrent = () => activeUserId === userId && currentGeneration === generation && (authIdentity === undefined || authIdentity === userId)
+  const isCurrent = () => activeUserId === userId && currentGeneration === generation && canSyncCloudProgress(userId) && (authIdentity === undefined || authIdentity === userId)
   const key = dirtyKey(userId)
   const dirtyAtStart = (() => { try { return localStorage.getItem(key) } catch { return null } })()
   const snapshot = captureSnapshot()
@@ -815,6 +876,7 @@ async function uploadSnapshot(): Promise<void> {
     let expectedUpdatedAt = cloudVersionLoaded ? cloudUpdatedAt : null
     let latestSnapshot: LearningProgressSnapshot | null = cloudSnapshot
     if (!cloudVersionLoaded) {
+      if (!isCurrent()) return
       const { data: latestResult, error: readError } = await supabase.functions.invoke('learning-progress', {
         headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: { action: 'read' }
       })
@@ -832,17 +894,20 @@ async function uploadSnapshot(): Promise<void> {
 
     for (let attempt = 0; attempt < 3; attempt++) {
       const snapshotToUpload = latestSnapshot
-        ? mergeSnapshots(snapshot, latestSnapshot, snapshot.changedSections, false)
+        ? mergeSnapshots(snapshot, latestSnapshot, snapshot.changedSections, false, knownCloudSavedSessions.get(userId))
         : snapshot
       snapshotToUpload.changedSections = []
+      if (!isCurrent()) return
       const { data: writeResult, error: writeError } = await invokeCompressedProgressWrite({
         action: 'write',
         data: snapshotToUpload,
         expected_updated_at: expectedUpdatedAt
-      }, sessionData.session.access_token)
+      }, sessionData.session.access_token, isCurrent)
 
       if (!isCurrent()) return
       if (!writeError && writeResult?.ok === true) {
+        await rememberCloudSavedSessions(userId, snapshotToUpload)
+        if (!isCurrent()) return
         requestPolicy.succeeded(userId)
         expectedUpdatedAt = typeof writeResult.updated_at === 'string' ? writeResult.updated_at : expectedUpdatedAt
         cloudUpdatedAt = expectedUpdatedAt
@@ -865,6 +930,7 @@ async function uploadSnapshot(): Promise<void> {
       const isConflict = status === 409 || /\\b409\\b/.test(writeError.message || '')
       if (!isConflict || attempt === 2) throw writeError
 
+      if (!isCurrent()) return
       const refreshed = await supabase.functions.invoke('learning-progress', {
         headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: { action: 'read' }
       })
@@ -939,7 +1005,7 @@ async function migrateLegacyProgressCaches(): Promise<void> {
 function armProgressRetry(userId: string, at: number): void {
   if (retryTimer) clearTimeout(retryTimer)
   retryTimer = null
-  if (navigator.onLine === false) return
+  if (navigator.onLine === false || !canSyncCloudProgress(userId)) return
   retryTimer = setTimeout(() => { retryTimer = null; void initializeUser(userId) }, Math.max(0, at - Date.now()))
 }
 
@@ -947,10 +1013,11 @@ function scheduleProgressRetry(userId: string): void {
   armProgressRetry(userId, requestPolicy.fail(userId))
 }
 
-async function recoverCloudCollections(userId: string, accessToken: string, missingRow = false): Promise<boolean> {
-  if (!requestPolicy.needsRecovery(userId, missingRow)) return false
+async function recoverCloudCollections(userId: string, accessToken: string, missingRow = false, epoch = authEpoch): Promise<boolean> {
+  if (epoch !== authEpoch || !canSyncCloudProgress(userId) || !requestPolicy.needsRecovery(userId, missingRow)) return false
   try {
     const result = await supabase!.functions.invoke('learning-progress', { headers: { Authorization: `Bearer ${accessToken}` }, body: { action: 'recover-saved' } })
+    if (epoch !== authEpoch || !canSyncCloudProgress(userId) || authIdentity !== userId) return false
     if (result.error || result.data?.ok !== true) throw result.error || new Error('Recovery was not acknowledged.')
     requestPolicy.recovered(userId)
     return true
@@ -964,8 +1031,6 @@ async function initializeUser(userId: string, force = false): Promise<void> {
   const existing = initializationPromises.get(userId)
   if (existing?.epoch === authEpoch) return existing.promise
 
-  if (navigator.onLine === false) { window.dispatchEvent(new Event('hyperion:learning-progress-ready')); return }
-  if (requestPolicy.retryAt(userId) > Date.now()) { armProgressRetry(userId, requestPolicy.retryAt(userId)); return }
   if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
   const epoch = authEpoch
   const job = { epoch, promise: initializeUserInternal(userId, force, epoch) }
@@ -993,20 +1058,74 @@ async function waitForProgressHydration(): Promise<void> {
   }))
 }
 
+// Owner transitions are serialized independently of entitlement/network state.
+async function prepareLocalAccount(userId: string | null, epoch: number): Promise<void> {
+  const work = localPreparationQueue.then(async () => {
+    await waitForProgressHydration()
+    if (epoch !== authEpoch) return
+    await migrateLegacyProgressCaches()
+    if (epoch !== authEpoch) return
+    if (localReadyIdentity === userId && localStorage.getItem(OWNER_KEY) === userId) {markLocalProgressReady(userId);return}
+    const owner = localStorage.getItem(OWNER_KEY)
+    if (owner && owner !== userId) {
+      // Failure to preserve the old account must not destroy its live copy.
+      await writeEncryptedPersistedValue(accountCacheKey(owner), JSON.stringify(pendingLocalRestore?.owner === owner ? pendingLocalRestore.snapshot : captureSnapshot()), owner)
+      if (epoch !== authEpoch) return
+      await clearLocalProgress()
+      if (epoch !== authEpoch) return
+      localStorage.removeItem(OWNER_KEY)
+    }
+    if (!userId) {
+      activeUserId = null
+      localReadyIdentity = userId
+      pendingLocalRestore = null
+      markLocalProgressReady(userId)
+      window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
+      return
+    }
+    const generation = currentGeneration
+    await loadSavedSessionBaseline(userId)
+    if (epoch !== authEpoch) return
+    const raw = await readEncryptedPersistedValue(accountCacheKey(userId))
+    if (epoch !== authEpoch) return
+    const cached = parseJson<LearningProgressSnapshot>(raw)
+    const current = captureSnapshot()
+    const snapshot = cached && isSnapshot(cached)
+      ? owner === userId || owner === null ? mergeSnapshots(current, cached, current.changedSections, true) : cached
+      : current
+    const history = parseJson<{state?: {entries?: {id: string}[]; savedSessions?: {id: string}[]}}>(snapshot.storage['hyperion-history'])
+    const ids = [...(history?.state?.entries ?? []), ...(history?.state?.savedSessions ?? [])].map(row => row.id)
+    if (snapshot.activeSession?.sessionId) ids.push(snapshot.activeSession.sessionId)
+    // Persist the complete target before publishing any partially restored fields.
+    await writeEncryptedPersistedValue(accountCacheKey(userId), JSON.stringify(snapshot), userId)
+    if (epoch !== authEpoch) return
+    pendingLocalRestore = {owner: userId, snapshot}
+    localStorage.setItem(OWNER_KEY, userId)
+    await claimLocalSessionSnapshots(userId, ids)
+    if (epoch !== authEpoch) return
+    await applySnapshot(snapshot, userId, generation)
+    if (epoch !== authEpoch) return
+    activeUserId = userId
+    localReadyIdentity = userId
+    pendingLocalRestore = null
+    markLocalProgressReady(userId)
+    window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
+  })
+  localPreparationQueue = work.catch(() => undefined)
+  return work
+}
+
 async function initializeUserInternal(userId: string, force: boolean, epoch: number): Promise<void> {
   if (!supabase) return
-  await waitForProgressHydration()
+  await prepareLocalAccount(userId, epoch)
   if (epoch !== authEpoch) return
-  await migrateLegacyProgressCaches()
-  if (epoch !== authEpoch) return
-  const currentOwner = (() => { try { return localStorage.getItem(OWNER_KEY) } catch { return null } })()
-  if (currentOwner === userId || currentOwner === null) {
-    const recovered = await recoverSavedCollections(currentOwner)
-    if (epoch !== authEpoch) return
-    if (recovered) await rehydratePersistedStores()
+  if (!canSyncCloudProgress(userId) || navigator.onLine === false) {
+    window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
+    return
   }
+  if (requestPolicy.retryAt(userId) > Date.now()) { armProgressRetry(userId, requestPolicy.retryAt(userId)); return }
   const { data: sessionData } = await supabase.auth.getSession()
-  if (epoch !== authEpoch || !sessionData.session?.user || sessionData.session.user.id !== userId || (authIdentity !== undefined && authIdentity !== userId)) return
+  if (epoch !== authEpoch || !canSyncCloudProgress(userId) || !sessionData.session?.user || sessionData.session.user.id !== userId || (authIdentity !== undefined && authIdentity !== userId)) return
   if (!force && cloudReady && activeUserId === userId) return
   const generation = ++currentGeneration
   if (uploadTimer) { clearTimeout(uploadTimer); uploadTimer = null }
@@ -1017,32 +1136,20 @@ async function initializeUserInternal(userId: string, force: boolean, epoch: num
   lastUploadedUserId = null
   lastUploadedSignature = null
 
-  let ownerBeforeLoad: string | null = null
-  try { ownerBeforeLoad = localStorage.getItem(OWNER_KEY) } catch { /* storage may be unavailable */ }
-  if (ownerBeforeLoad && ownerBeforeLoad !== userId) {
-    activeUserId = null
-    // Keep an account-keyed recovery copy for offline work, but remove its live
-    // stores from the browser before hydrating the new account.
-    try {
-      await writeEncryptedPersistedValue(accountCacheKey(ownerBeforeLoad), JSON.stringify(captureSnapshot()))
-    } catch { /* encrypted recovery cache is best effort; never create a new plaintext cache */ }
-    await clearLocalProgress()
-    try { localStorage.removeItem(OWNER_KEY) } catch { /* ignore storage errors */ }
-    if (generation !== currentGeneration) return
-  }
-
   let row: CloudProgressRow | null = null
   try {
     await recoverCloudCollections(userId, sessionData.session.access_token)
-    if (generation !== currentGeneration) return
+    if (generation !== currentGeneration || !canSyncCloudProgress(userId)) return
+    if (!canSyncCloudProgress(userId) || epoch !== authEpoch) return
     let { data, error } = await supabase.functions.invoke('learning-progress', {
       headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: { action: 'read' }
     })
-    if (generation !== currentGeneration) return
+    if (generation !== currentGeneration || !canSyncCloudProgress(userId)) return
     if (error) throw error
     if (!data?.data && await recoverCloudCollections(userId, sessionData.session.access_token, true)) {
+      if (generation !== currentGeneration || epoch !== authEpoch || !canSyncCloudProgress(userId)) return
       const reread = await supabase.functions.invoke('learning-progress', { headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: { action: 'read' } })
-      if (generation !== currentGeneration) return
+      if (generation !== currentGeneration || !canSyncCloudProgress(userId)) return
       if (reread.error) throw reread.error
       data = reread.data
     }
@@ -1050,7 +1157,7 @@ async function initializeUserInternal(userId: string, force: boolean, epoch: num
       ? { data: data.data as LearningProgressSnapshot, updated_at: typeof data.updated_at === 'string' ? data.updated_at : '' }
       : null
   } catch (error) {
-    if (generation !== currentGeneration) return
+    if (generation !== currentGeneration || !canSyncCloudProgress(userId)) return
     // Do not overwrite a local account's data when the cloud read fails. The user
     // can continue locally; reconnecting or re-authenticating will retry hydration.
     console.warn('[Hyperion progress sync] Cloud restore failed; keeping local progress.', error)
@@ -1059,7 +1166,7 @@ async function initializeUserInternal(userId: string, force: boolean, epoch: num
     scheduleProgressRetry(userId)
     return
   }
-  if (generation !== currentGeneration) return
+  if (generation !== currentGeneration || !canSyncCloudProgress(userId)) return
   cloudUpdatedAt = row?.updated_at ?? null
   cloudVersionLoaded = true
   if (activeUserId !== userId) lastUploadAt = 0
@@ -1098,10 +1205,10 @@ async function initializeUserInternal(userId: string, force: boolean, epoch: num
       shouldUpload = true
     }
   } else if (remoteSnapshot && owner === userId && !localDirty) {
-    snapshotToApply = mergeSnapshots(localSnapshot, remoteSnapshot, [], true)
+    snapshotToApply = mergeSnapshots(localSnapshot, remoteSnapshot, [], true, knownCloudSavedSessions.get(userId))
     shouldUpload = progressSignature(snapshotToApply) !== progressSignature(remoteSnapshot)
   } else if (remoteSnapshot && (owner == null || localDirty)) {
-    snapshotToApply = mergeSnapshots(localSnapshot, remoteSnapshot, owner === userId ? localSnapshot.changedSections : [], owner == null)
+    snapshotToApply = mergeSnapshots(localSnapshot, remoteSnapshot, owner === userId ? localSnapshot.changedSections : [], owner == null, knownCloudSavedSessions.get(userId))
     shouldUpload = true
   } else {
     // First login migrates this device's local progress. Existing owner data is kept
@@ -1111,9 +1218,11 @@ async function initializeUserInternal(userId: string, force: boolean, epoch: num
   }
 
   try {
-    await applySnapshot(snapshotToApply, userId, generation)
+    if (remoteSnapshot) await rememberCloudSavedSessions(userId, remoteSnapshot)
+    if (generation !== currentGeneration || !canSyncCloudProgress(userId)) return
+    await applySnapshot(snapshotToApply, userId, generation, () => canSyncCloudProgress(userId))
   } catch (error) {
-    if (generation !== currentGeneration) return
+    if (generation !== currentGeneration || !canSyncCloudProgress(userId)) return
     // Keep this device usable, but never silently mark failed encrypted restoration
     // as complete. A later retry can recover the cloud snapshot safely.
     console.warn('[Hyperion progress sync] Encrypted progress restore failed.', error)
@@ -1122,11 +1231,11 @@ async function initializeUserInternal(userId: string, force: boolean, epoch: num
     scheduleProgressRetry(userId)
     return
   }
-  if (generation !== currentGeneration) return
+  if (generation !== currentGeneration || !canSyncCloudProgress(userId)) return
 
   try {
     await writeEncryptedPersistedValue(accountCacheKey(userId), JSON.stringify(snapshotToApply), userId)
-    if (generation !== currentGeneration) return
+    if (generation !== currentGeneration || !canSyncCloudProgress(userId)) return
     localStorage.setItem(OWNER_KEY, userId)
     if (!shouldUpload) {
       localStorage.removeItem(dirtyKey(userId))
@@ -1146,7 +1255,7 @@ async function initializeUserInternal(userId: string, force: boolean, epoch: num
       )
     } catch { /* cross-tab hint is optional */ }
   }
-  if (generation !== currentGeneration) return
+  if (generation !== currentGeneration || !canSyncCloudProgress(userId)) return
   cloudReady = true
   requestPolicy.succeeded(userId)
   void syncCurrentSessionArchives(userId)
@@ -1160,6 +1269,7 @@ async function initializeUserInternal(userId: string, force: boolean, epoch: num
 }
 
 async function syncCurrentSessionArchives(userId: string): Promise<void> {
+  if (!canSyncCloudProgress(userId)) return
   try {
     const state = useHistoryStore.getState()
     const ids = [...state.entries.filter(row => !row.deletedAt).map(row => row.id), ...state.savedSessions.filter(row => !row.deletedAt).map(row => row.id)]
@@ -1208,16 +1318,33 @@ export function startLearningProgressSync(): () => void {
   started = true
   authIdentity = undefined
   observeStoreChanges()
+  let eligible = canSyncCloudProgress(authIdentity)
+  const cancelCloudWork = () => {
+    cloudReady = false
+    uploadQueued = false
+    for (const timer of [uploadTimer, retryTimer, archiveTimer]) if (timer) clearTimeout(timer)
+    uploadTimer = retryTimer = archiveTimer = null
+  }
+  const unsubscribeLicense = useLicenseStore.subscribe(() => {
+    const next = canSyncCloudProgress(authIdentity)
+    if (next === eligible) return
+    eligible = next
+    authEpoch++
+    currentGeneration++
+    cancelCloudWork()
+    if (typeof authIdentity === 'string') void initializeUser(authIdentity, true)
+  })
 
   const onOnline = () => {
-    if (activeUserId) {
-      requestPolicy.wake(activeUserId)
-      void initializeUser(activeUserId, true)
-    } else {
-      void client.auth.getSession().then(({ data }) => {
-        if (data.session?.user) { requestPolicy.wake(data.session.user.id); void initializeUser(data.session.user.id, true) }
-      })
-    }
+    // A cached offline lease cannot establish that a subscription was not revoked
+    // while disconnected. Current signed verification precedes all cloud progress.
+    useLicenseStore.setState({ cloudSyncVerified: false })
+    void useLicenseStore.getState().refreshCloudEntitlements().then(() => {
+      const userId = authIdentity
+      if (typeof userId !== 'string' || !canSyncCloudProgress(userId)) return
+      requestPolicy.wake(userId)
+      void initializeUser(userId, true)
+    }).catch(() => undefined)
   }
   window.addEventListener('online', onOnline)
   const handleMockPlanChange = () => noteLocalChange('mockPlan')
@@ -1227,7 +1354,7 @@ export function startLearningProgressSync(): () => void {
   const handleArchiveSaved = () => {
     // History metadata has its own store subscription. Archive-only writes must
     // not dirty and re-upload the entire progress snapshot.
-    if (archiveTimer) return
+    if (!activeUserId || !canSyncCloudProgress(activeUserId) || archiveTimer) return
     archiveTimer = setTimeout(() => {
       archiveTimer = null
       if (activeUserId) void syncCurrentSessionArchives(activeUserId)
@@ -1235,14 +1362,17 @@ export function startLearningProgressSync(): () => void {
   }
   window.addEventListener('hyperion:session-archive-saved', handleArchiveSaved)
 
-  authSubscription = client.auth.onAuthStateChange((_event, session) => {
+  authSubscription = client.auth.onAuthStateChange((event, session) => {
+    if (event === 'INITIAL_SESSION' && !session && navigator.onLine === false) return
     // Invalidate old responses immediately, without querying inside Auth's lock.
     const nextIdentity = session?.user?.id ?? null
     if (authIdentity !== nextIdentity) {
       authIdentity = nextIdentity
+      setLocalProgressIdentity(nextIdentity)
       authEpoch++
       currentGeneration++
-      cloudReady = false
+      cancelCloudWork()
+      eligible = canSyncCloudProgress(nextIdentity)
       if (nextIdentity) requestPolicy.succeeded(nextIdentity)
     }
     // Avoid doing Supabase queries synchronously inside the auth callback.
@@ -1262,19 +1392,34 @@ export function startLearningProgressSync(): () => void {
         if (uploadTimer) { clearTimeout(uploadTimer); uploadTimer = null }
         if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
         if (archiveTimer) { clearTimeout(archiveTimer); archiveTimer = null }
+        void prepareLocalAccount(null, authEpoch).catch(() => undefined)
         return
       }
       if (userId !== activeUserId || !cloudReady) void initializeUser(userId)
     }, 0)
   }).data.subscription
 
-  void client.auth.getSession().then(({ data }) => {
-    const userId = data.session?.user.id ?? null
-    if (authIdentity === undefined) authIdentity = userId
-    if (data.session?.user && authIdentity === userId) void initializeUser(data.session.user.id)
-  }).catch((error) => console.warn('[Hyperion progress sync] Unable to read current auth session.', error))
+  const initializeIdentity = async (resolvedUserId: string | null) => {
+    let userId = resolvedUserId
+    if (!userId && navigator.onLine === false && authIdentity === undefined) {
+      // Signed, account-bound offline leases do not depend on a live Auth JWT.
+      await useLicenseStore.getState().refreshCachedEntitlements()
+      const grant = useLicenseStore.getState()
+      if (grant.entitlementsVerified && grant.entitlementUserId === localStorage.getItem(OWNER_KEY)) userId = grant.entitlementUserId
+    }
+    if (authIdentity === undefined) { authIdentity = userId;setLocalProgressIdentity(userId);eligible = canSyncCloudProgress(userId) }
+    if (userId && authIdentity === userId) void initializeUser(userId)
+    else if (!userId && authIdentity === null) void prepareLocalAccount(null, authEpoch).catch(() => undefined)
+  }
+  void client.auth.getSession().then(({data}) => initializeIdentity(data.session?.user.id ?? null)).catch(error => {
+    console.warn('[Hyperion progress sync] Unable to read current auth session.', error)
+    if (navigator.onLine === false && authIdentity === undefined) void initializeIdentity(null).catch(() => undefined)
+  })
 
   return () => {
+    unsubscribeLicense()
+    localReadyIdentity = undefined
+    setLocalProgressIdentity(undefined)
     started = false
     authEpoch++
     currentGeneration++
@@ -1283,6 +1428,8 @@ export function startLearningProgressSync(): () => void {
     if (uploadTimer) clearTimeout(uploadTimer)
     if (retryTimer) clearTimeout(retryTimer)
     if (archiveTimer) clearTimeout(archiveTimer)
+    if (localCacheTimer) clearTimeout(localCacheTimer)
+    localCacheTimer = null
     uploadTimer = retryTimer = archiveTimer = null
     cloudUpdatedAt = null
     lastUploadedUserId = null

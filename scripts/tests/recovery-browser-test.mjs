@@ -50,8 +50,14 @@ try {
   await page.evaluate(() => window.recoveryFixture.license(false))
   assert.equal(await page.evaluate(() => window.recoveryFixture.ids().bookmarks.length), 3)
   assert.equal(await page.evaluate(() => window.recoveryFixture.ids().mistakes.length), 1)
-  await page.evaluate(() => window.recoveryFixture.license(true))
-  assert.ok(await page.evaluate(() => window.recoveryFixture.recover()) >= 3)
+  // Exercise local encrypted recovery while cloud work is disabled. Renewal now
+  // automatically restores collections, so it must not race this corruption probe.
+  await page.evaluate(() => window.recoveryFixture.recover())
+  assert.deepEqual((await page.evaluate(() => window.recoveryFixture.ids().bookmarks)).sort(), ['recovery-fixture-1','recovery-fixture-2','recovery-fixture-3'], 'Automatic or explicit encrypted recovery restores every saved bookmark')
+  await page.evaluate(() => new Promise(resolve => {
+    window.addEventListener('hyperion:learning-progress-ready', resolve, {once:true})
+    window.recoveryFixture.license(true)
+  }))
   await page.evaluate(() => window.recoveryFixture.recoverLegacy())
   assert.ok((await page.evaluate(() => window.recoveryFixture.ids().bookmarks)).includes('recovery-fixture-4'))
   await page.evaluate(() => window.recoveryFixture.removeAndRecover('recovery-fixture-4'))
@@ -66,7 +72,18 @@ try {
   await page.waitForFunction(() => window.recoveryFixture.calls.some(call => call.action === 'read'))
   await page.clock.fastForward(301000)
   await page.waitForFunction(() => JSON.parse(window.recoveryFixture.cloud()?.data.storage['hyperion-bookmarks'] || '{}')?.state?.items.some(item => item.id === 'recovery-fixture-4'))
-  await page.evaluate(() => window.recoveryFixture.switchUser(window.recoveryFixture.users.b))
+  await page.evaluate(() => {
+    window.originalAccountEncrypt = crypto.subtle.encrypt.bind(crypto.subtle)
+    crypto.subtle.encrypt = async (...args) => {
+      if (!window.accountEncryptPaused) { window.accountEncryptPaused = true; await new Promise(resolve => { window.releaseAccountEncrypt = resolve }) }
+      return window.originalAccountEncrypt(...args)
+    }
+    window.recoveryFixture.switchUser(window.recoveryFixture.users.b)
+  })
+  await page.waitForFunction(() => window.accountEncryptPaused)
+  await page.locator('main').waitFor({ state: 'hidden' })
+  await page.getByRole('status').getByText('Opening your saved progress…', {exact:true}).waitFor()
+  await page.evaluate(() => { crypto.subtle.encrypt = window.originalAccountEncrypt; window.releaseAccountEncrypt() })
   await page.waitForFunction(() => window.recoveryFixture.ids().owner === window.recoveryFixture.users.b && window.recoveryFixture.ids().bookmarks.length === 1)
   assert.deepEqual(await page.evaluate(() => window.recoveryFixture.ids().bookmarks), ['recovery-fixture-2'])
   await page.evaluate(() => window.recoveryFixture.switchUser(window.recoveryFixture.users.a))

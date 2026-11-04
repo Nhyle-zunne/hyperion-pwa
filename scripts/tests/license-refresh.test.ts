@@ -8,7 +8,7 @@ let paused = false
 let failed = false
 let deferredSessions: ((value: any) => void)[] | null = null
 mock.module('../../src/lib/supabase', () => ({ supabase: {
-  auth: { getSession: async () => deferredSessions ? new Promise(resolve => { deferredSessions!.push(resolve) }) : ({ data: { session: { user: { id: owner } } } }) },
+  auth: { getSession: async () => deferredSessions ? new Promise((resolve,reject) => { deferredSessions!.push(value => value instanceof Error ? reject(value) : resolve(value)) }) : ({ data: { session: { user: { id: owner } } } }) },
   functions: { invoke: async (name: string, { body }: any) => {
     calls.push({ name, action: body.action })
     if (paused) await new Promise<void>(resolve => { release = resolve })
@@ -34,6 +34,9 @@ afterEach(() => {
 test('one signed lease supplies ordinary access without a redundant admin request', async () => {
   await refresh()
   expect(useLicenseStore.getState().isTrackUnlocked('DECK_OIC_NW')).toBe(true)
+  expect(useLicenseStore.getState().cloudSyncVerified).toBe(true)
+  expect(useLicenseStore.getState().entitlementUserId).toBe(owner)
+  expect(useLicenseStore.getState().cloudSyncExpiresAt).toBeGreaterThan(Date.now())
   expect(useLicenseStore.getState().isTrackUnlocked('ENGINE_MGT')).toBe(false)
   expect(calls).toEqual([{ name: 'question-bank', action: 'offline-license' }])
 })
@@ -76,6 +79,7 @@ test('network failure retains only the valid signed same-account fallback', asyn
   await refresh()
   failed = true
   await refresh()
+  expect(useLicenseStore.getState().cloudSyncVerified).toBe(false)
   expect(useLicenseStore.getState().isTrackUnlocked('DECK_OIC_NW')).toBe(true)
   expect(useLicenseStore.getState().isAllAccessUnlocked).toBe(false)
 })
@@ -106,4 +110,17 @@ test('a late old-account auth lookup cannot replace a newer verified account', a
   await older
   expect(cache.userId).toBe('account-b')
   expect(calls.length).toBe(1)
+})
+
+test('a late failed auth lookup cannot disable a newer verified account cloud grant', async () => {
+  deferredSessions=[]
+  const older=refresh(),newer=refresh()
+  await flush()
+  signedAdmin=true
+  deferredSessions[1]({data:{session:{user:{id:'account-b'}}}})
+  await newer
+  deferredSessions[0](new Error('Old lookup failed'))
+  await older
+  expect(useLicenseStore.getState().entitlementUserId).toBe('account-b')
+  expect(useLicenseStore.getState().cloudSyncVerified).toBe(true)
 })

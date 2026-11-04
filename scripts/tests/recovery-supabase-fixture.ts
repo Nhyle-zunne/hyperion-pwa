@@ -3,9 +3,14 @@ export * from '../../src/lib/supabase'
 export const supabaseUrl = undefined
 export const supabaseAnonKey = undefined
 export const fixtureUsers = { a: '11111111-1111-4111-8111-111111111111', b: '22222222-2222-4222-8222-222222222222' }
-let userId = localStorage.getItem('fixture-user') || fixtureUsers.a
+let userId: string | null = localStorage.getItem('fixture-guest') === 'yes' ? null : localStorage.getItem('fixture-user') || fixtureUsers.a
 const listeners = new Set<(event: string, session: unknown) => void>()
 export const fixtureCalls: { userId: string; action: string; sessionId?: string; sessionIds?: string[] }[] = []
+let nextRecoveryGate: Promise<void> | null = null
+let releaseRecovery: (() => void) | undefined
+let recoverySkips=0
+export function fixtureHoldRecovery(skip=0){recoverySkips=skip;nextRecoveryGate=new Promise(resolve=>{releaseRecovery=resolve})}
+export function fixtureReleaseRecovery(){releaseRecovery?.()}
 let nextReadGate: Promise<void> | null = null
 let releaseRead: (() => void) | undefined
 export function fixtureHoldNextRead() { nextReadGate = new Promise(resolve => { releaseRead = resolve }) }
@@ -14,9 +19,9 @@ let archiveGate: Promise<void> | null = null
 let releaseArchive: (() => void) | undefined
 export function fixturePauseArchives() { archiveGate = new Promise(resolve => { releaseArchive = resolve }) }
 export function fixtureReleaseArchives() { archiveGate = null; releaseArchive?.() }
-const session = () => ({ user: { id: userId, email: 'synthetic@example.invalid' }, access_token: 'fixture-' + userId })
+const session = () => localStorage.getItem('fixture-offline-auth-missing') === 'yes' && navigator.onLine === false ? null : userId ? ({ user: { id: userId, email: 'synthetic@example.invalid' }, access_token: 'fixture-' + userId }) : null
 export function fixtureCloud(id = userId) { const raw = localStorage.getItem('fixture-cloud:' + id); return raw ? JSON.parse(raw) : null }
-export function fixtureSetUser(id: string) { userId = id; localStorage.setItem('fixture-user', id); for (const listener of listeners) listener('SIGNED_IN', session()) }
+export function fixtureSetUser(id: string | null) { userId = id; if(id){localStorage.setItem('fixture-user',id);localStorage.removeItem('fixture-guest')}else{localStorage.removeItem('fixture-user');localStorage.setItem('fixture-guest','yes')} for(const listener of listeners)listener(id?'SIGNED_IN':'SIGNED_OUT',session()) }
 export const supabase = {
   auth: {
     getSession: async () => ({ data: { session: session() }, error: null }),
@@ -42,7 +47,7 @@ export const supabase = {
         localStorage.setItem('fixture-cloud:' + bound, JSON.stringify({ data: body.data, updated_at }))
         return { data: { ok: true, updated_at }, error: null }
       }
-      if (body.action === 'recover-saved') return { data: { ok: true }, error: null }
+      if (body.action === 'recover-saved') {if(nextRecoveryGate && recoverySkips--<=0){const gate=nextRecoveryGate;nextRecoveryGate=null;await gate}return { data: { ok: true }, error: null }}
       if (body.action === 'write-session' || body.action === 'write-sessions') await archiveGate
       const archiveKey = `fixture-archive:${bound}:${body.sessionId}`
       if ((body.action === 'write-session' || body.action === 'write-sessions') && localStorage.getItem('fixture-archive-error')) return { data: null, error: Object.assign(new Error('Unknown progress action.'), { context: { status: Number(localStorage.getItem('fixture-archive-error')) } }) }

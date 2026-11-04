@@ -59,6 +59,8 @@ jobs:
           bun run test:progress-revisions
           bun run test:offline-licenses
           bun test scripts/tests/license-refresh.test.ts
+          bun test scripts/tests/cloud-progress-access.test.ts
+          bun test scripts/tests/local-progress-identity.test.ts
           bun test scripts/tests/question-bank-transport.test.ts
           bun test scripts/tests/progress-request-policy.test.ts
           bun test scripts/tests/session-archive-batch.test.ts
@@ -69,6 +71,10 @@ jobs:
       - name: Background sync request and archive batching regression
         env:
           HYPERION_BROWSER_FIXTURE: sync
+        run: bun run test:saved-data:browser
+      - name: Free-local and licensed progress lifecycle regression
+        env:
+          HYPERION_BROWSER_FIXTURE: licensed
         run: bun run test:saved-data:browser
       - name: GitHub publisher browser regression
         env:
