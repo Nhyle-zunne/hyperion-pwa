@@ -398,6 +398,10 @@ export default function App() {
   const quickScanTrack = isQuickScanViewer ? quickScanKeys[new URLSearchParams(location.search).get('track') || 'oic_nw'] || 'DECK_OIC_NW' : null
   const flashcardTrack = isFlashcards ? quickScanKeys[new URLSearchParams(location.search).get('track') || 'oic_nw'] || 'DECK_OIC_NW' : null
   const guardedTrack = isQuestionRunner ? currentTrack : quickScanTrack ?? flashcardTrack
+  const hasGuardedTrackLicense = !!guardedTrack && entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
+  const permittedFreeRunner = isFreeSession && ((isMockRunner && currentMode === 'MOCK') || (isPracticeQuiz && currentMode === 'PRACTICE'))
+  const showQuestionAccessCheck = !!guardedTrack && (isQuestionRunner || isQuickScanViewer || isFlashcards)
+    && (!entitlementsChecked || (!hasGuardedTrackLicense && !permittedFreeRunner))
 
   useEffect(() => {
     const hadTrackAccessRemoved = lastCloudTrackIds.current.some(trackId => !cloudTrackIds.includes(trackId))
@@ -409,7 +413,7 @@ export default function App() {
 
 
   useEffect(() => {
-    if (!entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer && !isFlashcards) || !guardedTrack) return
+    if (!localOwnerReady || !entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer && !isFlashcards) || !guardedTrack) return
     if (isQuestionRunner && (sessionLoading || sessionQuestionCount === 0)) return
     const allowed = entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
     if (allowed) return
@@ -423,10 +427,11 @@ export default function App() {
       DECK_MGT: 'deck_mgt', ENGINE_MGT: 'engine_mgt'
     }
     clearPaidQuestionCache()
-    if (isQuestionRunner) usePracticeStore.getState().reset()
+    // Closing access is not an intentional discard. Retain resumable answers locally.
+    if (isQuestionRunner) void usePracticeStore.getState().saveProgress().catch(() => undefined)
     navigate('/track?track=' + (trackParam[guardedTrack] || 'oic_nw'), { replace: true })
     useUIStore.getState().openPaywall('This paid question view needs a current, verified license. Renew access or reconnect to check your subscription.')
-  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, isFlashcards, guardedTrack, isFreeSession, currentMode, sessionLoading, sessionQuestionCount, navigate])
+  }, [localOwnerReady, entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, isFlashcards, guardedTrack, isFreeSession, currentMode, sessionLoading, sessionQuestionCount, navigate])
 
   // Free Reviewer is the only non-mock practice setup available without a license.
   // Direct URLs must obey the same access rule as the track-hub buttons.
@@ -451,7 +456,7 @@ export default function App() {
   const showTrackAccessCheck = setupNeedsLicense && (!entitlementsChecked || !hasActiveSetupLicense)
 
   useEffect(() => {
-    if (!entitlementsChecked || !setupNeedsLicense || hasActiveSetupLicense) return
+    if (!localOwnerReady || !entitlementsChecked || !setupNeedsLicense || hasActiveSetupLicense) return
 
     navigate('/track?track=' + setupTrackKey, { replace: true })
     useUIStore.getState().openPaywall(
@@ -459,7 +464,7 @@ export default function App() {
         ? 'Drill requires an active license for this track.'
         : 'This feature requires an active license for this track. Free Reviewer and Timed Mock Exam remain available without a purchase.'
     )
-  }, [entitlementsChecked, setupNeedsLicense, hasActiveSetupLicense, setupTrackKey, setupMode, location.pathname, navigate])
+  }, [localOwnerReady, entitlementsChecked, setupNeedsLicense, hasActiveSetupLicense, setupTrackKey, setupMode, location.pathname, navigate])
 
   const hideNav = [
     '/practice/quiz',
@@ -489,7 +494,7 @@ export default function App() {
           {' · '}Only questions already saved on this device and saved sessions are available. New sign-ins, checkout, license changes, and cloud sync need an internet connection.
         </div>
       )}
-      {(isQuestionRunner || isQuickScanViewer) && (
+      {localOwnerReady && !showQuestionAccessCheck && (isQuestionRunner || isQuickScanViewer) && (
         <header
           aria-label="Question navigation"
           style={{
@@ -557,12 +562,12 @@ export default function App() {
           </div>
         </header>
       )}
-      {completionError && <div role="alert" style={{ padding: '1rem', color: 'var(--danger)', background: 'var(--bg-card)' }}>
+      {localOwnerReady && completionError && <div role="alert" style={{ padding: '1rem', color: 'var(--danger)', background: 'var(--bg-card)' }}>
         <p>{completionError}</p><button type="button" className="btn btn-primary" disabled={finishing} onClick={() => usePracticeStore.getState().finish()}>Retry saving completed session</button>
       </div>}
       {!showOwnerContent && <div role="status" className="screen">Opening your saved progress…</div>}
       <main hidden={!showOwnerContent} style={{ display: showOwnerContent ? undefined : 'none', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-        <div key={`${location.pathname}${location.search}`} className="route-transition" style={{ minHeight: "100%" }}>
+        {showOwnerContent && <div key={`${location.pathname}${location.search}`} className="route-transition" style={{ minHeight: "100%" }}>
         <RouteErrorBoundary>
         <Suspense fallback={<div role="status" aria-live="polite" style={{ minHeight: 220, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Loading Hyperion…</div>}>
         <Routes>
@@ -585,14 +590,14 @@ export default function App() {
           <Route path="/practice/competences" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <PracticeCompetenceScreen />} />
           <Route path="/practice" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <PracticeConfigScreen />} />
           <Route path="/saved-questions/config" element={<SavedQuestionConfigScreen />} />
-          <Route path="/practice/quiz" element={<PracticeQuizScreen />} />
+          <Route path="/practice/quiz" element={showQuestionAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <PracticeQuizScreen />} />
           <Route path="/drill" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <DrillScreen />} />
           <Route path="/quick-scan" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <QuickScanCompetenceScreen />} />
-          <Route path="/quick-scan/view" element={<QuickScanViewerScreen onQuestionChange={setQuickScanQuestion} />} />
+          <Route path="/quick-scan/view" element={showQuestionAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <QuickScanViewerScreen onQuestionChange={setQuickScanQuestion} />} />
           <Route path="/mock" element={<MockExamScreen />} />
-          <Route path="/mock/exam" element={<MockExamRunner />} />
+          <Route path="/mock/exam" element={showQuestionAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <MockExamRunner />} />
           <Route path="/history" element={<HistoryScreen />} />
-          <Route path="/flashcards" element={<FlashcardsScreen />} />
+          <Route path="/flashcards" element={showQuestionAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <FlashcardsScreen />} />
           <Route path="/bookmarks" element={<BookmarksScreen />} />
           <Route path="/vault" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <VaultScreen />} />
           <Route path="/search" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <SearchScreen />} />
@@ -603,7 +608,7 @@ export default function App() {
         </Routes>
         </Suspense>
         </RouteErrorBoundary>
-        </div>
+        </div>}
       </main>
 
       {!hideNav && <BottomNav />}

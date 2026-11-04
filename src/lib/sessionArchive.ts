@@ -325,8 +325,8 @@ async function syncArchivePass(userId: string, ids: string[]): Promise<void> {
   if (!session || session.user.id !== userId || !hasAccess()) return
   let uploads: { sessionId: string; snapshot: SessionSnapshot; hash: string }[] = []
   const flushUploads = async (): Promise<boolean> => {
-    if (!uploads.length) return true
     if (localStorage.getItem('hyperion-progress-owner') !== userId || !hasAccess()) return false
+    if (!uploads.length) return true
     const response = await supabase!.functions.invoke('learning-progress', {
       headers: { Authorization: `Bearer ${session.access_token}` },
       body: { action: 'write-sessions', sessions: uploads.map(({ sessionId, snapshot }) => ({ sessionId, snapshot })) }
@@ -349,6 +349,7 @@ async function syncArchivePass(userId: string, ids: string[]): Promise<void> {
       const retryKey = userId + ':' + id
       if ((missingArchiveRetryAt.get(retryKey) ?? 0) > Date.now()) continue
       const result = await loadSessionSnapshot(id)
+      if (localStorage.getItem('hyperion-progress-owner') !== userId || !hasAccess()) return
       if (result.status === 'unavailable' || result.status === 'sign-in-required') {
         deferArchiveSync(userId); return
       }
@@ -358,6 +359,7 @@ async function syncArchivePass(userId: string, ids: string[]): Promise<void> {
       continue
     }
     const hash = await archiveSnapshotHash(local)
+    if (localStorage.getItem('hyperion-progress-owner') !== userId || !hasAccess()) return
     if (localStorage.getItem(archiveMarker(userId, id)) === hash) continue
     const candidate = { sessionId: id, snapshot: local, hash }
     // Stream bounded batches instead of decrypting an entire large history at once.

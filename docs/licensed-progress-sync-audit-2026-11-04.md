@@ -121,3 +121,25 @@ account-cache writes. Production build and offline checks pass with the new code
 A final auth-race regression verifies that an older failed session lookup cannot
 disable the newer account's verified cloud grant (RED→GREEN). The account/sequence
 check runs before fallback changes scheduling state.
+
+## Startup and expiry follow-up
+
+CI exposed overlapping startup collection recovery and hydration. Local ownership
+preparation now waits for local encrypted recovery. Licensed online cloud-ready
+announcements follow cloud application; free/offline readiness remains local.
+Tests wait for the restoration event plus actual records, not a partially loaded
+store. Old study screens unmount while owner changes, and entitlement guards do
+not act on the previous owner's session during that interval. Essential account
+routes remain accessible.
+
+A dedicated regression also reproduced an existing expiry problem: the paid-view
+guard called the user-discard/reset action, deleting the local resumable archive.
+It now saves progress locally and closes the paid view. Paid question components
+and navigation controls do not mount without eligible access. The test confirms
+answers and the encrypted snapshot survive expiry, makes0progress calls after
+expiry, and resumes those answers after verified renewal.
+
+The full-app backoff assertion now scopes repeated manual attempts to its own
+archive IDs, avoiding unrelated background batches; the standalone sync suite
+still checks exact global batching/backoff counts. Both verify pending encrypted
+archives transfer when the backend recovers.

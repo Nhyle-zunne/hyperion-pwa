@@ -79,6 +79,7 @@ let uploadTimer: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let localCacheTimer: ReturnType<typeof setTimeout> | null = null
 let localPreparationQueue: Promise<void> = Promise.resolve()
+let localRecovery: Promise<unknown> = Promise.resolve()
 let pendingLocalRestore: {owner: string; snapshot: LearningProgressSnapshot} | null = null
 let localReadyIdentity: string | null | undefined
 let archiveTimer: ReturnType<typeof setTimeout> | null = null
@@ -619,7 +620,7 @@ async function rehydratePersistedStores(): Promise<void> {
   ])
 }
 
-async function applySnapshot(snapshot: LearningProgressSnapshot, ownerId?: string, generation = currentGeneration, canApply: () => boolean = () => true): Promise<void> {
+async function applySnapshot(snapshot: LearningProgressSnapshot, ownerId?: string, generation = currentGeneration, canApply: () => boolean = () => true, announce = true): Promise<void> {
   if (generation !== currentGeneration || !canApply()) throw new Error('Account changed while restoring progress.')
   if (ownerId) localStorage.setItem(OWNER_KEY, ownerId)
   hydrating = true
@@ -655,7 +656,7 @@ async function applySnapshot(snapshot: LearningProgressSnapshot, ownerId?: strin
     await rehydratePersistedStores()
     if (generation !== currentGeneration || !canApply()) throw new Error('Account changed while restoring progress.')
     const session = activeSessionFrom(snapshot)
-    if (session && useLicenseStore.getState().entitlementsVerified && useLicenseStore.getState().entitlementUserId === ownerId && useLicenseStore.getState().cloudSyncExpiresAt > Date.now() && useLicenseStore.getState().isTrackUnlocked(session.track!)) {
+    if (session && (navigator.onLine === false || useLicenseStore.getState().cloudSyncVerified) && useLicenseStore.getState().entitlementsVerified && useLicenseStore.getState().entitlementUserId === ownerId && useLicenseStore.getState().cloudSyncExpiresAt > Date.now() && useLicenseStore.getState().isTrackUnlocked(session.track!)) {
       restoredSession = session
       usePracticeStore.setState({
         sessionId: session.sessionId || useHistoryStore.getState().savedSessions.find(row => row.track === session.track && row.competenceId === session.competenceId && row.startedAt === session.startedAt)?.id || crypto.randomUUID(),
@@ -686,6 +687,10 @@ async function applySnapshot(snapshot: LearningProgressSnapshot, ownerId?: strin
     hydrating = false
   }
 
+  if (announce) announceRestoredSession(restoredSession)
+}
+
+function announceRestoredSession(restoredSession: ActiveSessionSnapshot | null): void {
   window.dispatchEvent(new CustomEvent('hyperion:learning-progress-restored', {
     detail: {
       hasActiveSession: !!restoredSession,
@@ -1062,6 +1067,7 @@ async function waitForProgressHydration(): Promise<void> {
 async function prepareLocalAccount(userId: string | null, epoch: number): Promise<void> {
   const work = localPreparationQueue.then(async () => {
     await waitForProgressHydration()
+    await localRecovery
     if (epoch !== authEpoch) return
     await migrateLegacyProgressCaches()
     if (epoch !== authEpoch) return
@@ -1103,13 +1109,13 @@ async function prepareLocalAccount(userId: string | null, epoch: number): Promis
     localStorage.setItem(OWNER_KEY, userId)
     await claimLocalSessionSnapshots(userId, ids)
     if (epoch !== authEpoch) return
-    await applySnapshot(snapshot, userId, generation)
+    await applySnapshot(snapshot, userId, generation, () => true, false)
     if (epoch !== authEpoch) return
     activeUserId = userId
     localReadyIdentity = userId
     pendingLocalRestore = null
     markLocalProgressReady(userId)
-    window.dispatchEvent(new Event('hyperion:learning-progress-ready'))
+    if (!canSyncCloudProgress(userId) || navigator.onLine === false) announceRestoredSession(activeSessionFrom(captureSnapshot()))
   })
   localPreparationQueue = work.catch(() => undefined)
   return work
@@ -1309,7 +1315,7 @@ function observeStoreChanges(): void {
 
 export function startLearningProgressSync(): () => void {
   // Local recovery also runs without a session/network; it never crosses owners.
-  void waitForProgressHydration().then(async () => {
+  localRecovery = waitForProgressHydration().then(async () => {
     const owner = localStorage.getItem(OWNER_KEY)
     if (await recoverSavedCollections(owner)) await rehydratePersistedStores()
   }).catch(() => undefined)
