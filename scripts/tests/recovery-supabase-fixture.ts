@@ -22,7 +22,7 @@ export function fixtureReleaseArchives() { archiveGate = null; releaseArchive?.(
 const session = () => localStorage.getItem('fixture-offline-auth-missing') === 'yes' && navigator.onLine === false ? null : userId ? ({ user: { id: userId, email: 'synthetic@example.invalid' }, access_token: 'fixture-' + userId }) : null
 export function fixtureCloud(id = userId) { const raw = localStorage.getItem('fixture-cloud:' + id); return raw ? JSON.parse(raw) : null }
 export function fixtureSetUser(id: string | null) { userId = id; if(id){localStorage.setItem('fixture-user',id);localStorage.removeItem('fixture-guest')}else{localStorage.removeItem('fixture-user');localStorage.setItem('fixture-guest','yes')} for(const listener of listeners)listener(id?'SIGNED_IN':'SIGNED_OUT',session()) }
-export const supabase = {
+const fixtureClient = {
   auth: {
     getSession: async () => ({ data: { session: session() }, error: null }),
     onAuthStateChange: (listener: (event: string, session: unknown) => void) => { listeners.add(listener); return { data: { subscription: { unsubscribe: () => listeners.delete(listener) } } } }
@@ -65,3 +65,5 @@ export const supabase = {
     }
   }
 }
+
+export const supabase = localStorage.getItem('fixture-no-client') === 'yes' ? null : fixtureClient

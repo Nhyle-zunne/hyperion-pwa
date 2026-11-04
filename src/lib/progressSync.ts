@@ -1314,13 +1314,32 @@ function observeStoreChanges(): void {
 }
 
 export function startLearningProgressSync(): () => void {
+  if (started) return () => undefined
   // Local recovery also runs without a session/network; it never crosses owners.
   localRecovery = waitForProgressHydration().then(async () => {
     const owner = localStorage.getItem(OWNER_KEY)
     if (await recoverSavedCollections(owner)) await rehydratePersistedStores()
   }).catch(() => undefined)
   const client = supabase
-  if (!client || started) return () => undefined
+  if (!client) {
+    started = true
+    authIdentity = null
+    setLocalProgressIdentity(null)
+    observeStoreChanges()
+    void prepareLocalAccount(null, authEpoch).catch(() => undefined)
+    return () => {
+      started = false
+      authEpoch++
+      currentGeneration++
+      localReadyIdentity = undefined
+      activeUserId = null
+      if (localCacheTimer) clearTimeout(localCacheTimer)
+      localCacheTimer = null
+      setLocalProgressIdentity(undefined)
+      unsubscribeStores.forEach(unsubscribe => unsubscribe())
+      unsubscribeStores = []
+    }
+  }
   started = true
   authIdentity = undefined
   observeStoreChanges()

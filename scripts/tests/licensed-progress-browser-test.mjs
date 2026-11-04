@@ -161,5 +161,17 @@ try{
  await rp.evaluate(()=>window.syncFixture.releaseRecovery());await rp.waitForTimeout(150)
  assert.equal(await rp.evaluate(()=>window.syncFixture.calls.filter(x=>x.action==='read').length),safeReads,'Obsolete recovery cannot create a follow-up read in a renewed grant')
  await race.close()
+ // Preserve public free practice when the optional Supabase client is unavailable.
+ const publicOnly=await browser.newContext()
+ await publicOnly.route('**/*',route=>['localhost','127.0.0.1','[::1]'].includes(new URL(route.request().url()).hostname)?route.continue():route.abort())
+ await publicOnly.addInitScript(()=>{localStorage.setItem('fixture-no-client','yes');localStorage.setItem('fixture-license','free');localStorage.setItem('fixture-guest','yes')})
+ const np=await publicOnly.newPage();await np.goto(process.env.HYPERION_RECOVERY_TEST_URL);await np.waitForFunction(()=>window.syncFixture?.ready())
+ await np.evaluate(()=>window.syncFixture.study('public-only-local'))
+ assert.ok(await np.evaluate(()=>window.syncFixture.startFree()))
+ assert.equal(await np.evaluate(()=>window.syncFixture.calls.length),0)
+ await np.reload();await np.waitForFunction(()=>window.syncFixture?.ready())
+ assert.ok(await np.evaluate(()=>window.syncFixture.history().entries.some(x=>x.id==='public-only-local')))
+ assert.equal(await np.evaluate(()=>window.syncFixture.calls.length),0)
+ await publicOnly.close()
  console.log('PASS: guest/free zero calls; local reload; purchase/renewal merge; expiry/revocation mid-batch; offline account isolation and guest archive ownership.')
 }finally{await browser.close()}

@@ -143,3 +143,12 @@ The full-app backoff assertion now scopes repeated manual attempts to its own
 archive IDs, avoiding unrelated background batches; the standalone sync suite
 still checks exact global batching/backoff counts. Both verify pending encrypted
 archives transfer when the backend recovers.
+
+## Integration with newer main updates
+
+Merged the latest Free Reviewer/telemetry/backend optimizations without reverting
+them. The public question transport now also has an additional passing unit test
+from main (46unit tests total in the combined tree). A new lifecycle regression
+covers a completely absent optional Supabase client: public free practice, encrypted
+archives, local history and reload still work and produce0progress requests.
+The local-only engine initializes guest ownership even in that configuration.
