@@ -1,3 +1,17 @@
+// Supabase CLI applies migration files statement by statement, so migrations
+// needing a locked watermark include their own BEGIN/COMMIT. The guarded live
+// rollout already owns one transaction; strip only that outer pair to avoid
+// committing before its row-fingerprint verification runs.
+export function migrationBodyForGuard(sql) {
+  const trimmed = sql.trim()
+  const starts = /^begin\s*;/i.test(trimmed)
+  const ends = /\bcommit\s*;\s*$/i.test(trimmed)
+  if (starts !== ends) throw Error('Incomplete migration transaction wrapper')
+  return starts
+    ? trimmed.replace(/^begin\s*;/i, '').replace(/\bcommit\s*;\s*$/i, '')
+    : sql
+}
+
 // DDL guard used for a reviewed migration or safety rollback. Never cleans data.
 export function guardedProgressRevisionSql(definitions, ledgerSql = '') {
   return `begin;

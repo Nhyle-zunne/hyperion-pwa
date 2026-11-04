@@ -1,11 +1,12 @@
 // DDL-only rollout; historical cleanup is never supported by this tool.
 import {readFile,writeFile} from 'node:fs/promises'
 import {createHash} from 'node:crypto'
-import {guardedProgressRevisionSql} from './lib/progressRevisionDeployment.mjs'
+import {guardedProgressRevisionSql,migrationBodyForGuard} from './lib/progressRevisionDeployment.mjs'
 const migrations=[]
 for(const [version,name]of [
  ['20261104010000','optimize_progress_revision_storage'],
- ['20261104020000','preserve_exact_progress_noops']
+ ['20261104020000','preserve_exact_progress_noops'],
+ ['20261104030000','bound_future_progress_revisions']
 ])migrations.push({version,name,source:await readFile(`supabase/migrations/${version}_${name}.sql`,'utf8')})
 const expected=JSON.parse(await readFile('config/progress-revision-audited-baseline.json','utf8'))
 if(!process.env.SUPABASE_ACCESS_TOKEN)throw Error('Secure Supabase management access is required.')
@@ -47,11 +48,25 @@ if(!completed.length)throw Error('No completed backup is available. Do not apply
 const apply=process.argv.includes('--apply')&&pending.length>0
 if(apply){
  const ledger=pending.map(x=>`insert into supabase_migrations.schema_migrations(version,name,statements)select ${lit(x.version)},${lit(x.name)},array[${lit(x.source)},format('-- Guard verified unchanged current records=%s and revisions=%s',(select count(*)from revision_record_guard where kind='current'),(select count(*)from revision_record_guard where kind='revision'))];`).join('\n')
- await query(guardedProgressRevisionSql(pending.map(x=>x.source).join('\n'),ledger),false)
+ await query(guardedProgressRevisionSql(pending.map(x=>migrationBodyForGuard(x.source)).join('\n'),ledger),false)
 }
 verifyDefinitions(await definitions(),apply?migrations:installed)
 const security=await query(`select c.relname,c.relrowsecurity,has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') anon_access,has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE') user_access from pg_class c where c.oid in ('public.user_learning_progress'::regclass,'public.user_learning_progress_revisions'::regclass,'public.user_learning_session_archives'::regclass)`)
 if(security.some(x=>!x.relrowsecurity||x.anon_access||x.user_access))throw Error('Progress table security verification failed.')
+if (apply || installed.some(m => m.version === '20261104030000')) {
+ const policies = await query(`select protected_through_id,max_future_per_account,enabled from public.user_learning_progress_revision_retention where singleton=true`)
+ if (policies.length !== 1 || policies[0].max_future_per_account !== 10 ||
+     typeof policies[0].enabled !== 'boolean' || Number(policies[0].protected_through_id) < 0) {
+  throw Error('Prospective revision retention policy verification failed.')
+ }
+ const policySecurity = await query(`select c.relrowsecurity rls_enabled,has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') anon_access,
+ has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE') user_access
+ from pg_class c where c.oid='public.user_learning_progress_revision_retention'::regclass`)
+ if (policySecurity.length !== 1 || !policySecurity[0].rls_enabled ||
+     policySecurity[0].anon_access || policySecurity[0].user_access) {
+  throw Error('Revision-retention policy must remain inaccessible to users.')
+ }
+}
 const ledgerAfter=await query(`select version,statements[2] receipt from supabase_migrations.schema_migrations where version in(${migrations.map(x=>lit(x.version)).join(',')})order by version`)
 const result={mode:apply?'applied-and-verified':pending.length?'audit-only':'verified-existing',pending:apply?[]:pending.map(x=>x.version),backup:{status:completed[0].status,inserted_at:completed[0].inserted_at,pitr_enabled:backups.pitr_enabled},before,after:await metrics(),receipts:ledgerAfter,security}
 if(process.env.HYPERION_REVISION_RECEIPT)await writeFile(process.env.HYPERION_REVISION_RECEIPT,JSON.stringify(result,null,2))

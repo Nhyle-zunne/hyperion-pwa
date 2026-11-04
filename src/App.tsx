@@ -20,6 +20,7 @@ import { startLearningProgressSync } from './lib/progressSync'
 import { useStudyTimeStore } from './stores/studyTimeStore'
 import { withPageLoading } from './lib/pageLoading'
 import { clearPaidQuestionCache } from './lib/questionBank'
+import { getCachedOfflineEntitlementSnapshot } from './lib/offlineQuestionCache'
 import { buyNowCheckoutPath, clearMatchingBuyNowReturn, clearPendingBuyNow, readPendingBuyNow } from './lib/pendingBuyNow'
 
 const SavedQuestionConfigScreen = lazy(() => import('./screens/SavedQuestionConfigScreen'))
@@ -237,12 +238,17 @@ export default function App() {
 
   useEffect(() => {
     const client = supabase
-    if (!client) return
+    // Free/expired accounts have no reason to write optional activity data.
+    // The only necessary Supabase traffic for them is account/licensing/payment traffic.
+    if (!client || !entitlementsVerified || (!isAllAccessUnlocked && cloudTrackIds.length === 0)) return
     let active = true
     let inFlight = false
 
     const recordActivity = async () => {
       if (!active || inFlight || document.visibilityState !== 'visible') return
+      // Claim the in-flight slot before resolving Auth or validating the local
+      // grant: focus, visibility and token refresh can fire together.
+      inFlight = true
       try {
         const { data: { session } } = await client.auth.getSession()
         const userId = session?.user?.id
@@ -251,7 +257,12 @@ export default function App() {
         const lastAttempt = Number(sessionStorage.getItem(storageKey) || 0)
         if (Date.now() - lastAttempt < 15 * 60 * 1000) return
 
-        inFlight = true
+        // The license store may briefly hold the previous account's grant
+        // during a Google account switch. Verify the signed, account-bound
+        // offline lease locally before making any network activity request.
+        const lease = await getCachedOfflineEntitlementSnapshot(userId)
+        if (!active || !lease || lease.userId !== userId ||
+            (!lease.isAdmin && Object.keys(lease.trackExpiries).length === 0)) return
         const { error } = await client.functions.invoke('record-user-activity')
         if (!error && active) sessionStorage.setItem(storageKey, String(Date.now()))
       } catch {
@@ -279,7 +290,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', onResume)
       authListener.data.subscription.unsubscribe()
     }
-  }, [location.pathname, location.search])
+  }, [location.pathname, location.search, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked])
 
 
   useEffect(() => {

@@ -18,6 +18,32 @@ test('GitHub count metadata uses the public Worker without auth or Supabase call
   expect(result.data.counts[0].count).toBe(90)
   expect(requests).toBe(1)
 })
+test('guest and signed-in free question pages bypass Supabase session and functions', async () => {
+  let requests = 0
+  const forbiddenClient: any = {
+    auth: { getSession: () => { throw Error('Free Reviewer must not refresh a Supabase session') } },
+    functions: { invoke: () => { throw Error('Free Reviewer must not invoke Supabase functions') } }
+  }
+  const fetcher = (async (url: any, options: any) => {
+    requests++
+    expect(url).toBe('/api/question-bank/questions')
+    expect(options.method).toBe('POST')
+    expect(options.headers.Authorization).toBeUndefined()
+    const body = JSON.parse(options.body)
+    expect(body.freeOnly).toBe(true)
+    expect(body.track).toBe('DECK_OIC_NW')
+    expect(body.limit).toBe(20)
+    return Response.json({ questions: [{ id: 'synthetic-free-question' }], access: 'free-sample', source: 'github' })
+  }) as typeof fetch
+  const request = { body: { action: 'questions', track: 'DECK_OIC_NW', competenceId: 'C1', limit: 20, freeOnly: true } }
+  const signedIn = await invokeBankTransport(request, forbiddenClient, 'legacy-anon', true, fetcher)
+  const guest = await invokeBankTransport(request, null, '', true, fetcher)
+  expect(signedIn.error).toBe(null)
+  expect(guest.error).toBe(null)
+  expect(signedIn.data.access).toBe('free-sample')
+  expect(requests).toBe(2)
+})
+
 test('public catalog counts work without an account client while paid pages still send identity', async () => {
   const received: any[] = []
   const fetcher = (async (url: any, options: any) => { received.push([url, options]); return Response.json({ counts: [] }) }) as typeof fetch

@@ -346,12 +346,15 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     });
 
     try {
-      await useLicenseStore.getState().refreshCloudEntitlements();
+      // Explicit Free Reviewer never needs an entitlement refresh: it is public
+      // online-only practice. Paid practice, drills, and mock exams still verify
+      // access at the session boundary (mock exams may use paid full questions).
+      const isFreeReviewerSession = mode === 'PRACTICE' && free === true;
+      if (!isFreeReviewerSession) await useLicenseStore.getState().refreshCloudEntitlements();
       const lic = useLicenseStore.getState();
       const licensed = lic.isAllAccessUnlocked || lic.cloudTrackIds.includes('ALL') || lic.isTrackUnlocked(track);
       // Only the explicitly launched Free Reviewer may use a free pool in PRACTICE mode.
       // Drill and full Practice All Questions always require an active track entitlement.
-      const isFreeReviewerSession = mode === 'PRACTICE' && free === true;
       if (mode !== 'MOCK' && !licensed && !isFreeReviewerSession) {
         set({
           loading: false,

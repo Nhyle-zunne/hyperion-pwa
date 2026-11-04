@@ -337,15 +337,21 @@ async function loadAllowedTracks(
 
 /** Historical ownership permits backup, not opening or studying expired paid content. */
 async function loadStorageTracks(admin: any, user: { id: string; email?: string }): Promise<Set<TrackId>> {
-  const tracks = await loadAllowedTracks(admin, user)
-  if (tracks.size === TRACKS.length) return tracks
+  const adminEmails = (Deno.env.get('ADMIN_EMAILS') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean)
+  if (user.email && adminEmails.includes(user.email.toLowerCase())) return new Set(TRACKS)
+
+  // Website historical ownership already includes every currently active
+  // website entitlement. Do not query those same rows first via
+  // loadAllowedTracks(): storage eligibility is the *historical union*, while
+  // question delivery / read sanitization still check live license expiry.
   const [website, play] = await Promise.all([
     admin.from('entitlements').select('track_id').eq('user_id', user.id),
     admin.from('google_play_entitlements').select('track_id').eq('user_id', user.id)
   ])
   if (website.error) throw new Error('Previous website ownership could not be checked.')
   if (play.error && !['42P01', 'PGRST205'].includes(play.error.code)) throw new Error('Previous Play ownership could not be checked.')
-  for (const row of [...(website.data ?? []), ...(play.data ?? [])]) if (isTrackId(row.track_id)) tracks.add(row.track_id)
+  const tracks = new Set<TrackId>()
+  for (const row of [...(website.data ?? []), ...(play.error ? [] : (play.data ?? []))]) if (isTrackId(row.track_id)) tracks.add(row.track_id)
   return tracks
 }
 
