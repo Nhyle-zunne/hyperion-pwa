@@ -7,22 +7,29 @@ import App from '../../src/App'
 import { useLicenseStore } from '../../src/stores/licenseStore'
 import { useBookmarksStore } from '../../src/stores/bookmarksStore'
 import { useVaultStore } from '../../src/stores/vaultStore'
+import { usePracticeStore } from '../../src/stores/practiceStore'
 import { useHistoryStore } from '../../src/stores/historyStore'
 import { readEncryptedPersistedValue, writeEncryptedPersistedValue, recoverSavedCollections } from '../../src/lib/encryptedPersistStorage'
 import { recoveryQuestions } from './recovery-bank-fixture'
 import { fixtureUsers, fixtureCloud, fixtureSetUser, fixtureCalls } from './recovery-supabase-fixture'
 import '../../src/index.css'
 registerSW({ immediate: true })
+let progressSettled = false
+window.addEventListener('hyperion:learning-progress-ready', () => { progressSettled = true })
 const envelope = (items: unknown[]) => JSON.stringify({ state: { items }, version: 0 })
 // These two stores are deliberately seeded through legacy localStorage before
 // their automatic hydration completes, just as an older installed app upgrades.
 // The runner's init script supplies the initial local and remote copies.
-useLicenseStore.setState({ entitlementsVerified: true, isAllAccessUnlocked: true, cloudTrackIds: ['DECK_OIC_NW'], refreshCloudEntitlements: async () => {}, refreshCachedEntitlements: async () => {} })
+useLicenseStore.setState({ entitlementsVerified: true, cloudSyncVerified: true, entitlementUserId: localStorage.getItem('fixture-user') || fixtureUsers.a, cloudSyncExpiresAt: Infinity, isAllAccessUnlocked: true, cloudTrackIds: ['DECK_OIC_NW'], refreshCloudEntitlements: async () => { const state=useLicenseStore.getState();useLicenseStore.setState({cloudSyncVerified:true,entitlementUserId:localStorage.getItem('fixture-user')||fixtureUsers.a,cloudSyncExpiresAt:state.cloudTrackIds.length?Infinity:0}) }, refreshCachedEntitlements: async () => {} })
 Object.assign(window, { recoveryFixture: {
+  practice: () => usePracticeStore.getState(),
+  startPaid: async () => { await usePracticeStore.getState().startCustomSession({questions:[recoveryQuestions[0]],track:'DECK_OIC_NW',competenceId:'C1',randomizeOrder:false});usePracticeStore.getState().selectAnswer(0);await usePracticeStore.getState().saveProgress();return usePracticeStore.getState().sessionId },
+  resumePaid: (id:string) => usePracticeStore.getState().restoreSavedProgress(id),
+  settled: () => progressSettled,
   ids: () => ({ bookmarks: useBookmarksStore.getState().items.map(q => q.id), mistakes: useVaultStore.getState().items.map(q => q.id), owner: localStorage.getItem('hyperion-progress-owner') }),
-  license: (enabled: boolean) => useLicenseStore.setState({ entitlementsVerified: true, isAllAccessUnlocked: enabled, cloudTrackIds: enabled ? ['DECK_OIC_NW'] : [] }),
+  license: (enabled: boolean) => useLicenseStore.setState({ entitlementsVerified: true, cloudSyncVerified: true, entitlementUserId: localStorage.getItem('fixture-user') || fixtureUsers.a, cloudSyncExpiresAt: enabled ? Infinity : 0, isAllAccessUnlocked: enabled, cloudTrackIds: enabled ? ['DECK_OIC_NW'] : [] }),
   cloud: () => fixtureCloud(), users: fixtureUsers, calls: fixtureCalls,
-  switchUser: fixtureSetUser,
+  switchUser: (id: string) => { fixtureSetUser(id); useLicenseStore.setState({ entitlementUserId: id }) },
   addOffline: () => useBookmarksStore.getState().toggle(recoveryQuestions[3]),
   flush: () => readEncryptedPersistedValue('hyperion-bookmarks'),
   recover: async () => {
@@ -66,5 +73,5 @@ Object.assign(window, { recoveryFixture: {
   }
 } })
 createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={['/bookmarks']}>
-  <nav><Link to="/">Dashboard fixture</Link> · <Link to="/bookmarks">Bookmarks fixture</Link> · <Link to="/vault">Mistakes fixture</Link> · <Link to="/history">History fixture</Link> · <Link to="/track?track=oic_nw">Track fixture</Link> · <Link to="/flashcards?track=oic_nw">Flashcards fixture</Link>{['gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt'].map(track => <React.Fragment key={track}> · <Link to={'/flashcards?track=' + track}>Flashcards {track} fixture</Link></React.Fragment>)}</nav><App />
+  <nav><Link to="/practice/quiz">Runner fixture</Link> · <Link to="/">Dashboard fixture</Link> · <Link to="/bookmarks">Bookmarks fixture</Link> · <Link to="/vault">Mistakes fixture</Link> · <Link to="/history">History fixture</Link> · <Link to="/track?track=oic_nw">Track fixture</Link> · <Link to="/flashcards?track=oic_nw">Flashcards fixture</Link>{['gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt'].map(track => <React.Fragment key={track}> · <Link to={'/flashcards?track=' + track}>Flashcards {track} fixture</Link></React.Fragment>)}</nav><App />
 </MemoryRouter>)

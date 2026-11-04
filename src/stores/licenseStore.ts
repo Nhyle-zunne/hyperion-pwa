@@ -16,6 +16,9 @@ interface LicenseState {
   isAllAccessUnlocked: boolean;
   cloudTrackIds: string[];
   entitlementsVerified: boolean;
+  entitlementUserId: string | null;
+  cloudSyncExpiresAt: number;
+  cloudSyncVerified: boolean;
   entitlementExpiryRevision: number;
   checkLicenseStatus: () => void;
   isTrackUnlocked: (track: string) => boolean;
@@ -93,7 +96,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     const snapshot = await getCachedOfflineEntitlementSnapshot(expectedUserId);
     if (generation !== refreshGeneration) return false;
     if (!snapshot || (expectedUserId && snapshot.userId !== expectedUserId)) {
-      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+      set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false, entitlementUserId: null, cloudSyncExpiresAt: 0, cloudSyncVerified: false });
       return false;
     }
     const offlineIds = snapshot.isAdmin ? [...TRACK_IDS] : Object.keys(snapshot.trackExpiries);
@@ -101,7 +104,10 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     set({
       cloudTrackIds: offlineIds,
       ...accessFlags(offlineIds),
-      entitlementsVerified: true
+      entitlementsVerified: true,
+      entitlementUserId: snapshot.userId,
+      cloudSyncVerified: get().cloudSyncVerified && get().entitlementUserId === snapshot.userId && offlineIds.length > 0,
+      cloudSyncExpiresAt: snapshot.isAdmin ? Infinity : Math.max(0, ...Object.values(snapshot.trackExpiries).filter((value): value is number => typeof value === 'number'))
     });
     // A correctly signed, current lease with no active tracks is still an
     // authoritative cache result; distinguish it from a missing/invalid cache.
@@ -127,7 +133,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     }
     const trackIds = snapshot.isAdmin ? [...TRACK_IDS] : Object.keys(snapshot.trackExpiries);
     armEntitlementExpiryRefresh(userId, Object.values(snapshot.trackExpiries));
-    return { trackIds, isAdmin: snapshot.isAdmin };
+    return { trackIds, isAdmin: snapshot.isAdmin, expiresAt: snapshot.isAdmin ? Infinity : Math.max(0, ...Object.values(snapshot.trackExpiries).filter((value): value is number => typeof value === 'number')) };
   };
 
   return ({
@@ -138,7 +144,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
   isEngineMgtUnlocked: false,
   isAllAccessUnlocked: false,
   cloudTrackIds: [],
-  entitlementsVerified: false,
+  entitlementsVerified: false, entitlementUserId: null, cloudSyncExpiresAt: 0, cloudSyncVerified: false,
   entitlementExpiryRevision: 0,
 
   refreshCachedEntitlements: async () => {
@@ -152,6 +158,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     // A signed server lease is the common entitlement source for both purchase
     // channels. Offline startup never depends on Supabase session restoration.
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      set({ cloudSyncVerified: false });
       await applyCachedOfflineEntitlements();
       return;
     }
@@ -165,6 +172,8 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       const result = await supabase.auth.getSession();
       session = result.data.session;
     } catch {
+      if (observedEpoch !== invalidationEpoch || authRequest < latestResolvedAuthRequest) return;
+      set({ cloudSyncVerified: false });
       await applyCachedOfflineEntitlements();
       return;
     }
@@ -198,13 +207,17 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
         set({
           cloudTrackIds: signedLease.trackIds,
           ...accessFlags(signedLease.trackIds),
-          entitlementsVerified: true
+          entitlementsVerified: true,
+          entitlementUserId: userId,
+          cloudSyncExpiresAt: signedLease.expiresAt,
+          cloudSyncVerified: true
         });
       } catch {
         if (generation !== refreshGeneration) return;
+        set({ cloudSyncVerified: false });
         const restored = await applyCachedOfflineEntitlements(userId);
         if (generation !== refreshGeneration) return;
-        if (!restored) set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+        if (!restored) set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false, entitlementUserId: null, cloudSyncExpiresAt: 0, cloudSyncVerified: false });
       }
     })();
     const job = { userId, generation, promise };
@@ -253,7 +266,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     cloudRefresh = null;
     clearEntitlementExpiryTimer();
     clearOfflineEntitlements();
-    set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false });
+    set({ cloudTrackIds: [], ...accessFlags([]), entitlementsVerified: false, entitlementUserId: null, cloudSyncExpiresAt: 0, cloudSyncVerified: false });
   }
   });
 });

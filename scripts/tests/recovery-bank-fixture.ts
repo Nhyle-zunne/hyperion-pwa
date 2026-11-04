@@ -6,6 +6,7 @@ export const recoveryQuestions: Question[] = Array.from({ length: 4 }, (_, index
   explanation: 'Synthetic recovery fixture explanation.', difficulty: 'EASY'
 }))
 export async function authorizeQuestionSetAccess(track: TrackId, questions: Question[]) {
+  if (localStorage.getItem('fixture-license') === 'free') return navigator.onLine && questions.length > 0 && questions.every(q => q.track === track && q.id.startsWith('recovery-fixture-')) ? 'free-sample' : null
   return questions.length > 0 && questions.every(q => q.track === track && q.id.startsWith('recovery-fixture-')) ? 'licensed' : null
 }
 export async function authorizeQuestionSet(track: TrackId, questions: Question[]) { return (await authorizeQuestionSetAccess(track, questions)) !== null }

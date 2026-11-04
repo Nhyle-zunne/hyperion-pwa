@@ -9,7 +9,8 @@ const root = fileURLToPath(new URL('../../', import.meta.url))
 const vite = fileURLToPath(new URL('../../node_modules/vite/bin/vite.js', import.meta.url))
 const out = await mkdtemp(join(tmpdir(), 'hyperion-recovery-test-'))
 const publisher = process.env.HYPERION_BROWSER_FIXTURE === 'publisher'
-const sync = process.env.HYPERION_BROWSER_FIXTURE === 'sync'
+const licensed = process.env.HYPERION_BROWSER_FIXTURE === 'licensed'
+const sync = licensed || process.env.HYPERION_BROWSER_FIXTURE === 'sync'
 const entry = sync ? 'sync-browser' : publisher ? 'publisher-browser' : 'recovery-browser'
 const env = { ...process.env, HYPERION_BROWSER_FIXTURE: sync ? 'sync' : publisher ? 'publisher' : 'recovery', HYPERION_BROWSER_TEST_OUTPUT: out, VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '', VITE_QUESTION_BANK_DELIVERY: '' }
 const run = args => new Promise((resolve, reject) => {
@@ -33,7 +34,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100))
   }
   if (!ready) throw new Error('Recovery fixture preview did not start')
-  await run([`scripts/tests/${entry}-test.mjs`])
+  await run([`scripts/tests/${licensed ? 'licensed-progress-browser' : entry}-test.mjs`])
 } finally {
   preview?.kill('SIGTERM')
   await rm(out, { recursive: true, force: true })

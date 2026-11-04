@@ -1,3 +1,5 @@
+import { canReadLocalProgress, captureLocalProgressAccess } from './localProgressIdentity'
+import { canSyncCloudProgress, captureCloudProgressAccess } from './cloudProgressAccess'
 import type { SavedQuestionContext } from './savedQuestionSets'
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Question, TrackId, UserAnswer } from '../types/question'
@@ -118,7 +120,7 @@ async function migrateLegacySnapshots(db: IDBPDatabase<SessionArchiveDatabase>) 
   const records = await db.getAll('snapshots')
   for (const record of records) {
     if (!record.snapshot || record.ciphertext) continue
-    const encrypted = await makeEncryptedRecord(db, record.id, record.snapshot)
+    const encrypted = await makeEncryptedRecord(db, record.id, record.snapshot, record.ownerId ?? null)
     // Recheck inside the write transaction. If another tab already replaced this
     // record, do not overwrite its newer encrypted snapshot with the legacy copy.
     const tx = db.transaction('snapshots', 'readwrite')
@@ -158,7 +160,27 @@ export function saveSessionSnapshot(id: string, snapshot: SessionSnapshot): Prom
   })
 }
 
+/** Adopt only guest archives referenced by this account's own local History. */
+export function claimLocalSessionSnapshots(userId: string, ids: string[]): Promise<void> {
+  return queueWrite(async () => {
+    const owner = localStorage.getItem('hyperion-progress-owner')
+    if (owner && owner !== userId) return
+    const db = await database()
+    await migrateLegacySnapshots(db)
+    if (localStorage.getItem('hyperion-progress-owner') !== owner) return
+    const tx = db.transaction('snapshots', 'readwrite')
+    for (const id of new Set(ids)) {
+      const record = await tx.store.get(id)
+      if (record && !record.ownerId) await tx.store.put({ ...record, ownerId: userId })
+    }
+    await tx.done
+  })
+}
+
 function getLocalSessionSnapshot(id: string): Promise<SessionSnapshot | null> {
+  const expectedOwner = localStorage.getItem('hyperion-progress-owner')
+  const hasAccess = captureLocalProgressAccess(expectedOwner)
+  if (!hasAccess()) return Promise.resolve(null)
   return queueWrite(async () => {
     try {
       const db = await database()
@@ -166,11 +188,11 @@ function getLocalSessionSnapshot(id: string): Promise<SessionSnapshot | null> {
       const record = await db.get('snapshots', id)
       if (!record) return null
       const owner = localStorage.getItem('hyperion-progress-owner')
-      if (record.ownerId && record.ownerId !== owner) return null
+      if ((record.ownerId ?? null) !== owner || owner !== expectedOwner || !hasAccess()) return null
       if (record.ciphertext && record.iv) {
         const key = await getOrCreateEncryptionKey(db)
         const snapshot = await decryptJsonPayload<unknown>(record.iv, record.ciphertext, key)
-        return isSessionSnapshot(snapshot) ? snapshot : null
+        return hasAccess() && localStorage.getItem('hyperion-progress-owner') === expectedOwner && isSessionSnapshot(snapshot) ? snapshot : null
       }
       // A migration failure should never return an unencrypted legacy record to
       // the app. It remains intact for a future retry instead.
@@ -183,7 +205,7 @@ function getLocalSessionSnapshot(id: string): Promise<SessionSnapshot | null> {
 
 export type SessionSnapshotLoad = {
   snapshot: SessionSnapshot | null
-  status: 'ready' | 'offline' | 'unavailable' | 'not-found' | 'sign-in-required' | 'account-changed'
+  status: 'ready' | 'offline' | 'unavailable' | 'not-found' | 'sign-in-required' | 'account-changed' | 'local-only'
   cached?: boolean
 }
 
@@ -207,9 +229,13 @@ const archiveMarker = (userId: string, id: string) => `hyperion-archive-synced:$
 
 async function loadSessionSnapshotInternal(id: string): Promise<SessionSnapshotLoad> {
   const owner = localStorage.getItem('hyperion-progress-owner')
+  const hasOwnerAccess = captureLocalProgressAccess(owner)
+  if (!hasOwnerAccess()) return {snapshot:null,status:'account-changed'}
   const local = await getLocalSessionSnapshot(id)
-  if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+  if (localStorage.getItem('hyperion-progress-owner') !== owner || !hasOwnerAccess()) return { snapshot: null, status: 'account-changed' }
   if (local) return { snapshot: local, status: 'ready', cached: true }
+  if (!canSyncCloudProgress(owner)) return { snapshot: null, status: 'local-only' }
+  const hasAccess = captureCloudProgressAccess(owner!)
   if (navigator.onLine === false) return { snapshot: null, status: 'offline' }
   if (!supabase) return { snapshot: null, status: 'unavailable' }
   try {
@@ -217,11 +243,13 @@ async function loadSessionSnapshotInternal(id: string): Promise<SessionSnapshotL
     const session = data.session
     if (!session) return { snapshot: null, status: 'sign-in-required' }
     if (owner !== session.user.id || localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+    if (!hasAccess()) return { snapshot: null, status: 'local-only' }
     const response = await supabase.functions.invoke('learning-progress', {
       headers: { Authorization: `Bearer ${session.access_token}` },
       body: { action: 'read-session', sessionId: id }
     })
-    if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+    if (localStorage.getItem('hyperion-progress-owner') !== owner || !hasOwnerAccess()) return { snapshot: null, status: 'account-changed' }
+    if (!hasAccess()) return { snapshot: null, status: 'local-only' }
     if (response.error) return { snapshot: null, status: 'unavailable' }
     // Older function deployments return a progress row for unrecognized actions.
     // Only an explicit archive response can establish that no cloud copy exists.
@@ -229,17 +257,20 @@ async function loadSessionSnapshotInternal(id: string): Promise<SessionSnapshotL
     if (response.data.snapshot === null) return { snapshot: null, status: 'not-found' }
     if (!isSessionSnapshot(response.data.snapshot) || response.data.snapshot.sessionId !== id) return { snapshot: null, status: 'unavailable' }
     try {
+      if (!hasAccess()) return { snapshot: null, status: 'local-only' }
       await saveSessionSnapshot(id, response.data.snapshot)
-      if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+      if (localStorage.getItem('hyperion-progress-owner') !== owner || !hasOwnerAccess()) return { snapshot: null, status: 'account-changed' }
       // This exact snapshot came from the cloud. Mark its hash, not a possibly
       // newer local edit, so downloading an audit never immediately reuploads it.
       const hash = await archiveSnapshotHash(response.data.snapshot)
-      if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+      if (localStorage.getItem('hyperion-progress-owner') !== owner || !hasOwnerAccess()) return { snapshot: null, status: 'account-changed' }
+      if (!hasAccess()) return { snapshot: null, status: 'local-only' }
       try { localStorage.setItem(archiveMarker(session.user.id, id), hash) } catch { /* Optional sync hint; the encrypted archive was saved. */ }
       return { snapshot: response.data.snapshot, status: 'ready', cached: true }
     } catch {
       // An online review can still open when the device cannot cache it.
-      if (localStorage.getItem('hyperion-progress-owner') !== owner) return { snapshot: null, status: 'account-changed' }
+      if (!hasAccess()) return { snapshot: null, status: 'local-only' }
+      if (localStorage.getItem('hyperion-progress-owner') !== owner || !hasOwnerAccess()) return { snapshot: null, status: 'account-changed' }
       return { snapshot: response.data.snapshot, status: 'ready', cached: false }
     }
   } catch { return { snapshot: null, status: 'unavailable' } }
@@ -264,7 +295,7 @@ function deferArchiveSync(userId: string, status?: number): void {
 const archiveSyncJobs = new Map<string, { ids: Set<string>; promise: Promise<void> }>()
 /** Coalesce pending IDs; encrypted local records remain the source of retry work. */
 export async function syncSessionArchives(userId: string, ids: string[]): Promise<void> {
-  if (!supabase || navigator.onLine === false || !ids.length) return
+  if (!supabase || navigator.onLine === false || !ids.length || !canSyncCloudProgress(userId) || !canReadLocalProgress(userId)) return
   if ((archiveRetryState.get(userId)?.nextAt ?? 0) > Date.now()) return
   const existing = archiveSyncJobs.get(userId)
   if (existing) { ids.forEach(id => existing.ids.add(id)); return existing.promise }
@@ -272,7 +303,7 @@ export async function syncSessionArchives(userId: string, ids: string[]): Promis
   archiveSyncJobs.set(userId, job)
   job.promise = (async () => {
     try {
-      while (job.ids.size && localStorage.getItem('hyperion-progress-owner') === userId) {
+      while (job.ids.size && canSyncCloudProgress(userId) && localStorage.getItem('hyperion-progress-owner') === userId) {
         const pending = [...job.ids]
         job.ids.clear()
         await syncArchivePass(userId, pending)
@@ -285,35 +316,40 @@ export async function syncSessionArchives(userId: string, ids: string[]): Promis
 }
 
 async function syncArchivePass(userId: string, ids: string[]): Promise<void> {
-  if (!supabase || navigator.onLine === false) return
+  if (!supabase || navigator.onLine === false || !canSyncCloudProgress(userId)) return
+  const hasGrant = captureCloudProgressAccess(userId)
+  const hasOwner = captureLocalProgressAccess(userId)
+  const hasAccess = () => hasGrant() && hasOwner()
   const { data } = await supabase.auth.getSession()
   const session = data.session
-  if (!session || session.user.id !== userId) return
+  if (!session || session.user.id !== userId || !hasAccess()) return
   let uploads: { sessionId: string; snapshot: SessionSnapshot; hash: string }[] = []
   const flushUploads = async (): Promise<boolean> => {
+    if (localStorage.getItem('hyperion-progress-owner') !== userId || !hasAccess()) return false
     if (!uploads.length) return true
-    if (localStorage.getItem('hyperion-progress-owner') !== userId) return false
     const response = await supabase!.functions.invoke('learning-progress', {
       headers: { Authorization: `Bearer ${session.access_token}` },
       body: { action: 'write-sessions', sessions: uploads.map(({ sessionId, snapshot }) => ({ sessionId, snapshot })) }
     })
+    if (localStorage.getItem('hyperion-progress-owner') !== userId || !hasAccess()) return false
     if (response.error || !archiveBatchAcknowledged(response.data, uploads.map(item => item.sessionId))) {
       deferArchiveSync(userId, (response.error as { context?: { status?: number } } | null)?.context?.status)
       return false
     }
-    if (localStorage.getItem('hyperion-progress-owner') !== userId) return false
+    if (localStorage.getItem('hyperion-progress-owner') !== userId || !hasAccess()) return false
     for (const item of uploads) localStorage.setItem(archiveMarker(userId, item.sessionId), item.hash)
     uploads = []
     return true
   }
   for (const id of ids) {
-    if (localStorage.getItem('hyperion-progress-owner') !== userId) return
+    if (localStorage.getItem('hyperion-progress-owner') !== userId || !hasAccess()) return
     const local = await getLocalSessionSnapshot(id)
-    if (localStorage.getItem('hyperion-progress-owner') !== userId) return
+    if (localStorage.getItem('hyperion-progress-owner') !== userId || !hasAccess()) return
     if (!local) {
       const retryKey = userId + ':' + id
       if ((missingArchiveRetryAt.get(retryKey) ?? 0) > Date.now()) continue
       const result = await loadSessionSnapshot(id)
+      if (localStorage.getItem('hyperion-progress-owner') !== userId || !hasAccess()) return
       if (result.status === 'unavailable' || result.status === 'sign-in-required') {
         deferArchiveSync(userId); return
       }
@@ -323,6 +359,7 @@ async function syncArchivePass(userId: string, ids: string[]): Promise<void> {
       continue
     }
     const hash = await archiveSnapshotHash(local)
+    if (localStorage.getItem('hyperion-progress-owner') !== userId || !hasAccess()) return
     if (localStorage.getItem(archiveMarker(userId, id)) === hash) continue
     const candidate = { sessionId: id, snapshot: local, hash }
     // Stream bounded batches instead of decrypting an entire large history at once.

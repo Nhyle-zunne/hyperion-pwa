@@ -413,6 +413,7 @@ export default function HistoryScreen() {
                   review.status === 'offline' ? 'This session’s questions are not downloaded on this device. Reconnect and retry to load the saved audit for offline review.' :
                   review.status === 'sign-in-required' ? 'Sign in to the account that completed this exam, then retry loading its saved questions and answers.' :
                   review.status === 'account-changed' ? 'The account changed while loading this session. Return to History and open a session from your current account.' :
+                  review.status === 'local-only' ? 'This session is not stored on this browser. Cloud recovery resumes when your subscription is active. Your session summary is preserved.' :
                   review.status === 'unavailable' ? 'The saved audit could not be downloaded. Your session summary is preserved. Retry when the connection and audit service are available.' :
                   'No detailed question-and-answer snapshot was found on this device or in this account’s cloud archive. The score and session summary are preserved. An older session can only be reviewed if its original snapshot survives.'
                 }</p>

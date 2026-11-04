@@ -1,9 +1,10 @@
+import { localProgressReady, subscribeLocalProgressReady } from './lib/localProgressIdentity'
 import CookieConsent from './components/CookieConsent'
 import { savedQuestionsReturnPath } from './lib/savedQuestionSets'
 import type { Question } from './types/question'
 import QuestionBookmarkButton from './components/QuestionBookmarkButton'
 import KeywordHighlightSetting from './components/KeywordHighlightSetting'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useLicenseStore } from './stores/licenseStore'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import InstallPrompt from './components/InstallPrompt'
@@ -111,6 +112,7 @@ function DashboardLanding() {
 }
 
 export default function App() {
+  const localOwnerReady = useSyncExternalStore(subscribeLocalProgressReady, localProgressReady, () => false)
   const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
   const cloudTrackIds = useLicenseStore((s) => s.cloudTrackIds)
   const entitlementsVerified = useLicenseStore((s) => s.entitlementsVerified)
@@ -126,7 +128,9 @@ export default function App() {
   const showPaywall = useUIStore((s) => s.showPaywall)
   const location = useLocation()
   const navigate = useNavigate()
+  const showOwnerContent = localOwnerReady || /^\/(account|auth|checkout|basket|orders|manual-payment|admin)(\/|$)/.test(location.pathname)
   const [resumeSession, setResumeSession] = useState<{ mode: 'PRACTICE' | 'DRILL' | 'MOCK'; track: string | null; competenceId: string | null } | null>(null)
+  useEffect(() => { if (!localOwnerReady) setResumeSession(null) }, [localOwnerReady])
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine)
   const theme = useUIStore((s) => s.theme)
@@ -298,7 +302,7 @@ export default function App() {
     let fallbackTimer: number | undefined
 
     const recordInitialCheckIn = () => {
-      if (!alive || initialCheckInRecorded) return
+      if (!alive || initialCheckInRecorded || !localProgressReady()) return
       initialCheckInRecorded = true
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer)
       useStudyTimeStore.getState().recordDailyCheckIn()
@@ -320,7 +324,7 @@ export default function App() {
       progressReady = true
       reconcileInitialCheckIn()
       // A newly signed-in account may have been hydrated after an anonymous/local check-in.
-      if (initialCheckInRecorded) useStudyTimeStore.getState().recordDailyCheckIn()
+      if (initialCheckInRecorded && localProgressReady()) useStudyTimeStore.getState().recordDailyCheckIn()
     }
 
     const handleAuthChange = (_event: string, session: { user?: { id: string } } | null) => {
@@ -335,7 +339,7 @@ export default function App() {
     }
 
     const handleResume = () => {
-      if (initialCheckInRecorded && document.visibilityState === 'visible') {
+      if (initialCheckInRecorded && localProgressReady() && document.visibilityState === 'visible') {
         useStudyTimeStore.getState().recordDailyCheckIn()
       }
     }
@@ -405,6 +409,10 @@ export default function App() {
   const quickScanTrack = isQuickScanViewer ? quickScanKeys[new URLSearchParams(location.search).get('track') || 'oic_nw'] || 'DECK_OIC_NW' : null
   const flashcardTrack = isFlashcards ? quickScanKeys[new URLSearchParams(location.search).get('track') || 'oic_nw'] || 'DECK_OIC_NW' : null
   const guardedTrack = isQuestionRunner ? currentTrack : quickScanTrack ?? flashcardTrack
+  const hasGuardedTrackLicense = !!guardedTrack && entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
+  const permittedFreeRunner = isFreeSession && ((isMockRunner && currentMode === 'MOCK') || (isPracticeQuiz && currentMode === 'PRACTICE'))
+  const showQuestionAccessCheck = !!guardedTrack && (isQuestionRunner || isQuickScanViewer || isFlashcards)
+    && (!entitlementsChecked || (!hasGuardedTrackLicense && !permittedFreeRunner))
 
   useEffect(() => {
     const hadTrackAccessRemoved = lastCloudTrackIds.current.some(trackId => !cloudTrackIds.includes(trackId))
@@ -416,7 +424,7 @@ export default function App() {
 
 
   useEffect(() => {
-    if (!entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer && !isFlashcards) || !guardedTrack) return
+    if (!localOwnerReady || !entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer && !isFlashcards) || !guardedTrack) return
     if (isQuestionRunner && (sessionLoading || sessionQuestionCount === 0)) return
     const allowed = entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
     if (allowed) return
@@ -430,10 +438,11 @@ export default function App() {
       DECK_MGT: 'deck_mgt', ENGINE_MGT: 'engine_mgt'
     }
     clearPaidQuestionCache()
-    if (isQuestionRunner) usePracticeStore.getState().reset()
+    // Closing access is not an intentional discard. Retain resumable answers locally.
+    if (isQuestionRunner) void usePracticeStore.getState().saveProgress().catch(() => undefined)
     navigate('/track?track=' + (trackParam[guardedTrack] || 'oic_nw'), { replace: true })
     useUIStore.getState().openPaywall('This paid question view needs a current, verified license. Renew access or reconnect to check your subscription.')
-  }, [entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, isFlashcards, guardedTrack, isFreeSession, currentMode, sessionLoading, sessionQuestionCount, navigate])
+  }, [localOwnerReady, entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, isFlashcards, guardedTrack, isFreeSession, currentMode, sessionLoading, sessionQuestionCount, navigate])
 
   // Free Reviewer is the only non-mock practice setup available without a license.
   // Direct URLs must obey the same access rule as the track-hub buttons.
@@ -458,7 +467,7 @@ export default function App() {
   const showTrackAccessCheck = setupNeedsLicense && (!entitlementsChecked || !hasActiveSetupLicense)
 
   useEffect(() => {
-    if (!entitlementsChecked || !setupNeedsLicense || hasActiveSetupLicense) return
+    if (!localOwnerReady || !entitlementsChecked || !setupNeedsLicense || hasActiveSetupLicense) return
 
     navigate('/track?track=' + setupTrackKey, { replace: true })
     useUIStore.getState().openPaywall(
@@ -466,7 +475,7 @@ export default function App() {
         ? 'Drill requires an active license for this track.'
         : 'This feature requires an active license for this track. Free Reviewer and Timed Mock Exam remain available without a purchase.'
     )
-  }, [entitlementsChecked, setupNeedsLicense, hasActiveSetupLicense, setupTrackKey, setupMode, location.pathname, navigate])
+  }, [localOwnerReady, entitlementsChecked, setupNeedsLicense, hasActiveSetupLicense, setupTrackKey, setupMode, location.pathname, navigate])
 
   const hideNav = [
     '/practice/quiz',
@@ -496,7 +505,7 @@ export default function App() {
           {' · '}Only questions already saved on this device and saved sessions are available. New sign-ins, checkout, license changes, and cloud sync need an internet connection.
         </div>
       )}
-      {(isQuestionRunner || isQuickScanViewer) && (
+      {localOwnerReady && !showQuestionAccessCheck && (isQuestionRunner || isQuickScanViewer) && (
         <header
           aria-label="Question navigation"
           style={{
@@ -564,11 +573,12 @@ export default function App() {
           </div>
         </header>
       )}
-      {completionError && <div role="alert" style={{ padding: '1rem', color: 'var(--danger)', background: 'var(--bg-card)' }}>
+      {localOwnerReady && completionError && <div role="alert" style={{ padding: '1rem', color: 'var(--danger)', background: 'var(--bg-card)' }}>
         <p>{completionError}</p><button type="button" className="btn btn-primary" disabled={finishing} onClick={() => usePracticeStore.getState().finish()}>Retry saving completed session</button>
       </div>}
-      <main style={{ flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-        <div key={`${location.pathname}${location.search}`} className="route-transition" style={{ minHeight: "100%" }}>
+      {!showOwnerContent && <div role="status" className="screen">Opening your saved progress…</div>}
+      <main hidden={!showOwnerContent} style={{ display: showOwnerContent ? undefined : 'none', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
+        {showOwnerContent && <div key={`${location.pathname}${location.search}`} className="route-transition" style={{ minHeight: "100%" }}>
         <RouteErrorBoundary>
         <Suspense fallback={<div role="status" aria-live="polite" style={{ minHeight: 220, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Loading Hyperion…</div>}>
         <Routes>
@@ -591,14 +601,14 @@ export default function App() {
           <Route path="/practice/competences" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <PracticeCompetenceScreen />} />
           <Route path="/practice" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <PracticeConfigScreen />} />
           <Route path="/saved-questions/config" element={<SavedQuestionConfigScreen />} />
-          <Route path="/practice/quiz" element={<PracticeQuizScreen />} />
+          <Route path="/practice/quiz" element={showQuestionAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <PracticeQuizScreen />} />
           <Route path="/drill" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <DrillScreen />} />
           <Route path="/quick-scan" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <QuickScanCompetenceScreen />} />
-          <Route path="/quick-scan/view" element={<QuickScanViewerScreen onQuestionChange={setQuickScanQuestion} />} />
+          <Route path="/quick-scan/view" element={showQuestionAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <QuickScanViewerScreen onQuestionChange={setQuickScanQuestion} />} />
           <Route path="/mock" element={<MockExamScreen />} />
-          <Route path="/mock/exam" element={<MockExamRunner />} />
+          <Route path="/mock/exam" element={showQuestionAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <MockExamRunner />} />
           <Route path="/history" element={<HistoryScreen />} />
-          <Route path="/flashcards" element={<FlashcardsScreen />} />
+          <Route path="/flashcards" element={showQuestionAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <FlashcardsScreen />} />
           <Route path="/bookmarks" element={<BookmarksScreen />} />
           <Route path="/vault" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <VaultScreen />} />
           <Route path="/search" element={showTrackAccessCheck ? <div role="status" className="screen">Checking track license…</div> : <SearchScreen />} />
@@ -609,12 +619,12 @@ export default function App() {
         </Routes>
         </Suspense>
         </RouteErrorBoundary>
-        </div>
+        </div>}
       </main>
 
       {!hideNav && <BottomNav />}
       <CookieConsent />
-      {resumeSession && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(3,8,18,.72)', display: 'grid', placeItems: 'center', padding: 16, boxSizing: 'border-box' }}>
+      {localOwnerReady && resumeSession && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(3,8,18,.72)', display: 'grid', placeItems: 'center', padding: 16, boxSizing: 'border-box' }}>
         <section role="dialog" aria-modal="true" aria-labelledby="resume-learning-title" className="card" style={{ width: 'min(100%, 460px)', boxSizing: 'border-box', padding: 24, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.4)' }}>
           <h2 id="resume-learning-title" style={{ marginTop: 0 }}>{resumeSession.mode === 'MOCK' ? 'Resume your mock exam?' : resumeSession.mode === 'DRILL' ? 'Resume your drill?' : 'Resume your practice session?'}</h2>
           <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>Hyperion found an unfinished session saved to your account. You can continue where you left off.</p>
