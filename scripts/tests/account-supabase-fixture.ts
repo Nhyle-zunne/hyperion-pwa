@@ -32,6 +32,7 @@ export const supabase = {
   functions: {
     invoke: async (name: string, request: { body?: { action?: string } }) => {
       fixtureCalls.push({ action: `${name}:${request.body?.action ?? ''}` })
+      if (name === 'verify-checkout' && localStorage.getItem('fixture-hold-payment') === 'yes') return new Promise(() => {})
       if (name === 'admin-payment-review') return { data: { isAdmin: false }, error: null }
       if (name === 'create-checkout' && request.body?.action === 'status') return { data: { action: 'status', enabled: true }, error: null }
       return { data: { entitlements: [] }, error: null }

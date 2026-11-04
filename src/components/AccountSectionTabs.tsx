@@ -10,21 +10,17 @@ export default function AccountSectionTabs({ active }: AccountSectionTabsProps) 
     { id: 'store' as const, label: 'Bond Store', path: '/account?tab=payments' },
     { id: 'licenses' as const, label: 'My licenses', path: '/account?tab=licenses' },
     { id: 'orders' as const, label: 'Orders & payment history', path: '/orders' },
-    { id: 'checkout' as const, label: <span aria-hidden="true">🛒</span>, path: '/checkout' },
   ]
-  return <nav className="account-section-tabs" aria-label="Account and subscriptions" style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+  return <nav className="account-section-tabs" aria-label="Account and subscriptions" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', alignItems: 'stretch', gap: '.5rem', marginBottom: '1rem' }}>
     {items.map(item => <button
       key={item.id}
       type="button"
       className="btn btn-outline"
-      aria-label={item.id === 'checkout' ? 'Shopping cart' : undefined}
-      title={item.id === 'checkout' ? 'Shopping cart' : undefined}
       aria-current={active === item.id ? 'page' : undefined}
       aria-selected={active === item.id}
       onClick={() => navigate(item.path)}
       style={{
-        flex: item.id === 'checkout' ? '0 0 auto' : '1 1 auto',
-        minWidth: item.id === 'checkout' ? 44 : 0,
+        minWidth: 0,
         borderColor: active === item.id ? '#147d43' : 'var(--border)',
         background: active === item.id ? '#147d43' : 'var(--bg-card)',
         color: active === item.id ? '#fff' : 'var(--text)',
