@@ -11,9 +11,11 @@ Object.assign(window, { accountFixtureCalls: fixtureCalls })
 document.documentElement.dataset.theme = 'light'
 const initialPath = new URLSearchParams(location.search).get('section') === 'orders' ? '/orders' : '/checkout?buy_product=gmdss&buy_term=month'
 createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={[initialPath]}>
+  <div className="route-transition">
   <Routes>
     <Route path="/account" element={<AccountScreen key="account" />} />
     <Route path="/checkout" element={<AccountScreen key="checkout"><BasketScreen /></AccountScreen>} />
     <Route path="/orders" element={<AccountScreen key="orders"><OrdersPaymentHistoryScreen /></AccountScreen>} />
   </Routes>
+  </div>
 </MemoryRouter>)

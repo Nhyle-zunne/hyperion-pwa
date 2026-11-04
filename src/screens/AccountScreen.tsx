@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { createPortal } from 'react-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
@@ -72,6 +73,7 @@ function isCurrentLicense(item: OwnedTrack, now = Date.now()) {
 export default function AccountScreen({ children }: { children?: React.ReactNode }) {
   const isLayout = children !== undefined
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [params] = useSearchParams()
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
   useEffect(() => { setAccountTab(params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments') }, [params])
@@ -390,9 +392,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   }
 
   const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', marginBottom: '1rem', borderRadius: 10 }
-  const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '.8rem', marginTop: '.35rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, font: 'inherit' }
+  const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', minHeight: 40, padding: '.45rem .55rem', marginTop: '.25rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, font: 'inherit', fontSize: '.85rem' }
   const profileField = (editable: boolean): React.CSSProperties => ({ ...field, background: editable ? 'var(--bg-elevated)' : 'var(--bg)', color: editable ? 'var(--text)' : 'var(--text-muted)', border: editable ? '1px solid var(--border)' : '1px solid #cbd5e1', boxShadow: 'none', outline: 'none', cursor: editable ? 'text' : 'default', userSelect: editable ? 'text' : 'none', WebkitUserSelect: editable ? 'text' : 'none', pointerEvents: editable ? 'auto' : 'none', caretColor: editable ? 'auto' : 'transparent' })
-  const label: React.CSSProperties = { display: 'block', marginTop: '.8rem' }
+  const label: React.CSSProperties = { display: 'block', marginTop: '.5rem', fontSize: '.8rem', lineHeight: 1.35 }
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
   const pendingCheckoutIds = [...new Set(pendingPayMongoOrders.map(order => order.checkout_batch_id || order.id))].sort().join(',')
 
@@ -527,12 +529,18 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-cart-row{display:flex;align-items:center;justify-content:space-between;gap:.8rem;border-bottom:1px solid var(--border);padding:.75rem 0}
       .account-page .account-cart-row:last-child{border-bottom:0}
       .account-page .account-total-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-top:1rem;margin-top:.4rem;border-top:1px solid var(--border)}
-      .account-page .profile-avatar{width:58px;height:58px;flex-shrink:0;display:grid;place-items:center;border-radius:16px;background:#042353;color:#4ade80;font-weight:950;font-size:1.1rem;letter-spacing:.03em}
+      .account-page .profile-avatar{width:44px;height:44px;flex-shrink:0;display:grid;place-items:center;border-radius:12px;background:#042353;color:#4ade80;font-weight:950;font-size:.95rem;letter-spacing:.03em}
       .account-page .profile-mobile-toggle{display:none;border:1px solid var(--border);border-radius:9px;background:var(--bg-elevated);color:var(--text);padding:.5rem .65rem;font-size:.8rem;font-weight:850;align-items:center;gap:.35rem;cursor:pointer}
       .account-page .account-profile-content{display:block}
       .account-page .account-section-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
       .account-page .account-section-tabs button{min-height:44px;padding:.7rem .85rem;font-weight:850;border-radius:9px}
-      .account-page .profile-side-links{font-size:.82rem;color:var(--text-muted);line-height:1.45}
+      .account-page .profile-side-links{font-size:.76rem;color:var(--text-muted);line-height:1.4}
+      .account-cart-fab{position:fixed;right:max(1.25rem,env(safe-area-inset-right));bottom:max(1.25rem,env(safe-area-inset-bottom));z-index:160;display:grid;place-items:center;width:56px;height:56px;padding:0;border:2px solid var(--bg-card);border-radius:50%;background:var(--accent);color:var(--btn-primary-text);font-size:1.45rem;line-height:1;box-shadow:0 8px 24px rgba(4,35,83,.24);cursor:pointer;touch-action:manipulation;transition:transform .2s ease,box-shadow .2s ease}
+      .account-cart-fab:focus-visible{outline:3px solid var(--text);outline-offset:4px}
+      @media(hover:hover) and (prefers-reduced-motion:no-preference){.account-cart-fab:hover{transform:translateY(-3px) scale(1.12) rotate(-7deg);box-shadow:0 12px 28px rgba(4,35,83,.3)}}
+      @media(prefers-reduced-motion:no-preference){.account-cart-fab:focus-visible{transform:translateY(-3px) scale(1.12)}}
+      @media(prefers-reduced-motion:reduce){.account-cart-fab{transition:none}}
+      @media(max-width:899px){.account-cart-fab{bottom:calc(82px + env(safe-area-inset-bottom))}}
       .account-page .payment-method-pills{display:flex;flex-wrap:wrap;gap:.4rem}
       .account-page .payment-method-pills span{padding:.3rem .5rem;border:1px solid var(--border);background:var(--bg-elevated);border-radius:6px;font-size:.7rem;font-weight:750}
       @media(max-width:1100px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -604,8 +612,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
 
       <div className="account-layout">
         <aside className="account-sidebar">
-          {session && <section style={{ ...card, marginBottom: 0 }}>
-            <div style={{ display: 'flex', gap: '.8rem', alignItems: 'center', marginBottom: '.8rem' }}>
+          {session && <section style={{ ...card, padding: '.8rem', marginBottom: 0 }}>
+            <div style={{ display: 'flex', gap: '.6rem', alignItems: 'center', marginBottom: '.6rem' }}>
               <div className="profile-avatar">{(fullName || 'H').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase()}</div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <h2 style={{ margin: 0, fontSize: '1rem', overflowWrap: 'anywhere' }}>{fullName || 'Hyperion Member'}</h2>
@@ -615,20 +623,22 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
               <button type="button" className="profile-mobile-toggle" aria-expanded={profileExpanded} onClick={() => setProfileExpanded(value => !value)}>{profileExpanded ? 'Hide profile' : 'Edit profile'} <span aria-hidden="true">{profileExpanded ? '⌃' : '⌄'}</span></button>
             </div>
             <div className={`account-profile-content${profileExpanded ? ' is-expanded' : ''}`}>
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '.85rem' }}>
-              <h3 style={{ margin: '0 0 .25rem', fontSize: '.98rem' }}>Your profile</h3>
-              <p className="profile-side-links" style={{ margin: '0 0 .6rem' }}>Your saved details are reused for PayMongo checkout and your purchase records.</p>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '.6rem' }}>
+              <h3 style={{ margin: '0 0 .25rem', fontSize: '.88rem' }}>Your profile</h3>
+              <p className="profile-side-links" style={{ margin: '0 0 .4rem' }}>Your saved details are reused for checkout and purchase records.</p>
               <div className="account-profile-fields">
                 <label style={label}>Full name<input required maxLength={160} readOnly={!profileEditing} value={fullName} onChange={e => setFullName(e.target.value)} style={profileField(profileEditing)} /></label>
                 <label style={label}>Company (optional)<input maxLength={160} readOnly={!profileEditing} value={company} onChange={e => setCompany(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
                 <label style={label}>School (optional)<input maxLength={160} readOnly={!profileEditing} value={school} onChange={e => setSchool(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
               </div>
-              {!profileEditing ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setMessage(''); setProfileEditing(true) }} style={{ width: '100%', marginTop: '1rem' }}>EDIT PROFILE</button> : <div style={{ display: 'flex', gap: 8, marginTop: '1rem' }}>
+              {!profileEditing ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setMessage(''); setProfileEditing(true) }} style={{ width: '100%', marginTop: '.65rem', minHeight: 44, padding: '.45rem .65rem', fontSize: '.82rem' }}>EDIT PROFILE</button> : <div style={{ display: 'flex', gap: 8, marginTop: '.65rem' }}>
                 <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setProfileEditing(false); setMessage('') }} style={{ flex: 1 }}>CANCEL</button>
                 <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
               </div>}
-              <button type="button" className="btn btn-outline" onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')} style={{ display: 'block', width: '100%', marginTop: '.6rem', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>Delete account</button>
-              <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void signOut()} style={{ display: 'block', width: '100%', marginTop: '.6rem' }}>{busy ? 'Signing out…' : 'Sign out'}</button>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '.5rem', marginTop: '.5rem' }}>
+                <button type="button" className="btn btn-outline" onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')} style={{ minWidth: 0, minHeight: 44, padding: '.45rem .5rem', fontSize: '.78rem', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>Delete account</button>
+                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void signOut()} style={{ minWidth: 0, minHeight: 44, padding: '.45rem .5rem', fontSize: '.78rem' }}>{busy ? 'Signing out…' : 'Sign out'}</button>
+              </div>
               {accountTab === 'delete' && <section style={{ ...card, marginTop: '1rem', borderColor: 'var(--danger, #dc2626)' }}>
                 <h3 style={{ marginTop: 0, color: 'var(--danger, #dc2626)' }}>Delete account</h3>
                 <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
@@ -643,7 +653,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             </div>
             </div>
           </section>}
-          {!session && <section style={{ ...card, marginBottom: 0 }}>
+          {!session && <section style={{ ...card, padding: '.8rem', marginBottom: 0 }}>
             <div style={{ display: 'flex', gap: '.8rem', alignItems: 'center', marginBottom: '.8rem' }}>
               <div className="profile-avatar">H</div>
               <div style={{ minWidth: 0 }}>
@@ -781,5 +791,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
         </main>
       </div>
     </>
+    {!signedOutSuccess && !deletionSuccess && createPortal(<button type="button" className="account-cart-fab" aria-label="Shopping cart" title="Shopping cart" aria-current={pathname === '/checkout' || pathname === '/basket' ? 'page' : undefined} onClick={() => navigate('/checkout')}><span aria-hidden="true">🛒</span></button>, document.body)}
   </div>
 }
