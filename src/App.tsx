@@ -13,6 +13,7 @@ import PaywallDialog from './components/PaywallDialog'
 import TrackPurchaseDialog from './components/TrackPurchaseDialog'
 import BottomNav from './components/BottomNav'
 import TopLoadingIndicator from './components/TopLoadingIndicator'
+import ResultsProcessing from './components/ResultsProcessing'
 import { useUIStore } from './stores/uiStore'
 import { usePracticeStore } from './stores/practiceStore'
 import { supabase } from './lib/supabase'
@@ -624,6 +625,7 @@ export default function App() {
 
       {!hideNav && <BottomNav />}
       <CookieConsent />
+      {localOwnerReady && <ResultsProcessing />}
       {localOwnerReady && resumeSession && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(3,8,18,.72)', display: 'grid', placeItems: 'center', padding: 16, boxSizing: 'border-box' }}>
         <section role="dialog" aria-modal="true" aria-labelledby="resume-learning-title" className="card" style={{ width: 'min(100%, 460px)', boxSizing: 'border-box', padding: 24, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.4)' }}>
           <h2 id="resume-learning-title" style={{ marginTop: 0 }}>{resumeSession.mode === 'MOCK' ? 'Resume your mock exam?' : resumeSession.mode === 'DRILL' ? 'Resume your drill?' : 'Resume your practice session?'}</h2>

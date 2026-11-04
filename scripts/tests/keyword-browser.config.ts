@@ -3,7 +3,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const fixture = process.env.HYPERION_BROWSER_FIXTURE === 'account' ? 'account-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'sync' ? 'sync-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'publisher' ? 'publisher-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'recovery' ? 'recovery-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'quickscan' ? 'quickscan-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'session' ? 'session-browser' : 'keyword-browser'
+const fixture = process.env.HYPERION_BROWSER_FIXTURE === 'results' ? 'results-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'account' ? 'account-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'sync' ? 'sync-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'publisher' ? 'publisher-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'recovery' ? 'recovery-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'quickscan' ? 'quickscan-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'session' ? 'session-browser' : 'keyword-browser'
 
 // Isolated browser fixture using the real editor and encrypted storage. Run from repository root.
 export default defineConfig({

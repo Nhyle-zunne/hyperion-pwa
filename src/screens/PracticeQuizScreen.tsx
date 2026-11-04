@@ -1,5 +1,6 @@
 import { savedQuestionsReturnPath } from '../lib/savedQuestionSets'
 import SessionElapsedTimer from '../components/SessionElapsedTimer'
+import SessionResults from '../components/SessionResults'
 import MaterialIcon from '../components/MaterialIcon'
 import { TRACK_LABELS } from '../lib/trackLabels'
 import KeywordQuestionText from '../components/KeywordQuestionText'
@@ -27,11 +28,9 @@ export default function PracticeQuizScreen() {
     error,
     finished,
     mode,
-    bestStreak,
     selectAnswer,
     next,
     prev,
-    score,
     reset,
     saveProgress,
     restoreSavedProgress
@@ -146,31 +145,12 @@ export default function PracticeQuizScreen() {
     )
   }
 
-  if (finished) {
-    const s = score()
-    return (
-      <div className="screen question-runner-screen">
-        <h1 className="page-title">Results</h1>
-        <div className="card" style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <div style={{ fontSize: '2.5rem', fontWeight: 700, color: 'var(--accent)' }}>
-            {s.percent}%
-          </div>
-          <div style={{ color: 'var(--text-muted)' }}>
-            {s.correct} / {s.total} correct
-          </div>
-          {mode === 'DRILL' && (
-            <div style={{ marginTop: 8, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-              Best streak: {bestStreak}
-            </div>
-          )}
-        </div>
-        <button className="btn btn-primary" style={{ width: '100%', marginBottom: 8 }} onClick={() => { reset(); navigate(source ? '/saved-questions/config?set=' + source.selectionId : mode === 'DRILL' ? '/drill' : mode === 'MOCK' ? '/mock' : '/practice') }}>Try Again</button>
-        {source && <button className="btn btn-outline" style={{ width: '100%', marginBottom: 8 }} onClick={() => { reset(); navigate(savedQuestionsReturnPath(source)!) }}>Back to {source.collection === 'bookmarks' ? 'Bookmarks' : 'Mistakes Notebook'}</button>}
-        <button className="btn btn-outline" style={{ width: '100%', marginBottom: 8 }} onClick={() => { reset(); navigate('/history') }}>View History</button>
-        <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => { reset(); navigate('/') }}>Home</button>
-      </div>
-    )
-  }
+  if (finished) return <SessionResults
+    onTryAgain={() => { reset(); navigate(source ? '/saved-questions/config?set=' + source.selectionId : mode === 'DRILL' ? '/drill' : mode === 'MOCK' ? '/mock' : '/practice') }}
+    onHistory={() => { reset(); navigate('/history') }}
+    onHome={() => { reset(); navigate('/') }}
+    extraAction={source && <button className="btn btn-outline" onClick={() => { reset(); navigate(savedQuestionsReturnPath(source)!) }}>Back to {source.collection === 'bookmarks' ? 'Bookmarks' : 'Mistakes Notebook'}</button>}
+  />
 
   const q = questions[currentIndex]
   const answer = answers[q.id]
