@@ -86,6 +86,10 @@ jobs:
         env:
           HYPERION_BROWSER_FIXTURE: account
         run: bun run test:saved-data:browser
+      - name: Scored session results browser regression
+        env:
+          HYPERION_BROWSER_FIXTURE: results
+        run: bun run test:saved-data:browser
       - name: Type-check and build
         run: |
           if [ -z "$VITE_SUPABASE_URL" ]; then unset VITE_SUPABASE_URL; fi
