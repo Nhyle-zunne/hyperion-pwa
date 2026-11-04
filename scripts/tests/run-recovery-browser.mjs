@@ -8,11 +8,12 @@ import { chromium } from 'playwright'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const vite = fileURLToPath(new URL('../../node_modules/vite/bin/vite.js', import.meta.url))
 const out = await mkdtemp(join(tmpdir(), 'hyperion-recovery-test-'))
+const account = process.env.HYPERION_BROWSER_FIXTURE === 'account'
 const publisher = process.env.HYPERION_BROWSER_FIXTURE === 'publisher'
 const licensed = process.env.HYPERION_BROWSER_FIXTURE === 'licensed'
 const sync = licensed || process.env.HYPERION_BROWSER_FIXTURE === 'sync'
-const entry = sync ? 'sync-browser' : publisher ? 'publisher-browser' : 'recovery-browser'
-const env = { ...process.env, HYPERION_BROWSER_FIXTURE: sync ? 'sync' : publisher ? 'publisher' : 'recovery', HYPERION_BROWSER_TEST_OUTPUT: out, VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '', VITE_QUESTION_BANK_DELIVERY: '' }
+const entry = account ? 'account-browser' : sync ? 'sync-browser' : publisher ? 'publisher-browser' : 'recovery-browser'
+const env = { ...process.env, HYPERION_BROWSER_FIXTURE: account ? 'account' : sync ? 'sync' : publisher ? 'publisher' : 'recovery', HYPERION_BROWSER_TEST_OUTPUT: out, VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '', VITE_QUESTION_BANK_DELIVERY: '' }
 const run = args => new Promise((resolve, reject) => {
   const child = spawn(process.execPath, args, { cwd: root, env, stdio: 'inherit' })
   child.once('error', reject)

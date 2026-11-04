@@ -585,9 +585,9 @@ export default function App() {
           <Route path="/" element={<DashboardLanding />} />
           <Route path="/account" element={<AccountScreen />} />
           <Route path="/manual-payment" element={<ManualPaymentScreen />} />
-          <Route path="/orders" element={<OrdersPaymentHistoryScreen />} />
-          <Route path="/checkout" element={<BasketScreen />} />
-          <Route path="/basket" element={<BasketScreen />} />
+          <Route path="/orders" element={<AccountScreen key="orders"><OrdersPaymentHistoryScreen /></AccountScreen>} />
+          <Route path="/checkout" element={<AccountScreen key="checkout"><BasketScreen /></AccountScreen>} />
+          <Route path="/basket" element={<AccountScreen key="basket"><BasketScreen /></AccountScreen>} />
           <Route path="/auth/callback" element={<OAuthCallbackScreen />} />
           <Route path="/admin/licenses" element={<AdminLicensesScreen />} />
           <Route path="/admin/payments" element={<AdminPaymentsScreen />} />
