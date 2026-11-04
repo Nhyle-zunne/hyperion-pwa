@@ -9,7 +9,8 @@ import '../../src/index.css'
 
 Object.assign(window, { accountFixtureCalls: fixtureCalls })
 document.documentElement.dataset.theme = 'light'
-const initialPath = new URLSearchParams(location.search).get('section') === 'orders' ? '/orders' : '/checkout?buy_product=gmdss&buy_term=month'
+const section = new URLSearchParams(location.search).get('section')
+const initialPath = section === 'orders' ? '/orders' : section === 'payment' ? '/checkout?payment=success&order_id=fixture-order' : '/checkout?buy_product=gmdss&buy_term=month'
 createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={[initialPath]}>
   <div className="route-transition">
   <Routes>

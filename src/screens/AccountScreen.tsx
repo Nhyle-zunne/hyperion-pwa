@@ -537,6 +537,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .profile-side-links{font-size:.76rem;color:var(--text-muted);line-height:1.4}
       .account-cart-fab{position:fixed;right:max(1.25rem,env(safe-area-inset-right));bottom:max(1.25rem,env(safe-area-inset-bottom));z-index:160;display:grid;place-items:center;width:56px;height:56px;padding:0;border:2px solid var(--bg-card);border-radius:50%;background:var(--accent);color:var(--btn-primary-text);font-size:1.45rem;line-height:1;box-shadow:0 8px 24px rgba(4,35,83,.24);cursor:pointer;touch-action:manipulation;transition:transform .2s ease,box-shadow .2s ease}
       .account-cart-fab:focus-visible{outline:3px solid var(--text);outline-offset:4px}
+      body:has([aria-modal="true"]) .account-cart-fab{display:none}
       @media(hover:hover) and (prefers-reduced-motion:no-preference){.account-cart-fab:hover{transform:translateY(-3px) scale(1.12) rotate(-7deg);box-shadow:0 12px 28px rgba(4,35,83,.3)}}
       @media(prefers-reduced-motion:no-preference){.account-cart-fab:focus-visible{transform:translateY(-3px) scale(1.12)}}
       @media(prefers-reduced-motion:reduce){.account-cart-fab{transition:none}}
