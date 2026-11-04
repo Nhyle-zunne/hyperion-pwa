@@ -26,6 +26,8 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
+      - name: Verify repository agent skills
+        run: node scripts/tests/agent-skills-test.mjs
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2.2.0
         with:
