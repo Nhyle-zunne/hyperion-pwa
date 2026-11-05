@@ -171,6 +171,37 @@ try {
   assert.equal(await loader.locator('.hyperion-top-loader__shadow').evaluate(element => getComputedStyle(element).animationName), 'none', 'Reduced motion stops the shadow')
   await page.evaluate(() => window.finishFirstLoading())
   await page.waitForFunction(() => !document.querySelector('.hyperion-top-loader'))
+  const activeOnly = page.getByRole('button', { name: /Active licenses only/ })
+  const toolbarGeometry = () => page.evaluate(() => {
+    const origin = document.querySelector('.admin-users-toolbar').getBoundingClientRect()
+    const controls = [...document.querySelectorAll('.admin-license-filters select, .admin-license-filters > button')].map(control => {
+      const box = control.getBoundingClientRect()
+      return { x: box.x - origin.x, y: box.y - origin.y, width: box.width, height: box.height }
+    })
+    return { controls, listTop: document.querySelector('.admin-user-grid').getBoundingClientRect().y - origin.y }
+  })
+  for (const width of [1536, 1140, 1024, 900, 760, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    // Load each viewport independently so this checks filtering, not a resize transition.
+    await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=admin`)
+    await page.getByRole('heading', { name: 'Registered users (2)', exact: true }).waitFor()
+    const before = await toolbarGeometry()
+    assert.equal(before.controls.length, 4, 'All four admin filter controls are measured')
+    await activeOnly.click()
+    assert.equal(await activeOnly.getAttribute('aria-pressed'), 'true')
+    assert.equal(await page.locator('.admin-user-card').count(), 1, 'Filter shows only the licensed synthetic user')
+    const after = await toolbarGeometry()
+    for (let i = 0; i < before.controls.length; i++) {
+      for (const axis of ['x', 'y', 'width', 'height']) {
+        assert(Math.abs(after.controls[i][axis] - before.controls[i][axis]) < .5, `Filter control ${i} keeps its ${axis} at ${width}px: ${JSON.stringify({ before, after })}`)
+      }
+    }
+    assert(Math.abs(after.listTop - before.listTop) < .5, `Filter keeps list aligned at ${width}px`)
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Admin filters fit at ${width}px`)
+    if ([1536,390].includes(width)) await page.screenshot({ path: `account-admin-active-${width}.png`, fullPage: true })
+    await activeOnly.click()
+    assert.equal(await page.locator('.admin-user-card').count(), 2, 'Clearing the filter restores both synthetic users')
+  }
   assert.deepEqual(errors, [])
   console.log('PASS: checkout/orders shared profile, profile edit/cancel, responsive placement, cart preservation, and isolated commerce effects')
 } finally {
