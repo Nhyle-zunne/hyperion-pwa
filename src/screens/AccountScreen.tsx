@@ -540,6 +540,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-section-tabs button{min-height:44px;padding:.7rem .85rem;font-weight:850;border-radius:9px}
       .account-page .profile-side-links{font-size:.76rem;color:var(--text-muted);line-height:1.4}
       .account-cart-fab{position:fixed;right:max(1.25rem,env(safe-area-inset-right));bottom:max(1.25rem,env(safe-area-inset-bottom));z-index:160;display:grid;place-items:center;width:56px;height:56px;padding:0;border:2px solid #e2e8f0;border-radius:50%;background:#fff;color:#147d43;line-height:1;box-shadow:0 8px 24px rgba(4,35,83,.24);cursor:pointer;touch-action:manipulation;transition:box-shadow .2s ease}
+      [data-theme='dark'] .account-cart-fab{background:#147d43;border-color:#147d43;color:#fff}
       .account-cart-fab:focus-visible{outline:3px solid var(--text);outline-offset:4px}
       body:has([aria-modal="true"]) .account-cart-fab{display:none}
       .account-cart-icon{display:block;width:28px;height:28px;transform-origin:50% 75%}
