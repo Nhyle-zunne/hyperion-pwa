@@ -171,8 +171,6 @@ try {
   assert.equal(await loader.locator('.hyperion-top-loader__shadow').evaluate(element => getComputedStyle(element).animationName), 'none', 'Reduced motion stops the shadow')
   await page.evaluate(() => window.finishFirstLoading())
   await page.waitForFunction(() => !document.querySelector('.hyperion-top-loader'))
-  await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=admin`)
-  await page.getByRole('heading', { name: 'Registered users (2)', exact: true }).waitFor()
   const activeOnly = page.getByRole('button', { name: /Active licenses only/ })
   const toolbarGeometry = () => page.evaluate(() => {
     const origin = document.querySelector('.admin-users-toolbar').getBoundingClientRect()
@@ -184,8 +182,9 @@ try {
   })
   for (const width of [1536, 1140, 1024, 900, 760, 390]) {
     await page.setViewportSize({ width, height: 900 })
-    // Wait for the new viewport's media queries to be painted before measuring.
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    // Load each viewport independently so this checks filtering, not a resize transition.
+    await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=admin`)
+    await page.getByRole('heading', { name: 'Registered users (2)', exact: true }).waitFor()
     const before = await toolbarGeometry()
     assert.equal(before.controls.length, 4, 'All four admin filter controls are measured')
     await activeOnly.click()
