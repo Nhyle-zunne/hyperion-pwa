@@ -539,11 +539,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-section-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
       .account-page .account-section-tabs button{min-height:44px;padding:.7rem .85rem;font-weight:850;border-radius:9px}
       .account-page .profile-side-links{font-size:.76rem;color:var(--text-muted);line-height:1.4}
-      .account-cart-fab{position:fixed;right:max(1.25rem,env(safe-area-inset-right));bottom:max(1.25rem,env(safe-area-inset-bottom));z-index:160;display:grid;place-items:center;width:56px;height:56px;padding:0;border:2px solid var(--bg-card);border-radius:50%;background:var(--accent);color:var(--btn-primary-text);font-size:1.45rem;line-height:1;box-shadow:0 8px 24px rgba(4,35,83,.24);cursor:pointer;touch-action:manipulation;transition:transform .2s ease,box-shadow .2s ease}
+      .account-cart-fab{position:fixed;right:max(1.25rem,env(safe-area-inset-right));bottom:max(1.25rem,env(safe-area-inset-bottom));z-index:160;display:grid;place-items:center;width:56px;height:56px;padding:0;border:2px solid #e2e8f0;border-radius:50%;background:#fff;color:#147d43;line-height:1;box-shadow:0 8px 24px rgba(4,35,83,.24);cursor:pointer;touch-action:manipulation;transition:box-shadow .2s ease}
       .account-cart-fab:focus-visible{outline:3px solid var(--text);outline-offset:4px}
       body:has([aria-modal="true"]) .account-cart-fab{display:none}
-      @media(hover:hover) and (prefers-reduced-motion:no-preference){.account-cart-fab:hover{transform:translateY(-3px) scale(1.12) rotate(-7deg);box-shadow:0 12px 28px rgba(4,35,83,.3)}}
-      @media(prefers-reduced-motion:no-preference){.account-cart-fab:focus-visible{transform:translateY(-3px) scale(1.12)}}
+      .account-cart-icon{display:block;width:28px;height:28px;transform-origin:50% 75%}
+      @keyframes account-cart-wiggle{0%,100%{transform:rotate(0)}20%{transform:translateX(-2px) rotate(-12deg)}40%{transform:translateX(2px) rotate(10deg)}60%{transform:translateX(-1px) rotate(-7deg)}80%{transform:rotate(4deg)}}
+      @media(prefers-reduced-motion:no-preference){.account-cart-icon{animation:account-cart-wiggle .7s ease-in-out .6s 4}}
+      @media(hover:hover){.account-cart-fab:hover{box-shadow:0 12px 28px rgba(4,35,83,.3)}}
       @media(prefers-reduced-motion:reduce){.account-cart-fab{transition:none}}
       @media(max-width:899px){.account-cart-fab{bottom:calc(82px + env(safe-area-inset-bottom))}}
       .account-page .payment-method-pills{display:flex;flex-wrap:wrap;gap:.4rem}
@@ -799,6 +801,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
         </main>
       </div>
     </>
-    {!signedOutSuccess && !deletionSuccess && createPortal(<button type="button" className="account-cart-fab" aria-label="Shopping cart" title="Shopping cart" aria-current={pathname === '/checkout' || pathname === '/basket' ? 'page' : undefined} onClick={() => navigate('/checkout')}><span aria-hidden="true">🛒</span></button>, document.body)}
+    {!signedOutSuccess && !deletionSuccess && !/^\/(?:checkout|basket)\/?$/i.test(pathname) && createPortal(<button type="button" className="account-cart-fab" aria-label="Shopping cart" title="Shopping cart" onClick={() => navigate('/checkout')}><span className="account-cart-icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h2l2.4 12h11.2l2-8H6" /><circle cx="9" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg></span></button>, document.body)}
   </div>
 }
