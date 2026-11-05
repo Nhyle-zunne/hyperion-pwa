@@ -530,7 +530,11 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-cart-row:last-child{border-bottom:0}
       .account-page .account-total-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-top:1rem;margin-top:.4rem;border-top:1px solid var(--border)}
       .account-page .profile-avatar{width:44px;height:44px;flex-shrink:0;display:grid;place-items:center;border-radius:12px;background:#042353;color:#4ade80;font-weight:950;font-size:.95rem;letter-spacing:.03em}
-      .account-page .profile-mobile-toggle{display:none;border:1px solid var(--border);border-radius:9px;background:var(--bg-elevated);color:var(--text);padding:.5rem .65rem;font-size:.8rem;font-weight:850;align-items:center;gap:.35rem;cursor:pointer}
+      .account-page .profile-mobile-toggle{display:none;width:100%;min-height:44px;box-sizing:border-box;margin-bottom:.6rem;border:1px solid var(--border);border-radius:9px;background:var(--bg-elevated);color:var(--text);padding:.65rem .8rem;font-size:.8rem;font-weight:850;align-items:center;justify-content:space-between;gap:.6rem;cursor:pointer}
+      .account-page .profile-mobile-toggle:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+      .account-page .profile-mobile-toggle svg{flex-shrink:0;transition:transform .18s ease}
+      .account-page .profile-mobile-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}
+      @media(prefers-reduced-motion:reduce){.account-page .profile-mobile-toggle svg{transition:none}}
       .account-page .account-profile-content{display:block}
       .account-page .account-section-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
       .account-page .account-section-tabs button{min-height:44px;padding:.7rem .85rem;font-weight:850;border-radius:9px}
@@ -621,9 +625,12 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', overflowWrap: 'anywhere', marginTop: '.2rem' }}>{session.user.email}</div>
                 {isAdmin && <button type="button" title="Open admin dashboard" aria-label="Admin" onClick={() => navigate('/admin/licenses')} style={{ display: 'inline-flex', alignItems: 'center', marginTop: '.35rem', border: '1px solid #86cba0', borderRadius: 999, background: '#dcfce7', color: '#166534', padding: '.15rem .5rem', fontWeight: 800, fontSize: '.68rem', lineHeight: 1.2, cursor: 'pointer' }}>Admin</button>}
               </div>
-              <button type="button" className="profile-mobile-toggle" aria-expanded={profileExpanded} onClick={() => setProfileExpanded(value => !value)}>{profileExpanded ? 'Hide profile' : 'Edit profile'} <span aria-hidden="true">{profileExpanded ? '⌃' : '⌄'}</span></button>
             </div>
-            <div className={`account-profile-content${profileExpanded ? ' is-expanded' : ''}`}>
+            <button type="button" className="profile-mobile-toggle" aria-expanded={profileExpanded} aria-controls="account-profile-content" onClick={() => setProfileExpanded(value => !value)}>
+              {profileExpanded ? 'Hide profile' : 'Edit profile'}
+              <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            <div id="account-profile-content" className={`account-profile-content${profileExpanded ? ' is-expanded' : ''}`}>
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '.6rem' }}>
               <h3 style={{ margin: '0 0 .25rem', fontSize: '.88rem' }}>Your profile</h3>
               <p className="profile-side-links" style={{ margin: '0 0 .4rem' }}>Your saved details are reused for checkout and purchase records.</p>
