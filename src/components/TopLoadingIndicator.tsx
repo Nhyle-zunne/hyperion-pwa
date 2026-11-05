@@ -52,10 +52,14 @@ export default function TopLoadingIndicator() {
         <span className="hyperion-top-loader__progress" />
       </span>
       <span className="hyperion-top-loader__logo-wrap" aria-hidden="true">
-        <span className="hyperion-top-loader__pulse hyperion-top-loader__pulse--one" />
-        <span className="hyperion-top-loader__pulse hyperion-top-loader__pulse--two" />
-        <span className="hyperion-top-loader__pulse hyperion-top-loader__pulse--three" />
-        <img className="hyperion-top-loader__logo" src="/logo.png" alt="" />
+        <span className="hyperion-top-loader__shadow" />
+        <span className="hyperion-top-loader__cube">
+          {['front', 'back', 'right', 'left', 'top', 'bottom'].map(face => (
+            <span key={face} className={`hyperion-top-loader__face hyperion-top-loader__face--${face}`}>
+              <img className="hyperion-top-loader__logo" src="/logo.png" alt="" />
+            </span>
+          ))}
+        </span>
       </span>
       <span className="hyperion-top-loader__sr-only">{label}</span>
     </div>

@@ -140,6 +140,37 @@ try {
   await page.goto(process.env.HYPERION_RECOVERY_TEST_URL)
   await page.waitForFunction(() => { const button = document.querySelector('.checkout-pay-button'); return button && !button.disabled })
   assert.equal(await checkout.isEnabled(), true, 'Selecting a track enables checkout again')
+  await page.waitForFunction(() => !document.querySelector('.hyperion-top-loader.is-visible'))
+  await page.evaluate(() => {
+    window.finishFirstLoading = window.beginFixtureLoading('Loading preview')
+    window.finishSecondLoading = window.beginFixtureLoading('Loading more content')
+  })
+  await page.getByRole('status', { name: 'Loading more content', exact: true }).waitFor()
+  const loader = page.locator('.hyperion-top-loader.is-visible')
+  const cube = loader.locator('.hyperion-top-loader__cube')
+  await cube.waitFor()
+  assert.equal(await cube.evaluate(element => getComputedStyle(element).transformStyle), 'preserve-3d', 'Logo has real 3D faces')
+  const poses = await cube.evaluate(element => {
+    const animation = element.getAnimations()[0]
+    animation.pause()
+    const duration = Number(animation.effect.getTiming().duration)
+    return [0, .25, .5].map(progress => {
+      animation.currentTime = duration * progress
+      return getComputedStyle(element).transform
+    })
+  })
+  assert.equal(new Set(poses).size, 3, 'Logo turns through distinct 3D poses')
+  assert.equal(await loader.evaluate(element => getComputedStyle(element).pointerEvents), 'none', 'Loader leaves the page interactive')
+  await page.waitForFunction(() => [...document.querySelectorAll('.hyperion-top-loader img')].every(image => image.complete && image.naturalWidth > 0))
+  assert.equal(await loader.locator('img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0 && new URL(image.src).pathname === '/logo.png')), true, 'All logo faces load the existing local asset')
+  await page.screenshot({ path: 'account-3d-loader-390.png', fullPage: true })
+  await page.evaluate(() => window.finishSecondLoading())
+  await page.getByRole('status', { name: 'Loading preview', exact: true }).waitFor()
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  assert.equal(await cube.evaluate(element => getComputedStyle(element).animationName), 'none', 'Reduced motion stops cube rotation')
+  assert.equal(await loader.locator('.hyperion-top-loader__shadow').evaluate(element => getComputedStyle(element).animationName), 'none', 'Reduced motion stops the shadow')
+  await page.evaluate(() => window.finishFirstLoading())
+  await page.waitForFunction(() => !document.querySelector('.hyperion-top-loader'))
   assert.deepEqual(errors, [])
   console.log('PASS: checkout/orders shared profile, profile edit/cancel, responsive placement, cart preservation, and isolated commerce effects')
 } finally {
