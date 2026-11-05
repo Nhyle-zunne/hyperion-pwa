@@ -610,6 +610,7 @@ export default function BasketScreen() {
       .basket-page .basket-action-row{display:flex;gap:.5rem;flex-wrap:wrap}
       .basket-page .checkout-pay-button{background:var(--accent);border-color:var(--accent);color:var(--btn-primary-text);transition:background-color .16s ease,border-color .16s ease,transform .16s ease}
       .basket-page .checkout-pay-button:hover:not(:disabled){background:var(--accent-dim);border-color:var(--accent-dim)}
+      .basket-page .checkout-pay-button:disabled{opacity:.45;cursor:not-allowed;transform:none}
       [data-theme='dark'] .basket-page .checkout-pay-button{color:#fff}
       .basket-page .checkout-pay-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
       .basket-page .manual-fallback-link{display:inline-flex;align-items:center;justify-content:center;gap:.25rem;color:var(--accent);font-weight:850;text-decoration:underline;text-underline-offset:3px;padding:.55rem .65rem;border:1px solid var(--border);border-radius:8px;overflow-wrap:anywhere}
