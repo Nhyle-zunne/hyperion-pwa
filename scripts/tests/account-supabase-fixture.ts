@@ -33,6 +33,12 @@ export const supabase = {
     invoke: async (name: string, request: { body?: { action?: string } }) => {
       fixtureCalls.push({ action: `${name}:${request.body?.action ?? ''}` })
       if (name === 'verify-checkout' && localStorage.getItem('fixture-hold-payment') === 'yes') return new Promise(() => {})
+      if (name === 'admin-license-management' && request.body?.action === 'list') return {
+        data: { users: [
+          { id: 'fixture-active', display_name: 'Synthetic Licensed Member', email: 'licensed@example.invalid', created_at: '2026-10-01T00:00:00Z', last_accessed_at: '2026-11-01T00:00:00Z', last_access_source: 'website_activity', retention_status: 'active_license_protected', retention_due_at: null, licenses: { oic_nw: { status: 'active' } } },
+          { id: 'fixture-free', display_name: 'Synthetic Free Member', email: 'free@example.invalid', created_at: '2026-10-02T00:00:00Z', last_accessed_at: '2026-11-01T00:00:00Z', last_access_source: 'website_activity', retention_status: 'free_account_active', retention_due_at: '2027-01-01T00:00:00Z', licenses: {} },
+        ], audit: [] }, error: null,
+      }
       if (name === 'admin-payment-review') return { data: { isAdmin: false }, error: null }
       if (name === 'create-checkout' && request.body?.action === 'status') return { data: { action: 'status', enabled: true }, error: null }
       return { data: { entitlements: [] }, error: null }

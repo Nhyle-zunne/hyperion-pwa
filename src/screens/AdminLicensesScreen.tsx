@@ -214,6 +214,15 @@ export default function AdminLicensesScreen() {
   }
   return <div className="screen" style={{ width: 'min(calc(100% - 1rem), 1180px)', maxWidth: 1180, margin: '0 auto', paddingBottom: '2rem' }}>
     <style>{`
+      .admin-users-toolbar{display:grid;gap:.7rem;margin-bottom:.7rem}
+      .admin-license-filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) max-content max-content;align-items:end;gap:.65rem}
+      .admin-license-filters label{display:grid;gap:.35rem;min-width:0;color:var(--text-muted);font-size:.8rem;font-weight:800}
+      .admin-license-filters>button{height:44px;min-width:0;padding:.55rem .8rem}
+      .admin-active-license-toggle{white-space:nowrap;border:1px solid var(--border)}
+      .admin-active-license-toggle[aria-pressed="true"]{border-color:var(--accent)}
+      .admin-active-license-toggle__check{display:inline-block;width:1em;flex-shrink:0}
+      @media(max-width:900px){.admin-license-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media(max-width:520px){.admin-license-filters{grid-template-columns:minmax(0,1fr)}}
       .admin-user-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
       .admin-user-card{display:block;width:100%;min-width:0;text-align:left;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;color:var(--text);cursor:pointer}
       .admin-user-card:hover{border-color:var(--accent);background:var(--bg-elevated)}
@@ -278,12 +287,12 @@ export default function AdminLicensesScreen() {
       <label style={{ display: 'block', marginBottom: '1rem', color: 'var(--text-muted)', fontWeight: 800 }}>SEARCH USERS BY NAME, EMAIL, OR USER ID
         <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Type an email, name, or user ID…" style={field} />
       </label>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: '.7rem' }}>
+      <div className="admin-users-toolbar">
         <h2 style={{ margin: 0, fontSize: '1rem' }}>{retentionFilter === 'deletion_due' ? 'Deletion-eligible users' : retentionFilter === 'all' ? (activeLicenseOnly ? 'Users with active licenses' : 'Registered users') : retentionFilter === 'renewal_grace' || retentionFilter === 'free_account_grace' ? 'Users in grace period' : 'Filtered registered users'} ({filteredUsers.length})</h2>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', flex: '1 1 560px' }}>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text-muted)', fontSize: '.8rem', fontWeight: 800 }}>
+        <div className="admin-license-filters">
+          <label>
             RETENTION
-            <select aria-label="Filter by account retention status" value={retentionFilter} onChange={event => { setRetentionFilter(event.target.value as typeof retentionFilter); setSelectedUserId(null) }} style={{ ...field, width: 'auto', minWidth: 190, maxWidth: '100%', margin: 0, padding: '.55rem .65rem', fontSize: '.82rem' }}>
+            <select aria-label="Filter by account retention status" value={retentionFilter} onChange={event => { setRetentionFilter(event.target.value as typeof retentionFilter); setSelectedUserId(null) }} style={{ ...field, minWidth: 0, minHeight: 44, margin: 0, padding: '.55rem .65rem', fontSize: '.82rem' }}>
               <option value="all">All retention statuses</option>
               <option value="deletion_due">Deletion eligible</option>
               <option value="free_account_grace">Free-account grace period</option>
@@ -295,9 +304,9 @@ export default function AdminLicensesScreen() {
               <option value="admin_audit_hold">Admin audit hold</option>
             </select>
           </label>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text-muted)', fontSize: '.8rem', fontWeight: 800 }}>
+          <label>
             SORT
-            <select aria-label="Sort users" value={userSort} onChange={event => setUserSort(event.target.value as typeof userSort)} style={{ ...field, width: 'auto', minWidth: 180, margin: 0, padding: '.55rem .65rem', fontSize: '.82rem' }}>
+            <select aria-label="Sort users" value={userSort} onChange={event => setUserSort(event.target.value as typeof userSort)} style={{ ...field, minWidth: 0, minHeight: 44, margin: 0, padding: '.55rem .65rem', fontSize: '.82rem' }}>
               <option value="name-asc">Alphabetical (A–Z)</option>
               <option value="joined-desc">Date joined (newest first)</option>
               <option value="joined-asc">Date joined (oldest first)</option>
@@ -305,12 +314,12 @@ export default function AdminLicensesScreen() {
           </label>
           <button
             type="button"
-            className={activeLicenseOnly ? 'btn btn-primary' : 'btn btn-outline'}
+            className={`btn admin-active-license-toggle ${activeLicenseOnly ? 'btn-primary' : 'btn-outline'}`}
             aria-pressed={activeLicenseOnly}
             onClick={() => { setActiveLicenseOnly(value => !value); setSelectedUserId(null) }}
-            style={{ whiteSpace: 'nowrap' }}
           >
-            {activeLicenseOnly ? '✓ Active licenses only' : 'Active licenses only'}
+            <span className="admin-active-license-toggle__check" aria-hidden="true" style={{ visibility: activeLicenseOnly ? 'visible' : 'hidden' }}>✓</span>
+            Active licenses only
           </button>
           <button type="button" className="btn btn-outline" disabled={loading} onClick={() => void withPageLoading('Refreshing users and licenses', () => load())}>{loading ? 'Refreshing…' : 'Refresh users'}</button>
         </div>
