@@ -543,8 +543,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-cart-fab:focus-visible{outline:3px solid var(--text);outline-offset:4px}
       body:has([aria-modal="true"]) .account-cart-fab{display:none}
       .account-cart-icon{display:block;width:28px;height:28px;transform-origin:50% 75%}
-      @keyframes account-cart-wiggle{0%,100%{transform:rotate(0)}20%{transform:translateX(-2px) rotate(-12deg)}40%{transform:translateX(2px) rotate(10deg)}60%{transform:translateX(-1px) rotate(-7deg)}80%{transform:rotate(4deg)}}
-      @media(prefers-reduced-motion:no-preference){.account-cart-icon{animation:account-cart-wiggle .7s ease-in-out .6s 4}}
+      @keyframes account-cart-wiggle{0%,18%,100%{transform:rotate(0)}3%{transform:translateX(-2px) rotate(-12deg)}6%{transform:translateX(2px) rotate(10deg)}9%{transform:translateX(-1px) rotate(-7deg)}12%{transform:rotate(4deg)}15%{transform:rotate(-2deg)}}
+      @media(prefers-reduced-motion:no-preference){.account-cart-icon{animation:account-cart-wiggle 8s ease-in-out .6s infinite}}
       @media(hover:hover){.account-cart-fab:hover{box-shadow:0 12px 28px rgba(4,35,83,.3)}}
       @media(prefers-reduced-motion:reduce){.account-cart-fab{transition:none}}
       @media(max-width:899px){.account-cart-fab{bottom:calc(82px + env(safe-area-inset-bottom))}}

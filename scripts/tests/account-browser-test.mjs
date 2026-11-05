@@ -74,9 +74,23 @@ try {
     assert.notEqual(animation, 'none', 'Cart icon has an attention animation')
     const timing = await icon.evaluate(element => {
       const style = getComputedStyle(element)
-      return { duration: parseFloat(style.animationDuration), delay: parseFloat(style.animationDelay), iterations: Number(style.animationIterationCount) }
+      return { duration: parseFloat(style.animationDuration), delay: parseFloat(style.animationDelay), iterations: style.animationIterationCount }
     })
-    assert(Number.isFinite(timing.iterations) && timing.duration * timing.iterations + timing.delay <= 5, 'Attention animation ends within five seconds')
+    assert.equal(timing.iterations, 'infinite', 'Cart icon repeats its attention animation')
+    const frames = await icon.evaluate(element => {
+      const animation = element.getAnimations()[0]
+      animation.pause()
+      const { duration, delay } = animation.effect.getTiming()
+      const transforms = []
+      for (const progress of [0.03, 0.5, 1.03, 1.5]) {
+        animation.currentTime = delay + Number(duration) * progress
+        transforms.push(getComputedStyle(element).transform)
+      }
+      return transforms
+    })
+    assert.notEqual(frames[0], frames[1], 'The cart wiggles, then pauses')
+    assert.equal(frames[0], frames[2], 'The next cycle repeats the wiggle')
+    assert.equal(frames[1], frames[3], 'Each cycle includes a stationary pause')
     await page.emulateMedia({ reducedMotion: 'reduce' })
     assert.equal(await icon.evaluate(element => getComputedStyle(element).animationName), 'none', 'Reduced motion disables the icon shake')
     await page.emulateMedia({ reducedMotion: 'no-preference' })
