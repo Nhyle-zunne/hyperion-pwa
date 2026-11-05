@@ -658,9 +658,11 @@ a:focus-visible,
 }
 
 
-/* Dashboard composition tuned to the Hyperion desktop reference. */
+/* Fluid desktop dashboard: compact cards without shrinking mobile layouts. */
 @media (min-width: 900px) {
   .screen:has(.dash-header) {
+    width: 88%;
+    max-width: 1180px;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-content: start;
@@ -675,7 +677,12 @@ a:focus-visible,
   .screen:has(.dash-header) .track-card {
     border-radius: 0;
     border-top-width: 2px;
-    min-height: 290px;
+    min-height: 220px;
+    padding: clamp(.85rem, 1.2vw, 1rem);
+  }
+
+  .screen:has(.dash-header) .track-grid {
+    gap: clamp(.75rem, 1.2vw, 1rem) !important;
   }
 
   .screen:has(.dash-header) .track-card .track-title {
@@ -684,28 +691,6 @@ a:focus-visible,
 
   .screen:has(.dash-header) .dash-header {
     border-radius: 0;
-  }
-}
-
-@media (min-width: 1200px) {
-  .screen:has(.dash-header) {
-    max-width: 1440px;
-  }
-
-  .screen:has(.dash-header) .track-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 1.25rem !important;
-  }
-}
-
-@media (min-width: 1600px) {
-  .screen:has(.dash-header) {
-    max-width: 1560px;
-  }
-
-  .screen:has(.dash-header) .track-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 1.5rem !important;
   }
 }
 
