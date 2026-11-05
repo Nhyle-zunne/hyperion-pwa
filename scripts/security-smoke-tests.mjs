@@ -247,9 +247,7 @@ assert.ok(
 );
 assert.ok(topLoadingIndicator.includes('location.pathname') && topLoadingIndicator.includes('location.search') && topLoadingIndicator.includes('ROUTE_TRANSITION_MS = 480'), 'Top loader activates on page and query-string navigation');
 assert.ok(topLoadingIndicator.includes('src="/logo.png"') && !topLoadingIndicator.includes('/logo.png?') && topLoadingIndicator.includes('hyperion-top-loader__logo'), 'Top loader uses the exact precached local Hyperion logo URL as its animated symbol');
-assert.ok(indexCss.includes('.hyperion-top-loader__progress') && indexCss.includes('@keyframes hyperion-loader-sweep') && indexCss.includes('@keyframes hyperion-loader-ripple'), 'Top loader has animated progress and MARINA-style expanding rings');
-assert.ok(indexCss.includes('width: 86px;') && indexCss.includes('height: 86px;') && indexCss.includes('@keyframes hyperion-loader-logo-breathe'), 'Top loading logo is substantially enlarged and gently pulsing');
-assert.ok(topLoadingIndicator.includes('hyperion-top-loader__pulse--one') && topLoadingIndicator.includes('hyperion-top-loader__pulse--two') && topLoadingIndicator.includes('hyperion-top-loader__pulse--three'), 'Three staggered expanding pulses surround the Hyperion logo');
+assert.ok(indexCss.includes('.hyperion-top-loader__progress') && indexCss.includes('@keyframes hyperion-loader-sweep'), 'Top loader retains loading progress feedback');
 assert.ok(indexCss.includes('prefers-reduced-motion: reduce') && indexCss.includes('.hyperion-top-loader__logo'), 'Top loader supports reduced-motion preferences');
 assert.ok(pageLoadingManager.includes('window.setTimeout(finish, 45_000)') && pageLoadingManager.includes('finally {\n    finish()'), 'Async loading tasks always release the indicator and have a watchdog');
 assert.ok(questionBankClient.includes("withPageLoading('Loading questions'") && questionBankClient.includes("withPageLoading('Loading question counts'") && questionBankClient.includes("withPageLoading('Loading question bank'"), 'Question fetching and question-count requests keep the global indicator active');

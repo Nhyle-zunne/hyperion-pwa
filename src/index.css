@@ -1649,57 +1649,64 @@ a:focus-visible,
   animation: hyperion-loader-sweep 1.08s cubic-bezier(.45, 0, .55, 1) infinite;
 }
 .hyperion-top-loader__logo-wrap {
+  --cube-size: 56px;
+  --cube-depth: calc(var(--cube-size) / 2);
   position: absolute;
-  top: 13px;
+  top: 12px;
   left: 50%;
-  display: grid;
-  width: 86px;
-  height: 86px;
-  box-sizing: border-box;
-  place-items: center;
-  padding: 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
-  border-radius: 50%;
-  background: var(--bg-card);
-  box-shadow: 0 5px 20px rgba(4, 35, 83, .22), 0 0 0 5px color-mix(in srgb, var(--bg-card) 76%, transparent);
-  isolation: isolate;
+  display: block;
+  width: 120px;
+  height: 112px;
+  perspective: 600px;
   transform: translateX(-50%);
 }
+.hyperion-top-loader__cube {
+  position: absolute;
+  top: 8px;
+  left: calc(50% - var(--cube-depth));
+  width: var(--cube-size);
+  height: var(--cube-size);
+  transform-style: preserve-3d;
+  transform: rotateX(-30deg) rotateY(-45deg);
+  animation: hyperion-loader-cube-turn 2.4s linear infinite;
+}
+.hyperion-top-loader__face {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: #042353;
+  backface-visibility: hidden;
+}
+.hyperion-top-loader__face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 212, 93, .16);
+  background: rgba(0, 9, 28, var(--face-shade, 0));
+}
+.hyperion-top-loader__face--front { transform: translateZ(var(--cube-depth)); }
+.hyperion-top-loader__face--back { transform: rotateY(180deg) translateZ(var(--cube-depth)); }
+.hyperion-top-loader__face--right { transform: rotateY(90deg) translateZ(var(--cube-depth)); --face-shade: .16; }
+.hyperion-top-loader__face--left { transform: rotateY(-90deg) translateZ(var(--cube-depth)); --face-shade: .16; }
+.hyperion-top-loader__face--top { transform: rotateX(90deg) translateZ(var(--cube-depth)); }
+.hyperion-top-loader__face--bottom { transform: rotateX(-90deg) translateZ(var(--cube-depth)); --face-shade: .3; }
 .hyperion-top-loader__logo {
-  position: relative;
-  z-index: 4;
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
-  transform-origin: center;
-  animation: hyperion-loader-logo-breathe 1.35s ease-in-out infinite;
 }
-.hyperion-top-loader__pulse {
+.hyperion-top-loader__shadow {
   position: absolute;
-  z-index: 1;
-  top: 50%;
-  left: 50%;
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  opacity: 0;
-  pointer-events: none;
-  animation: hyperion-loader-ripple 1.8s cubic-bezier(.16,.72,.28,1) infinite;
-}
-.hyperion-top-loader__pulse--one {
-  border-color: color-mix(in srgb, var(--accent) 94%, #042353);
-  animation-delay: 0s;
-}
-.hyperion-top-loader__pulse--two {
-  border-color: #0f9c70;
-  animation-delay: .42s;
-}
-.hyperion-top-loader__pulse--three {
-  border-color: #0785c7;
-  animation-delay: .84s;
+  top: 70px;
+  left: calc(50% - var(--cube-depth));
+  width: var(--cube-size);
+  height: var(--cube-size);
+  background: var(--text);
+  opacity: .16;
+  filter: blur(1px);
+  transform: rotateX(65deg) rotateZ(-45deg);
+  animation: hyperion-loader-shadow-turn 2.4s linear infinite;
 }
 .hyperion-top-loader__sr-only {
   position: absolute;
@@ -1715,28 +1722,18 @@ a:focus-visible,
   55% { transform: translateX(220%); }
   100% { transform: translateX(340%); }
 }
-@keyframes hyperion-loader-ripple {
-  0% { transform: translate(-50%, -50%) scale(.36); opacity: .78; }
-  68% { opacity: .22; }
-  100% { transform: translate(-50%, -50%) scale(1.95); opacity: 0; }
+@keyframes hyperion-loader-cube-turn {
+  from { transform: rotateX(-30deg) rotateY(-45deg); }
+  to { transform: rotateX(-30deg) rotateY(315deg); }
 }
-@keyframes hyperion-loader-logo-breathe {
-  0%, 100% { transform: scale(.94); }
-  50% { transform: scale(1.04); }
+@keyframes hyperion-loader-shadow-turn {
+  from { transform: rotateX(65deg) rotateZ(-45deg); }
+  to { transform: rotateX(65deg) rotateZ(315deg); }
 }
 @media (max-width: 599px) {
-  .hyperion-top-loader {
-    height: 100px;
-  }
-  .hyperion-top-loader__logo-wrap {
-    top: 12px;
-    width: 72px;
-    height: 72px;
-    padding: 7px;
-  }
-  .hyperion-top-loader__pulse {
-    border-width: 1.5px;
-  }
+  .hyperion-top-loader { height: 108px; }
+  .hyperion-top-loader__logo-wrap { --cube-size: 46px; top: 10px; height: 98px; }
+  .hyperion-top-loader__shadow { top: 60px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hyperion-top-loader,
@@ -1748,14 +1745,11 @@ a:focus-visible,
     width: 100%;
     animation: none;
   }
-  .hyperion-top-loader__pulse {
-    display: none;
-  }
-  .hyperion-top-loader__logo {
+  .hyperion-top-loader__cube,
+  .hyperion-top-loader__shadow {
     animation: none;
   }
 }
-
 
 /* Compact, collapsible MARINA target-date and daily check-in panel on the dashboard. */
 .dashboard-exam-panel {
