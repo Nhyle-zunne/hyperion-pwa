@@ -192,7 +192,7 @@ try {
       const after = await controls[i].boundingBox()
       for (const axis of ['x', 'y', 'width', 'height']) {
         const originDelta = ['x', 'y'].includes(axis) ? beforeOrigin[axis] - afterOrigin[axis] : 0
-        assert(Math.abs(after[axis] - before[i][axis] + originDelta) < .5, `Filter control ${i} keeps its ${axis} at ${width}px`)
+        assert(Math.abs(after[axis] - before[i][axis] + originDelta) < .5, `Filter control ${i} keeps its ${axis} at ${width}px: ${JSON.stringify({ before: before[i], after, beforeOrigin, afterOrigin })}`)
       }
     }
     assert(Math.abs((await page.locator('.admin-user-grid').boundingBox()).y - afterOrigin.y - listTop) < .5, `Filter keeps list aligned at ${width}px`)
