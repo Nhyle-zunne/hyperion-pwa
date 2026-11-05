@@ -174,28 +174,30 @@ try {
   await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=admin`)
   await page.getByRole('heading', { name: 'Registered users (2)', exact: true }).waitFor()
   const activeOnly = page.getByRole('button', { name: /Active licenses only/ })
-  const retention = page.getByRole('combobox', { name: 'Filter by account retention status' })
-  const sort = page.getByRole('combobox', { name: 'Sort users' })
-  const refresh = page.getByRole('button', { name: 'Refresh users', exact: true })
+  const toolbarGeometry = () => page.evaluate(() => {
+    const origin = document.querySelector('.admin-users-toolbar').getBoundingClientRect()
+    const controls = [...document.querySelectorAll('.admin-license-filters select, .admin-license-filters > button')].map(control => {
+      const box = control.getBoundingClientRect()
+      return { x: box.x - origin.x, y: box.y - origin.y, width: box.width, height: box.height }
+    })
+    return { controls, listTop: document.querySelector('.admin-user-grid').getBoundingClientRect().y - origin.y }
+  })
   for (const width of [1536, 1140, 1024, 900, 760, 390]) {
     await page.setViewportSize({ width, height: 900 })
-    const controls = [retention, sort, activeOnly, refresh]
-    const before = await Promise.all(controls.map(control => control.boundingBox()))
-    // Clicking a narrow-screen control can scroll ancestor containers.
-    const beforeOrigin = await page.locator('.admin-users-toolbar').boundingBox()
-    const listTop = (await page.locator('.admin-user-grid').boundingBox()).y - beforeOrigin.y
+    // Wait for the new viewport's media queries to be painted before measuring.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    const before = await toolbarGeometry()
+    assert.equal(before.controls.length, 4, 'All four admin filter controls are measured')
     await activeOnly.click()
     assert.equal(await activeOnly.getAttribute('aria-pressed'), 'true')
     assert.equal(await page.locator('.admin-user-card').count(), 1, 'Filter shows only the licensed synthetic user')
-    const afterOrigin = await page.locator('.admin-users-toolbar').boundingBox()
-    for (let i = 0; i < controls.length; i++) {
-      const after = await controls[i].boundingBox()
+    const after = await toolbarGeometry()
+    for (let i = 0; i < before.controls.length; i++) {
       for (const axis of ['x', 'y', 'width', 'height']) {
-        const originDelta = ['x', 'y'].includes(axis) ? beforeOrigin[axis] - afterOrigin[axis] : 0
-        assert(Math.abs(after[axis] - before[i][axis] + originDelta) < .5, `Filter control ${i} keeps its ${axis} at ${width}px: ${JSON.stringify({ before: before[i], after, beforeOrigin, afterOrigin })}`)
+        assert(Math.abs(after.controls[i][axis] - before.controls[i][axis]) < .5, `Filter control ${i} keeps its ${axis} at ${width}px: ${JSON.stringify({ before, after })}`)
       }
     }
-    assert(Math.abs((await page.locator('.admin-user-grid').boundingBox()).y - afterOrigin.y - listTop) < .5, `Filter keeps list aligned at ${width}px`)
+    assert(Math.abs(after.listTop - before.listTop) < .5, `Filter keeps list aligned at ${width}px`)
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Admin filters fit at ${width}px`)
     if ([1536,390].includes(width)) await page.screenshot({ path: `account-admin-active-${width}.png`, fullPage: true })
     await activeOnly.click()
