@@ -111,6 +111,16 @@ try {
   await page.getByRole('button', { name: 'Shopping cart', exact: true }).click()
   await page.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('hyperion-account-basket-v1'))), basket, 'Floating cart navigation preserves saved selections across all account tabs')
+  for (const width of [390, 870, 1531]) {
+    await page.setViewportSize({ width, height: 900 })
+    for (const tab of ['Bond Store', 'My licenses', 'Orders & payment history']) {
+      await page.getByRole('button', { name: tab, exact: true }).click()
+      await sidebar.getByRole('heading', { name: 'Updated Member', exact: true }).waitFor()
+      const topGap = await page.locator('.account-page').evaluate(element =>
+        element.querySelector('.account-layout').getBoundingClientRect().top - element.getBoundingClientRect().top)
+      assert(topGap >= 0 && topGap <= 16, `${tab} has only a compact top inset at ${width}px, got ${topGap}px`)
+    }
+  }
   await page.setViewportSize({ width: 870, height: 900 })
   await page.evaluate(() => localStorage.setItem('fixture-hold-payment', 'yes'))
   await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=payment`)
