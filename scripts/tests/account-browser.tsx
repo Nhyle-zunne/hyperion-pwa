@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import TopLoadingIndicator from '../../src/components/TopLoadingIndicator'
 import { beginPageLoading } from '../../src/lib/pageLoading'
+import AdminPaymentsScreen from '../../src/screens/AdminPaymentsScreen'
+import AdminQuestionBankScreen from '../../src/screens/AdminQuestionBankScreen'
 import AdminLicensesScreen from '../../src/screens/AdminLicensesScreen'
 import AccountScreen from '../../src/screens/AccountScreen'
 import BasketScreen from '../../src/screens/BasketScreen'
@@ -18,6 +20,8 @@ createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries
   <TopLoadingIndicator />
   <div className="route-transition">
   <Routes>
+    <Route path="/admin/payments" element={<AdminPaymentsScreen />} />
+    <Route path="/admin/questions" element={<AdminQuestionBankScreen />} />
     <Route path="/admin/licenses" element={<AdminLicensesScreen />} />
     <Route path="/account" element={<AccountScreen key="account" />} />
     <Route path="/checkout" element={<AccountScreen key="checkout"><BasketScreen /></AccountScreen>} />

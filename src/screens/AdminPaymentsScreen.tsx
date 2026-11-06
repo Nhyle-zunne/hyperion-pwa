@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import AdminNavigation from '../components/AdminNavigation'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
 
@@ -12,7 +12,6 @@ function safeAdminError(error: unknown, fallback: string) {
 }
 const names: Record<string,string> = { oic_nw:'Deck OIC-NW', gmdss:'GMDSS GOC', engine_ew:'Engine OIC-EW', deck_mgt:'Deck Management', engine_mgt:'Engine Management', all_access:'All-Access Bundle' }
 export default function AdminPaymentsScreen() {
-  const navigate = useNavigate()
   const [orders, setOrders] = useState<Order[]>([])
   const [reconciliationAlerts, setReconciliationAlerts] = useState<ReconciliationAlert[]>([])
   const [alertLoadWarning, setAlertLoadWarning] = useState('')
@@ -105,7 +104,6 @@ export default function AdminPaymentsScreen() {
     <style>{`
       .admin-payments-page .page-title{text-align:left;margin:.2rem 0 .3rem}
       .admin-payments-page .subtitle{ text-align:left }
-      .admin-admin-nav{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
       .admin-payment-status-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.45rem;margin:.9rem 0 1rem}
       .admin-payment-status-tab{display:flex;align-items:center;justify-content:center;gap:.55rem;min-width:0;border:1px solid var(--border);border-radius:9px;padding:.7rem .6rem;background:var(--bg-card);color:var(--text-muted);font:inherit;font-size:.83rem;font-weight:850;cursor:pointer;transition:background 150ms ease,border-color 150ms ease,color 150ms ease}
       .admin-payment-status-tab.is-active{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
@@ -134,16 +132,9 @@ export default function AdminPaymentsScreen() {
       .admin-payment-detail-actions textarea{width:100%;box-sizing:border-box;min-height:76px;padding:.65rem;margin-top:.35rem;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-radius:6px;font:inherit}
       .admin-payment-expand{border:1px solid var(--border);border-radius:7px;background:var(--bg-card);color:var(--text);padding:.42rem .62rem;font:inherit;font-size:.79rem;font-weight:800;white-space:nowrap;cursor:pointer}
       .admin-payment-expand[aria-expanded="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
-      @media(max-width:760px){.admin-admin-nav{width:100%;justify-content:stretch}.admin-admin-nav button{flex:1 1 160px}.admin-payment-status-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-payment-details-content{grid-template-columns:1fr}.admin-payment-detail-actions{grid-column:auto}}
+      @media(max-width:760px){.admin-payment-status-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-payment-details-content{grid-template-columns:1fr}.admin-payment-detail-actions{grid-column:auto}}
     `}</style>
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap', marginBottom:'.8rem' }}>
-      <button type="button" onClick={() => navigate('/account')} style={{ color:'var(--text-muted)' }}>← Account</button>
-      <div className="admin-admin-nav">
-        <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/licenses')}>USER LICENSES</button>
-        <button type="button" className="btn btn-primary" onClick={() => navigate('/admin/payments')}>PAYMENT SUBMISSIONS</button>
-        <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/questions')}>QUESTION BANK</button>
-      </div>
-    </div>
+    <AdminNavigation />
     <h1 className="page-title">Payment Submissions</h1>
     <p className="subtitle">Review manual payment submissions here. License activation, extension, and revocation are managed separately in User Licenses.</p>
     {message && <div role="status" style={card}>{/supabase/i.test(message) ? 'Payment administration is temporarily unavailable. Please try again later.' : message}</div>}

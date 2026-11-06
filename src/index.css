@@ -2463,3 +2463,49 @@ a:focus-visible {
   .cookie-notice { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); padding: 16px; gap: 14px; flex-direction: column; align-items: stretch; }
   .cookie-notice-actions button { flex: 1; }
 }
+
+/* Shared administration navigation keeps the same geometry on every section. */
+.admin-page-navigation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 640px);
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+  margin-bottom: 1rem;
+}
+.admin-page-navigation__back {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 44px;
+  color: var(--text-muted);
+  font-size: .85rem;
+  text-decoration: none;
+}
+.admin-page-navigation__sections {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .5rem;
+  min-width: 0;
+}
+.admin-page-navigation__sections .admin-section-link {
+  min-width: 0;
+  min-height: 48px;
+  padding: .65rem .5rem;
+  border: 1px solid var(--border);
+  font-size: .8rem;
+  line-height: 1.3;
+  text-align: center;
+  text-decoration: none;
+  white-space: normal;
+}
+.admin-section-link[aria-current='page'] { border-color: var(--accent); }
+@media (max-width: 760px) {
+  .admin-page-navigation { grid-template-columns: minmax(0, 1fr); }
+  .admin-page-navigation__sections { gap: .4rem; }
+  .admin-page-navigation__sections .admin-section-link {
+    min-height: 64px;
+    padding: .55rem .35rem;
+    font-size: clamp(.7rem, 3.2vw, .8rem);
+  }
+}
