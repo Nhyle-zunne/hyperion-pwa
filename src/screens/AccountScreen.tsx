@@ -23,8 +23,6 @@ type Order = {
   customer_school: string | null
   created_at: string
   paid_at: string | null
-  reviewed_at: string | null
-  admin_note: string | null
   checkout_batch_id: string | null
 }
 type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' }
@@ -213,7 +211,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     if (isLayout) return
     const loadAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setInactiveLicenses([]); setOrders([]); setRenewalGraceUntil(null); return }
-    const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,reviewed_at,admin_note,checkout_batch_id'
+    const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,checkout_batch_id'
     const [entitlements, playEntitlements, orderResult] = await Promise.all([
       supabase.from('entitlements')
         .select('product_code,order_id,license_term,status,granted_at,expires_at,renewed_at')

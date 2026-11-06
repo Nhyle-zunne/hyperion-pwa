@@ -48,6 +48,8 @@ jobs:
         run: |
           bun run test:security
           node scripts/tests/payment-polling-test.mjs
+          node scripts/tests/order-history-requests-test.mjs
+          node scripts/tests/admin-license-payload-test.mjs
           node scripts/tests/production-auth-build-test.mjs
           node scripts/generate-worker-bank-codec.mjs --check
           node scripts/tests/github-release-source-test.mjs

@@ -45,13 +45,22 @@ type AuditRecord = {
   note: string | null
   created_at: string
 }
-const TRACKS: { code: ProductCode; label: string }[] = [
-  { code: 'oic_nw', label: 'Deck OIC-NW' },
-  { code: 'gmdss', label: 'GMDSS GOC' },
-  { code: 'engine_ew', label: 'Engine OIC-EW' },
-  { code: 'deck_mgt', label: 'Deck Management' },
-  { code: 'engine_mgt', label: 'Engine Management' }
+const TRACKS: { code: ProductCode; track: string; label: string }[] = [
+  { code: 'oic_nw', track: 'DECK_OIC_NW', label: 'Deck OIC-NW' },
+  { code: 'gmdss', track: 'GMDSS_GOC', label: 'GMDSS GOC' },
+  { code: 'engine_ew', track: 'ENGINE_OIC_EW', label: 'Engine OIC-EW' },
+  { code: 'deck_mgt', track: 'DECK_MGT', label: 'Deck Management' },
+  { code: 'engine_mgt', track: 'ENGINE_MGT', label: 'Engine Management' }
 ]
+export function hydrateManagedUser(user: Omit<ManagedUser, 'licenses'> & { licenses?: Partial<Record<ProductCode, LicenseRecord>> }): ManagedUser {
+  return {
+    ...user,
+    licenses: Object.fromEntries(TRACKS.map(track => [track.code, user.licenses?.[track.code] || {
+      product_code: track.code, track_id: track.track, exists: false, status: 'none',
+      license_term: null, granted_at: null, expires_at: null, order_id: null
+    }])) as Record<ProductCode, LicenseRecord>
+  }
+}
 const TERM_OPTIONS: { value: LicenseTerm; label: string }[] = [
   { value: 'week', label: '1 Week' },
   { value: 'month', label: '1 Month' },
@@ -123,8 +132,8 @@ export default function AdminLicensesScreen() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await call({ action: 'list' })
-      setUsers(Array.isArray(result.users) ? result.users : [])
+      const result = await call({ action: 'list', compact: true })
+      setUsers(Array.isArray(result.users) ? result.users.map(hydrateManagedUser) : [])
       setAudit(Array.isArray(result.audit) ? result.audit : [])
       setAuditWarning(result.auditWarning || '')
       setAuthorized(true)
