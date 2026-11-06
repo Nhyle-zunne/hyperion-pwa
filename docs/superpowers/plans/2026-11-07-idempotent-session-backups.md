@@ -9,3 +9,7 @@ Add a small BEFORE UPDATE trigger after the existing completed-audit preservatio
 3. Run existing recovery/revision tests, security and build checks; review before integration. Keep live data unchanged during migration, inspect the installed trigger and permissions, and report that existing storage is not reclaimed by this change.
 
 No historical cleanup, compression rewrite or new retention deletion is included.
+
+Verification: new SQL tests reproduced a redundant UPSERT before implementation and pass after it. Existing recovery/revision/retention tests, release-safety smoke checks, production build, real PostgreSQL concurrency tests, full migration replay and browser CI passed. Review found no blockers.
+
+Live migration `20261106175405` installed the no-op trigger. Catalog checks confirmed both BEFORE UPDATE triggers enabled in preservation-first order, invoker security, no anonymous/authenticated function or archive-table access, RLS enabled, and unchanged historical watermark/future-retention policy. Security advisory categories/counts were unchanged. The tracked filename matches the version assigned by Supabase. No production user data was changed by the migration or used as a write test.
