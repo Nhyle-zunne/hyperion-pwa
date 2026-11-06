@@ -502,14 +502,14 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
 
 
 
-  return <div className="screen account-page" style={{ width: 'min(calc(100% - 2rem), 1320px)', maxWidth: 1320, margin: '0 auto', paddingBottom: '2rem' }}>
+  return <div className="screen account-page" style={{ width: 'min(calc(100% - 2rem), 1320px)', maxWidth: 1320, margin: '0 auto', paddingTop: '.75rem', paddingBottom: '2rem' }}>
     <style>{`
-      .account-page .account-layout{display:grid;grid-template-columns:minmax(250px,300px) minmax(0,1fr);gap:1.25rem;align-items:start;margin-top:1.1rem}
+      .account-page .account-layout{display:grid;grid-template-columns:minmax(250px,300px) minmax(0,1fr);gap:1.25rem;align-items:start}
+      .account-page > [role="status"] + .account-layout{margin-top:1.1rem}
       .account-page .account-sidebar{display:grid;gap:1rem;align-content:start;position:sticky;top:80px;min-width:0;align-self:start}
       .account-page .account-main{min-width:0}
       .account-page .account-main > .screen{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
       @media(max-width:1180px){.account-page .basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.account-page .basket-page .basket-summary{position:static}}
-      .account-page .account-toolbar{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin:1rem 0}
       .account-page .account-section-tabs{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;min-width:0}
       .account-page .account-section-tabs button{min-height:44px;padding:.65rem 1rem;font-weight:850;border-radius:9px;white-space:nowrap}
       .account-page .account-section-tabs button[aria-selected="true"]{background:#147d43;border-color:#147d43;color:#fff}
@@ -613,10 +613,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
         Paid-track access ended at expiry. Your account is in its 30-day retention grace period until <strong>{new Date(renewalGraceUntil).toLocaleDateString()}</strong>, giving you time to purchase an eligible website license. This is an account-retention safeguard, not extra paid access. Account deletion is considered only after the separate inactivity and grace requirements are met.
         <button type="button" className="btn btn-primary" style={{ width: '100%', marginTop: '.65rem' }} onClick={() => setAccountTab('payments')}>View available licenses</button>
       </div>}
-
-      <div className="account-toolbar" style={{ justifyContent: 'flex-end' }}>
-
-      </div>
 
       <div className="account-layout">
         <aside className="account-sidebar">
