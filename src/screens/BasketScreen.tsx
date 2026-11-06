@@ -15,11 +15,8 @@ type Order = {
   license_term: LicenseTerm
   amount_php: number
   status: string
-  payment_reference: string | null
   payment_method: string | null
-  customer_name: string | null
   created_at: string
-  paid_at: string | null
   checkout_batch_id: string | null
 }
 
@@ -209,7 +206,7 @@ export default function BasketScreen() {
     }
     const [orderResult, entitlementResult] = await Promise.all([
       supabase.from('orders')
-        .select('id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,created_at,paid_at,checkout_batch_id')
+        .select('id,product_code,license_term,amount_php,status,payment_method,created_at,checkout_batch_id')
         .eq('user_id', session.user.id)
         .order('created_at', { ascending: false })
         .limit(100),

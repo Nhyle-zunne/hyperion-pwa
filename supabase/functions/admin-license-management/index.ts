@@ -21,7 +21,17 @@ function cors(req: Request) {
   return { ...corsHeaders, 'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : 'https://hyperionmaritime.org' }
 }
 function json(req: Request, body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...cors(req), 'Content-Type': 'application/json', 'Cache-Control': 'no-store, private' } })
+  const serialized = JSON.stringify(body)
+  const headers = new Headers({ ...cors(req), 'Content-Type': 'application/json', 'Cache-Control': 'no-store, private', 'Vary': 'Origin, Accept-Encoding' })
+  const acceptsGzip = (req.headers.get('Accept-Encoding') || '').split(',').some(encoding => {
+    const match = /^\s*gzip\s*(?:;\s*q=(0(?:\.\d{0,3})?|1(?:\.0{0,3})?))?\s*$/i.exec(encoding)
+    return match !== null && (match[1] === undefined || Number(match[1]) > 0)
+  })
+  if (acceptsGzip && new TextEncoder().encode(serialized).byteLength >= 4096) {
+    headers.set('Content-Encoding', 'gzip')
+    return new Response(new Blob([serialized]).stream().pipeThrough(new CompressionStream('gzip')), { status, headers })
+  }
+  return new Response(serialized, { status, headers })
 }
 function expiryForTerm(base: Date, term: LicenseTerm) {
   const result = new Date(base)
@@ -86,7 +96,7 @@ Deno.serve(async req => {
   const allowed = (Deno.env.get('ADMIN_EMAILS') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean)
   if (!allowed.includes(user.email.toLowerCase())) return json(req, { error: 'Admin access denied.' }, 403)
 
-  let body: { action?: string; userId?: string; productCode?: string; term?: string; note?: string }
+  let body: { action?: string; userId?: string; productCode?: string; term?: string; note?: string; compact?: boolean }
   try { body = await req.json() } catch { return json(req, { error: 'Invalid request body.' }, 400) }
   const admin = createClient(url, service, { auth: { persistSession: false } })
 
@@ -197,7 +207,8 @@ Deno.serve(async req => {
     const now = Date.now()
     const shapedUsers = users.map(account => {
       const recordMap = byUser.get(account.id) || new Map()
-      const licenses = Object.fromEntries(PRODUCTS.map(product => {
+      // New clients reconstruct unowned defaults locally; existing records keep every license field.
+      const licenses = Object.fromEntries(PRODUCTS.filter(product => body.compact !== true || recordMap.has(product.code)).map(product => {
         const row = recordMap.get(product.code)
         if (!row) return [product.code, {
           product_code: product.code, track_id: product.track, exists: false, status: 'none',
@@ -274,6 +285,7 @@ Deno.serve(async req => {
       ...row, user_email: emailById.get(row.user_id) || '(account unavailable)'
     }))
     return json(req, {
+      ...(body.compact === true ? { licenseFormat: 'owned-only' } : {}),
       users: shapedUsers,
       audit,
       auditWarning: auditResult.error ? 'License activity could not be loaded.' : null,

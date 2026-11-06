@@ -6,25 +6,9 @@ import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
 import { useLicenseStore } from '../stores/licenseStore'
+import { fetchOrderPage, fetchPendingOrders, ORDER_PAGE_SIZE } from '../lib/orderHistoryRequests'
+import type { HistoryOrder as Order, PendingOrder } from '../lib/orderHistoryRequests'
 
-type Order = {
-  id: string
-  product_code: string
-  license_term: 'week' | 'month' | 'year'
-  amount_php: number
-  status: string
-  payment_reference: string | null
-  payment_method: string | null
-  customer_name: string | null
-  customer_company: string | null
-  customer_school: string | null
-  customer_note: string | null
-  admin_note: string | null
-  created_at: string
-  paid_at: string | null
-  reviewed_at: string | null
-  checkout_batch_id: string | null
-}
 
 function orderStatusLabel(order: Pick<Order, 'status' | 'payment_method'>): string {
   if (order.status === 'failed' && order.payment_method === 'PayMongo Checkout') return 'Checkout not completed'
@@ -78,68 +62,148 @@ export default function OrdersPaymentHistoryScreen() {
   const [authLoaded, setAuthLoaded] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([])
+  const [loadedOwner, setLoadedOwner] = useState<string | null>(null)
+  const ordersRef = useRef<Order[]>([])
+  const requestVersion = useRef(0)
+  const mounted = useRef(true)
+  const statusRefresh = useRef<object | null>(null)
+  const currentOwner = useRef<string | null>(null)
+  if (currentOwner.current !== (session?.user.id ?? null)) {
+    currentOwner.current = session?.user.id ?? null
+    requestVersion.current++
+    ordersRef.current = []
+    statusRefresh.current = null
+  }
+  const visibleOrders = loadedOwner === session?.user.id ? orders : []
   const [message, setMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState(false)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
 
   useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false; requestVersion.current++ }
+  }, [])
+
+  useEffect(() => {
     if (!supabase) { setAuthLoaded(true); return }
+    let active = true
+    let authChanged = false
     void supabase.auth.getSession().then(({ data }) => {
+      if (!active || authChanged) return
       setSession(data.session)
       setAuthLoaded(true)
     })
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!active) return
+      authChanged = true
       setSession(nextSession)
       setAuthLoaded(true)
     })
-    return () => listener.subscription.unsubscribe()
+    return () => { active = false; listener.subscription.unsubscribe() }
   }, [])
 
-  const loadOrders = async (): Promise<Order[]> => {
-    if (!supabase || !session?.user.id) {
-      setOrders([])
-      return []
-    }
-    const { data, error } = await supabase.from('orders')
-      .select('id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,customer_note,admin_note,created_at,paid_at,reviewed_at,checkout_batch_id')
-      .eq('user_id', session.user.id)
-      .order('created_at', { ascending: false })
-      .limit(100)
-    if (error) throw new Error('Unable to load your orders and payment history. Please try again.')
-    const rows = (data ?? []) as Order[]
+  const loadOrders = async (preserveLoaded = false): Promise<PendingOrder[] | null> => {
+    const client = supabase
+    const owner = session?.user.id
+    if (!client || !owner || !mounted.current || currentOwner.current !== owner) return null
+    const version = ++requestVersion.current
+    const isCurrent = () => mounted.current && currentOwner.current === owner && requestVersion.current === version
+    const target = preserveLoaded ? Math.max(ORDER_PAGE_SIZE, ordersRef.current.length) : ORDER_PAGE_SIZE
+    let rows: Order[] = []
+    let more = false
+    do {
+      const page = await fetchOrderPage(client, owner, rows.length ? rows[rows.length - 1] : undefined)
+      if (!isCurrent()) return null
+      rows = [...rows, ...page.orders]
+      more = page.hasMore
+    } while (more && rows.length < target)
+    // Payment discovery must not depend on which history page happens to be visible.
+    const pending = more ? await fetchPendingOrders(client, owner)
+      : rows.filter(row => row.status === 'pending' && row.payment_method === 'PayMongo Checkout')
+    if (!isCurrent()) return null
+    ordersRef.current = rows
     setOrders(rows)
-    return rows
+    setPendingOrders(pending)
+    setHasMore(more)
+    setLoadedOwner(owner)
+    return pending
+  }
+
+  const loadMore = async () => {
+    const owner = session?.user.id
+    if (!supabase || !owner || loading || loadingMore || !hasMore || loadedOwner !== owner) return
+    const cursor = ordersRef.current[ordersRef.current.length - 1]
+    if (!cursor) return
+    const version = ++requestVersion.current
+    setLoadingMore(true)
+    setErrorMessage(false)
+    setMessage('')
+    try {
+      const page = await fetchOrderPage(supabase, owner, cursor)
+      if (!mounted.current || currentOwner.current !== owner || requestVersion.current !== version) return
+      const existing = new Set(ordersRef.current.map(order => order.id))
+      const combined = [...ordersRef.current, ...page.orders.filter(order => !existing.has(order.id))]
+      ordersRef.current = combined
+      setOrders(combined)
+      setHasMore(page.hasMore)
+    } catch (error) {
+      if (mounted.current && currentOwner.current === owner && requestVersion.current === version) {
+        const message = await readableError(error, 'Older orders could not be loaded. Please try again.')
+        if (!mounted.current || currentOwner.current !== owner || requestVersion.current !== version) return
+        setErrorMessage(true)
+        setMessage(message)
+      }
+    } finally {
+      if (mounted.current && currentOwner.current === owner) setLoadingMore(false)
+    }
   }
 
   useEffect(() => {
-    if (!session) { setOrders([]); return }
+    setOrders([])
+    setPendingOrders([])
+    setHasMore(false)
+    setLoadingMore(false)
+    setLoadedOwner(null)
+    setMessage('')
+    setErrorMessage(false)
+    if (!session) { setLoading(false); return }
     let active = true
     setLoading(true)
     void withPageLoading('Loading orders and payment history', () => loadOrders()).catch(async err => {
       if (!active) return
+      const message = await readableError(err, 'Unable to load your orders. Please refresh the page.')
+      if (!active) return
       setErrorMessage(true)
-      setMessage(await readableError(err, 'Unable to load your orders. Please refresh the page.'))
+      setMessage(message)
     }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [session?.user.id])
 
   const refreshStatusInternal = async () => {
-    if (!supabase || !session) return
+    if (!supabase || !session || statusRefresh.current) return
+    const refresh = {}
+    statusRefresh.current = refresh
     setLoading(true)
     setErrorMessage(false)
     setMessage('Refreshing orders and checking pending PayMongo payments…')
     try {
-      const currentOrders = await loadOrders()
-      const pending = currentOrders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
+      const pending = await loadOrders()
+      if (!pending) return
       const checkoutIds = [...new Set(pending.map(order => order.checkout_batch_id || order.id))]
       const activated: string[] = []
       let stillPending = 0
       let lastError = ''
 
       for (const orderId of checkoutIds) {
+        if (!mounted.current || currentOwner.current !== session.user.id) return
         const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
+        if (!mounted.current || currentOwner.current !== session.user.id) return
         if (error) {
           lastError = await readableError(error, 'PayMongo verification is temporarily unavailable.')
+          if (!mounted.current || currentOwner.current !== session.user.id) return
           continue
         }
         if (data?.status === 'paid') {
@@ -153,8 +217,9 @@ export default function OrdersPaymentHistoryScreen() {
           lastError = data.error
         }
       }
-      await loadOrders()
+      if (!await loadOrders()) return
       await refreshCloudEntitlements()
+      if (!mounted.current || currentOwner.current !== session.user.id) return
       if (activated.length) {
         setErrorMessage(false)
         setMessage(`Payment confirmed. Activated: ${[...new Set(activated)].join(', ')}.`)
@@ -167,16 +232,23 @@ export default function OrdersPaymentHistoryScreen() {
         setMessage('Orders and payment history are up to date.')
       }
     } catch (err) {
-      setErrorMessage(true)
-      setMessage(await readableError(err, 'Could not refresh your orders right now. Please try again.'))
+      if (mounted.current && currentOwner.current === session.user.id) {
+        const message = await readableError(err, 'Could not refresh your orders right now. Please try again.')
+        if (!mounted.current || currentOwner.current !== session.user.id) return
+        setErrorMessage(true)
+        setMessage(message)
+      }
     } finally {
-      setLoading(false)
+      if (statusRefresh.current === refresh) {
+        statusRefresh.current = null
+        if (mounted.current && currentOwner.current === session.user.id) setLoading(false)
+      }
     }
   }
 
   const refreshStatus = async () => withPageLoading('Verifying payment status', () => refreshStatusInternal())
 
-  const pendingCheckoutIds = pendingPaymentCheckoutIds(orders)
+  const pendingCheckoutIds = loadedOwner === session?.user.id ? pendingPaymentCheckoutIds(pendingOrders) : ''
   const paymentPolling = useRef<{ userId: string; state: ReturnType<typeof createPaymentPollingState> } | null>(null)
 
   // Automatically reconcile open PayMongo checkouts while the customer views their history.
@@ -190,11 +262,11 @@ export default function OrdersPaymentHistoryScreen() {
     let active = true
     let checking = false
     const checkPending = async (isCurrent: () => boolean) => {
-      if (checking) return
+      if (checking || statusRefresh.current) return
       checking = true
       try {
         const activated: string[] = []
-        for (const orderId of pendingPaymentCheckoutIds(orders).split(',').filter(Boolean)) {
+        for (const orderId of pendingPaymentCheckoutIds(pendingOrders).split(',').filter(Boolean)) {
           if (!active) return
           if (!isCurrent()) break
           const { data, error } = await client.functions.invoke('verify-checkout', { body: { orderId } })
@@ -209,7 +281,7 @@ export default function OrdersPaymentHistoryScreen() {
           const labels = [...new Set(activated)].map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
           setErrorMessage(false)
           setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
-          await loadOrders()
+          if (!await loadOrders(true) || !mounted.current || currentOwner.current !== session.user.id) return
           await refreshCloudEntitlements()
         }
       } catch {
@@ -248,7 +320,7 @@ export default function OrdersPaymentHistoryScreen() {
         <p style={{ color: 'var(--text-muted)', margin: 0 }}>Review your manual submissions, PayMongo purchases, and payment status.</p>
       </div>
       <div className="orders-heading-actions" style={{ display: 'flex', gap: '.55rem', flexWrap: 'wrap' }}>
-        <button type="button" className="btn btn-outline" disabled={loading || !session} onClick={() => void refreshStatus()}>{loading ? 'Refreshing…' : 'Refresh status'}</button>
+        <button type="button" className="btn btn-outline" disabled={loading || loadingMore || !session} onClick={() => void refreshStatus()}>{loading ? 'Refreshing…' : 'Refresh status'}</button>
         <button type="button" className="btn btn-primary" onClick={() => navigate('/account?tab=payments')}>BOND STORE</button>
       </div>
     </div>
@@ -263,11 +335,11 @@ export default function OrdersPaymentHistoryScreen() {
         {message && <div role="status" style={{ ...card, borderColor: errorMessage ? 'var(--danger, #dc2626)' : 'var(--border)', marginBottom: '1rem', lineHeight: 1.5 }}>{message}</div>}
         <section style={card}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.75rem', flexWrap: 'wrap', paddingBottom: '.8rem', borderBottom: '1px solid var(--border)' }}>
-            <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>All orders</h2><p style={{ color: 'var(--text-muted)', fontSize: '.82rem', margin: '.25rem 0 0' }}>{orders.length} record{orders.length === 1 ? '' : 's'} · newest first</p></div>
+            <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>All orders</h2><p style={{ color: 'var(--text-muted)', fontSize: '.82rem', margin: '.25rem 0 0' }}>{visibleOrders.length} {hasMore ? 'shown' : `record${visibleOrders.length === 1 ? '' : 's'}`} · newest first</p></div>
             <span style={{ fontSize: '.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>PRIVATE ACCOUNT HISTORY</span>
           </div>
-          {loading && !orders.length ? <p style={{ color: 'var(--text-muted)', padding: '1rem 0' }}>Loading your orders…</p>
-            : orders.length ? orders.map(order => {
+          {loading && !visibleOrders.length ? <p style={{ color: 'var(--text-muted)', padding: '1rem 0' }}>Loading your orders…</p>
+            : visibleOrders.length ? visibleOrders.map(order => {
               const product = PAID_PRODUCTS.find(item => item.code === order.product_code)
               const status = orderStatusLabel(order)
               const statusHelp = orderStatusHelp(order)
@@ -296,6 +368,9 @@ export default function OrdersPaymentHistoryScreen() {
               <p style={{ color: 'var(--text-muted)', margin: '.35rem 0 1rem' }}>Purchases and manual payment submissions will appear here.</p>
               <button type="button" className="btn btn-primary" onClick={() => navigate('/account?tab=payments')}>BROWSE BOND STORE</button>
             </div>}
+          {hasMore && visibleOrders.length > 0 && <div style={{ paddingTop: '1rem', textAlign: 'center' }}>
+            <button type="button" className="btn btn-outline" disabled={loading || loadingMore} onClick={() => void loadMore()}>{loadingMore ? 'Loading older orders…' : 'Load older orders'}</button>
+          </div>}
         </section>
       </>}
   </div>
