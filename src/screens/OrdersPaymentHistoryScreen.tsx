@@ -235,7 +235,6 @@ export default function OrdersPaymentHistoryScreen() {
       .orders-history-page .orders-meta{color:var(--text-muted);font-size:.82rem;line-height:1.5;overflow-wrap:anywhere}
       @media(max-width:520px){.orders-history-page .orders-heading-actions{width:100%}.orders-history-page .orders-heading-actions button{width:100%}}
     `}</style>
-    <button type="button" onClick={() => navigate('/account?tab=payments')} style={{ color: 'var(--text-muted)', marginBottom: '.65rem' }}>← Back to Bond Store</button>
     <AccountSectionTabs active="orders" />
     <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
       <div>
