@@ -202,6 +202,36 @@ try {
     await activeOnly.click()
     assert.equal(await page.locator('.admin-user-card').count(), 2, 'Clearing the filter restores both synthetic users')
   }
+  await page.route('**/api/question-bank/admin', route => {
+    assert.equal(route.request().postDataJSON().action, 'inventory', 'Navigation only reads the synthetic inventory')
+    return route.fulfill({ json: { configured: true, assets: [] } })
+  })
+  for (const width of [320, 390, 570, 760, 1024, 1536]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=admin`)
+    const navigation = page.getByRole('navigation', { name: 'Administration', exact: true })
+    let previousHeight = null
+    for (const [label, heading] of [['USER LICENSES', 'User License Management'], ['PAYMENT SUBMISSIONS', 'Payment Submissions'], ['QUESTION BANK', 'Question Bank Update'], ['USER LICENSES', 'User License Management']]) {
+      await navigation.getByRole('link', { name: label, exact: true }).click()
+      await page.getByRole('heading', { name: heading, exact: true }).waitFor()
+      assert.equal(await navigation.getByRole('link', { name: label, exact: true }).getAttribute('aria-current'), 'page')
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
+      const boxes = await navigation.getByRole('link').evaluateAll(links => links.map(link => {
+        const box = link.getBoundingClientRect()
+        return { y: box.y, width: box.width, height: box.height, fits: link.scrollWidth <= link.clientWidth + 1 && link.scrollHeight <= link.clientHeight + 1 }
+      }))
+      assert.equal(boxes.length, 3)
+      for (const box of boxes) {
+        assert(Math.abs(box.y - boxes[0].y) < .5, `All admin sections share one row at ${width}px`)
+        assert(Math.abs(box.width - boxes[0].width) < .5 && Math.abs(box.height - boxes[0].height) < .5, 'Admin section buttons have equal sizes')
+        assert(box.height >= 44 && box.fits, 'Admin section labels fit inside accessible touch targets')
+      }
+      if (previousHeight !== null) assert(Math.abs(previousHeight - boxes[0].height) < .5, 'Changing admin sections preserves navigation height')
+      previousHeight = boxes[0].height
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Admin navigation fits at ${width}px`)
+      if (width === 390) await navigation.screenshot({ path: `admin-nav-${label.split(' ')[0].toLowerCase()}-390.png` })
+    }
+  }
   assert.deepEqual(errors, [])
   console.log('PASS: checkout/orders shared profile, profile edit/cancel, responsive placement, cart preservation, and isolated commerce effects')
 } finally {

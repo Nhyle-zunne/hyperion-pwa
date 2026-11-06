@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import AdminNavigation from '../components/AdminNavigation'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
 
@@ -98,7 +98,6 @@ function safeMessage(error: unknown) {
     : value
 }
 export default function AdminLicensesScreen() {
-  const navigate = useNavigate()
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'users' | 'activity'>('users')
@@ -235,14 +234,7 @@ export default function AdminLicensesScreen() {
       @media(max-width:760px){.admin-license-grid{grid-template-columns:1fr}.admin-license-modal{max-height:92dvh}.admin-license-modal-body{padding:.7rem}}
       @media(max-width:520px){.admin-user-grid{grid-template-columns:1fr}}
     `}</style>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: '.8rem' }}>
-      <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)' }}>← Account</button>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className="btn btn-primary" onClick={() => navigate('/admin/licenses')}>USER LICENSES</button>
-        <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/payments')}>PAYMENT SUBMISSIONS</button>
-        <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/questions')}>QUESTION BANK</button>
-      </div>
-    </div>
+    <AdminNavigation />
     <h1 className="page-title" style={{ textAlign: 'left' }}>User License Management</h1>
     <p className="subtitle">Manage every registered Hyperion account and its track access. Manual changes apply immediately and are recorded separately from payment submissions.</p>
     {message && <div role="status" aria-live="polite" style={{ ...card, borderColor: /Warning:/i.test(message) ? 'var(--warning, #c2410c)' : 'var(--border)' }}>{message}</div>}
