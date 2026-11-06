@@ -1,3 +1,4 @@
+import { createPaymentPollingState, pendingPaymentCheckoutIds, startPaymentPolling } from '../lib/paymentPolling'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
@@ -247,30 +248,9 @@ export default function BasketScreen() {
   // success URL. This discovers orders created after the checkout screen first mounted.
   useEffect(() => {
     if (!session?.user.id) return
-    let active = true
-    let refreshing = false
-    const syncOrders = async () => {
-      if (!active || refreshing || document.visibilityState !== 'visible') return
-      refreshing = true
-      try {
-        await refreshData()
-      } catch {
-        // A temporary request failure must not hide checkout status; retry next time.
-      } finally {
-        refreshing = false
-      }
-    }
-    const onFocus = () => { void syncOrders() }
-    const onVisibility = () => { if (document.visibilityState === 'visible') void syncOrders() }
-    const interval = window.setInterval(() => { void syncOrders() }, 5000)
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      active = false
-      window.clearInterval(interval)
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVisibility)
-    }
+    return startPaymentPolling(async isCurrent => {
+      if (isCurrent()) await refreshData()
+    }, { refreshOnResumeAfterTimeout: true, immediate: false })
   }, [session?.user.id])
 
   const clearBasketCodes = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
@@ -311,20 +291,27 @@ export default function BasketScreen() {
       total: groupOrders.reduce((sum, order) => sum + Number(order.amount_php), 0),
     }))
   }, [pendingPayMongoOrders])
-  const pendingCheckoutIds = pendingCheckoutGroups.map(group => group.id).sort().join(',')
+  const pendingCheckoutIds = pendingPaymentCheckoutIds(orders)
+  const paymentPolling = useRef<{ userId: string; state: ReturnType<typeof createPaymentPollingState> } | null>(null)
 
   // If PayMongo's webhook is delayed, keep reconciling while the customer stays in Checkout.
   useEffect(() => {
     const client = supabase
-    if (!client || !session?.user.id || !pendingCheckoutIds) return
+    if (!session?.user.id) { paymentPolling.current = null; return }
+    if (!client || !pendingCheckoutIds) return
+    if (paymentPolling.current?.userId !== session.user.id) {
+      paymentPolling.current = { userId: session.user.id, state: createPaymentPollingState() }
+    }
     let active = true
     let checking = false
-    const checkPending = async () => {
+    const checkPending = async (isCurrent: () => boolean) => {
       if (checking) return
       checking = true
       try {
         const activated: string[] = []
-        for (const orderId of pendingCheckoutIds.split(',').filter(Boolean)) {
+        for (const orderId of pendingPaymentCheckoutIds(orders).split(',').filter(Boolean)) {
+          if (!active) return
+          if (!isCurrent()) break
           const { data, error } = await client.functions.invoke('verify-checkout', { body: { orderId } })
           if (!active) return
           if (error || data?.status !== 'paid') continue
@@ -343,14 +330,13 @@ export default function BasketScreen() {
           await refreshData()
         }
       } catch {
-        // Retry on the next interval after transient failures.
+        // Retry transient failures with bounded backoff.
       } finally {
         checking = false
       }
     }
-    void checkPending()
-    const timer = window.setInterval(() => { void checkPending() }, 8000)
-    return () => { active = false; window.clearInterval(timer) }
+    const stop = startPaymentPolling(checkPending, { state: paymentPolling.current.state })
+    return () => { active = false; stop() }
   }, [session?.user.id, pendingCheckoutIds])
 
   const confirmPaidCheckout = async (orderId: string, attemptCount = 1) => {

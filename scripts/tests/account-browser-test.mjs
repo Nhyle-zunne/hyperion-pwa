@@ -212,6 +212,47 @@ try {
     await activeOnly.click()
     assert.equal(await page.locator('.admin-user-card').count(), 2, 'Clearing the filter restores both synthetic users')
   }
+  // Exercise real screen integration using synthetic pending checkouts and a browser clock.
+  const pollingPage = await browser.newPage()
+  await pollingPage.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  await pollingPage.addInitScript(() => localStorage.setItem('fixture-pending-orders', 'yes'))
+  await pollingPage.clock.install()
+  const verificationIds = () => pollingPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'verify-checkout:').map(call => call.data.orderId))
+  for (const section of ['orders', 'basket', 'account']) {
+    await pollingPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=${section}`)
+    await pollingPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'verify-checkout:'))
+    assert.deepEqual(await verificationIds(), ['recent-checkout'], `${section}: old orders are excluded from automatic checks`)
+    await pollingPage.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await pollingPage.clock.runFor(60_000)
+    assert.equal((await verificationIds()).length, 1, `${section}: hidden page sends no payment checks`)
+    await pollingPage.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+      document.dispatchEvent(new Event('visibilitychange'))
+      window.dispatchEvent(new Event('focus'))
+    })
+    await pollingPage.waitForFunction(() => window.accountFixtureCalls.filter(call => call.action === 'verify-checkout:').length === 2)
+  }
+  await pollingPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=orders`)
+  await pollingPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'verify-checkout:'))
+  await pollingPage.getByRole('button', { name: 'Refresh status', exact: true }).click()
+  await pollingPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'verify-checkout:' && call.data.orderId === 'old-checkout'))
+  assert((await verificationIds()).includes('old-checkout'), 'Manual refresh still verifies older pending orders')
+  await pollingPage.evaluate(() => localStorage.setItem('fixture-multiple-pending', 'yes'))
+  await pollingPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=orders`)
+  await pollingPage.waitForFunction(() => window.accountFixtureCalls.filter(call => call.action === 'verify-checkout:').length === 2)
+  await pollingPage.clock.runFor(540_000)
+  await pollingPage.evaluate(() => localStorage.setItem('fixture-payment-paid', 'yes'))
+  await pollingPage.clock.runFor(60_000)
+
+  await pollingPage.getByText('Payment confirmed automatically. Activated: Deck OIC-NW.', { exact: true }).waitFor()
+  assert.equal(await pollingPage.evaluate(() => localStorage.getItem('fixture-recent-confirmed')), 'yes', 'Server confirmation still refreshes the displayed order')
+  const afterConfirmation = (await verificationIds()).length
+  await pollingPage.clock.runFor(120_000)
+  assert.equal((await verificationIds()).length, afterConfirmation, 'Clearing one batch near the deadline does not renew polling for the remaining batch')
+  await pollingPage.close()
   await page.route('**/api/question-bank/admin', route => {
     assert.equal(route.request().postDataJSON().action, 'inventory', 'Navigation only reads the synthetic inventory')
     return route.fulfill({ json: { configured: true, assets: [] } })
