@@ -1,6 +1,6 @@
 // Synthetic isolated PostgreSQL only. Never accepts a remote/production database.
 import {spawn} from 'node:child_process'
-import {readFile,writeFile} from 'node:fs/promises'
+import {readFile,readdir,writeFile} from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import {guardedProgressRevisionSql,migrationBodyForGuard} from '../lib/progressRevisionDeployment.mjs'
 const container=process.env.HYPERION_REVISION_TEST_CONTAINER
@@ -85,5 +85,27 @@ await query(db,guardedProgressRevisionSql(rollback));assert.equal(await query(db
 await query(db,guardedProgressRevisionSql(migration+exactNoops+migrationBodyForGuard(retention)));assert.equal(await query(db,stateSql),fingerprints,'Reapplying definitions must not modify records')
 results.concurrency='two real PostgreSQL sessions: one winner, stale writer rejected, retry preserves both devices'
 results.rollback='definition-only rollback/reapply retain every current/revision fingerprint'
+// A second UPSERT waits for the first writer, then skips the now-identical row.
+const archiveFile=(await readdir('supabase/migrations')).find(name=>name.endsWith('_skip_unchanged_session_archives.sql'))
+assert.ok(archiveFile)
+await query(db,await readFile('supabase/migrations/'+archiveFile,'utf8'))
+const draft={sessionId:'archive-race',finished:false,answers:{q1:{selectedIndex:1}}}
+const draftSql=lit(JSON.stringify(draft))+'::jsonb'
+const archiveUpsert=`insert into public.user_learning_session_archives(user_id,session_id,data) values('${a}','archive-race',${draftSql}) on conflict(user_id,session_id) do update set data=excluded.data,updated_at=now()`
+let archiveLockedResolve
+const archiveLocked=new Promise(resolve=>{archiveLockedResolve=resolve})
+const archiveFirst=query(db,`begin;${archiveUpsert};select 'ARCHIVE_LOCKED';select pg_sleep(0.5);commit;`,out=>{if(out.includes('ARCHIVE_LOCKED'))archiveLockedResolve()})
+await archiveLocked
+const archiveSecond=query(db,`with writes as(${archiveUpsert} returning session_id)select count(*) from writes;`)
+await archiveFirst
+assert.equal(await archiveSecond,'0','Concurrent duplicate retry must skip its UPDATE after the first writer commits')
+const archiveBefore=await query(db,`select row_to_json(a)::text||xmin::text from public.user_learning_session_archives a where user_id='${a}' and session_id='archive-race'`)
+assert.equal(await query(db,`with writes as(${archiveUpsert} returning session_id)select count(*) from writes;`),'0')
+assert.equal(await query(db,`select row_to_json(a)::text||xmin::text from public.user_learning_session_archives a where user_id='${a}' and session_id='archive-race'`),archiveBefore,'A duplicate does not advance the archive timestamp or tuple version')
+const completeSql=lit(JSON.stringify({...draft,finished:true}))+'::jsonb'
+await query(db,`update public.user_learning_session_archives set data=${completeSql} where user_id='${a}' and session_id='archive-race'`)
+assert.equal(await query(db,`with writes as(${archiveUpsert} returning session_id)select count(*) from writes;`),'0','A delayed draft cannot rewrite a completed audit')
+assert.equal(await query(db,`select data->>'finished' from public.user_learning_session_archives where user_id='${a}' and session_id='archive-race'`),'true')
+results.archiveNoops='concurrent duplicate UPSERT skips its update; timestamp/tuple stable; first completion preserved'
 console.log(JSON.stringify(results,null,2))
 if(process.env.HYPERION_REVISION_BENCH_OUTPUT)await writeFile(process.env.HYPERION_REVISION_BENCH_OUTPUT,JSON.stringify(results,null,2))

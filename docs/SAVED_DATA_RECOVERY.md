@@ -37,3 +37,11 @@ No migration can recreate records that were already overwritten and have no rema
 - Deno: `deno test --no-lock --allow-env --node-modules-dir=none supabase/tests/learning_progress_preservation_test.ts`.
 - PostgreSQL/PGlite: `node scripts/tests/progress-recovery-sql-test.mjs` (PGlite installed as a test prerequisite, optionally selected by `HYPERION_TEST_TOOLS`).
 - Browser fixture: `npm run test:saved-data:browser` after `npx playwright install chromium` (or set `CHROMIUM_PATH` to an installed Chromium). This uses a synthetic account service and bank only in the isolated test build; real stores, account synchronization, routing, configuration, archives and audits execute unchanged. No real account credentials or bank text are needed.
+
+## Idempotent session archive writes
+
+The `skip_unchanged_session_archives` migration adds a service-role-only trigger function after the existing completed-audit protection trigger. An identical effective JSONB snapshot for the same account/session skips the physical UPDATE, retaining its previous `updated_at`. Real draft edits, new archives, and the first completion still save. Stale writes to an already completed audit remain acknowledged without replacing the authoritative answers or repeatedly updating its timestamp. Single and batch archive endpoints request no returned rows from their UPSERTs, so a skipped existing row remains a successful idempotent backup.
+
+This is a schema-only change. It neither rewrites nor deletes current progress, archives, or historical revisions, and does not change the future-revision retention policy. It reduces future duplicate writes; it does not reclaim the disk occupied by protected historical backups. The existing `preserve_completed_session_audit` function and audited baseline stay unchanged.
+
+Validate with `node scripts/tests/session-archive-noop-test.mjs` (also included in `npm run test:saved-data:sql`). The data-preserving rollback is `supabase/rollbacks/skip_unchanged_session_archives.sql`; it removes only the new trigger/function and leaves completed-audit protection in place.
