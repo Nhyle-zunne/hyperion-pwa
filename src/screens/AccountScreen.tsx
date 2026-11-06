@@ -1,3 +1,4 @@
+import { createPaymentPollingState, pendingPaymentCheckoutIds, startPaymentPolling } from '../lib/paymentPolling'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
@@ -396,22 +397,29 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const profileField = (editable: boolean): React.CSSProperties => ({ ...field, background: editable ? 'var(--bg-elevated)' : 'var(--bg)', color: editable ? 'var(--text)' : 'var(--text-muted)', border: editable ? '1px solid var(--border)' : '1px solid #cbd5e1', boxShadow: 'none', outline: 'none', cursor: editable ? 'text' : 'default', userSelect: editable ? 'text' : 'none', WebkitUserSelect: editable ? 'text' : 'none', pointerEvents: editable ? 'auto' : 'none', caretColor: editable ? 'auto' : 'transparent' })
   const label: React.CSSProperties = { display: 'block', marginTop: '.5rem', fontSize: '.8rem', lineHeight: 1.35 }
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
-  const pendingCheckoutIds = [...new Set(pendingPayMongoOrders.map(order => order.checkout_batch_id || order.id))].sort().join(',')
+  const pendingCheckoutIds = pendingPaymentCheckoutIds(orders)
+  const paymentPolling = useRef<{ userId: string; state: ReturnType<typeof createPaymentPollingState> } | null>(null)
 
   // Keep checking pending PayMongo sessions while the user is in their account.
   // The signed webhook remains primary; this server-side verification is the automatic fallback.
   useEffect(() => {
     if (isLayout) return
     const client = supabase
-    if (!client || !session?.user.id || !pendingCheckoutIds) return
+    if (!session?.user.id) { paymentPolling.current = null; return }
+    if (!client || !pendingCheckoutIds) return
+    if (paymentPolling.current?.userId !== session.user.id) {
+      paymentPolling.current = { userId: session.user.id, state: createPaymentPollingState() }
+    }
     let active = true
     let checking = false
-    const checkPending = async () => {
+    const checkPending = async (isCurrent: () => boolean) => {
       if (checking) return
       checking = true
       try {
         const activated: string[] = []
-        for (const orderId of pendingCheckoutIds.split(',').filter(Boolean)) {
+        for (const orderId of pendingPaymentCheckoutIds(orders).split(',').filter(Boolean)) {
+          if (!active) return
+          if (!isCurrent()) break
           const { data, error } = await client.functions.invoke('verify-checkout', { body: { orderId } })
           if (!active) return
           if (error || data?.status !== 'paid') continue
@@ -428,14 +436,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           await refreshAccount()
         }
       } catch {
-        // A transient network or provider issue is retried by the next interval.
+        // A transient network or provider issue is retried with bounded backoff.
       } finally {
         checking = false
       }
     }
-    void checkPending()
-    const timer = window.setInterval(() => { void checkPending() }, 8000)
-    return () => { active = false; window.clearInterval(timer) }
+    const stop = startPaymentPolling(checkPending, { state: paymentPolling.current.state })
+    return () => { active = false; stop() }
   }, [session?.user.id, pendingCheckoutIds, isLayout])
 
   const signOut = async () => withPageLoading('Signing out', async () => {

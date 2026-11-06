@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { createPaymentPollingState, pendingPaymentCheckoutIds, startPaymentPolling } from '../lib/paymentPolling'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import type { Session } from '@supabase/supabase-js'
@@ -175,22 +176,27 @@ export default function OrdersPaymentHistoryScreen() {
 
   const refreshStatus = async () => withPageLoading('Verifying payment status', () => refreshStatusInternal())
 
-  const pendingCheckoutIds = [...new Set(orders
-    .filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
-    .map(order => order.checkout_batch_id || order.id))].sort().join(',')
+  const pendingCheckoutIds = pendingPaymentCheckoutIds(orders)
+  const paymentPolling = useRef<{ userId: string; state: ReturnType<typeof createPaymentPollingState> } | null>(null)
 
   // Automatically reconcile open PayMongo checkouts while the customer views their history.
   useEffect(() => {
     const client = supabase
-    if (!client || !session?.user.id || !pendingCheckoutIds) return
+    if (!session?.user.id) { paymentPolling.current = null; return }
+    if (!client || !pendingCheckoutIds) return
+    if (paymentPolling.current?.userId !== session.user.id) {
+      paymentPolling.current = { userId: session.user.id, state: createPaymentPollingState() }
+    }
     let active = true
     let checking = false
-    const checkPending = async () => {
+    const checkPending = async (isCurrent: () => boolean) => {
       if (checking) return
       checking = true
       try {
         const activated: string[] = []
-        for (const orderId of pendingCheckoutIds.split(',').filter(Boolean)) {
+        for (const orderId of pendingPaymentCheckoutIds(orders).split(',').filter(Boolean)) {
+          if (!active) return
+          if (!isCurrent()) break
           const { data, error } = await client.functions.invoke('verify-checkout', { body: { orderId } })
           if (!active) return
           if (error || data?.status !== 'paid') continue
@@ -207,14 +213,13 @@ export default function OrdersPaymentHistoryScreen() {
           await refreshCloudEntitlements()
         }
       } catch {
-        // A transient failure is retried on the next interval.
+        // A transient failure is retried with bounded backoff.
       } finally {
         checking = false
       }
     }
-    void checkPending()
-    const timer = window.setInterval(() => { void checkPending() }, 8000)
-    return () => { active = false; window.clearInterval(timer) }
+    const stop = startPaymentPolling(checkPending, { state: paymentPolling.current.state })
+    return () => { active = false; stop() }
   }, [session?.user.id, pendingCheckoutIds, refreshCloudEntitlements])
 
   const card: React.CSSProperties = {
