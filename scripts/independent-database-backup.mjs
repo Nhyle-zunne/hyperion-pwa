@@ -28,7 +28,12 @@ function run(command, args, { output, input, env = process.env, cwd = root } = {
   try {
     result = spawnSync(command, args, { cwd, env, stdio: [source ?? 'ignore', out, err], timeout: 25 * 60 * 1000 });
   } finally { closeSync(out); closeSync(err); if (source !== null) closeSync(source); }
-  if (result.status !== 0 || result.error) throw new Error('Private subprocess failed');
+  if (result.status !== 0 || result.error) {
+    // SQLSTATE is a fixed public error code; SQL text and row details remain private.
+    const state = readFileSync(join(work, 'command.stderr'), 'utf8').match(/(?:ERROR|FATAL):\s+([0-9A-Z]{5})(?:\s|$)/);
+    if (state) console.error(`Restore SQLSTATE: ${state[1]}`);
+    throw new Error('Private subprocess failed');
+  }
 }
 function requireSecret(name) {
   if (!process.env[name]?.trim()) throw new Error('Missing private configuration');
@@ -136,7 +141,7 @@ try {
     const restore = join(work, 'restore.sql');
     writeFileSync(restore, 'BEGIN;\nSET session_replication_role = replica;\n' + sql + '\nCOMMIT;\n');
     stage = 'portable database restore';
-    run('docker', ['exec', '-i', container, 'psql', '-X', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1'], { input: restore });
+    run('docker', ['exec', '-i', container, 'psql', '-X', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate'], { input: restore });
     stage = 'restored row verification';
     const roundTrip = join(work, 'round-trip.sql');
     run('docker', ['exec', container, 'pg_dump', '-U', 'postgres', '-d', 'postgres', '--data-only', '--schema=public', '--schema=auth', '--schema=storage'], { output: roundTrip });
