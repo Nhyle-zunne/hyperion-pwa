@@ -17,6 +17,7 @@ Open [repository Actions secrets](https://github.com/Nhyle-zunne/hyperion-pwa/se
 | Secret | Value |
 | --- | --- |
 | `BACKUP_DATABASE_URL` | Production **session pooler** URL from Supabase Connect, port 5432, database `postgres`, username `postgres.evnjoezffghtrzqacwcj`, existing URL-encoded database password, and `?sslmode=verify-full`. A direct `db.evnjoezffghtrzqacwcj.supabase.co:5432` URL with username `postgres` also works on IPv6-capable runners. Transaction pooler port 6543 is refused. |
+| `BACKUP_DATABASE_CA_CERT` | PEM server root certificate downloaded from this project’s Supabase Database settings. This is a public CA certificate, not a private key. The export container mounts it read-only and verifies the server hostname against it. |
 | `BACKUP_AGE_RECIPIENT` | age public key starting `age1`, generated on your own trusted computer. |
 | `BACKUP_AGE_IDENTITY` | Matching private key starting `AGE-SECRET-KEY-`, used only to decrypt for the isolated restore test. |
 

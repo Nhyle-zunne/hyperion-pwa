@@ -33,6 +33,7 @@ jobs:
       - name: Validate required private configuration
         env:
           BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_DATABASE_CA_CERT: ${{ secrets.BACKUP_DATABASE_CA_CERT }}
           BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
           BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
         run: |
@@ -40,15 +41,16 @@ jobs:
           import { validateSource } from './scripts/lib/independentBackup.mjs';
           try {
             validateSource(process.env.BACKUP_DATABASE_URL);
-            if (!process.env.BACKUP_AGE_RECIPIENT?.trim() || !process.env.BACKUP_AGE_IDENTITY?.trim()) throw new Error();
+            if (!process.env.BACKUP_DATABASE_CA_CERT?.trim() || !process.env.BACKUP_AGE_RECIPIENT?.trim() || !process.env.BACKUP_AGE_IDENTITY?.trim()) throw new Error();
           } catch {
-            console.error('Backup credentials are missing/invalid. Configure the three secrets in docs/independent-database-backups.md. No backup was made.');
+            console.error('Backup credentials are missing/invalid. Configure the four secrets in docs/independent-database-backups.md. No backup was made.');
             process.exit(1);
           }
           JS
       - name: Create encrypted independent database backup
         env:
           BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_DATABASE_CA_CERT: ${{ secrets.BACKUP_DATABASE_CA_CERT }}
           BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
         run: node scripts/independent-database-backup.mjs backup backup-output/database.tar.age
       - name: Retain ciphertext even if the later restore check fails

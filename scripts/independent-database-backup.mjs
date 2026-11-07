@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, X509Certificate } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -15,6 +15,7 @@ const localTest = process.env.BACKUP_TEST_LOCAL === '1';
 let stage = 'configuration';
 let drillDir;
 let drillOwned = false;
+let certificateMount = [];
 const drillId = `hyperion-backup-drill-${randomUUID().slice(0, 8)}`;
 
 // Errors from pg_dump/psql can contain connection strings, rows or SQL literals.
@@ -36,16 +37,16 @@ function requireSecret(name) {
 function pgEnvironment(url) {
   return { ...process.env, PGHOST: url.hostname, PGPORT: url.port || '5432', PGUSER: decodeURIComponent(url.username),
     PGPASSWORD: decodeURIComponent(url.password), PGDATABASE: 'postgres', PGSSLMODE: localTest ? 'disable' : 'verify-full',
-    PGSSLROOTCERT: 'system', PGCONNECT_TIMEOUT: '30', PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=1200000 -c lock_timeout=10000' };
+    PGSSLROOTCERT: localTest ? '' : '/tmp/hyperion-database-ca.crt', PGCONNECT_TIMEOUT: '30', PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=1200000 -c lock_timeout=10000' };
 }
 function dump(args, file, env) {
-  run('docker', ['run', '--rm', '--network', 'host', ...['PGHOST','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSSLMODE','PGSSLROOTCERT','PGCONNECT_TIMEOUT','PGOPTIONS'].flatMap(key => ['--env', key]), 'postgres:17', 'pg_dump', ...args], { output: file, env });
+  run('docker', ['run', '--rm', '--network', 'host', ...certificateMount, ...['PGHOST','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSSLMODE','PGSSLROOTCERT','PGCONNECT_TIMEOUT','PGOPTIONS'].flatMap(key => ['--env', key]), 'postgres:17', 'pg_dump', ...args], { output: file, env });
 }
 function cliDump(url, file, flags) {
   const script = join(work, 'portable-dump.sh');
   run('supabase', ['db', 'dump', '--dry-run', '--db-url', 'postgresql://postgres:synthetic@127.0.0.1:5432/postgres', ...flags], { output: script });
   writeFileSync(script, portableDumpScript(readFileSync(script, 'utf8')));
-  run('docker', ['run', '--rm', '-i', '--network', 'host',
+  run('docker', ['run', '--rm', '-i', '--network', 'host', ...certificateMount,
     ...['PGHOST','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSSLMODE','PGSSLROOTCERT','PGCONNECT_TIMEOUT','PGOPTIONS'].flatMap(key => ['--env', key]),
     'postgres:17', 'bash', '-euo', 'pipefail'], { input: script, output: file, env: pgEnvironment(validateSource(url, localTest)) });
 }
@@ -55,6 +56,13 @@ try {
   if (mode === 'backup') {
     const url = requireSecret('BACKUP_DATABASE_URL');
     const source = validateSource(url, localTest);
+    if (!localTest) {
+      const certificate = requireSecret('BACKUP_DATABASE_CA_CERT');
+      new X509Certificate(certificate);
+      const certificatePath = join(work, 'database-ca.crt');
+      writeFileSync(certificatePath, certificate + '\n');
+      certificateMount = ['--mount', `type=bind,source=${certificatePath},target=/tmp/hyperion-database-ca.crt,readonly`];
+    }
     const recipient = requireSecret('BACKUP_AGE_RECIPIENT');
     if (!/^age1[a-z0-9]+$/.test(recipient)) throw new Error('Expected an age public recipient');
     if (existsSync(archive)) throw new Error('Refusing to overwrite a backup');
@@ -133,7 +141,7 @@ try {
     const roundTrip = join(work, 'round-trip.sql');
     run('docker', ['exec', container, 'pg_dump', '-U', 'postgres', '-d', 'postgres', '--data-only', '--schema=public', '--schema=auth', '--schema=storage'], { output: roundTrip });
     compareCopies(manifest.copies, copyManifest(readFileSync(roundTrip, 'utf8')));
-    console.log(`Encrypted backup decrypted and restored into isolated Supabase; exact row contents verified for ${Object.keys(manifest.copies).length} tables. Full archive, external secrets and Storage bytes still require the recovery runbook.`);
+    console.log(`Encrypted backup decrypted and restored into isolated Supabase; exact row contents verified for ${Object.keys(manifest.copies).filter(name => !name.startsWith('sequence:')).length} tables. Full archive, external secrets and Storage bytes still require the recovery runbook.`);
   } else throw new Error('Use backup or restore-drill');
 } catch {
   console.error(`Database backup operation failed at: ${stage}. Private diagnostics were not published. See docs/independent-database-backups.md.`);
