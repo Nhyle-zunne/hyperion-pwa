@@ -1,0 +1,3407 @@
+{
+  "captured_date": "2026-11-07",
+  "method": "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON); unmodified planner defaults; UUIDs/timestamps/session identifiers redacted. Authenticated plans use transaction-local role/JWT subject in a read-only transaction rolled back afterward.",
+  "plans": [
+    {
+      "name": "orders-pending-projection-continuation",
+      "sql": "select id,checkout_batch_id,status,payment_method,created_at from public.orders where user_id='<uuid>' and status='pending' and payment_method='PayMongo Checkout' and id>'<uuid>' order by id asc limit 100",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 2.36,
+                "Total Cost": 2.37,
+                "Plan Rows": 1,
+                "Plan Width": 63,
+                "Actual Startup Time": 1.213,
+                "Actual Total Time": 1.214,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 4,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 2.36,
+                    "Total Cost": 2.37,
+                    "Plan Rows": 1,
+                    "Plan Width": 63,
+                    "Actual Startup Time": 1.212,
+                    "Actual Total Time": 1.212,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "id"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 25,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 4,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Index Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Scan Direction": "Forward",
+                        "Index Name": "orders_one_open_per_user_product_uq",
+                        "Relation Name": "orders",
+                        "Alias": "orders",
+                        "Startup Cost": 0.13,
+                        "Total Cost": 2.35,
+                        "Plan Rows": 1,
+                        "Plan Width": 63,
+                        "Actual Startup Time": 1.173,
+                        "Actual Total Time": 1.174,
+                        "Actual Rows": 0,
+                        "Actual Loops": 1,
+                        "Index Cond": "(user_id = '<uuid>'::uuid)",
+                        "Rows Removed by Index Recheck": 0,
+                        "Filter": "((id > '<uuid>'::uuid) AND (status = 'pending'::text) AND (payment_method = 'PayMongo Checkout'::text))",
+                        "Rows Removed by Filter": 0,
+                        "Shared Hit Blocks": 1,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 217,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 18.15,
+              "Triggers": [],
+              "Execution Time": 1.801
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-history-owner-1",
+      "sql": "select id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,customer_note,admin_note,created_at,paid_at,checkout_batch_id from public.orders where user_id='<uuid>' order by created_at desc,id desc limit 26",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 4.18,
+                "Total Cost": 4.21,
+                "Plan Rows": 11,
+                "Plan Width": 242,
+                "Actual Startup Time": 0.758,
+                "Actual Total Time": 0.76,
+                "Actual Rows": 10,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 9,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 4.18,
+                    "Total Cost": 4.21,
+                    "Plan Rows": 11,
+                    "Plan Width": 242,
+                    "Actual Startup Time": 0.756,
+                    "Actual Total Time": 0.758,
+                    "Actual Rows": 10,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "created_at DESC",
+                      "id DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 26,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 9,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "orders",
+                        "Alias": "orders",
+                        "Startup Cost": 0,
+                        "Total Cost": 3.99,
+                        "Plan Rows": 11,
+                        "Plan Width": 242,
+                        "Actual Startup Time": 0.023,
+                        "Actual Total Time": 0.045,
+                        "Actual Rows": 10,
+                        "Actual Loops": 1,
+                        "Filter": "(user_id = '<uuid>'::uuid)",
+                        "Rows Removed by Filter": 79,
+                        "Shared Hit Blocks": 3,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 231,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 6.241,
+              "Triggers": [],
+              "Execution Time": 1.277
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-history-owner-2",
+      "sql": "select id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,customer_note,admin_note,created_at,paid_at,checkout_batch_id from public.orders where user_id='<uuid>' order by created_at desc,id desc limit 26",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 2.37,
+                "Total Cost": 2.38,
+                "Plan Rows": 1,
+                "Plan Width": 242,
+                "Actual Startup Time": 0.097,
+                "Actual Total Time": 0.098,
+                "Actual Rows": 3,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 9,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 2.37,
+                    "Total Cost": 2.38,
+                    "Plan Rows": 1,
+                    "Plan Width": 242,
+                    "Actual Startup Time": 0.096,
+                    "Actual Total Time": 0.096,
+                    "Actual Rows": 3,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "created_at DESC",
+                      "id DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 25,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 9,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Index Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Scan Direction": "Forward",
+                        "Index Name": "orders_user_id_idx",
+                        "Relation Name": "orders",
+                        "Alias": "orders",
+                        "Startup Cost": 0.14,
+                        "Total Cost": 2.36,
+                        "Plan Rows": 1,
+                        "Plan Width": 242,
+                        "Actual Startup Time": 0.047,
+                        "Actual Total Time": 0.055,
+                        "Actual Rows": 3,
+                        "Actual Loops": 1,
+                        "Index Cond": "(user_id = '<uuid>'::uuid)",
+                        "Rows Removed by Index Recheck": 0,
+                        "Shared Hit Blocks": 3,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 231,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.747,
+              "Triggers": [],
+              "Execution Time": 0.156
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-history-keyset",
+      "sql": "select id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,customer_note,admin_note,created_at,paid_at,checkout_batch_id from public.orders where user_id='<uuid>' and (created_at<'<timestamp>' or (created_at='<timestamp>' and id<'<uuid>')) order by created_at desc,id desc limit 26",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 4.59,
+                "Total Cost": 4.59,
+                "Plan Rows": 1,
+                "Plan Width": 242,
+                "Actual Startup Time": 0.144,
+                "Actual Total Time": 0.146,
+                "Actual Rows": 5,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 9,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 4.59,
+                    "Total Cost": 4.59,
+                    "Plan Rows": 1,
+                    "Plan Width": 242,
+                    "Actual Startup Time": 0.143,
+                    "Actual Total Time": 0.144,
+                    "Actual Rows": 5,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "created_at DESC",
+                      "id DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 26,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 9,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "orders",
+                        "Alias": "orders",
+                        "Startup Cost": 0,
+                        "Total Cost": 4.58,
+                        "Plan Rows": 1,
+                        "Plan Width": 242,
+                        "Actual Startup Time": 0.06,
+                        "Actual Total Time": 0.098,
+                        "Actual Rows": 5,
+                        "Actual Loops": 1,
+                        "Filter": "((user_id = '<uuid>'::uuid) AND ((created_at < '<timestamp>'::timestamp with time zone) OR ((created_at = '<timestamp>'::timestamp with time zone) AND (id < '<uuid>'::uuid))))",
+                        "Rows Removed by Filter": 84,
+                        "Shared Hit Blocks": 3,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 231,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.827,
+              "Triggers": [],
+              "Execution Time": 0.212
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-pending-projection",
+      "sql": "select id,checkout_batch_id,status,payment_method,created_at from public.orders where user_id='<uuid>' and status='pending' and payment_method='PayMongo Checkout' order by id asc limit 100",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 2.36,
+                "Total Cost": 2.37,
+                "Plan Rows": 1,
+                "Plan Width": 63,
+                "Actual Startup Time": 1.199,
+                "Actual Total Time": 1.2,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 4,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 2.36,
+                    "Total Cost": 2.37,
+                    "Plan Rows": 1,
+                    "Plan Width": 63,
+                    "Actual Startup Time": 1.198,
+                    "Actual Total Time": 1.199,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "id"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 25,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 4,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Index Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Scan Direction": "Forward",
+                        "Index Name": "orders_one_open_per_user_product_uq",
+                        "Relation Name": "orders",
+                        "Alias": "orders",
+                        "Startup Cost": 0.13,
+                        "Total Cost": 2.35,
+                        "Plan Rows": 1,
+                        "Plan Width": 63,
+                        "Actual Startup Time": 1.175,
+                        "Actual Total Time": 1.175,
+                        "Actual Rows": 0,
+                        "Actual Loops": 1,
+                        "Index Cond": "(user_id = '<uuid>'::uuid)",
+                        "Rows Removed by Index Recheck": 0,
+                        "Filter": "((status = 'pending'::text) AND (payment_method = 'PayMongo Checkout'::text))",
+                        "Rows Removed by Filter": 0,
+                        "Shared Hit Blocks": 1,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 214,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.796,
+              "Triggers": [],
+              "Execution Time": 1.266
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "entitlements-active-owner-1",
+      "sql": "select track_id from public.entitlements where user_id='<uuid>' and status='active' and expires_at>now()",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Bitmap Heap Scan",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Relation Name": "entitlements",
+                "Alias": "entitlements",
+                "Startup Cost": 1.26,
+                "Total Cost": 3.3,
+                "Plan Rows": 2,
+                "Plan Width": 11,
+                "Actual Startup Time": 0.058,
+                "Actual Total Time": 0.059,
+                "Actual Rows": 2,
+                "Actual Loops": 1,
+                "Recheck Cond": "(user_id = '<uuid>'::uuid)",
+                "Rows Removed by Index Recheck": 0,
+                "Filter": "((status = 'active'::text) AND (expires_at > now()))",
+                "Rows Removed by Filter": 0,
+                "Exact Heap Blocks": 1,
+                "Lossy Heap Blocks": 0,
+                "Shared Hit Blocks": 2,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Bitmap Index Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Index Name": "entitlements_user_id_product_code_key",
+                    "Startup Cost": 0,
+                    "Total Cost": 1.26,
+                    "Plan Rows": 2,
+                    "Plan Width": 0,
+                    "Actual Startup Time": 0.006,
+                    "Actual Total Time": 0.007,
+                    "Actual Rows": 2,
+                    "Actual Loops": 1,
+                    "Index Cond": "(user_id = '<uuid>'::uuid)",
+                    "Shared Hit Blocks": 1,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 144,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 1.35,
+              "Triggers": [],
+              "Execution Time": 0.122
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "entitlements-active-owner-2",
+      "sql": "select track_id from public.entitlements where user_id='<uuid>' and status='active' and expires_at>now()",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Bitmap Heap Scan",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Relation Name": "entitlements",
+                "Alias": "entitlements",
+                "Startup Cost": 1.26,
+                "Total Cost": 3.3,
+                "Plan Rows": 2,
+                "Plan Width": 11,
+                "Actual Startup Time": 0.016,
+                "Actual Total Time": 0.017,
+                "Actual Rows": 2,
+                "Actual Loops": 1,
+                "Recheck Cond": "(user_id = '<uuid>'::uuid)",
+                "Rows Removed by Index Recheck": 0,
+                "Filter": "((status = 'active'::text) AND (expires_at > now()))",
+                "Rows Removed by Filter": 0,
+                "Exact Heap Blocks": 1,
+                "Lossy Heap Blocks": 0,
+                "Shared Hit Blocks": 2,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Bitmap Index Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Index Name": "entitlements_user_id_product_code_key",
+                    "Startup Cost": 0,
+                    "Total Cost": 1.26,
+                    "Plan Rows": 2,
+                    "Plan Width": 0,
+                    "Actual Startup Time": 0.006,
+                    "Actual Total Time": 0.006,
+                    "Actual Rows": 2,
+                    "Actual Loops": 1,
+                    "Index Cond": "(user_id = '<uuid>'::uuid)",
+                    "Shared Hit Blocks": 1,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 144,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.566,
+              "Triggers": [],
+              "Execution Time": 0.074
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "progress-version",
+      "sql": "select updated_at from public.user_learning_progress where user_id='<uuid>'",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Index Scan",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Scan Direction": "Forward",
+                "Index Name": "user_learning_progress_pkey",
+                "Relation Name": "user_learning_progress",
+                "Alias": "user_learning_progress",
+                "Startup Cost": 0.14,
+                "Total Cost": 2.36,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 0.028,
+                "Actual Total Time": 0.029,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Index Cond": "(user_id = '<uuid>'::uuid)",
+                "Rows Removed by Index Recheck": 0,
+                "Shared Hit Blocks": 2,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning": {
+                "Shared Hit Blocks": 67,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.332,
+              "Triggers": [],
+              "Execution Time": 0.126
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "progress-snapshot",
+      "sql": "select data,updated_at from public.user_learning_progress where user_id='<uuid>'",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Index Scan",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Scan Direction": "Forward",
+                "Index Name": "user_learning_progress_pkey",
+                "Relation Name": "user_learning_progress",
+                "Alias": "user_learning_progress",
+                "Startup Cost": 0.14,
+                "Total Cost": 2.36,
+                "Plan Rows": 1,
+                "Plan Width": 300,
+                "Actual Startup Time": 0.012,
+                "Actual Total Time": 0.013,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Index Cond": "(user_id = '<uuid>'::uuid)",
+                "Rows Removed by Index Recheck": 0,
+                "Shared Hit Blocks": 2,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning": {
+                "Shared Hit Blocks": 102,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.467,
+              "Triggers": [],
+              "Execution Time": 0.094
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "progress-version-match-select",
+      "sql": "select updated_at from public.user_learning_progress where user_id='<uuid>' and updated_at='<timestamp>'",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Index Scan",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Scan Direction": "Forward",
+                "Index Name": "user_learning_progress_pkey",
+                "Relation Name": "user_learning_progress",
+                "Alias": "user_learning_progress",
+                "Startup Cost": 0.14,
+                "Total Cost": 2.37,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 0.017,
+                "Actual Total Time": 0.018,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Index Cond": "(user_id = '<uuid>'::uuid)",
+                "Rows Removed by Index Recheck": 0,
+                "Filter": "(updated_at = '<timestamp>'::timestamp with time zone)",
+                "Rows Removed by Filter": 0,
+                "Shared Hit Blocks": 2,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning": {
+                "Shared Hit Blocks": 73,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.318,
+              "Triggers": [],
+              "Execution Time": 0.082
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "progress-revisions-owner",
+      "sql": "select data from public.user_learning_progress_revisions where user_id='<uuid>' order by captured_at asc",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Sort",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 25.28,
+                "Total Cost": 25.35,
+                "Plan Rows": 31,
+                "Plan Width": 131,
+                "Actual Startup Time": 24.953,
+                "Actual Total Time": 24.957,
+                "Actual Rows": 31,
+                "Actual Loops": 1,
+                "Sort Key": [
+                  "captured_at"
+                ],
+                "Sort Method": "quicksort",
+                "Sort Space Used": 26,
+                "Sort Space Type": "Memory",
+                "Shared Hit Blocks": 20,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Bitmap Heap Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "user_learning_progress_revisions",
+                    "Alias": "user_learning_progress_revisions",
+                    "Startup Cost": 1.62,
+                    "Total Cost": 24.51,
+                    "Plan Rows": 31,
+                    "Plan Width": 131,
+                    "Actual Startup Time": 3.075,
+                    "Actual Total Time": 24.895,
+                    "Actual Rows": 31,
+                    "Actual Loops": 1,
+                    "Recheck Cond": "(user_id = '<uuid>'::uuid)",
+                    "Rows Removed by Index Recheck": 0,
+                    "Exact Heap Blocks": 15,
+                    "Lossy Heap Blocks": 0,
+                    "Shared Hit Blocks": 17,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Bitmap Index Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Index Name": "learning_progress_revisions_owner",
+                        "Startup Cost": 0,
+                        "Total Cost": 1.61,
+                        "Plan Rows": 31,
+                        "Plan Width": 0,
+                        "Actual Startup Time": 1.274,
+                        "Actual Total Time": 1.275,
+                        "Actual Rows": 31,
+                        "Actual Loops": 1,
+                        "Index Cond": "(user_id = '<uuid>'::uuid)",
+                        "Shared Hit Blocks": 2,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 151,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 1,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 2.101,
+              "Triggers": [],
+              "Execution Time": 25.043
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "progress-archive-owner-session",
+      "sql": "select data from public.user_learning_session_archives where user_id='<uuid>' and session_id='<session>'",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Index Scan",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Scan Direction": "Forward",
+                "Index Name": "user_learning_session_archives_pkey",
+                "Relation Name": "user_learning_session_archives",
+                "Alias": "user_learning_session_archives",
+                "Startup Cost": 0.28,
+                "Total Cost": 2.5,
+                "Plan Rows": 1,
+                "Plan Width": 52,
+                "Actual Startup Time": 1.891,
+                "Actual Total Time": 1.892,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Index Cond": "((user_id = '<uuid>'::uuid) AND (session_id = '<session>'::text))",
+                "Rows Removed by Index Recheck": 0,
+                "Shared Hit Blocks": 3,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning": {
+                "Shared Hit Blocks": 117,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.433,
+              "Triggers": [],
+              "Execution Time": 1.968
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-activity-cohort",
+      "sql": "select user_id,last_accessed_at from public.user_activity where user_id in ('<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>')",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Seq Scan",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Relation Name": "user_activity",
+                "Alias": "user_activity",
+                "Startup Cost": 0.48,
+                "Total Cost": 4.78,
+                "Plan Rows": 110,
+                "Plan Width": 24,
+                "Actual Startup Time": 0.718,
+                "Actual Total Time": 1.852,
+                "Actual Rows": 153,
+                "Actual Loops": 1,
+                "Filter": "(user_id = ANY ('{<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>}'::uuid[]))",
+                "Rows Removed by Filter": 0,
+                "Shared Hit Blocks": 2,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 1,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning": {
+                "Shared Hit Blocks": 146,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 3.227,
+              "Triggers": [],
+              "Execution Time": 1.944
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-open-orders-cohort",
+      "sql": "select user_id from public.orders where user_id in ('<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>') and status in ('pending','submitted') limit 10000",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0.13,
+                "Total Cost": 1.26,
+                "Plan Rows": 2,
+                "Plan Width": 16,
+                "Actual Startup Time": 0.024,
+                "Actual Total Time": 0.024,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 1,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Index Only Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Scan Direction": "Forward",
+                    "Index Name": "orders_one_open_per_user_product_uq",
+                    "Relation Name": "orders",
+                    "Alias": "orders",
+                    "Startup Cost": 0.13,
+                    "Total Cost": 1.26,
+                    "Plan Rows": 2,
+                    "Plan Width": 16,
+                    "Actual Startup Time": 0.023,
+                    "Actual Total Time": 0.023,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Index Cond": "(user_id = ANY ('{<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>}'::uuid[]))",
+                    "Rows Removed by Index Recheck": 0,
+                    "Heap Fetches": 0,
+                    "Shared Hit Blocks": 1,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 262,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 1.321,
+              "Triggers": [],
+              "Execution Time": 0.082
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-failed-checkout-cohort",
+      "sql": "select user_id from public.orders where user_id in ('<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>') and status='failed' and payment_method='PayMongo Checkout' and paymongo_checkout_session_id is not null limit 10000",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0.48,
+                "Total Cost": 5.06,
+                "Plan Rows": 3,
+                "Plan Width": 16,
+                "Actual Startup Time": 0.054,
+                "Actual Total Time": 0.083,
+                "Actual Rows": 6,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 3,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "orders",
+                    "Alias": "orders",
+                    "Startup Cost": 0.48,
+                    "Total Cost": 5.06,
+                    "Plan Rows": 3,
+                    "Plan Width": 16,
+                    "Actual Startup Time": 0.052,
+                    "Actual Total Time": 0.08,
+                    "Actual Rows": 6,
+                    "Actual Loops": 1,
+                    "Filter": "((paymongo_checkout_session_id IS NOT NULL) AND (status = 'failed'::text) AND (payment_method = 'PayMongo Checkout'::text) AND (user_id = ANY ('{<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>}'::uuid[])))",
+                    "Rows Removed by Filter": 83,
+                    "Shared Hit Blocks": 3,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 254,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 1.146,
+              "Triggers": [],
+              "Execution Time": 0.837
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-pending-batches-cohort",
+      "sql": "select user_id from public.checkout_batches where user_id in ('<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>') and status='pending' limit 10000",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0.14,
+                "Total Cost": 2.36,
+                "Plan Rows": 1,
+                "Plan Width": 16,
+                "Actual Startup Time": 0.681,
+                "Actual Total Time": 0.681,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 1,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Index Only Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Scan Direction": "Forward",
+                    "Index Name": "checkout_batches_user_status_idx",
+                    "Relation Name": "checkout_batches",
+                    "Alias": "checkout_batches",
+                    "Startup Cost": 0.14,
+                    "Total Cost": 2.36,
+                    "Plan Rows": 1,
+                    "Plan Width": 16,
+                    "Actual Startup Time": 0.679,
+                    "Actual Total Time": 0.68,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Index Cond": "((user_id = ANY ('{<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>}'::uuid[])) AND (status = 'pending'::text))",
+                    "Rows Removed by Index Recheck": 0,
+                    "Heap Fetches": 0,
+                    "Shared Hit Blocks": 1,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 219,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 5.531,
+              "Triggers": [],
+              "Execution Time": 0.746
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-audit-cohort",
+      "sql": "select admin_user_id from public.license_admin_audit where admin_user_id in ('<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>') limit 10000",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0.48,
+                "Total Cost": 13.78,
+                "Plan Rows": 212,
+                "Plan Width": 16,
+                "Actual Startup Time": 1.213,
+                "Actual Total Time": 1.22,
+                "Actual Rows": 16,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 1,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "license_admin_audit",
+                    "Alias": "license_admin_audit",
+                    "Startup Cost": 0.48,
+                    "Total Cost": 13.78,
+                    "Plan Rows": 212,
+                    "Plan Width": 16,
+                    "Actual Startup Time": 1.212,
+                    "Actual Total Time": 1.216,
+                    "Actual Rows": 16,
+                    "Actual Loops": 1,
+                    "Filter": "(admin_user_id = ANY ('{<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>}'::uuid[]))",
+                    "Rows Removed by Filter": 0,
+                    "Shared Hit Blocks": 1,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 189,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 4.485,
+              "Triggers": [],
+              "Execution Time": 1.279
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-license-list",
+      "sql": "select id,user_id,product_code,track_id,order_id,status,license_term,granted_at,expires_at,renewed_at from public.entitlements order by granted_at desc limit 1000 offset 0",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 4.94,
+                "Total Cost": 5.12,
+                "Plan Rows": 72,
+                "Plan Width": 103,
+                "Actual Startup Time": 0.102,
+                "Actual Total Time": 0.115,
+                "Actual Rows": 78,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 5,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 4.94,
+                    "Total Cost": 5.12,
+                    "Plan Rows": 72,
+                    "Plan Width": 103,
+                    "Actual Startup Time": 0.101,
+                    "Actual Total Time": 0.106,
+                    "Actual Rows": 78,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "granted_at DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 35,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 5,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "entitlements",
+                        "Alias": "entitlements",
+                        "Startup Cost": 0,
+                        "Total Cost": 2.72,
+                        "Plan Rows": 72,
+                        "Plan Width": 103,
+                        "Actual Startup Time": 0.02,
+                        "Actual Total Time": 0.039,
+                        "Actual Rows": 78,
+                        "Actual Loops": 1,
+                        "Shared Hit Blocks": 2,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 159,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.487,
+              "Triggers": [],
+              "Execution Time": 0.215
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-play-license-list",
+      "sql": "select id,user_id,product_code,track_id,status,granted_at,expires_at,updated_at from public.google_play_entitlements order by updated_at desc limit 1000 offset 0",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 2.12,
+                "Total Cost": 2.2,
+                "Plan Rows": 32,
+                "Plan Width": 82,
+                "Actual Startup Time": 0.061,
+                "Actual Total Time": 0.067,
+                "Actual Rows": 32,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 4,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 2.12,
+                    "Total Cost": 2.2,
+                    "Plan Rows": 32,
+                    "Plan Width": 82,
+                    "Actual Startup Time": 0.06,
+                    "Actual Total Time": 0.062,
+                    "Actual Rows": 32,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "updated_at DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 29,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 4,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "google_play_entitlements",
+                        "Alias": "google_play_entitlements",
+                        "Startup Cost": 0,
+                        "Total Cost": 1.32,
+                        "Plan Rows": 32,
+                        "Plan Width": 82,
+                        "Actual Startup Time": 0.02,
+                        "Actual Total Time": 0.026,
+                        "Actual Rows": 32,
+                        "Actual Loops": 1,
+                        "Shared Hit Blocks": 1,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 144,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 4.94,
+              "Triggers": [],
+              "Execution Time": 0.147
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-payment-review-list",
+      "sql": "select id,user_id,product_code,track_id,license_term,amount_php,status,payment_reference,payment_method,proof_url,customer_note,customer_name,customer_company,customer_school,admin_note,created_at,reviewed_at,paid_at from public.orders where status in ('submitted','pending','paid','failed') order by created_at desc limit 200",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 6.22,
+                "Total Cost": 6.38,
+                "Plan Rows": 67,
+                "Plan Width": 293,
+                "Actual Startup Time": 0.146,
+                "Actual Total Time": 0.159,
+                "Actual Rows": 78,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 6,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 6.22,
+                    "Total Cost": 6.38,
+                    "Plan Rows": 67,
+                    "Plan Width": 293,
+                    "Actual Startup Time": 0.145,
+                    "Actual Total Time": 0.151,
+                    "Actual Rows": 78,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "created_at DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 45,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 6,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "orders",
+                        "Alias": "orders",
+                        "Startup Cost": 0,
+                        "Total Cost": 4.19,
+                        "Plan Rows": 67,
+                        "Plan Width": 293,
+                        "Actual Startup Time": 0.019,
+                        "Actual Total Time": 0.069,
+                        "Actual Rows": 78,
+                        "Actual Loops": 1,
+                        "Filter": "(status = ANY ('{submitted,pending,paid,failed}'::text[]))",
+                        "Rows Removed by Filter": 11,
+                        "Shared Hit Blocks": 3,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 291,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.862,
+              "Triggers": [],
+              "Execution Time": 0.228
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-paid-entitlement-dependencies",
+      "sql": "select order_id,status,expires_at,granted_at from public.entitlements where order_id in ('<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>','<uuid>')",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Seq Scan",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Relation Name": "entitlements",
+                "Alias": "entitlements",
+                "Startup Cost": 0.16,
+                "Total Cost": 3.24,
+                "Plan Rows": 64,
+                "Plan Width": 39,
+                "Actual Startup Time": 0.022,
+                "Actual Total Time": 0.042,
+                "Actual Rows": 64,
+                "Actual Loops": 1,
+                "Filter": "(order_id = ANY ('{<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>,<uuid>}'::uuid[]))",
+                "Rows Removed by Filter": 14,
+                "Shared Hit Blocks": 2,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning": {
+                "Shared Hit Blocks": 192,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.677,
+              "Triggers": [],
+              "Execution Time": 0.105
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-reconciliation-alerts",
+      "sql": "select id,checkout_reference,checkout_session_id,paymongo_payment_id,expected_amount_php,observed_amount_minor,observed_currency,reason,created_at from public.paymongo_reconciliation_alerts order by created_at desc limit 100",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 28.81,
+                "Total Cost": 29.06,
+                "Plan Rows": 100,
+                "Plan Width": 180,
+                "Actual Startup Time": 0.037,
+                "Actual Total Time": 0.038,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 3,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 28.81,
+                    "Total Cost": 29.78,
+                    "Plan Rows": 390,
+                    "Plan Width": 180,
+                    "Actual Startup Time": 0.036,
+                    "Actual Total Time": 0.036,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "created_at DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 25,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 3,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "paymongo_reconciliation_alerts",
+                        "Alias": "paymongo_reconciliation_alerts",
+                        "Startup Cost": 0,
+                        "Total Cost": 13.9,
+                        "Plan Rows": 390,
+                        "Plan Width": 180,
+                        "Actual Startup Time": 0.011,
+                        "Actual Total Time": 0.012,
+                        "Actual Rows": 0,
+                        "Actual Loops": 1,
+                        "Shared Hit Blocks": 0,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 124,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 2.875,
+              "Triggers": [],
+              "Execution Time": 0.112
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-history-owner-1-repeat-1",
+      "sql": "select id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,customer_note,admin_note,created_at,paid_at,checkout_batch_id from public.orders where user_id='<uuid>' order by created_at desc,id desc limit 26",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 4.18,
+                "Total Cost": 4.21,
+                "Plan Rows": 11,
+                "Plan Width": 242,
+                "Actual Startup Time": 0.09,
+                "Actual Total Time": 0.092,
+                "Actual Rows": 10,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 9,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 4.18,
+                    "Total Cost": 4.21,
+                    "Plan Rows": 11,
+                    "Plan Width": 242,
+                    "Actual Startup Time": 0.089,
+                    "Actual Total Time": 0.09,
+                    "Actual Rows": 10,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "created_at DESC",
+                      "id DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 26,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 9,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "orders",
+                        "Alias": "orders",
+                        "Startup Cost": 0,
+                        "Total Cost": 3.99,
+                        "Plan Rows": 11,
+                        "Plan Width": 242,
+                        "Actual Startup Time": 0.019,
+                        "Actual Total Time": 0.041,
+                        "Actual Rows": 10,
+                        "Actual Loops": 1,
+                        "Filter": "(user_id = '<uuid>'::uuid)",
+                        "Rows Removed by Filter": 79,
+                        "Shared Hit Blocks": 3,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 231,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.79,
+              "Triggers": [],
+              "Execution Time": 0.145
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-history-owner-1-repeat-2",
+      "sql": "select id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,customer_note,admin_note,created_at,paid_at,checkout_batch_id from public.orders where user_id='<uuid>' order by created_at desc,id desc limit 26",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 4.18,
+                "Total Cost": 4.21,
+                "Plan Rows": 11,
+                "Plan Width": 242,
+                "Actual Startup Time": 0.089,
+                "Actual Total Time": 0.092,
+                "Actual Rows": 10,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 9,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 4.18,
+                    "Total Cost": 4.21,
+                    "Plan Rows": 11,
+                    "Plan Width": 242,
+                    "Actual Startup Time": 0.089,
+                    "Actual Total Time": 0.09,
+                    "Actual Rows": 10,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "created_at DESC",
+                      "id DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 26,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 9,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "orders",
+                        "Alias": "orders",
+                        "Startup Cost": 0,
+                        "Total Cost": 3.99,
+                        "Plan Rows": 11,
+                        "Plan Width": 242,
+                        "Actual Startup Time": 0.019,
+                        "Actual Total Time": 0.041,
+                        "Actual Rows": 10,
+                        "Actual Loops": 1,
+                        "Filter": "(user_id = '<uuid>'::uuid)",
+                        "Rows Removed by Filter": 79,
+                        "Shared Hit Blocks": 3,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 231,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.741,
+              "Triggers": [],
+              "Execution Time": 0.143
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-pending-projection-repeat-1",
+      "sql": "select id,checkout_batch_id,status,payment_method,created_at from public.orders where user_id='<uuid>' and status='pending' and payment_method='PayMongo Checkout' order by id asc limit 100",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 2.36,
+                "Total Cost": 2.37,
+                "Plan Rows": 1,
+                "Plan Width": 63,
+                "Actual Startup Time": 0.028,
+                "Actual Total Time": 0.029,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 4,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 2.36,
+                    "Total Cost": 2.37,
+                    "Plan Rows": 1,
+                    "Plan Width": 63,
+                    "Actual Startup Time": 0.027,
+                    "Actual Total Time": 0.028,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "id"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 25,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 4,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Index Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Scan Direction": "Forward",
+                        "Index Name": "orders_one_open_per_user_product_uq",
+                        "Relation Name": "orders",
+                        "Alias": "orders",
+                        "Startup Cost": 0.13,
+                        "Total Cost": 2.35,
+                        "Plan Rows": 1,
+                        "Plan Width": 63,
+                        "Actual Startup Time": 0.003,
+                        "Actual Total Time": 0.003,
+                        "Actual Rows": 0,
+                        "Actual Loops": 1,
+                        "Index Cond": "(user_id = '<uuid>'::uuid)",
+                        "Rows Removed by Index Recheck": 0,
+                        "Filter": "((status = 'pending'::text) AND (payment_method = 'PayMongo Checkout'::text))",
+                        "Rows Removed by Filter": 0,
+                        "Shared Hit Blocks": 1,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 214,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.766,
+              "Triggers": [],
+              "Execution Time": 0.091
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-pending-projection-repeat-2",
+      "sql": "select id,checkout_batch_id,status,payment_method,created_at from public.orders where user_id='<uuid>' and status='pending' and payment_method='PayMongo Checkout' order by id asc limit 100",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 2.36,
+                "Total Cost": 2.37,
+                "Plan Rows": 1,
+                "Plan Width": 63,
+                "Actual Startup Time": 0.028,
+                "Actual Total Time": 0.029,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 4,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 2.36,
+                    "Total Cost": 2.37,
+                    "Plan Rows": 1,
+                    "Plan Width": 63,
+                    "Actual Startup Time": 0.027,
+                    "Actual Total Time": 0.028,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "id"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 25,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 4,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Index Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Scan Direction": "Forward",
+                        "Index Name": "orders_one_open_per_user_product_uq",
+                        "Relation Name": "orders",
+                        "Alias": "orders",
+                        "Startup Cost": 0.13,
+                        "Total Cost": 2.35,
+                        "Plan Rows": 1,
+                        "Plan Width": 63,
+                        "Actual Startup Time": 0.004,
+                        "Actual Total Time": 0.004,
+                        "Actual Rows": 0,
+                        "Actual Loops": 1,
+                        "Index Cond": "(user_id = '<uuid>'::uuid)",
+                        "Rows Removed by Index Recheck": 0,
+                        "Filter": "((status = 'pending'::text) AND (payment_method = 'PayMongo Checkout'::text))",
+                        "Rows Removed by Filter": 0,
+                        "Shared Hit Blocks": 1,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 214,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.752,
+              "Triggers": [],
+              "Execution Time": 0.092
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "progress-revisions-owner-repeat-1",
+      "sql": "select data from public.user_learning_progress_revisions where user_id='<uuid>' order by captured_at asc",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Sort",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 25.28,
+                "Total Cost": 25.35,
+                "Plan Rows": 31,
+                "Plan Width": 131,
+                "Actual Startup Time": 0.191,
+                "Actual Total Time": 0.193,
+                "Actual Rows": 31,
+                "Actual Loops": 1,
+                "Sort Key": [
+                  "captured_at"
+                ],
+                "Sort Method": "quicksort",
+                "Sort Space Used": 26,
+                "Sort Space Type": "Memory",
+                "Shared Hit Blocks": 20,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Bitmap Heap Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "user_learning_progress_revisions",
+                    "Alias": "user_learning_progress_revisions",
+                    "Startup Cost": 1.62,
+                    "Total Cost": 24.51,
+                    "Plan Rows": 31,
+                    "Plan Width": 131,
+                    "Actual Startup Time": 0.032,
+                    "Actual Total Time": 0.149,
+                    "Actual Rows": 31,
+                    "Actual Loops": 1,
+                    "Recheck Cond": "(user_id = '<uuid>'::uuid)",
+                    "Rows Removed by Index Recheck": 0,
+                    "Exact Heap Blocks": 15,
+                    "Lossy Heap Blocks": 0,
+                    "Shared Hit Blocks": 17,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Bitmap Index Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Index Name": "learning_progress_revisions_owner",
+                        "Startup Cost": 0,
+                        "Total Cost": 1.61,
+                        "Plan Rows": 31,
+                        "Plan Width": 0,
+                        "Actual Startup Time": 0.019,
+                        "Actual Total Time": 0.019,
+                        "Actual Rows": 31,
+                        "Actual Loops": 1,
+                        "Index Cond": "(user_id = '<uuid>'::uuid)",
+                        "Shared Hit Blocks": 2,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 151,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.533,
+              "Triggers": [],
+              "Execution Time": 0.27
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "progress-revisions-owner-repeat-2",
+      "sql": "select data from public.user_learning_progress_revisions where user_id='<uuid>' order by captured_at asc",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Sort",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 25.28,
+                "Total Cost": 25.35,
+                "Plan Rows": 31,
+                "Plan Width": 131,
+                "Actual Startup Time": 0.177,
+                "Actual Total Time": 0.18,
+                "Actual Rows": 31,
+                "Actual Loops": 1,
+                "Sort Key": [
+                  "captured_at"
+                ],
+                "Sort Method": "quicksort",
+                "Sort Space Used": 26,
+                "Sort Space Type": "Memory",
+                "Shared Hit Blocks": 20,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Bitmap Heap Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "user_learning_progress_revisions",
+                    "Alias": "user_learning_progress_revisions",
+                    "Startup Cost": 1.62,
+                    "Total Cost": 24.51,
+                    "Plan Rows": 31,
+                    "Plan Width": 131,
+                    "Actual Startup Time": 0.065,
+                    "Actual Total Time": 0.134,
+                    "Actual Rows": 31,
+                    "Actual Loops": 1,
+                    "Recheck Cond": "(user_id = '<uuid>'::uuid)",
+                    "Rows Removed by Index Recheck": 0,
+                    "Exact Heap Blocks": 15,
+                    "Lossy Heap Blocks": 0,
+                    "Shared Hit Blocks": 17,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Bitmap Index Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Index Name": "learning_progress_revisions_owner",
+                        "Startup Cost": 0,
+                        "Total Cost": 1.61,
+                        "Plan Rows": 31,
+                        "Plan Width": 0,
+                        "Actual Startup Time": 0.049,
+                        "Actual Total Time": 0.049,
+                        "Actual Rows": 31,
+                        "Actual Loops": 1,
+                        "Index Cond": "(user_id = '<uuid>'::uuid)",
+                        "Shared Hit Blocks": 2,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 151,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.507,
+              "Triggers": [],
+              "Execution Time": 0.257
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "progress-archive-owner-session-repeat-1",
+      "sql": "select data from public.user_learning_session_archives where user_id='<uuid>' and session_id='<session>'",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Index Scan",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Scan Direction": "Forward",
+                "Index Name": "user_learning_session_archives_pkey",
+                "Relation Name": "user_learning_session_archives",
+                "Alias": "user_learning_session_archives",
+                "Startup Cost": 0.28,
+                "Total Cost": 2.5,
+                "Plan Rows": 1,
+                "Plan Width": 52,
+                "Actual Startup Time": 0.029,
+                "Actual Total Time": 0.03,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Index Cond": "((user_id = '<uuid>'::uuid) AND (session_id = '<session>'::text))",
+                "Rows Removed by Index Recheck": 0,
+                "Shared Hit Blocks": 3,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning": {
+                "Shared Hit Blocks": 117,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.512,
+              "Triggers": [],
+              "Execution Time": 0.118
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "progress-archive-owner-session-repeat-2",
+      "sql": "select data from public.user_learning_session_archives where user_id='<uuid>' and session_id='<session>'",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Index Scan",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Scan Direction": "Forward",
+                "Index Name": "user_learning_session_archives_pkey",
+                "Relation Name": "user_learning_session_archives",
+                "Alias": "user_learning_session_archives",
+                "Startup Cost": 0.28,
+                "Total Cost": 2.5,
+                "Plan Rows": 1,
+                "Plan Width": 52,
+                "Actual Startup Time": 0.043,
+                "Actual Total Time": 0.044,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Index Cond": "((user_id = '<uuid>'::uuid) AND (session_id = '<session>'::text))",
+                "Rows Removed by Index Recheck": 0,
+                "Shared Hit Blocks": 3,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning": {
+                "Shared Hit Blocks": 117,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.534,
+              "Triggers": [],
+              "Execution Time": 0.13
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-history-owner-1-authenticated-rls",
+      "sql": "select id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,customer_note,admin_note,created_at,paid_at,checkout_batch_id from public.orders where user_id='<uuid>' order by created_at desc,id desc limit 26",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 4.21,
+                "Total Cost": 4.24,
+                "Plan Rows": 11,
+                "Plan Width": 242,
+                "Actual Startup Time": 0.107,
+                "Actual Total Time": 0.11,
+                "Actual Rows": 10,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 9,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Result",
+                    "Parent Relationship": "InitPlan",
+                    "Subplan Name": "InitPlan 1",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 0,
+                    "Total Cost": 0.03,
+                    "Plan Rows": 1,
+                    "Plan Width": 16,
+                    "Actual Startup Time": 0.006,
+                    "Actual Total Time": 0.006,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Shared Hit Blocks": 0,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  },
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 4.18,
+                    "Total Cost": 4.21,
+                    "Plan Rows": 11,
+                    "Plan Width": 242,
+                    "Actual Startup Time": 0.106,
+                    "Actual Total Time": 0.107,
+                    "Actual Rows": 10,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "orders.created_at DESC",
+                      "orders.id DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 26,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 9,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Result",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Startup Cost": 0,
+                        "Total Cost": 3.99,
+                        "Plan Rows": 11,
+                        "Plan Width": 242,
+                        "Actual Startup Time": 0.028,
+                        "Actual Total Time": 0.053,
+                        "Actual Rows": 10,
+                        "Actual Loops": 1,
+                        "One-Time Filter": "((InitPlan 1).col1 = '<uuid>'::uuid)",
+                        "Shared Hit Blocks": 3,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0,
+                        "Plans": [
+                          {
+                            "Node Type": "Seq Scan",
+                            "Parent Relationship": "Outer",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Relation Name": "orders",
+                            "Alias": "orders",
+                            "Startup Cost": 0,
+                            "Total Cost": 3.99,
+                            "Plan Rows": 11,
+                            "Plan Width": 242,
+                            "Actual Startup Time": 0.019,
+                            "Actual Total Time": 0.043,
+                            "Actual Rows": 10,
+                            "Actual Loops": 1,
+                            "Filter": "(user_id = '<uuid>'::uuid)",
+                            "Rows Removed by Filter": 79,
+                            "Shared Hit Blocks": 3,
+                            "Shared Read Blocks": 0,
+                            "Shared Dirtied Blocks": 0,
+                            "Shared Written Blocks": 0,
+                            "Local Hit Blocks": 0,
+                            "Local Read Blocks": 0,
+                            "Local Dirtied Blocks": 0,
+                            "Local Written Blocks": 0,
+                            "Temp Read Blocks": 0,
+                            "Temp Written Blocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 283,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 5.931,
+              "Triggers": [],
+              "Execution Time": 0.167
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-history-keyset-authenticated-rls",
+      "sql": "select id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,customer_note,admin_note,created_at,paid_at,checkout_batch_id from public.orders where user_id='<uuid>' and (created_at<'<timestamp>' or (created_at='<timestamp>' and id<'<uuid>')) order by created_at desc,id desc limit 26",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 4.62,
+                "Total Cost": 4.63,
+                "Plan Rows": 1,
+                "Plan Width": 242,
+                "Actual Startup Time": 0.141,
+                "Actual Total Time": 0.143,
+                "Actual Rows": 5,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 9,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Result",
+                    "Parent Relationship": "InitPlan",
+                    "Subplan Name": "InitPlan 1",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 0,
+                    "Total Cost": 0.03,
+                    "Plan Rows": 1,
+                    "Plan Width": 16,
+                    "Actual Startup Time": 0.006,
+                    "Actual Total Time": 0.006,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Shared Hit Blocks": 0,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  },
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 4.59,
+                    "Total Cost": 4.6,
+                    "Plan Rows": 1,
+                    "Plan Width": 242,
+                    "Actual Startup Time": 0.14,
+                    "Actual Total Time": 0.141,
+                    "Actual Rows": 5,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "orders.created_at DESC",
+                      "orders.id DESC"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 26,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 9,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Result",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Startup Cost": 0,
+                        "Total Cost": 4.58,
+                        "Plan Rows": 1,
+                        "Plan Width": 242,
+                        "Actual Startup Time": 0.031,
+                        "Actual Total Time": 0.067,
+                        "Actual Rows": 5,
+                        "Actual Loops": 1,
+                        "One-Time Filter": "((InitPlan 1).col1 = '<uuid>'::uuid)",
+                        "Shared Hit Blocks": 3,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0,
+                        "Plans": [
+                          {
+                            "Node Type": "Seq Scan",
+                            "Parent Relationship": "Outer",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Relation Name": "orders",
+                            "Alias": "orders",
+                            "Startup Cost": 0,
+                            "Total Cost": 4.58,
+                            "Plan Rows": 1,
+                            "Plan Width": 242,
+                            "Actual Startup Time": 0.023,
+                            "Actual Total Time": 0.057,
+                            "Actual Rows": 5,
+                            "Actual Loops": 1,
+                            "Filter": "((user_id = '<uuid>'::uuid) AND ((created_at < '<timestamp>'::timestamp with time zone) OR ((created_at = '<timestamp>'::timestamp with time zone) AND (id < '<uuid>'::uuid))))",
+                            "Rows Removed by Filter": 84,
+                            "Shared Hit Blocks": 3,
+                            "Shared Read Blocks": 0,
+                            "Shared Dirtied Blocks": 0,
+                            "Shared Written Blocks": 0,
+                            "Local Hit Blocks": 0,
+                            "Local Read Blocks": 0,
+                            "Local Dirtied Blocks": 0,
+                            "Local Written Blocks": 0,
+                            "Temp Read Blocks": 0,
+                            "Temp Written Blocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 283,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 2.612,
+              "Triggers": [],
+              "Execution Time": 0.216
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders-pending-projection-authenticated-rls",
+      "sql": "select id,checkout_batch_id,status,payment_method,created_at from public.orders where user_id='<uuid>' and status='pending' and payment_method='PayMongo Checkout' order by id asc limit 100",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 2.4,
+                "Total Cost": 2.4,
+                "Plan Rows": 1,
+                "Plan Width": 63,
+                "Actual Startup Time": 0.085,
+                "Actual Total Time": 0.086,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 4,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Result",
+                    "Parent Relationship": "InitPlan",
+                    "Subplan Name": "InitPlan 1",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 0,
+                    "Total Cost": 0.03,
+                    "Plan Rows": 1,
+                    "Plan Width": 16,
+                    "Actual Startup Time": 0.004,
+                    "Actual Total Time": 0.004,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Shared Hit Blocks": 0,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  },
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 2.36,
+                    "Total Cost": 2.37,
+                    "Plan Rows": 1,
+                    "Plan Width": 63,
+                    "Actual Startup Time": 0.084,
+                    "Actual Total Time": 0.084,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Sort Key": [
+                      "orders.id"
+                    ],
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 25,
+                    "Sort Space Type": "Memory",
+                    "Shared Hit Blocks": 4,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Result",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Startup Cost": 0.13,
+                        "Total Cost": 2.35,
+                        "Plan Rows": 1,
+                        "Plan Width": 63,
+                        "Actual Startup Time": 0.055,
+                        "Actual Total Time": 0.055,
+                        "Actual Rows": 0,
+                        "Actual Loops": 1,
+                        "One-Time Filter": "((InitPlan 1).col1 = '<uuid>'::uuid)",
+                        "Shared Hit Blocks": 1,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0,
+                        "Plans": [
+                          {
+                            "Node Type": "Index Scan",
+                            "Parent Relationship": "Outer",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Scan Direction": "Forward",
+                            "Index Name": "orders_one_open_per_user_product_uq",
+                            "Relation Name": "orders",
+                            "Alias": "orders",
+                            "Startup Cost": 0.13,
+                            "Total Cost": 2.35,
+                            "Plan Rows": 1,
+                            "Plan Width": 63,
+                            "Actual Startup Time": 0.049,
+                            "Actual Total Time": 0.049,
+                            "Actual Rows": 0,
+                            "Actual Loops": 1,
+                            "Index Cond": "(user_id = '<uuid>'::uuid)",
+                            "Rows Removed by Index Recheck": 0,
+                            "Filter": "((status = 'pending'::text) AND (payment_method = 'PayMongo Checkout'::text))",
+                            "Rows Removed by Filter": 0,
+                            "Shared Hit Blocks": 1,
+                            "Shared Read Blocks": 0,
+                            "Shared Dirtied Blocks": 0,
+                            "Shared Written Blocks": 0,
+                            "Local Hit Blocks": 0,
+                            "Local Read Blocks": 0,
+                            "Local Dirtied Blocks": 0,
+                            "Local Written Blocks": 0,
+                            "Temp Read Blocks": 0,
+                            "Temp Written Blocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 259,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.918,
+              "Triggers": [],
+              "Execution Time": 0.147
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "entitlements-active-owner-1-authenticated-rls",
+      "sql": "select track_id from public.entitlements where user_id='<uuid>' and status='active' and expires_at>now()",
+      "explain": [
+        {
+          "QUERY PLAN": [
+            {
+              "Plan": {
+                "Node Type": "Result",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 1.29,
+                "Total Cost": 3.33,
+                "Plan Rows": 2,
+                "Plan Width": 11,
+                "Actual Startup Time": 0.044,
+                "Actual Total Time": 0.046,
+                "Actual Rows": 2,
+                "Actual Loops": 1,
+                "One-Time Filter": "((InitPlan 1).col1 = '<uuid>'::uuid)",
+                "Shared Hit Blocks": 2,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Result",
+                    "Parent Relationship": "InitPlan",
+                    "Subplan Name": "InitPlan 1",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 0,
+                    "Total Cost": 0.03,
+                    "Plan Rows": 1,
+                    "Plan Width": 16,
+                    "Actual Startup Time": 0.003,
+                    "Actual Total Time": 0.004,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Shared Hit Blocks": 0,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  },
+                  {
+                    "Node Type": "Bitmap Heap Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "entitlements",
+                    "Alias": "entitlements",
+                    "Startup Cost": 1.29,
+                    "Total Cost": 3.33,
+                    "Plan Rows": 2,
+                    "Plan Width": 11,
+                    "Actual Startup Time": 0.038,
+                    "Actual Total Time": 0.039,
+                    "Actual Rows": 2,
+                    "Actual Loops": 1,
+                    "Recheck Cond": "(user_id = '<uuid>'::uuid)",
+                    "Rows Removed by Index Recheck": 0,
+                    "Filter": "((status = 'active'::text) AND (expires_at > now()))",
+                    "Rows Removed by Filter": 0,
+                    "Exact Heap Blocks": 1,
+                    "Lossy Heap Blocks": 0,
+                    "Shared Hit Blocks": 2,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Plans": [
+                      {
+                        "Node Type": "Bitmap Index Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Index Name": "entitlements_user_id_product_code_key",
+                        "Startup Cost": 0,
+                        "Total Cost": 1.26,
+                        "Plan Rows": 2,
+                        "Plan Width": 0,
+                        "Actual Startup Time": 0.007,
+                        "Actual Total Time": 0.007,
+                        "Actual Rows": 2,
+                        "Actual Loops": 1,
+                        "Index Cond": "(user_id = '<uuid>'::uuid)",
+                        "Shared Hit Blocks": 1,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "Planning": {
+                "Shared Hit Blocks": 197,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.823,
+              "Triggers": [],
+              "Execution Time": 0.09
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
