@@ -532,6 +532,13 @@ export function MockExamRunner() {
     navigate('/mock?track=' + encodeURIComponent(plan.trackParam) + '&stage=competences', { replace: true })
   }, [finished, mode, track, competenceId, questions, answers, score, navigate])
 
+  if (requestedSessionId && activeSessionId === requestedSessionId && questions.length > 0 && mode !== 'MOCK') {
+    return <div className="screen mock-exam-runner" role="alert">
+      <p>This saved session is not a mock exam. Open History to resume it in the correct practice view.</p>
+      <button className="btn btn-primary" onClick={() => navigate('/history')}>Open History</button>
+    </div>
+  }
+
   if (requestedSessionId && (activeSessionId !== requestedSessionId || mode !== 'MOCK' || questions.length === 0)) {
     if (sessionError && !loading) {
       return <div className="screen mock-exam-runner" role="alert">
