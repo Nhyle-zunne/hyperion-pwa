@@ -82,7 +82,7 @@ try {
     const toc = join(files, 'data.toc');
     run('docker', ['run', '--rm', ...mount, 'postgres:17', 'pg_restore', '--list', '/backup/database.dump'], { output: toc });
     writeFileSync(toc, portableDataToc(readFileSync(toc, 'utf8')));
-    run('docker', ['run', '--rm', ...mount, 'postgres:17', 'pg_restore', '--data-only',
+    run('docker', ['run', '--rm', ...mount, 'postgres:17', 'pg_restore', '--data-only', '--file=-',
       '--schema=public', '--schema=auth', '--schema=storage', '--use-list=/backup/data.toc', '/backup/database.dump'], { output: join(files, 'data.sql') });
     const fileNames = ['database.dump', 'roles.sql', 'schema.sql', 'data.sql'];
     const manifest = { format: 1, project: projectRef, createdAt: new Date().toISOString(),
