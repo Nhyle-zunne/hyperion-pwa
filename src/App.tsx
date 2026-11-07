@@ -119,6 +119,7 @@ export default function App() {
   const entitlementsVerified = useLicenseStore((s) => s.entitlementsVerified)
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
   const currentTrack = usePracticeStore((s) => s.track)
+  const activeSessionId = usePracticeStore((s) => s.sessionId)
   const sessionSource = usePracticeStore(s => s.source)
   const sessionFinished = usePracticeStore(s => s.finished)
   const completionError = usePracticeStore(s => s.completionError)
@@ -402,6 +403,11 @@ export default function App() {
 
   const isPracticeQuiz = location.pathname === '/practice/quiz'
   const isMockRunner = location.pathname === '/mock/exam'
+  const requestedPracticeSessionId = isPracticeQuiz ? new URLSearchParams(location.search).get('resume') : null
+  // Cloud/local hydration can temporarily restore a different practice session.
+  // Let the quiz screen load the URL-pinned session before any question is shown
+  // or the entitlement guard decides whether to redirect the visitor.
+  const isRestoringPinnedPractice = !!requestedPracticeSessionId && activeSessionId !== requestedPracticeSessionId
   const isQuestionRunner = isPracticeQuiz || isMockRunner
   const currentMode = usePracticeStore((s) => s.mode)
   const isQuickScanViewer = location.pathname === '/quick-scan/view'
@@ -412,7 +418,7 @@ export default function App() {
   const guardedTrack = isQuestionRunner ? currentTrack : quickScanTrack ?? flashcardTrack
   const hasGuardedTrackLicense = !!guardedTrack && entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
   const permittedFreeRunner = isFreeSession && ((isMockRunner && currentMode === 'MOCK') || (isPracticeQuiz && currentMode === 'PRACTICE'))
-  const showQuestionAccessCheck = !!guardedTrack && (isQuestionRunner || isQuickScanViewer || isFlashcards)
+  const showQuestionAccessCheck = !isRestoringPinnedPractice && !!guardedTrack && (isQuestionRunner || isQuickScanViewer || isFlashcards)
     && (!entitlementsChecked || (!hasGuardedTrackLicense && !permittedFreeRunner))
 
   useEffect(() => {
@@ -425,7 +431,7 @@ export default function App() {
 
 
   useEffect(() => {
-    if (!localOwnerReady || !entitlementsChecked || (!isQuestionRunner && !isQuickScanViewer && !isFlashcards) || !guardedTrack) return
+    if (!localOwnerReady || !entitlementsChecked || isRestoringPinnedPractice || (!isQuestionRunner && !isQuickScanViewer && !isFlashcards) || !guardedTrack) return
     if (isQuestionRunner && (sessionLoading || sessionQuestionCount === 0)) return
     const allowed = entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
     if (allowed) return
@@ -443,7 +449,7 @@ export default function App() {
     if (isQuestionRunner) void usePracticeStore.getState().saveProgress().catch(() => undefined)
     navigate('/track?track=' + (trackParam[guardedTrack] || 'oic_nw'), { replace: true })
     useUIStore.getState().openPaywall('This paid question view needs a current, verified license. Renew access or reconnect to check your subscription.')
-  }, [localOwnerReady, entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isQuestionRunner, isQuickScanViewer, isFlashcards, guardedTrack, isFreeSession, currentMode, sessionLoading, sessionQuestionCount, navigate])
+  }, [localOwnerReady, entitlementsChecked, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked, isRestoringPinnedPractice, isQuestionRunner, isQuickScanViewer, isFlashcards, guardedTrack, isFreeSession, currentMode, sessionLoading, sessionQuestionCount, navigate])
 
   // Free Reviewer is the only non-mock practice setup available without a license.
   // Direct URLs must obey the same access rule as the track-hub buttons.
@@ -633,7 +639,10 @@ export default function App() {
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-outline" onClick={() => setResumeSession(null)}>NOT NOW</button>
             <button type="button" className="btn btn-primary" onClick={() => {
-              const destination = resumeSession.mode === 'MOCK' ? '/mock/exam' : '/practice/quiz'
+              const savedId = usePracticeStore.getState().sessionId
+              const destination = resumeSession.mode === 'MOCK'
+                ? '/mock/exam'
+                : savedId ? '/practice/quiz?resume=' + encodeURIComponent(savedId) : '/history'
               setResumeSession(null)
               navigate(destination)
             }}>RESUME SESSION</button>
