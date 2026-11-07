@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { validateSource, copyManifest, compareCopies, portableDumpScript } from '../lib/independentBackup.mjs';
 const ref = 'evnjoezffghtrzqacwcj';
 const url = `postgresql://postgres.${ref}:synthetic@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=verify-full`;
+assert.throws(() => validateSource(url, true));
 assert.equal(validateSource(url).hostname, 'aws-1-ap-northeast-1.pooler.supabase.com');
 for (const bad of ['', url.replace(ref, 'other'), url.replace(':5432', ':6543'), url.replace('verify-full','disable'), `${url}&host=attacker.invalid`, url.replace('/postgres?', '/other?')]) assert.throws(() => validateSource(bad));
 assert.throws(() => validateSource('postgresql://postgres:synthetic@localhost:5432/postgres'));

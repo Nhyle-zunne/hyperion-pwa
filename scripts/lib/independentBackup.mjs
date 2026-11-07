@@ -12,7 +12,7 @@ export function validateSource(value, localTest = false) {
     || (url.port && url.port !== (local ? '54322' : '5432'))
     || [...url.searchParams.keys()].some(key => key !== 'sslmode')
     || (!local && (url.searchParams.getAll('sslmode').length !== 1 || url.searchParams.get('sslmode') !== 'verify-full'))
-    || (!local && !direct && !pooler)) throw new Error('Backup requires the expected project, session/direct port and verified TLS');
+    || (localTest && !local) || (!local && !direct && !pooler)) throw new Error('Backup requires the expected project, session/direct port and verified TLS');
   return url;
 }
 
