@@ -176,15 +176,15 @@ function snapshotFromState(s: PracticeState, finished = s.finished): SessionSnap
   };
 }
 
-function persistActiveSession(s: PracticeState) {
+function persistActiveSession(s: PracticeState): Promise<void> {
   const snapshot = snapshotFromState(s, false);
-  if (!snapshot || s.finished) return;
+  if (!snapshot || s.finished) return Promise.resolve();
   const answered = s.questions.reduce((count, q) => count + (s.answers[q.id]?.selectedIndex != null ? 1 : 0), 0);
   const correct = s.questions.reduce((count, q) => count + (s.answers[q.id]?.isCorrect ? 1 : 0), 0);
 
   // Write the encrypted question snapshot first; only advertise a resumable History row
   // after IndexedDB confirms the write succeeded.
-  void saveSessionSnapshot(snapshot.sessionId, snapshot).then(() => {
+  return saveSessionSnapshot(snapshot.sessionId, snapshot).then(() => {
     const latest = usePracticeStore.getState();
     // Avoid resurrecting a History row after this session was reset or finished while saving.
     if (latest.sessionId !== snapshot.sessionId || latest.finished || latest.questions.length === 0) return;
@@ -327,7 +327,8 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       streak: 0,
       bestStreak: 0
     });
-    persistActiveSession(get());
+    // Do not open the quiz before the encrypted session and History pointer are durable.
+    await persistActiveSession(get());
     return true;
   },
 
@@ -417,7 +418,8 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       }
 
       set({ questions: delivered, track, competenceId: competenceId ?? null, part: part ?? null, isFreeSession, sessionId, loading: false, startedAt });
-      persistActiveSession(get());
+      // A hard refresh immediately after starting must find this exact session.
+      await persistActiveSession(get());
     } catch {
       set({ loading: false, error: 'Failed to load questions.' });
     }
