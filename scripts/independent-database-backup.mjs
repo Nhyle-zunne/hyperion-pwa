@@ -137,14 +137,15 @@ try {
     if (readFileSync(networks, 'utf8').trim()) throw new Error('Restore database is still networked');
     // The only restore destination is the disposable CLI database created above.
     // No restore URL, project ref or container is accepted from environment/input.
+    // Use the local administrative role for managed-schema ownership and trigger suppression.
     const sql = ['roles.sql','schema.sql','data.sql'].map(name => readFileSync(join(files, name), 'utf8')).join('\n');
     const restore = join(work, 'restore.sql');
     writeFileSync(restore, 'BEGIN;\nSET session_replication_role = replica;\n' + sql + '\nCOMMIT;\n');
     stage = 'portable database restore';
-    run('docker', ['exec', '-i', container, 'psql', '-X', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate'], { input: restore });
+    run('docker', ['exec', '-i', container, 'psql', '-X', '-U', 'supabase_admin', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate'], { input: restore });
     stage = 'restored row verification';
     const roundTrip = join(work, 'round-trip.sql');
-    run('docker', ['exec', container, 'pg_dump', '-U', 'postgres', '-d', 'postgres', '--data-only', '--schema=public', '--schema=auth', '--schema=storage'], { output: roundTrip });
+    run('docker', ['exec', container, 'pg_dump', '-U', 'supabase_admin', '-d', 'postgres', '--data-only', '--schema=public', '--schema=auth', '--schema=storage'], { output: roundTrip });
     compareCopies(manifest.copies, copyManifest(readFileSync(roundTrip, 'utf8')));
     console.log(`Encrypted backup decrypted and restored into isolated Supabase; exact row contents verified for ${Object.keys(manifest.copies).filter(name => !name.startsWith('sequence:')).length} tables. Full archive, external secrets and Storage bytes still require the recovery runbook.`);
   } else throw new Error('Use backup or restore-drill');
