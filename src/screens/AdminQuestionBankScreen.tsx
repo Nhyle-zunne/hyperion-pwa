@@ -5,7 +5,7 @@ import { withPageLoading } from '../lib/pageLoading'
 
 type Asset = { path: string; label: string; track: string; competenceId: string; part: number | null; format: 'standard' | 'gmdss'; repositoryPath?: string }
 type QuestionPreview = { questionText: string; options: string[]; correctAnswerIndex: number; explanation?: string }
-type Preview = { requestId: string; baseHead: string; validationId: string; files: { path: string; questionCount: number; previousCount: number; changed: number; appended: number; corrections: { number: number; before: QuestionPreview; after: QuestionPreview }[] }[] }
+type Preview = { requestId: string; baseHead: string; validationId: string; files: { path: string; questionCount: number; previousCount: number; changed: number; appended: number; explanationsPreserved?: number; staleExplanationsCleared?: number; corrections: { number: number; before: QuestionPreview; after: QuestionPreview }[] }[] }
 type QueueStatus = 'ready' | 'publishing' | 'success' | 'error'
 type QueueItem = { id: string; file: File; targetPath: string; status: QueueStatus; error?: string; questionCount?: number }
 const TRACKS = [
@@ -312,7 +312,7 @@ export default function AdminQuestionBankScreen() {
         <h2 style={{ fontSize: '1.1rem' }}>Review before publishing</h2>
         <p style={secondaryText}>Destination: Android shared question assets on GitHub. Existing saved records are not modified. Files publish together or the live release stays unchanged.</p>
         {preview.files.map(file => <details key={file.path} style={{ margin: '12px 0' }}>
-          <summary><strong>{file.path}</strong> · {file.questionCount.toLocaleString()} questions · {file.changed} corrected · {file.appended} appended</summary>
+          <summary><strong>{file.path}</strong> · {file.questionCount.toLocaleString()} questions · {file.changed} corrected · {file.appended} appended{file.explanationsPreserved ? ` · ${file.explanationsPreserved} explanations preserved` : ''}{file.staleExplanationsCleared ? ` · ${file.staleExplanationsCleared} stale explanations cleared` : ''}</summary>
           {file.corrections.map(change => <div key={change.number} style={{ margin: '10px 0', padding: 10, borderLeft: '3px solid var(--accent)' }}><strong>Question {change.number}</strong>{(['before', 'after'] as const).map(side => <div key={side} style={{ margin: '8px 0' }}><strong>{side === 'before' ? 'Previous' : 'Updated'}</strong><p>{change[side].questionText}</p><ol type="A">{change[side].options.map((option, index) => <li key={index} style={{ color: index === change[side].correctAnswerIndex ? 'var(--accent)' : 'var(--text)' }}>{option}{index === change[side].correctAnswerIndex ? ' · Correct answer' : ''}</li>)}</ol>{change[side].explanation && <p style={secondaryText}>{change[side].explanation}</p>}</div>)}</div>)}
           {file.changed > file.corrections.length && <p style={secondaryText}>Showing the first {file.corrections.length} text previews. Review the full uploaded file for all {file.changed} corrections, including answer changes.</p>}
         </details>)}
