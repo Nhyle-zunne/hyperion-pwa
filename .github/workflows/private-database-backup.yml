@@ -1,0 +1,76 @@
+name: Private database backup and restore check
+
+on:
+  schedule:
+    - cron: '23 19 * * *' # 03:23 Asia/Manila, daily (GitHub may delay schedules).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.repository == 'Nhyle-zunne/hyperion-pwa' && github.event.repository.private == true && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.122.0
+      - name: Install age encryption
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes age
+      - name: Validate required private configuration
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_DATABASE_CA_CERT: ${{ secrets.BACKUP_DATABASE_CA_CERT }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
+        run: |
+          node --input-type=module <<'JS'
+          import { validateSource } from './scripts/lib/independentBackup.mjs';
+          try {
+            validateSource(process.env.BACKUP_DATABASE_URL);
+            if (!process.env.BACKUP_DATABASE_CA_CERT?.trim() || !process.env.BACKUP_AGE_RECIPIENT?.trim() || !process.env.BACKUP_AGE_IDENTITY?.trim()) throw new Error();
+          } catch {
+            console.error('Backup credentials are missing/invalid. Configure the four secrets in docs/independent-database-backups.md. No backup was made.');
+            process.exit(1);
+          }
+          JS
+      - name: Create encrypted independent database backup
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_DATABASE_CA_CERT: ${{ secrets.BACKUP_DATABASE_CA_CERT }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+        run: node scripts/independent-database-backup.mjs backup backup-output/database.tar.age
+      - name: Retain ciphertext even if the later restore check fails
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-database-${{ github.run_id }}-${{ github.run_attempt }}
+          path: backup-output/database.tar.age
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Restore encrypted portable backup into disposable local Supabase
+        env:
+          BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
+        run: node scripts/independent-database-backup.mjs restore-drill backup-output/database.tar.age
+      - name: Record recovery-check outcome
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          echo "Daily backup and portable restore check: $JOB_STATUS. A failed run does not establish recovery readiness. See docs/independent-database-backups.md; ciphertext artifacts expire after 7 days." >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove local ciphertext
+        if: always()
+        run: rm -rf backup-output

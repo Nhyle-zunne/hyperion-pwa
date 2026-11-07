@@ -243,3 +243,25 @@ jobs:
       - name: Stop local Supabase stack
         if: always()
         run: supabase stop --no-backup || true
+
+  independent-backup-roundtrip:
+    name: Synthetic encrypted backup and isolated restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.122.0
+      - name: Install age
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes age
+      - name: Check backup security guards
+        run: node scripts/tests/independent-backup-test.mjs
+      - name: Export, encrypt and restore synthetic data
+        run: node scripts/tests/independent-backup-roundtrip.mjs
