@@ -5,6 +5,7 @@ import KeywordQuestionText from '../components/KeywordQuestionText'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { sessionRunnerPath } from '../lib/sessionRunnerRoute'
 import { usePracticeStore } from '../stores/practiceStore'
 import { getQuestionCountsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { QuestionBankCount } from '../lib/questionBank'
@@ -263,7 +264,8 @@ export default function MockExamScreen() {
         setStartError('No questions were returned for this competence. Please refresh and try again.')
         return
       }
-      navigate('/mock/exam')
+      if (!state.sessionId) { setStartError('Unable to identify the new mock exam session. Please retry.'); return }
+      navigate(sessionRunnerPath({ id: state.sessionId, mode: 'MOCK' }))
     } finally { setStarting(false); setStartingCompetence(null) }
   }
 
@@ -428,7 +430,22 @@ export default function MockExamScreen() {
 
 export function MockExamRunner() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const requestedSessionId = params.get('resume') || undefined
+  const activeSessionId = usePracticeStore(s => s.sessionId)
+  const loading = usePracticeStore(s => s.loading)
+  const sessionError = usePracticeStore(s => s.error)
+  const restoreSavedProgress = usePracticeStore(s => s.restoreSavedProgress)
   const { questions, answers, finished, timeLeftSec, selectMockAnswer, finish, tick, score, reset, track, competenceId, mode, isFreeSession } = usePracticeStore()
+
+  useEffect(() => {
+    // Mock exams, like normal practice, must restore their own saved session.
+    // Never select another track's most recently saved practice on reload.
+    if (!requestedSessionId) return
+    const active = usePracticeStore.getState()
+    if (active.sessionId === requestedSessionId && active.questions.length > 0 && active.mode === 'MOCK') return
+    void restoreSavedProgress(requestedSessionId)
+  }, [requestedSessionId, restoreSavedProgress])
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   const [showLockNotice, setShowLockNotice] = useState(false)
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
@@ -514,6 +531,23 @@ export function MockExamRunner() {
     completionSavedRef.current = true
     navigate('/mock?track=' + encodeURIComponent(plan.trackParam) + '&stage=competences', { replace: true })
   }, [finished, mode, track, competenceId, questions, answers, score, navigate])
+
+  if (requestedSessionId && (activeSessionId !== requestedSessionId || mode !== 'MOCK' || questions.length === 0)) {
+    if (sessionError && !loading) {
+      return <div className="screen mock-exam-runner" role="alert">
+        <p>{sessionError}</p>
+        <button className="btn btn-primary" onClick={() => navigate('/history')}>Open History</button>
+      </div>
+    }
+    return <div className="screen mock-exam-runner" role="status">Restoring your selected mock exam…</div>
+  }
+
+  if (!questions.length || mode !== 'MOCK') {
+    return <div className="screen mock-exam-runner">
+      <p>No mock exam session is active. Open History to select a saved session.</p>
+      <button className="btn btn-primary" onClick={() => navigate('/history')}>Open History</button>
+    </div>
+  }
 
   const answered = questions.reduce((count, q) => count + (answers[q.id]?.selectedIndex != null ? 1 : 0), 0)
   const formatTime = (seconds: number) => String(Math.floor(Math.max(0, seconds) / 60)).padStart(2, '0') + ':' + String(Math.max(0, seconds) % 60).padStart(2, '0')
