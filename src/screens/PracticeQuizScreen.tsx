@@ -18,6 +18,7 @@ export default function PracticeQuizScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const resumeSessionId = params.get('resume') || undefined
+  const activeSessionId = usePracticeStore(state => state.sessionId)
   const {
     questions,
     currentIndex,
@@ -62,12 +63,13 @@ export default function PracticeQuizScreen() {
   }, [])
 
   useEffect(() => {
-    if (resumeSessionId) {
-      void restoreSavedProgress(resumeSessionId)
-    } else if (questions.length === 0) {
-      void restoreSavedProgress()
-    }
-  }, [resumeSessionId])
+    // A browser hard reload empties the in-memory store. Never recover an
+    // unrelated track by selecting the latest saved session with no ID.
+    if (!resumeSessionId) return
+    const active = usePracticeStore.getState()
+    if (active.sessionId === resumeSessionId && active.questions.length > 0) return
+    void restoreSavedProgress(resumeSessionId)
+  }, [resumeSessionId, restoreSavedProgress])
 
   // Never carry an unconfirmed option highlight into another question.
   useEffect(() => {
@@ -134,12 +136,20 @@ export default function PracticeQuizScreen() {
     )
   }
 
+  if (resumeSessionId && activeSessionId !== resumeSessionId) {
+    return (
+      <div className="screen question-runner-screen" role="status">
+        <p>Restoring your selected practice session…</p>
+      </div>
+    )
+  }
+
   if (questions.length === 0) {
     return (
       <div className="screen question-runner-screen">
-        <p>No session active.</p>
-        <button className="btn btn-primary" onClick={() => navigate('/tracks')}>
-          Select Track
+        <p>No session active. Open History to select the correct saved session.</p>
+        <button className="btn btn-primary" onClick={() => navigate('/history')}>
+          Open History
         </button>
       </div>
     )

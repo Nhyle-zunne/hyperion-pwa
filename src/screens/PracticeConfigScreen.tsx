@@ -219,7 +219,9 @@ export default function PracticeConfigScreen({ savedSelection }: { savedSelectio
           source: { collection: savedSelection.collection, selectionId: savedSelection.selectionId }
         })
         if (!started) { setStartError(usePracticeStore.getState().error || 'Could not start this saved question set. Your collection is preserved.'); return }
-        navigate('/practice/quiz')
+        const startedId = usePracticeStore.getState().sessionId
+        if (!startedId) { setStartError('Could not identify this practice session. Try again.'); return }
+        navigate('/practice/quiz?resume=' + encodeURIComponent(startedId))
         return
       }
       // Free Reviewer needs no license/network check. Paid modes must still
@@ -255,7 +257,8 @@ export default function PracticeConfigScreen({ savedSelection }: { savedSelectio
         setStartError(session.error || 'Questions could not be loaded for this session. Please retry.')
         return
       }
-      navigate('/practice/quiz')
+      if (!session.sessionId) { setStartError('Could not identify this practice session. Try again.'); return }
+      navigate('/practice/quiz?resume=' + encodeURIComponent(session.sessionId))
     } catch {
       setStartError('Could not verify access or load this session. Please try again.')
     } finally { setStarting(false) }

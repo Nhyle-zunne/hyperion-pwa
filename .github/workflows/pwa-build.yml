@@ -94,6 +94,10 @@ jobs:
         env:
           HYPERION_BROWSER_FIXTURE: results
         run: bun run test:saved-data:browser
+      - name: Practice hard-refresh exact-session regression
+        env:
+          HYPERION_BROWSER_FIXTURE: practice-refresh
+        run: bun run test:saved-data:browser
       - name: Type-check and build
         run: |
           if [ -z "$VITE_SUPABASE_URL" ]; then unset VITE_SUPABASE_URL; fi

@@ -711,11 +711,12 @@ const snapshotWritePosition = practiceStore.indexOf('await saveSessionSnapshot(s
 const historyWritePosition = practiceStore.indexOf('useHistoryStore.getState().saveSession({', saveProgressStart);
 assert.ok(practiceStore.includes('saveProgress: () => Promise<boolean>') && snapshotWritePosition >= saveProgressStart && historyWritePosition > snapshotWritePosition, 'History is recorded only after the encrypted session snapshot is safely persisted');
 
-const autoSaveStart = practiceStore.indexOf('function persistActiveSession(s: PracticeState) {');
+const autoSaveStart = practiceStore.indexOf('function persistActiveSession(s: PracticeState): Promise<void> {');
 const autoSaveWritePosition = practiceStore.indexOf('saveSessionSnapshot(snapshot.sessionId, snapshot)', autoSaveStart);
 const autoSaveHistoryPosition = practiceStore.indexOf('useHistoryStore.getState().saveSession({', autoSaveStart);
-assert.ok(autoSaveWritePosition >= autoSaveStart && autoSaveHistoryPosition > autoSaveWritePosition && practiceStore.includes('void saveSessionSnapshot(snapshot.sessionId, snapshot).then(() => {'), 'Automatic autosave records resumable History only after the encrypted snapshot write succeeds');
+assert.ok(autoSaveWritePosition >= autoSaveStart && autoSaveHistoryPosition > autoSaveWritePosition && practiceStore.includes('return saveSessionSnapshot(snapshot.sessionId, snapshot).then(() => {') && practiceStore.includes('await persistActiveSession(get())'), 'Automatic autosave records resumable History only after the encrypted snapshot write succeeds');
 assert.ok(practiceStore.includes('Avoid resurrecting a History row after this session was reset or finished while saving'), 'Late autosaves do not restore History after a session has ended');
+assert.ok(practiceQuizScreen.includes('if (!resumeSessionId) return') && !practiceQuizScreen.includes('void restoreSavedProgress()'), 'Bare practice URLs must not restore the newest saved session from an unrelated track');
 
 assert.ok(practiceStore.includes('await deleteSessionSnapshot(snapshot.sessionId).catch(() => undefined)'), 'A session snapshot is removed if its History metadata cannot be saved');
 assert.ok(practiceQuizScreen.includes('saved = await saveProgress()') && practiceQuizScreen.includes('Your session is still open') && practiceQuizScreen.includes('disabled={savingProgress}'), 'Save failure keeps the user in the session and prevents duplicate save requests');
