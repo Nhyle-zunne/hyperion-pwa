@@ -23,7 +23,7 @@ try {
   const config = join(source, 'supabase/config.toml');
   writeFileSync(config, readFileSync(config, 'utf8').replace(/^project_id = .*$/m, 'project_id = "hyperion-backup-test-source"'));
   started = true;
-  command('supabase', ['start','--workdir',source,'--exclude','realtime,imgproxy,kong,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor']);
+  command('supabase', ['start','--workdir',source,'--exclude','realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor']);
   command('docker', ['exec','-i','supabase_db_hyperion-backup-test-source','psql','-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1'], { input: `
     CREATE TABLE public.backup_fixture(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, owner_id uuid NOT NULL REFERENCES auth.users(id), details jsonb NOT NULL);
     ALTER TABLE public.backup_fixture ENABLE ROW LEVEL SECURITY;

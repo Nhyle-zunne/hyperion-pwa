@@ -107,7 +107,7 @@ try {
     let text = readFileSync(config, 'utf8').replace(/^project_id = .*$/m, `project_id = "${drillId}"`);
     writeFileSync(config, text);
     drillOwned = true;
-    run('supabase', ['start', '--workdir', drillDir, '--exclude', 'realtime,imgproxy,kong,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor']);
+    run('supabase', ['start', '--workdir', drillDir, '--exclude', 'realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor']);
     const container = `supabase_db_${drillId}`;
     stage = 'restore network isolation';
     const containersListing = join(work, 'containers');
