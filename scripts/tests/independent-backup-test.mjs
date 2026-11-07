@@ -26,3 +26,14 @@ assert.throws(() => portableDumpScript(dryRun.replace('export PGHOST="127.0.0.1"
 const sequences = copyManifest(data + "SELECT pg_catalog.setval('public.example_id_seq', 5, true);\n");
 assert.equal(sequences['sequence:public.example_id_seq'].value, '5');
 assert.throws(() => compareCopies(sequences, copyManifest(data)));
+
+// The portable data must come from the full archive, without a second source read.
+const { portableDataToc } = await import('../lib/independentBackup.mjs');
+const toc = '; archive\n10; 1 2 TABLE DATA auth users supabase_auth_admin\n11; 1 3 TABLE DATA auth schema_migrations supabase_auth_admin\n12; 1 4 TABLE DATA storage migrations supabase_storage_admin\n13; 1 5 TABLE DATA storage objects supabase_storage_admin\n14; 1 6 TABLE DATA storage vector_indexes supabase_storage_admin\n15; 1 7 SEQUENCE SET public fixture_id_seq postgres\n';
+const portable = portableDataToc(toc);
+assert.ok(portable.includes('TABLE DATA auth users'));
+assert.ok(portable.includes('TABLE DATA storage objects'));
+assert.ok(portable.includes('SEQUENCE SET public fixture_id_seq'));
+assert.ok(!portable.includes('TABLE DATA auth schema_migrations'));
+assert.ok(!portable.includes('TABLE DATA storage migrations'));
+assert.ok(!portable.includes('TABLE DATA storage vector_indexes'));

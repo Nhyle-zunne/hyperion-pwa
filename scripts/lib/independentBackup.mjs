@@ -61,3 +61,7 @@ export function portableDumpScript(script) {
   if (removed !== 5 || /^export PG/m.test(safe)) throw new Error('CLI connection script contract changed');
   return safe;
 }
+
+export function portableDataToc(toc) {
+  return toc.split('\n').filter(line => !/^\d+; \d+ \d+ TABLE DATA (auth schema_migrations|storage (migrations|buckets_vectors|vector_indexes)) /.test(line)).join('\n');
+}

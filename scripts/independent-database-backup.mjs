@@ -4,7 +4,7 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compareCopies, copyManifest, projectRef, validateSource, portableDumpScript } from './lib/independentBackup.mjs';
+import { compareCopies, copyManifest, projectRef, validateSource, portableDumpScript, portableDataToc } from './lib/independentBackup.mjs';
 
 process.umask(0o077);
 const work = mkdtempSync(join(tmpdir(), 'hyperion-private-backup-'));
@@ -77,9 +77,13 @@ try {
     stage = 'portable exports';
     cliDump(url, join(files, 'roles.sql'), ['--role-only']);
     cliDump(url, join(files, 'schema.sql'), []);
-    // Do not replay production schedules, HTTP queues or encrypted Vault secrets in drills.
-    cliDump(url, join(files, 'data.sql'), ['--data-only', '--use-copy', '--schema', 'public,auth,storage',
-      '--exclude', 'auth.schema_migrations,storage.migrations,storage.buckets_vectors,storage.vector_indexes']);
+    // Extract the portable rows from the full archive, avoiding a second remote data export.
+    const mount = ['--mount', `type=bind,source=${files},target=/backup,readonly`];
+    const toc = join(files, 'data.toc');
+    run('docker', ['run', '--rm', ...mount, 'postgres:17', 'pg_restore', '--list', '/backup/database.dump'], { output: toc });
+    writeFileSync(toc, portableDataToc(readFileSync(toc, 'utf8')));
+    run('docker', ['run', '--rm', ...mount, 'postgres:17', 'pg_restore', '--data-only',
+      '--schema=public', '--schema=auth', '--schema=storage', '--use-list=/backup/data.toc', '/backup/database.dump'], { output: join(files, 'data.sql') });
     const fileNames = ['database.dump', 'roles.sql', 'schema.sql', 'data.sql'];
     const manifest = { format: 1, project: projectRef, createdAt: new Date().toISOString(),
       commit: process.env.GITHUB_SHA || 'local', files: Object.fromEntries(fileNames.map(name => [name, digest(join(files, name))])),
@@ -138,7 +142,9 @@ try {
     // The only restore destination is the disposable CLI database created above.
     // No restore URL, project ref or container is accepted from environment/input.
     // Use the local administrative role for managed-schema ownership and trigger suppression.
-    const sql = ['roles.sql','schema.sql','data.sql'].map(name => readFileSync(join(files, name), 'utf8')).join('\n');
+    const sql = readFileSync(join(files, 'roles.sql'), 'utf8') + '\n'
+      + readFileSync(join(files, 'schema.sql'), 'utf8') + '\nSET session_replication_role = replica;\n'
+      + readFileSync(join(files, 'data.sql'), 'utf8');
     const restore = join(work, 'restore.sql');
     writeFileSync(restore, 'BEGIN;\nSET session_replication_role = replica;\n' + sql + '\nCOMMIT;\n');
     stage = 'portable database restore';
