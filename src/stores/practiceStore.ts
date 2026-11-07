@@ -628,6 +628,22 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     if (selectedSaved) {
       const snapshot = await getSessionSnapshot(selectedSaved.id);
       if (snapshot && snapshot.questions.length > 0 && snapshot.track) {
+        // Never allow corrupted/stale History metadata to reopen an unrelated
+        // track or competence. Preserve the archive for manual recovery.
+        const wrongSelection =
+          snapshot.sessionId !== selectedSaved.id ||
+          snapshot.track !== selectedSaved.track ||
+          snapshot.mode !== selectedSaved.mode ||
+          (snapshot.competenceId ?? null) !== (selectedSaved.competenceId ?? null) ||
+          (snapshot.part ?? null) !== (selectedSaved.part ?? null) ||
+          snapshot.questions.some(question =>
+            question.track !== snapshot.track ||
+            (snapshot.competenceId !== null && question.competenceId !== snapshot.competenceId)
+          );
+        if (wrongSelection) {
+          set({ loading: false, error: 'The saved session does not match its track or competence in History. It was not opened; your saved data remains intact.' });
+          return false;
+        }
         // A full entitlement refresh makes multiple network requests and can stall
         // indefinitely while Airplane Mode is enabled. Offline authorization below
         // verifies the signed local lease; online authorization is checked directly

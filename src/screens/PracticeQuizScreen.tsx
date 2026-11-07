@@ -144,6 +144,13 @@ export default function PracticeQuizScreen() {
     )
   }
 
+  if (resumeSessionId && activeSessionId === resumeSessionId && mode === 'MOCK' && questions.length > 0) {
+    return <div className="screen question-runner-screen" role="alert">
+      <p>This saved session is a timed mock exam. Open History to resume it in the correct exam view.</p>
+      <button className="btn btn-primary" onClick={() => navigate('/history')}>Open History</button>
+    </div>
+  }
+
   if (questions.length === 0) {
     return (
       <div className="screen question-runner-screen">

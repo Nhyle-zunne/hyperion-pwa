@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { sessionRunnerPath } from '../lib/sessionRunnerRoute'
 import {
   HISTORY_RETENTION_MS,
   useHistoryStore,
@@ -310,7 +311,7 @@ export default function HistoryScreen() {
   }
 
   const resumeSession = (session: SavedSessionEntry) => {
-    navigate('/practice/quiz?resume=' + encodeURIComponent(session.id))
+    navigate(sessionRunnerPath(session))
   }
 
   const requestDelete = (row: HistoryRow) => setPendingDelete(row)

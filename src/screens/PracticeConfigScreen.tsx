@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { sessionRunnerPath } from '../lib/sessionRunnerRoute'
 import { useLicenseStore } from '../stores/licenseStore'
 import { usePracticeStore } from '../stores/practiceStore'
 import { HISTORY_RETENTION_MS, useHistoryStore } from '../stores/historyStore'
@@ -221,7 +222,7 @@ export default function PracticeConfigScreen({ savedSelection }: { savedSelectio
         if (!started) { setStartError(usePracticeStore.getState().error || 'Could not start this saved question set. Your collection is preserved.'); return }
         const startedId = usePracticeStore.getState().sessionId
         if (!startedId) { setStartError('Could not identify this practice session. Try again.'); return }
-        navigate('/practice/quiz?resume=' + encodeURIComponent(startedId))
+        navigate(sessionRunnerPath({ id: startedId, mode: usePracticeStore.getState().mode }))
         return
       }
       // Free Reviewer needs no license/network check. Paid modes must still
@@ -258,7 +259,7 @@ export default function PracticeConfigScreen({ savedSelection }: { savedSelectio
         return
       }
       if (!session.sessionId) { setStartError('Could not identify this practice session. Try again.'); return }
-      navigate('/practice/quiz?resume=' + encodeURIComponent(session.sessionId))
+      navigate(sessionRunnerPath({ id: session.sessionId, mode: session.mode }))
     } catch {
       setStartError('Could not verify access or load this session. Please try again.')
     } finally { setStarting(false) }
@@ -319,7 +320,7 @@ export default function PracticeConfigScreen({ savedSelection }: { savedSelectio
                 <div role="cell" style={{ display: 'grid', placeItems: 'center', padding: '.25rem .1rem', borderRight: '1px solid var(--border)', color: passColor, fontSize: '.68rem', fontWeight: 900 }}>{session.percent.toFixed(1)}%</div>
                 <div role="cell" style={{ display: 'grid', placeItems: 'center', padding: '.25rem .1rem', borderRight: '1px solid var(--border)', color: 'var(--text)', fontSize: '.68rem', fontWeight: 800 }}>{session.answered}/{session.total}</div>
                 <div role="cell" style={{ display: 'grid', placeItems: 'center', padding: '.2rem', borderRight: '1px solid var(--border)' }}>
-                  <button type="button" onClick={() => session.completed ? navigate('/history?review=' + encodeURIComponent(session.id)) : navigate('/practice/quiz?resume=' + encodeURIComponent(session.id))} style={{ border: 0, padding: '.25rem .1rem', background: 'transparent', color: session.completed ? 'var(--accent)' : 'var(--success, #15803d)', fontSize: '.62rem', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' }}>{session.completed ? 'REVIEW »' : 'RESUME »'}</button>
+                  <button type="button" onClick={() => session.completed ? navigate('/history?review=' + encodeURIComponent(session.id)) : navigate(sessionRunnerPath(session))} style={{ border: 0, padding: '.25rem .1rem', background: 'transparent', color: session.completed ? 'var(--accent)' : 'var(--success, #15803d)', fontSize: '.62rem', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' }}>{session.completed ? 'REVIEW »' : 'RESUME »'}</button>
                 </div>
                 <div role="cell" style={{ display: 'grid', placeItems: 'center', padding: '.1rem' }}>
                   <button type="button" aria-label="Move session to Recently Deleted" onClick={() => setSessionPendingDelete(session)} style={{ border: 0, background: 'transparent', color: 'var(--text-muted)', fontWeight: 900, fontSize: '1rem', cursor: 'pointer', minWidth: 28 }}>×</button>
