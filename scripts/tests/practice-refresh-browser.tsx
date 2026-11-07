@@ -73,6 +73,16 @@ async function seedMatrix() {
       savedAt: Date.now() + cases.length
     })
   }
+  // Deliberately corrupt one History pointer while leaving its encrypted
+  // question snapshot intact. A mismatch must never display another competence.
+  const mismatchId = 'matrix-history-mismatch'
+  const mismatch = makeSnapshot(mismatchId, 'DECK_OIC_NW', 'C1', 'Mismatched record must never be shown?')
+  await saveSessionSnapshot(mismatchId, mismatch)
+  useHistoryStore.getState().saveSession({
+    id: mismatchId, mode: 'PRACTICE', track: 'GMDSS_GOC', competenceId: 'C2',
+    part: null, isFreeSession: false, currentIndex: 0, total: 1, answered: 0,
+    correct: 0, startedAt: mismatch.startedAt, savedAt: Date.now() + cases.length + 1
+  })
 }
 Object.assign(window, { practiceRefreshMatrix: { cases, seed: seedMatrix } })
 
