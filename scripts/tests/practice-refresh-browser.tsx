@@ -22,10 +22,10 @@ useLicenseStore.setState({
   cloudTrackIds: ['ALL'],
   refreshCloudEntitlements: async () => {}
 })
-function makeQuestion(track: TrackId, id: string, text: string): Question {
+function makeQuestion(track: TrackId, id: string, text: string, competenceId = 'C1'): Question {
   return {
     id, track, functionId: track === 'DECK_OIC_NW' ? 'F1' : 'GMDSS',
-    competenceId: 'C1', topic: 'Refresh regression',
+    competenceId, topic: 'Refresh regression',
     questionText: text,
     options: ['Port', 'Starboard'], correctAnswerIndex: 0,
     explanation: 'Synthetic fixture only.', difficulty: 'EASY'
@@ -34,7 +34,7 @@ function makeQuestion(track: TrackId, id: string, text: string): Question {
 function makeSnapshot(id: string, track: TrackId, competenceId: string | null, text: string, mode: SessionMode = 'PRACTICE', part: number | null = null, free = false): SessionSnapshot {
   return {
     sessionId: id,
-    questions: [makeQuestion(track, 'recovery-fixture-' + id, text)],
+    questions: [makeQuestion(track, 'recovery-fixture-' + id, text, competenceId ?? 'C1')],
     answers: {}, currentIndex: 0, track, competenceId, part,
     mode, isFreeSession: free, startedAt: Date.now(),
     timeLimitSec: mode === 'MOCK' ? 3600 : 0, timeLeftSec: mode === 'MOCK' ? 3600 : 0,
