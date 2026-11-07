@@ -1,4 +1,5 @@
 import { decryptToText, deriveKeyBytes, toSearchQuestions } from '../supabase/functions/_shared/bankCodec.ts'
+import { parseCsvText } from '../src/lib/csvParser.ts'
 import { GITHUB_BANK_FILES, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, GITHUB_BANK_MANIFEST, GITHUB_BANK_RELEASE, githubAssetPath, INITIAL_BANK_RELEASE, readBounded, sha256, validateBankManifest, type BankRelease } from '../supabase/functions/_shared/githubBankSource.ts'
 
 export class PublisherError extends Error { status: number; constructor(message: string, status = 400) { super(message); this.status = status } }
@@ -6,6 +7,58 @@ export type BankUpload = { path: string; format: 'csv' | 'encrypted'; content: s
 export type PublishInput = { files: BankUpload[]; requestId: string; expectedHead?: string; validationId?: string }
 const allowed = new Set(GITHUB_BANK_FILES.map(file => file.path))
 const encoder = new TextEncoder()
+const C1_EXPLANATION_PATH = 'deck/oic_nw_c1.csv.enc'
+
+/**
+ * Preserve an existing OIC-NW C1 explanation only when the question, all four
+ * choice cells, and the keyed answer are byte-for-byte unchanged. A new bank
+ * upload may intentionally omit explanations; never replace those with blanks.
+ *
+ * A copied old explanation on a changed question is stale and is removed.
+ * An explicitly rewritten explanation, however, is kept. Compare by numbered
+ * slot, never fuzzy text matches: near-duplicate navigation questions often
+ * have distinct answers and must not borrow each other's explanations.
+ */
+export function reconcileC1Explanations(before: string, uploaded: string) {
+  const parse = (text: string) => {
+    const rows = parseCsvText(text)
+    const questions = rows.filter(row => {
+      const number = (row[0] || '').trim()
+      const choices = row.slice(2, 6).map(choice => (choice || '').trim())
+      return row.length >= 7 && /^[0-9]+$/.test(number) && Number(number) > 0
+        && !!(row[1] || '').trim() && (row[1] || '').trim().toLowerCase() !== 'question'
+        && choices.filter(Boolean).length >= 2
+        && !choices.every((choice, i) => choice === ['A', 'B', 'C', 'D'][i])
+    })
+    return { rows, questions }
+  }
+  const original = parse(before), next = parse(uploaded)
+  // Never guess how raw CSV slots correspond to the server's actual questions.
+  if (original.questions.length !== toSearchQuestions(C1_EXPLANATION_PATH, before).length
+      || next.questions.length !== toSearchQuestions(C1_EXPLANATION_PATH, uploaded).length) {
+    throw new PublisherError('The C1 CSV layout could not be reconciled safely; explanations were not changed.', 409)
+  }
+  let preserved = 0, cleared = 0
+  for (let i = 0; i < Math.min(original.questions.length, next.questions.length); i++) {
+    const oldRow = original.questions[i], newRow = next.questions[i]
+    const oldExplanation = oldRow[7] || '', supplied = newRow[7] || ''
+    const unchanged = [1, 2, 3, 4, 5, 6].every(column => (oldRow[column] || '') === (newRow[column] || ''))
+    if (unchanged && !supplied.trim() && oldExplanation.trim()) {
+      newRow[7] = oldExplanation
+      preserved++
+    } else if (!unchanged && oldExplanation.trim() && supplied.trim() === oldExplanation.trim()) {
+      newRow[7] = ''
+      cleared++
+    }
+  }
+  const encodeCell = (value: string) => /[",\r\n]/.test(value)
+    ? '"' + value.replace(/"/g, '""') + '"' : value
+  const text = preserved || cleared
+    ? next.rows.map(row => row.map(encodeCell).join(',')).join('\r\n')
+    : uploaded
+  return { text, preserved, cleared }
+}
+
 export function validateQuestionChanges(path: string, before: string, after: string) {
   if (!allowed.has(path)) throw new PublisherError('Unsupported question-bank destination path.')
   const previous = toSearchQuestions(path, before), next = toSearchQuestions(path, after)
@@ -126,8 +179,24 @@ async function prepare(input: PublishInput, fetcher: typeof fetch, token: string
     if (old.length !== metadata.bytes || await sha256(old) !== metadata.sha256) throw new PublisherError('This GitHub file has changes outside the published manifest. Reconcile them before publishing.', 409)
     let oldText: string
     try { oldText = await decryptToText(old) } catch { throw new PublisherError('The current encrypted GitHub bank could not be validated.', 409) }
-    summaries.push({ ...validateQuestionChanges(file.path, oldText, file.text), unchanged: await sha256(file.bytes) === metadata.sha256 })
+    let explanationsPreserved = 0, staleExplanationsCleared = 0
+    if (file.path === C1_EXPLANATION_PATH) {
+      const reconciled = reconcileC1Explanations(oldText, file.text)
+      explanationsPreserved = reconciled.preserved
+      staleExplanationsCleared = reconciled.cleared
+      if (reconciled.text !== file.text) {
+        file.text = reconciled.text
+        file.bytes = await encrypt(file.text)
+        if (file.bytes.length > 1048576) throw new PublisherError('Reconciled C1 CSV exceeds the 1 MiB encrypted file limit.')
+      }
+    }
+    summaries.push({
+      ...validateQuestionChanges(file.path, oldText, file.text),
+      unchanged: await sha256(file.bytes) === metadata.sha256,
+      explanationsPreserved, staleExplanationsCleared
+    })
   }
+  if (decoded.reduce((total, file) => total + file.bytes.length, 0) > 8 * 1024 * 1024) throw new PublisherError('The reconciled publication exceeds the combined 8 MiB file limit.')
   return { alreadyPublished: false as const, state, validationId, decoded, preview: { requestId: input.requestId, baseHead: state.head, validationId, files: summaries } }
 }
 export async function validateGithubBatch(input: PublishInput, fetcher: typeof fetch, token: string) {
