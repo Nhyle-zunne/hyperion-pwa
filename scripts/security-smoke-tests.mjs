@@ -479,13 +479,19 @@ assert.ok(offlineEntitlementCrypto.includes('effectiveOfflineEntitlementNow') &&
 assert.ok(offlineQuestionCache.includes('lastVerifiedAt') && offlineQuestionCache.includes('persistOfflineEntitlementHighWaterMark') && offlineQuestionCache.includes('effectiveOfflineEntitlementNowMonotonic(Date.now(), stored.lastVerifiedAt)'), 'PWA offline grants persist a high-water mark and use monotonic time while the app remains open');
 assert.ok(offlineQuestionCache.includes('navigator.storage.persist()') && offlineQuestionCache.includes('requestPersistentOfflineStorage'), 'PWA requests persistent origin storage after saving offline question packs to reduce browser eviction risk');
 assert.ok(offlineQuestionCache.includes('JSON.parse(localStorage.getItem(ENTITLEMENTS_KEY)') && offlineQuestionCache.includes("typeof value.token !== 'string'"), 'Legacy unsigned localStorage expiry records are not accepted as licenses');
-assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(userId, data.token, () => generation === refreshGeneration)'), 'Online license refresh stores only a server-signed offline token');
+assert.ok(licenseStore.includes("body: { action: 'offline-license' }") && licenseStore.includes('await saveOfflineEntitlements(userId, data.token, () => generation === refreshGeneration, data.issuedAt)'), 'Online license refresh stores only a server-signed offline token');
 assert.ok(
   licenseStore.includes('refreshSignedOfflineLease') &&
-    licenseStore.includes('await saveOfflineEntitlements(userId, data.token, () => generation === refreshGeneration)') &&
+    licenseStore.includes('await saveOfflineEntitlements(userId, data.token, () => generation === refreshGeneration, data.issuedAt)') &&
     licenseStore.includes('await applyCachedOfflineEntitlements(userId)') &&
     !licenseStore.includes('clearOfflineEntitlements(session.user.id)'),
   'Both purchase sources use one server-signed cross-store lease and failed refreshes preserve the last valid same-account lease'
+);
+assert.ok(
+  offlineQuestionCache.includes('claims.issuedAt !== serverNow') &&
+    offlineEntitlementCrypto.includes('monotonicOfflineClockAnchor.fromServer') &&
+    !licenseStore.includes('accessFlags(data.trackIds)'),
+  'Server-signed time can correct a skewed device clock, but the unsigned response track list cannot grant access'
 );
 assert.ok(accountScreen.includes('useLicenseStore.getState().clearLicense()'), 'Only an intentional website sign-out clears the device-bound offline entitlement lease');
 assert.ok(

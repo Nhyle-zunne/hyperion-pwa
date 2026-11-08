@@ -46,12 +46,18 @@ export function resetMonotonicOfflineEntitlementClock() {
   monotonicOfflineClockAnchor = null;
 }
 
-export function anchorMonotonicOfflineEntitlementClock(trustedEpochMs, monotonicNow = readMonotonicClockNow()) {
+export function anchorMonotonicOfflineEntitlementClock(
+  trustedEpochMs,
+  monotonicNow = readMonotonicClockNow(),
+  fromServer = false
+) {
   if (!Number.isFinite(trustedEpochMs) || trustedEpochMs <= 0 || !Number.isFinite(monotonicNow)) {
     monotonicOfflineClockAnchor = null;
     return;
   }
-  monotonicOfflineClockAnchor = { trustedEpochMs, monotonicNow };
+  // Only a *fresh, ECDSA-verified* server grant can override a skewed device
+  // clock. Cold offline restores retain the old fail-closed clock rules.
+  monotonicOfflineClockAnchor = { trustedEpochMs, monotonicNow, fromServer: fromServer === true };
 }
 
 export function effectiveOfflineEntitlementNowMonotonic(
@@ -75,9 +81,12 @@ export function effectiveOfflineEntitlementNowMonotonic(
 
   const elapsed = Math.max(0, monotonicNow - monotonicOfflineClockAnchor.monotonicNow);
   const monotonicEpoch = monotonicOfflineClockAnchor.trustedEpochMs + elapsed;
-  // A wall clock moved backwards during this live browser session cannot freeze
-  // the license countdown: monotonic time advances it until the real expiry.
-  // A forward wall-clock adjustment is honored (never grants extra time).
+  // A fresh, verified server clock is authoritative for this live browser
+  // session. Phone clocks can be set hours ahead or behind; neither should
+  // revoke a paid grant. Monotonic elapsed time still enforces expiry.
+  if (monotonicOfflineClockAnchor.fromServer) return Math.max(lastVerifiedAt, monotonicEpoch);
+  // Offline-only restores still honor forward clock adjustments and fail
+  // closed on a rollback, without granting extra time from untrusted input.
   return Math.max(now, lastVerifiedAt, monotonicEpoch);
 }
 

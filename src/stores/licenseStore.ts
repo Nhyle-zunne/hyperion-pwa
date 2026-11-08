@@ -45,10 +45,11 @@ function clearEntitlementExpiryTimer() {
 function scheduleEntitlementExpiryRefresh(
   userId: string,
   expiryValues: unknown[],
-  onExpiry: (userId: string) => void
+  onExpiry: (userId: string) => void,
+  verifiedNow = Date.now()
 ) {
   clearEntitlementExpiryTimer();
-  const delay = nextExpiryRefreshDelay(expiryValues);
+  const delay = nextExpiryRefreshDelay(expiryValues, verifiedNow);
   if (delay === null) return;
   entitlementExpiryTimer = setTimeout(() => {
     entitlementExpiryTimer = null;
@@ -69,7 +70,7 @@ function accessFlags(trackIds: string[]) {
 }
 
 export const useLicenseStore = create<LicenseState>()((set, get) => {
-  const armEntitlementExpiryRefresh = (userId: string, expiryValues: unknown[]) => {
+  const armEntitlementExpiryRefresh = (userId: string, expiryValues: unknown[], verifiedNow?: number) => {
     // Local access follows the actual server-issued subscription expiry. Recheck
     // then so an offline device drops expired tracks without needing a network call.
     scheduleEntitlementExpiryRefresh(userId, expiryValues, (expectedUserId) => {
@@ -88,7 +89,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
           // The next focus/visibility/online refresh retries if the browser was suspended or offline.
         }
       })();
-    });
+    }, verifiedNow);
   };
 
   const applyCachedOfflineEntitlements = async (expectedUserId?: string) => {
@@ -100,7 +101,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       return false;
     }
     const offlineIds = snapshot.isAdmin ? [...TRACK_IDS] : Object.keys(snapshot.trackExpiries);
-    armEntitlementExpiryRefresh(snapshot.userId, Object.values(snapshot.trackExpiries));
+    armEntitlementExpiryRefresh(snapshot.userId, Object.values(snapshot.trackExpiries), snapshot.verifiedAt);
     set({
       cloudTrackIds: offlineIds,
       ...accessFlags(offlineIds),
@@ -123,7 +124,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     if (typeof data?.token !== 'string' || !data.token) {
       throw new Error('The server did not return a signed offline license.');
     }
-    if (!await saveOfflineEntitlements(userId, data.token, () => generation === refreshGeneration)) {
+    if (!await saveOfflineEntitlements(userId, data.token, () => generation === refreshGeneration, data.issuedAt)) {
       throw new Error('The signed offline license could not be saved on this device.');
     }
     const snapshot = await getCachedOfflineEntitlementSnapshot(userId);
@@ -132,7 +133,7 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
       throw new Error('The signed offline license could not be verified after saving.');
     }
     const trackIds = snapshot.isAdmin ? [...TRACK_IDS] : Object.keys(snapshot.trackExpiries);
-    armEntitlementExpiryRefresh(userId, Object.values(snapshot.trackExpiries));
+    armEntitlementExpiryRefresh(userId, Object.values(snapshot.trackExpiries), snapshot.verifiedAt);
     return { trackIds, isAdmin: snapshot.isAdmin, expiresAt: snapshot.isAdmin ? Infinity : Math.max(0, ...Object.values(snapshot.trackExpiries).filter((value): value is number => typeof value === 'number')) };
   };
 

@@ -553,21 +553,33 @@ async function verifyStoredOfflineEntitlements(stored: StoredOfflineEntitlements
   return { claims, effectiveNow: trustedNow, clockRollback: false }
 }
 
-export async function saveOfflineEntitlements(userId: string, token: string, canSave: () => boolean = () => true): Promise<boolean> {
+export async function saveOfflineEntitlements(
+  userId: string,
+  token: string,
+  canSave: () => boolean = () => true,
+  signedServerIssuedAt?: number
+): Promise<boolean> {
   const previous = readStoredOfflineEntitlements()
   const priorHighWater = previous?.userId === userId ? previous.lastVerifiedAt : 0
   const now = Date.now()
-  const effectiveNow = priorHighWater > 0
+  // Only trust server time after verifying the signed token *and* checking that
+  // the token's signed issuedAt exactly matches the response metadata.
+  // A phone with a skewed clock must not reject a valid new purchase.
+  const serverNow = typeof signedServerIssuedAt === 'number' &&
+    Number.isFinite(signedServerIssuedAt) && signedServerIssuedAt > 0
+    ? signedServerIssuedAt
+    : null
+  const effectiveNow = serverNow ?? (priorHighWater > 0
     ? effectiveOfflineEntitlementNowMonotonic(now, priorHighWater)
-    : now
-  // A clock rollback must not replace a newer lease with one verified against an older time.
+    : now)
+  // Offline restores still fail closed on clock rollback. Only fresh server
+  // grants are allowed to supersede a locally skewed high-water mark.
   if (effectiveNow === null) return false
   const claims = await verifyOfflineEntitlementToken(token, userId, effectiveNow)
-  // A malformed or temporarily incompatible replacement must not destroy
-  // the previous valid lease. The caller will continue using that lease until
-  // its signed expiry and retry the server refresh when connectivity returns.
-  if (!claims) return false
-  const trustedNow = Math.max(effectiveNow, claims.issuedAt)
+  // A malformed or incompatible token cannot replace an existing verified
+  // grant, and unsigned response metadata cannot affect license access.
+  if (!claims || (serverNow !== null && claims.issuedAt !== serverNow)) return false
+  const trustedNow = serverNow ?? Math.max(effectiveNow, claims.issuedAt)
   try {
     if (!canSave()) return false
     const value: StoredOfflineEntitlements = {
@@ -577,7 +589,7 @@ export async function saveOfflineEntitlements(userId: string, token: string, can
       token
     }
     localStorage.setItem(ENTITLEMENTS_KEY, JSON.stringify(value))
-    anchorMonotonicOfflineEntitlementClock(trustedNow)
+    anchorMonotonicOfflineEntitlementClock(trustedNow, undefined, serverNow !== null)
     return true
   } catch {
     // Offline entitlements are an enhancement; live server checks remain authoritative.
@@ -617,6 +629,7 @@ export interface CachedOfflineEntitlementSnapshot {
   userId: string
   isAdmin: boolean
   trackExpiries: Partial<Record<TrackId, number>>
+  verifiedAt?: number
 }
 
 /**
@@ -639,7 +652,7 @@ export async function getCachedOfflineEntitlementSnapshot(expectedUserId?: strin
   for (const [track, expiry] of Object.entries(verified.claims.tracks)) {
     if (expiry > verified.effectiveNow) trackExpiries[track as TrackId] = expiry
   }
-  return { userId: stored.userId, isAdmin: verified.claims.admin === true, trackExpiries }
+  return { userId: stored.userId, isAdmin: verified.claims.admin === true, trackExpiries, verifiedAt: verified.effectiveNow }
 }
 
 export async function getCachedOfflineEntitlementExpiry(track: TrackId): Promise<number | null> {

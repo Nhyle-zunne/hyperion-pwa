@@ -11,7 +11,7 @@ export const OFFLINE_CLOCK_PERSIST_INTERVAL_MS: number;
 
 export function effectiveOfflineEntitlementNow(now: number, lastVerifiedAt: number): number | null;
 export function resetMonotonicOfflineEntitlementClock(): void;
-export function anchorMonotonicOfflineEntitlementClock(trustedEpochMs: number, monotonicNow?: number): void;
+export function anchorMonotonicOfflineEntitlementClock(trustedEpochMs: number, monotonicNow?: number, fromServer?: boolean): void;
 export function effectiveOfflineEntitlementNowMonotonic(now: number, lastVerifiedAt: number, monotonicNow?: number): number | null;
 
 export const OFFLINE_ENTITLEMENT_PUBLIC_KEY: JsonWebKey;
