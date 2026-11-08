@@ -7,18 +7,21 @@ let release: (() => void) | undefined
 let paused = false
 let failed = false
 let deferredSessions: ((value: any) => void)[] | null = null
+let observedServerIssuedAt: number | undefined
+const serverIssuedAt = 1_800_000_000_000
 mock.module('../../src/lib/supabase', () => ({ supabase: {
   auth: { getSession: async () => deferredSessions ? new Promise((resolve,reject) => { deferredSessions!.push(value => value instanceof Error ? reject(value) : resolve(value)) }) : ({ data: { session: { user: { id: owner } } } }) },
   functions: { invoke: async (name: string, { body }: any) => {
     calls.push({ name, action: body.action })
     if (paused) await new Promise<void>(resolve => { release = resolve })
-    return failed ? { error: new Error('Unavailable') } : { data: { token: 'signed-fixture', isAdmin: true } }
+    return failed ? { error: new Error('Unavailable') } : { data: { token: 'signed-fixture', issuedAt: serverIssuedAt, isAdmin: true } }
   } }
 } }))
 mock.module('../../src/lib/offlineQuestionCache', () => ({
   clearOfflineEntitlements: () => { cache = null },
   getCachedOfflineEntitlementSnapshot: async (id?: string) => cache && (!id || cache.userId === id) ? cache : null,
-  saveOfflineEntitlements: async (id: string, _token: string, canSave: () => boolean) => {
+  saveOfflineEntitlements: async (id: string, _token: string, canSave: () => boolean, issuedAt?: number) => {
+    observedServerIssuedAt = issuedAt
     if (!canSave()) return false
     cache = { userId: id, isAdmin: signedAdmin, trackExpiries: signedAdmin ? {} : { DECK_OIC_NW: Date.now() + 3600000 } }
     return true
@@ -29,7 +32,7 @@ const refresh = () => useLicenseStore.getState().refreshCloudEntitlements()
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve() }
 afterEach(() => {
   useLicenseStore.getState().clearLicense()
-  owner = 'account-a'; signedAdmin = false; calls = []; paused = false; failed = false; release = undefined; deferredSessions = null
+  owner = 'account-a'; signedAdmin = false; calls = []; paused = false; failed = false; release = undefined; deferredSessions = null; observedServerIssuedAt = undefined
 })
 test('one signed lease supplies ordinary access without a redundant admin request', async () => {
   await refresh()
@@ -123,4 +126,10 @@ test('a late failed auth lookup cannot disable a newer verified account cloud gr
   await older
   expect(useLicenseStore.getState().entitlementUserId).toBe('account-b')
   expect(useLicenseStore.getState().cloudSyncVerified).toBe(true)
+})
+
+test('cloud license validation uses the signed response issue time instead of trusting the device clock', async () => {
+  await refresh()
+  expect(observedServerIssuedAt).toBe(serverIssuedAt)
+  expect(useLicenseStore.getState().isTrackUnlocked('DECK_OIC_NW')).toBe(true)
 })
