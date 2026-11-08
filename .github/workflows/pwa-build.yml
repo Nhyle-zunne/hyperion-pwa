@@ -65,6 +65,7 @@ jobs:
           bun run test:progress-revisions
           bun run test:offline-licenses
           bun test scripts/tests/license-refresh.test.ts
+          bun test scripts/tests/license-clock-skew.test.ts
           bun test scripts/tests/cloud-progress-access.test.ts
           bun test scripts/tests/local-progress-identity.test.ts
           bun test scripts/tests/question-bank-transport.test.ts
