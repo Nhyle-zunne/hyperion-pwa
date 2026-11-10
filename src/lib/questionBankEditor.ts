@@ -104,8 +104,8 @@ export function readEditableBank(path: string, csvText: string): EditableBank {
     questions.push({
       ordinal, rowIndex, numberLabel, questionText, options,
       correctAnswerIndex: keyedAnswer(answer, options.length),
-      explanation, retired: status === 'RETIRED' || (status !== 'ACTIVE' && legacy),
-      fixedLegacyRetirement: legacy && status !== 'ACTIVE'
+      explanation, retired: status === 'RETIRED' || legacy,
+      fixedLegacyRetirement: legacy
     })
   }
   if (!questions.length) throw Error(format === 'gmdss'
@@ -124,6 +124,7 @@ function serializeCsv(rows: string[][]) {
 export function editBankQuestion(bank: EditableBank, ordinal: number, edit: QuestionEdit): string {
   const source = bank.questions.find(question => question.ordinal === ordinal)
   if (!source) throw Error('That question is no longer present in this question bank.')
+  if (source.fixedLegacyRetirement && !edit.retired) throw Error('The three original C10 retirement IDs are protected by the Android/PWA legacy policy. They cannot be restored from this editor.')
   const maxOptions = bank.format === 'gmdss' ? 6 : 4
   if (edit.options.length < 2 || edit.options.length > maxOptions ||
       edit.options.some(option => !option.trim()) ||
