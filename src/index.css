@@ -445,6 +445,17 @@ a {
 }
 
 
+/* The route-enter keyframe retains translateY(0) after it finishes.
+   Even a zero transform creates a fixed-position containing block, so a
+   checkout pay bar can dock halfway up a short mobile page instead of at
+   the visual viewport bottom. Keep other route animations unchanged. */
+@media (max-width: 800px) {
+  .route-transition:has(.basket-page) {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
 /* Smooth, app-like interaction and navigation motion */
 :root {
   --motion-fast: 140ms;
