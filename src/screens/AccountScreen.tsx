@@ -901,8 +901,14 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                     }}
                     onMouseLeave={event => {
                       if (!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return
+                      // On desktop the full feature list is temporary: leaving
+                      // the card collapses it, even after See all was clicked.
+                      // Touch and keyboard toggles continue to work independently.
                       setHoveredStore(current => current === item.code ? null : current)
-                      settleStoreCardLift(event.currentTarget)
+                      setExpandedStorePerks(current => current === item.code ? null : current)
+                      // Force a bottom-anchored exit; otherwise the old
+                      // is-expanded class skips settling and freezes the slot.
+                      settleStoreCardLift(event.currentTarget, true)
                     }}>
                     <article className={`account-product-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} aria-label={`${item.label} reviewer plan`}>
                       <div className="product-art">
