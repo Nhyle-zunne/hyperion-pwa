@@ -276,7 +276,9 @@ try {
   await page.getByRole('button', { name: 'Shopping cart', exact: true }).click()
   await page.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('hyperion-account-basket-v1'))), basket, 'Floating cart navigation preserves saved selections across all account tabs')
-  for (const width of [390, 870, 1531]) {
+  // Navigate away from Checkout while its account tabs are visible on desktop,
+  // then exercise the normal account tabs on successively smaller screens.
+  for (const width of [1531, 870, 390]) {
     await page.setViewportSize({ width, height: 900 })
     for (const tab of ['Bond Store', 'My licenses', 'Orders & payment history']) {
       await page.getByRole('button', { name: tab, exact: true }).click()
