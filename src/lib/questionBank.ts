@@ -421,7 +421,7 @@ function parseStandardRows(
       options,
       correctAnswerIndex: ansIdx,
       explanation,
-      isRetired: statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED',
+      ...(statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED' ? { isRetired: true } : {}),
       difficulty: difficultyForIndex(validIndex)
     });
     validIndex++;
@@ -452,7 +452,7 @@ function pushGmdssQuestion(
     options,
     correctAnswerIndex: ansIdx,
     explanation,
-    isRetired,
+    ...(isRetired ? { isRetired: true } : {}),
     difficulty: difficultyForIndex(validIndex)
   });
 }
