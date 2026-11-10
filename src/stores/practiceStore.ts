@@ -2,6 +2,7 @@ import type { SavedQuestionContext } from '../lib/savedQuestionSets';
 import { create } from 'zustand';
 import type { Question, UserAnswer, TrackId } from '../types/question';
 import { authorizeQuestionSetAccess, getQuestionsByCompetence } from '../lib/questionBank';
+import { selectActiveQuestions } from '../lib/retiredQuestions';
 import { useLicenseStore } from './licenseStore';
 import { useHistoryStore, type SessionMode } from './historyStore';
 import { useVaultStore } from './vaultStore';
@@ -289,9 +290,12 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
   completionError: null,
 
   startCustomSession: async ({ questions, track, competenceId, mode = 'PRACTICE', randomizeOrder = true, shuffleChoices = false, limit, source }) => {
-    if (questions.length === 0) return false;
+    // Saved bookmark/mistake records remain untouched; only omit retired items
+    // when creating a NEW session from the saved collection.
+    const activeQuestions = selectActiveQuestions(questions);
+    if (activeQuestions.length === 0) return false;
     await useLicenseStore.getState().refreshCloudEntitlements();
-    const access = await authorizeQuestionSetAccess(track, questions);
+    const access = await authorizeQuestionSetAccess(track, activeQuestions);
     if (!access) {
       set({ loading: false, error: 'These saved questions are no longer available for this account. Renew the track license or use the free reviewer sample.' });
       return false;
@@ -300,7 +304,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       set({ loading: false, error: 'Drill requires an active track license. Your saved questions are preserved.' });
       return false;
     }
-    let selected = randomizeOrder ? shuffle(questions) : [...questions];
+    let selected = randomizeOrder ? shuffle(activeQuestions) : [...activeQuestions];
     if (limit != null) selected = selected.slice(0, Math.max(1, Math.floor(limit)));
     if (shuffleChoices) selected = selected.map(shuffleQuestionChoices);
     const startedAt = Date.now();
