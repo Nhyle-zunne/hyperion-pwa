@@ -128,9 +128,12 @@ try {
   const tabsAndProfile = await page.evaluate(() => ({
     profileY: document.querySelector('.account-sidebar').getBoundingClientRect().top,
     tabsY: document.querySelector('.account-section-tabs').getBoundingClientRect().top,
+    rowY: document.querySelector('.account-layout').getBoundingClientRect().top,
     shellWidth: document.querySelector('.account-page').getBoundingClientRect().width
   }))
-  assert(Math.abs(tabsAndProfile.profileY - tabsAndProfile.tabsY) < 2, 'Store tabs align with the profile card at desktop size')
+  // In this standalone test fixture there is no top navigation, so the profile's sticky top:80px can lift it above the row.
+  assert(Math.abs(tabsAndProfile.tabsY - tabsAndProfile.rowY) < 2, 'Store tabs begin at the top of the account row')
+  assert(Math.abs(tabsAndProfile.profileY - Math.max(tabsAndProfile.rowY, 80)) < 2, 'Profile card aligns with the row or its sticky safe offset')
   assert(tabsAndProfile.shellWidth > 1450, 'Desktop account shell has enough width for readable track cards')
   const cards = page.locator('.account-product-card')
   assert.equal(await cards.count(), 5)
