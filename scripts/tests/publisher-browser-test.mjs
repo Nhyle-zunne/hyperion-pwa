@@ -45,6 +45,7 @@ try {
  assert.equal(calls[2].validationId,calls[3].validationId)
  assert.equal(await page.getByRole('link',{name:'View the published GitHub commit'}).getAttribute('href'),'https://github.com/Nhyle-zunne/hyperion-reviewer/commit/'+'b'.repeat(40))
  await page.setViewportSize({width:375,height:812});await page.screenshot({path:'/tmp/hyperion-publisher-mobile.png'})
+ await upload();assert.equal(await page.getByRole('button',{name:'VALIDATE BATCH',exact:true}).isEnabled(),true,'Adding another file re-enables publishing')
  configured=false;await page.reload();await upload();await page.getByRole('status').getByText(/GITHUB_BANK_WRITE_TOKEN/).waitFor();assert.equal(await page.getByRole('button',{name:'VALIDATE BATCH',exact:true}).isDisabled(),true)
  configured=true;failValidation=true;await page.reload();await upload();await page.getByRole('button',{name:'VALIDATE BATCH',exact:true}).click();await page.getByRole('status').getByText('Reordered questions are not allowed.').waitFor();assert.equal(calls.filter(call=>call.action==='publish').length,2)
  assert.deepEqual(externalRequests,[],'Publisher fixture must never contact production')
