@@ -382,6 +382,7 @@ function parseStandardRows(
   src: BankSource
 ): Question[] {
   const list: Question[] = [];
+  const statusIndex = (rows[headerIdx] || []).findIndex(cell => cell.trim().toUpperCase() === 'HYPERION_STATUS');
   let validIndex = 1;
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i];
@@ -420,6 +421,7 @@ function parseStandardRows(
       options,
       correctAnswerIndex: ansIdx,
       explanation,
+      isRetired: statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED',
       difficulty: difficultyForIndex(validIndex)
     });
     validIndex++;
@@ -433,7 +435,8 @@ function pushGmdssQuestion(
   qText: string,
   options: string[],
   explanation: string,
-  ansStr: string
+  ansStr: string,
+  isRetired = false
 ) {
   if (!qText || qText.toLowerCase() === 'question' || options.length < 2) return;
   let ansIdx = mapAnswer(ansStr);
@@ -449,6 +452,7 @@ function pushGmdssQuestion(
     options,
     correctAnswerIndex: ansIdx,
     explanation,
+    isRetired,
     difficulty: difficultyForIndex(validIndex)
   });
 }
@@ -460,6 +464,7 @@ function parseGmdssRows(
 ): Question[] {
   // Columns: Question, Type, Option1..Option6, Explanation, Answer, Point, Section
   const list: Question[] = [];
+  const statusIndex = (rows[headerIdx] || []).findIndex(cell => cell.trim().toUpperCase() === 'HYPERION_STATUS');
 
   // Multi-line files: one question per row after header
   if (rows.length > 3) {
@@ -475,7 +480,8 @@ function parseGmdssRows(
         (row[0] || '').trim(),
         options,
         (row[8] || '').trim(),
-        (row[9] || '').trim()
+        (row[9] || '').trim(),
+        statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED'
       );
     }
   }
@@ -851,6 +857,8 @@ export interface QuestionBankCount {
   competenceId: string;
   part: number | null;
   count: number;
+  rawCount?: number;
+  retiredPositions?: number[];
 }
 
 export type QuestionSetAccess = 'admin' | 'licensed' | 'free-sample';
@@ -910,9 +918,13 @@ async function fetchRevisionQuestionCounts(track: TrackId, freeOnly: boolean, ba
   const { data, error } = await invokeQuestionBank({ body: { action: 'counts', track, freeOnly, bankRevision } })
   if (error || !Array.isArray(data?.counts)) throw error || new Error('Fresh question counts are unavailable.')
   if (bankRevision && data.bankRevision !== bankRevision) throw new Error('The question-bank release changed while checking counts. Retry shortly.')
-  const counts: QuestionBankCount[] = data.counts.map((item: { competenceId: string; part: number | null; count: number }) => {
+  const counts: QuestionBankCount[] = data.counts.map((item: { competenceId: string; part: number | null; count: number; rawCount?: number; retiredPositions?: number[] }) => {
     if (!Number.isSafeInteger(item.count) || item.count < 0) throw new Error('The server returned invalid question counts.')
-    return { competenceId: String(item.competenceId), part: item.part == null ? null : Number(item.part), count: item.count }
+    const rawCount = Number.isSafeInteger(item.rawCount) && Number(item.rawCount) >= item.count ? Number(item.rawCount) : item.count
+    const retiredPositions = Array.isArray(item.retiredPositions)
+      ? item.retiredPositions.filter((value): value is number => Number.isSafeInteger(value) && value > 0 && value <= rawCount)
+      : []
+    return { competenceId: String(item.competenceId), part: item.part == null ? null : Number(item.part), count: item.count, rawCount, retiredPositions }
   })
   return { counts, bankRevision: typeof data.bankRevision === 'string' ? data.bankRevision : undefined }
 }
