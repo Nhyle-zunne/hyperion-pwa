@@ -28,6 +28,14 @@ type Order = {
 type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
+function positionStorePopover(card: HTMLElement) {
+  const panel = card.querySelector<HTMLElement>('.store-benefits-popover')
+  if (!panel) return
+  card.style.setProperty('--store-popover-shift', '0px')
+  const top = card.getBoundingClientRect().top - panel.offsetHeight * 1.075 - 12
+  card.style.setProperty('--store-popover-shift', `${Math.max(0, 12 - top)}px`)
+}
+
 const STORE_FEATURES = [
   'Unlimited practice sessions',
   'Unlimited timed mock exams',
@@ -578,7 +586,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .store-benefits-list{display:grid;gap:.14rem;list-style:none;padding:0;margin:.3rem 0 .1rem;min-height:3.55rem}
       .account-page .store-benefits-list li{display:flex;gap:.3rem;align-items:flex-start;line-height:1.25;font-size:.66rem;color:var(--text-muted);overflow-wrap:anywhere}
       .account-page .store-benefits-list li:before{content:"✓";color:#b68714;font-weight:900;flex-shrink:0}
-      .account-page .store-benefits-popover{position:absolute;bottom:calc(100% + .4rem);left:50%;z-index:12;width:min(300px,calc(100vw - 2rem));box-sizing:border-box;padding:.75rem .85rem;border:1px solid #e7bc41;border-radius:12px;background:linear-gradient(140deg,#042353,#071c3c);color:#f8fafc;box-shadow:0 18px 45px rgba(4,35,83,.28);opacity:0;visibility:hidden;pointer-events:none;transform:translate(-50%,8px);transition:opacity .22s ease,transform .22s ease,visibility .22s ease}
+      .account-page .store-benefits-popover{position:absolute;bottom:calc(100% + .4rem - var(--store-popover-shift,0px));left:50%;z-index:12;width:min(300px,calc(100vw - 2rem));box-sizing:border-box;padding:.75rem .85rem;border:1px solid #e7bc41;border-radius:12px;background:linear-gradient(140deg,#042353,#071c3c);color:#f8fafc;box-shadow:0 18px 45px rgba(4,35,83,.28);opacity:0;visibility:hidden;pointer-events:none;transform:translate(-50%,8px);transition:opacity .22s ease,transform .22s ease,visibility .22s ease}
       .account-page .store-benefits-popover strong{display:block;margin-bottom:.45rem;color:#ffcf55;font-size:.82rem}
       .account-page .store-benefits-popover ul{display:grid;gap:.25rem;list-style:none;margin:0;padding:0}
       .account-page .store-benefits-popover li{display:flex;align-items:start;gap:.4rem;font-size:.72rem;line-height:1.3;overflow-wrap:anywhere}
@@ -835,7 +843,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   const selectedPrice = priceForTerm(item, selectedTerm)
                   const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
                   const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
-                  return <article className={`account-product-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} key={item.code} aria-label={`${item.label} reviewer plan`}>
+                  return <article className={`account-product-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} key={item.code} aria-label={`${item.label} reviewer plan`} onMouseEnter={event => positionStorePopover(event.currentTarget)} onFocusCapture={event => positionStorePopover(event.currentTarget)}>
                     <div className="product-art">
                       <img className="store-banner-logo" src="/logo.png" alt="" aria-hidden="true" />
                       <div className="store-banner-text"><strong>HYPERION</strong><small>{STORE_TRACK_CAPTIONS[item.code]}</small></div>
@@ -861,7 +869,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                         {STORE_FEATURES.map(feature => <li key={feature}>{feature}</li>)}
                       </ul>
                     </div>
-                    <button type="button" className="store-benefits-toggle" aria-controls={`store-benefits-${item.code}`} aria-expanded={expandedStorePerks === item.code} onClick={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}>
+                    <button type="button" className="store-benefits-toggle" aria-controls={`store-benefits-${item.code}`} aria-expanded={expandedStorePerks === item.code} onClick={event => { positionStorePopover(event.currentTarget.closest<HTMLElement>('.account-product-card')!); setExpandedStorePerks(current => current === item.code ? null : item.code) }}>
                       {expandedStorePerks === item.code ? 'Show fewer features ↑' : 'See all 9 premium features ↓'}
                     </button>
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
