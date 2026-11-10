@@ -1,5 +1,4 @@
-import type { Question } from '../types/question'
-import type { TrackId } from '../types/tracks'
+import type { Question, TrackId } from '../types/question'
 
 /**
  * Permanent retirement policy for existing published questions.
