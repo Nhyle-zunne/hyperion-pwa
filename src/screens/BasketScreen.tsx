@@ -591,6 +591,9 @@ export default function BasketScreen() {
       .basket-page .basket-item-art{width:48px;height:48px;display:grid;place-items:center;background:var(--bg-elevated);color:var(--accent);border:1px solid var(--border);border-radius:10px;font-size:1.4rem;flex-shrink:0}
       .basket-page .basket-muted{color:var(--text-muted);font-size:.84rem;line-height:1.45}
       .basket-page .basket-action-row{display:flex;gap:.5rem;flex-wrap:wrap}
+      .basket-page .basket-pending-row{min-width:0}
+      .basket-page .basket-pending-detail{min-width:0;overflow-wrap:anywhere}
+      .basket-page .basket-pending-actions{display:flex;gap:.5rem;flex-wrap:wrap;flex-shrink:0}
       .basket-page .checkout-pay-button{background:var(--accent);border-color:var(--accent);color:var(--btn-primary-text);transition:background-color .16s ease,border-color .16s ease,transform .16s ease}
       .basket-page .checkout-pay-button:hover:not(:disabled){background:var(--accent-dim);border-color:var(--accent-dim)}
       .basket-page .checkout-pay-button:disabled{opacity:.45;cursor:not-allowed;transform:none}
@@ -616,6 +619,18 @@ export default function BasketScreen() {
         .basket-page .basket-selected-heading .basket-muted{display:none}
         .basket-page .basket-clear-button{font-size:.68rem;line-height:1.2;min-height:32px;padding:.35rem .45rem!important;white-space:nowrap}
         .basket-page .basket-row{gap:.5rem;padding:.65rem 0}
+        .basket-page .basket-pending-card{padding:.85rem!important}
+        .basket-page .basket-pending-header{display:flex;flex-direction:column;align-items:stretch!important;gap:.55rem!important}
+        .basket-page .basket-pending-header h2{font-size:1rem!important}
+        .basket-page .basket-pending-header .basket-muted{font-size:.76rem}
+        .basket-page .basket-pending-refresh{align-self:flex-start;min-height:36px;padding:.4rem .65rem!important;font-size:.74rem}
+        .basket-page .basket-pending-row{display:grid;grid-template-columns:minmax(0,1fr);gap:.55rem;align-items:start;padding:.8rem 0}
+        .basket-page .basket-pending-detail strong{display:block;font-size:.94rem;line-height:1.3}
+        .basket-page .basket-pending-detail .basket-muted{font-size:.75rem}
+        .basket-page .basket-pending-actions{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:.5rem;width:100%}
+        .basket-page .basket-pending-actions button{min-width:0;width:100%;min-height:42px;padding:.5rem .35rem!important;line-height:1.2;font-size:.76rem;white-space:normal}
+        .basket-page .basket-pending-actions .btn-outline{border-color:var(--danger,#dc2626);color:var(--danger,#dc2626)}
+        @media(max-width:350px){.basket-page .basket-pending-actions button{font-size:.7rem}}
         .basket-page .basket-item-art{width:38px;height:38px;font-size:1.15rem;border-radius:8px}
         .basket-page .basket-item-description{gap:.5rem!important;align-items:center!important;flex:1;min-width:0}
         .basket-page .basket-item-description strong{font-size:.84rem;line-height:1.25}
@@ -742,17 +757,17 @@ export default function BasketScreen() {
         </div>}
       </div>}
 
-      {pendingCheckoutGroups.length > 0 && <section style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+      {pendingCheckoutGroups.length > 0 && <section className="basket-pending-card" style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
+        <div className="basket-pending-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
           <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Resume the same payment or cancel it safely. Don’t start a second payment for the same items.</p></div>
-          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshStatus()}>{busy ? 'Checking…' : 'Refresh payment status'}</button>
+          <button type="button" className="btn btn-outline basket-pending-refresh" disabled={busy} onClick={() => void refreshStatus()}>{busy ? 'Checking…' : 'Refresh payment status'}</button>
         </div>
-        {pendingCheckoutGroups.map(group => <div className="basket-row" key={group.id}>
-          <div style={{ minWidth: 0 }}>
+        {pendingCheckoutGroups.map(group => <div className="basket-row basket-pending-row" key={group.id}>
+          <div className="basket-pending-detail" style={{ minWidth: 0 }}>
             <strong>{group.items.map(entry => `${PAID_PRODUCTS.find(item => item.code === entry.code)?.label ?? entry.code} (${termLabel(entry.term)})`).join(' + ')}</strong>
             <div className="basket-muted" style={{ marginTop: '.25rem' }}>{group.codes.length} track{group.codes.length === 1 ? '' : 's'} · ₱{group.total}</div>
           </div>
-          <div className="basket-action-row">
+          <div className="basket-action-row basket-pending-actions">
             <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void checkout(group.items)}>RESUME CHECKOUT</button>
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelCheckout(group.id, group.items)} style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busyCheckoutId === group.id ? 'CHECKING…' : 'CANCEL'}</button>
           </div>
@@ -786,7 +801,7 @@ export default function BasketScreen() {
           {paymongoCheckoutEnabled === true ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length || activeInBasket.length > 0} onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : <>Checkout <span aria-hidden="true">🛒</span></>}</button> : <div role="status" aria-live="polite" style={{ marginTop: '1rem', padding: '.75rem', textAlign: 'center', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text-muted)', fontSize: '.84rem', fontWeight: 750 }}>{paymongoCheckoutEnabled === null ? 'Checking PayMongo checkout availability…' : 'PayMongo checkout is disabled. Use a manual payment option above.'}</div>}
           </div>
           {activeInBasket.length > 0 && <p style={{ color: 'var(--danger, #dc2626)', fontSize: '.8rem', lineHeight: 1.45 }}>Remove already active tracks to continue checkout.</p>}
-          {paymongoCheckoutEnabled === true && <div className="basket-payment-methods" style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['GCash','Maya','QR Ph','Card'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>}
+          {paymongoCheckoutEnabled === true && <div className="basket-payment-methods" style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['QR Ph'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>}
           <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{paymongoCheckoutEnabled === true ? 'Each selected track is activated only after PayMongo confirms this exact basket payment.' : paymongoCheckoutEnabled === null ? 'Checking whether PayMongo checkout is available…' : 'Use the manual-payment option above. Manual payments require admin review before your license is activated.'}</p>
         </aside>
       </div>
