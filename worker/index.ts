@@ -71,7 +71,8 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         }
         let all: Counts
         try { all = await job } catch (error) { countJobs.delete(key); throw error }
-        const counts = all.map(item => ({ competenceId: item.competenceId, part: item.part, count: freeOnly ? item.freeCount : item.fullCount, rawCount: freeOnly ? item.rawFreeCount : item.rawCount, retiredPositions: freeOnly ? item.freeRetiredPositions : item.retiredPositions }))
+        const retirementMetadata = url.searchParams.get('retirement') === '1'
+        const counts = all.map(item => ({ competenceId: item.competenceId, part: item.part, count: freeOnly ? item.freeCount : item.fullCount, ...(retirementMetadata ? { rawCount: freeOnly ? item.rawFreeCount : item.rawCount, retiredPositions: freeOnly ? item.freeRetiredPositions : item.retiredPositions } : {}) }))
         return new Response(JSON.stringify({ counts, bankRevision: release.revision, source: 'github', access: 'public-catalog-metadata' }), {
           headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', 'ETag': '"' + QUESTION_COUNT_ALGORITHM_VERSION + ':' + release.revision + ':' + track + ':' + Number(freeOnly) + '"' }
         })
