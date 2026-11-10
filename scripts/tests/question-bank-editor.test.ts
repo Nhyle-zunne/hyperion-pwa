@@ -58,7 +58,7 @@ test('status column stays outside choices and text in standard banks', () => {
   const bank = readEditableBank('engine_ew/ew_c1.csv.enc', initial)
   const text = editBankQuestion(bank, 1, {
     questionText: 'A revised question?',
-    options: ['A', 'B', 'C', 'D'], correctAnswerIndex: 2,
+    options: ['Real A', 'Real B', 'Real C', 'Real D'], correctAnswerIndex: 2,
     explanation: 'No deletion of question 2', retired: true
   })
   expect(readEditableBank('engine_ew/ew_c1.csv.enc', text).questions).toHaveLength(416)
@@ -76,16 +76,17 @@ test('GMDSS row-based format can retire without shifting part-local IDs', () => 
   const gmdss = [
     'Question,Type,Option1,Option2,Option3,Option4,Option5,Option6,Explanation,Answer,Point,Section',
     'What is DSC?,Choice,Digital Selective Calling,Wrong A,Wrong B,Wrong C,,,Expl,A,1,1',
-    'What is GOC?,Choice,General Operator Certificate,Wrong A,Wrong B,Wrong C,,,Expl,A,1,1'
+    'What is GOC?,Choice,General Operator Certificate,Wrong A,Wrong B,Wrong C,,,Expl,A,1,1',
+    'What is VHF?,Choice,Very High Frequency,Wrong A,Wrong B,Wrong C,,,Expl,A,1,1'
   ].join('\r\n')
   const gPath = 'gmdss/c1_part1.csv.enc'
   const bank = readEditableBank(gPath, gmdss)
-  expect(bank.questions).toHaveLength(2)
+  expect(bank.questions).toHaveLength(3)
   const output = editBankQuestion(bank, 1, {
     questionText: 'What is DSC?', options: bank.questions[0].options,
     correctAnswerIndex: 0, explanation: 'Expl', retired: true
   })
-  expect(readEditableBank(gPath, output).questions).toHaveLength(2)
+  expect(readEditableBank(gPath, output).questions).toHaveLength(3)
   expect(toSearchQuestions(gPath, output)[0].isRetired).toBe(true)
   expect(toSearchQuestions(gPath, output)[1].isRetired).toBe(false)
 })
