@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   questionBankPickerLabel,
   searchQuestionBankAssets,
@@ -62,7 +62,7 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
     setActiveIndex(0)
   }
 
-  function handleKeys(event: React.KeyboardEvent<HTMLInputElement>) {
+  function handleKeys(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Escape') {
       if (open) {
         event.preventDefault()
