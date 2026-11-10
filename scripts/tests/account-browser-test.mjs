@@ -107,6 +107,7 @@ try {
   await page.getByRole('heading', { name: 'Available reviewer tracks', exact: true }).waitFor()
   for (const [width, height, expectedColumns] of [[1531, 900, 5], [1366, 768, 5], [1280, 768, 5], [1024, 900, 3], [870, 900, 2], [390, 900, 1]]) {
     await page.setViewportSize({ width, height })
+    await page.evaluate(() => window.scrollTo(0, 0))
     const boxes = await page.locator('.account-product-card').evaluateAll(cards => cards.map(card => {
       const rect = card.getBoundingClientRect()
       const button = card.querySelector('button.btn-primary')?.getBoundingClientRect()
