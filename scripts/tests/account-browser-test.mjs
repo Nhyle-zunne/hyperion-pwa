@@ -141,7 +141,7 @@ try {
   assert.equal(await cards.last().locator('.store-benefits-list li').count(), 9)
   assert.equal(await cards.first().locator('.product-art .store-banner-symbol').count(), 3, 'Operational cards use original anchor, track, and level symbols')
   assert.equal(await cards.nth(1).locator('.product-art .store-banner-symbol').count(), 2, 'GMDSS card uses original anchor and radio symbol')
-  const asset = await page.request.get('/store-art/hyperion-banner-sprite.png')
+  const asset = await page.request.get(new URL('/store-art/hyperion-banner-sprite.png', page.url()).href)
   assert.equal(asset.status(), 200, 'Supplied Hyperion banner artwork is served as a local asset')
   assert((await asset.body()).length > 1000, 'Cropped transparent symbol sprite is present')
   const oicCard = cards.first()
