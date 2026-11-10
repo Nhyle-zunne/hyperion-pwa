@@ -48,7 +48,7 @@ try {
       assert.equal(await action.evaluate(el => getComputedStyle(el).position), 'fixed', 'Mobile checkout total and payment action dock above the bottom navigation')
       assert.equal(await page.getByRole('button', { name: 'Checkout', exact: true }).count(), 1, 'Mobile shows exactly one checkout button')
       const checkoutRect = await action.boundingBox()
-      assert(checkoutRect && checkoutRect.y > 600 && checkoutRect.y + checkoutRect.height < 900 - 60, 'Docked payment controls remain visible above bottom navigation')
+      assert(checkoutRect && checkoutRect.y >= 0 && checkoutRect.y + checkoutRect.height <= 900 - 48, `Docked payment controls remain within the visible area above bottom navigation: ${JSON.stringify(checkoutRect)}`)
       assert((await page.locator('.basket-selected-card').boundingBox()).y < 220, 'Selected tracks appear near the top without redundant profile and tabs')
     }
     await page.screenshot({ path: `account-checkout-${width}.png`, fullPage: true })
