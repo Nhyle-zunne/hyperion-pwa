@@ -58,6 +58,7 @@ export function readEditableBank(path: string, csvText: string): EditableBank {
   if (new TextEncoder().encode(csvText).byteLength > 700000) throw Error('The question bank is too large for direct editing.')
   const rows = parseCsvText(csvText)
   const format = isGmdss(path) ? 'gmdss' : 'standard'
+  if (format === 'gmdss' && rows.length <= 3) throw Error('This small GMDSS part uses an unsupported legacy parser layout. Use CSV upload until it is normalized.')
   const headerIndex = findHeader(rows, format === 'gmdss')
   const header = rows[headerIndex] || []
   const statusIndex = header.findIndex(value => value.trim().toUpperCase() === RETIREMENT_COLUMN)
@@ -130,7 +131,7 @@ export function editBankQuestion(bank: EditableBank, ordinal: number, edit: Ques
       edit.options.some(option => !option.trim()) ||
       !Number.isInteger(edit.correctAnswerIndex) ||
       edit.correctAnswerIndex < 0 || edit.correctAnswerIndex >= edit.options.length ||
-      !edit.questionText.trim()) throw Error('Provide a question, at least two filled choices and one valid correct answer.')
+      !edit.questionText.trim() || (edit.options.length === 4 && edit.options.every((option, index) => option === 'ABCD'[index]))) throw Error('Provide a real question and valid choices; placeholder A/B/C/D choices are not accepted.')
   const rows = parseCsvText(bank.csvText).map(row => row.slice())
   const row = rows[source.rowIndex]
   if (!row) throw Error('The original question position changed.')
