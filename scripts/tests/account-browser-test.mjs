@@ -137,51 +137,54 @@ try {
   assert(tabsAndProfile.shellWidth > 1450, 'Desktop account shell has enough width for readable track cards')
   const cards = page.locator('.account-product-card')
   assert.equal(await cards.count(), 5)
-  assert.equal(await cards.first().locator('.store-benefits-list li').count(), 3, 'Each card previews only three features without growing')
-  assert.equal(await cards.first().locator('.store-benefits-popover li').count(), 9, 'All nine features are available in the popup')
-  assert.equal(await cards.last().locator('.store-benefits-popover li').count(), 9)
-  assert.equal(await cards.first().locator('.product-art img[src="/logo.png"]').count(), 1, 'Cards use the existing Hyperion logo asset')
+  assert.equal(await cards.first().locator('.store-benefits-list li').count(), 9, 'Each card retains all nine premium features')
+  assert.equal(await cards.last().locator('.store-benefits-list li').count(), 9)
+  assert.equal(await cards.first().locator('.product-art .store-banner-symbol').count(), 3, 'Operational cards use original anchor, track, and level symbols')
+  assert.equal(await cards.nth(1).locator('.product-art .store-banner-symbol').count(), 2, 'GMDSS card uses original anchor and radio symbol')
+  const asset = await page.request.get(new URL('/store-art/hyperion-banner-sprite.png', page.url()).href)
+  assert.equal(asset.status(), 200, 'Supplied Hyperion banner artwork is served as a local asset')
+  assert((await asset.body()).length > 1000, 'Cropped transparent symbol sprite is present')
   const oicCard = cards.first()
-  const beforeHover = await oicCard.evaluate(el => ({
-    cardBottom: el.getBoundingClientRect().bottom,
-    ctaBottom: el.querySelector('button.btn-primary').getBoundingClientRect().bottom,
-    scrollHeight: document.documentElement.scrollHeight
-  }))
+  await page.mouse.move(0, 0)
+  const beforeHover = await oicCard.evaluate(el => {
+    const bounds = el.getBoundingClientRect()
+    return { top: bounds.top, bottom: bounds.bottom, width: bounds.width, ctaBottom: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, listHeight: el.querySelector('.store-benefits-list').getBoundingClientRect().height, scroll: document.documentElement.scrollHeight }
+  })
   await oicCard.hover()
   await page.waitForTimeout(450)
-  const hover = await oicCard.evaluate(el => ({
-    matrix: getComputedStyle(el).transform,
-    cardBottom: el.getBoundingClientRect().bottom,
-    ctaBottom: el.querySelector('button.btn-primary').getBoundingClientRect().bottom,
-    popupTop: el.querySelector('.store-benefits-popover').getBoundingClientRect().top,
-    popupBottom: el.querySelector('.store-benefits-popover').getBoundingClientRect().bottom,
-    popupVisible: getComputedStyle(el.querySelector('.store-benefits-popover')).visibility,
-    scrollHeight: document.documentElement.scrollHeight
-  }))
-  assert(hover.matrix !== 'none' && Number(hover.matrix.match(/^matrix\(([^,]+)/)?.[1]) > 1.03, 'Desktop hover still enlarges the card')
-  assert.equal(hover.popupVisible, 'visible', 'Hover opens all nine benefits in a floating popup')
-  assert(hover.popupBottom < hover.cardBottom - 250 && hover.popupTop >= 0, 'The expanded benefits float upwards and remain on-screen')
-  assert(Math.abs(hover.ctaBottom - beforeHover.ctaBottom) < 10, 'Buy Now stays in place instead of moving below the viewport')
-  assert(hover.scrollHeight <= beforeHover.scrollHeight + 1, 'Hover does not increase the page scroll height')
+  const hover = await oicCard.evaluate(el => {
+    const bounds = el.getBoundingClientRect()
+    return { top: bounds.top, bottom: bounds.bottom, width: bounds.width, ctaBottom: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, listHeight: el.querySelector('.store-benefits-list').getBoundingClientRect().height, scroll: document.documentElement.scrollHeight, matrix: getComputedStyle(el).transform }
+  })
+  assert(hover.matrix !== 'none' && Number(hover.matrix.match(/^matrix\(([^,]+)/)?.[1]) > 1.02, 'Card still pops up and enlarges on hover')
+  assert(hover.listHeight > beforeHover.listHeight + 60, 'All nine features unfold inside the original card')
+  assert(hover.top < beforeHover.top - 55, 'The expanded card grows upwards')
+  assert(hover.width > beforeHover.width + 28, 'Hover card becomes wider for readable features without covering the navigation')
+  assert(Math.abs(hover.ctaBottom - beforeHover.ctaBottom) < 15, 'Buy Now stays anchored near its original position')
+  assert(hover.ctaBottom < 900 - 8, 'Buy Now remains visible at desktop height')
+  assert(hover.scroll <= beforeHover.scroll + 1, 'Hover does not increase page scroll height')
+  assert.equal(await page.locator('.store-benefits-popover').count(), 0, 'No separate popup covers account tabs or navigation')
   await page.mouse.move(0, 0)
   await oicCard.getByRole('button', { name: 'See all 9 premium features' }).click()
-  assert.equal(await oicCard.getByRole('button', { name: 'Show fewer features ↑' }).getAttribute('aria-expanded'), 'true', 'Benefits can be expanded by click or keyboard')
-  await oicCard.locator('.store-benefits-popover').waitFor({ state: 'visible' })
-  assert.equal(await oicCard.locator('.store-benefits-popover').evaluate(el => getComputedStyle(el).visibility), 'visible', 'Toggled popup is visible without hovering')
+  assert.equal(await oicCard.getByRole('button', { name: 'Show fewer features ↑' }).getAttribute('aria-expanded'), 'true', 'Touch and keyboard users can expand inline features')
   await oicCard.getByRole('button', { name: 'Show fewer features ↑' }).click()
   assert.equal(await oicCard.getByRole('button', { name: 'See all 9 premium features' }).getAttribute('aria-expanded'), 'false')
-  
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(65)
   for (const [width, height] of [[1366, 768], [1280, 768], [1531, 900]]) {
     await page.setViewportSize({ width, height })
+    await page.mouse.move(0, 0)
+    await page.waitForTimeout(65)
     await page.evaluate(() => window.scrollTo(0, 0))
-    const oic = page.locator('.account-product-card').first()
-    const original = await oic.evaluate(el => ({ cta: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, scroll: document.documentElement.scrollHeight }))
-    await oic.hover()
-    await page.waitForTimeout(400)
-    const expanded = await oic.evaluate(el => ({ cta: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, scroll: document.documentElement.scrollHeight, popupTop: el.querySelector('.store-benefits-popover').getBoundingClientRect().top }))
-    assert(expanded.cta < height - 8, `Buy Now is visible while hovered at ${width}x${height}`)
-    assert(Math.abs(expanded.cta - original.cta) < 10, `Buy Now does not get pushed down at ${width}x${height}`)
-    assert(expanded.scroll <= original.scroll + 1 && expanded.popupTop >= 0, `Floating benefits stay above the card at ${width}x${height}`)
+    const card = page.locator('.account-product-card').first()
+    const baseline = await card.evaluate(el => ({ cta: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, scroll: document.documentElement.scrollHeight, top: el.getBoundingClientRect().top }))
+    await card.hover()
+    await page.waitForTimeout(450)
+    const expanded = await card.evaluate(el => ({ cta: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, scroll: document.documentElement.scrollHeight, top: el.getBoundingClientRect().top }))
+    assert(expanded.cta < height - 8, `Buy Now remains on screen at ${width}×${height}`)
+    assert(expanded.cta <= baseline.cta + 8, `Buy Now must not move downward at ${width}×${height}: ${baseline.cta.toFixed(1)} → ${expanded.cta.toFixed(1)}`)
+    assert(expanded.top < baseline.top - 30, `Hover rises at ${width}×${height}: top ${baseline.top.toFixed(1)} → ${expanded.top.toFixed(1)}`)
+    assert(expanded.scroll <= baseline.scroll + 1, `Hover does not add scrolling at ${width}×${height}: ${baseline.scroll} → ${expanded.scroll}`)
     await page.mouse.move(0, 0)
   }
   await page.setViewportSize({ width: 1531, height: 900 })
