@@ -166,8 +166,15 @@ try {
   // Switch between neighboring raised cards repeatedly. The old card must
   // animate back from the same anchored layer instead of snapping to flow.
   const gmdssCard = cards.nth(1)
+  const cardCenter = card => card.evaluate(el => {
+    const r = el.getBoundingClientRect()
+    return { x: r.left + r.width * .65, y: r.top + Math.min(48, r.height * .2) }
+  })
   for (let switchIndex = 0; switchIndex < 3; switchIndex++) {
-    await gmdssCard.hover()
+    // Use direct pointer travel; locator.hover() waits for CSS stability and
+    // can consume the entire 320 ms exit transition before we inspect it.
+    const gmdssPoint = await cardCenter(gmdssCard)
+    await page.mouse.move(gmdssPoint.x, gmdssPoint.y, { steps: 3 })
     await page.waitForTimeout(45)
     assert.equal(await page.locator('.account-product-slot.is-hovered').count(), 1, 'Only the destination card is hovered')
     assert.equal(await gmdssCard.locator('..').evaluate(el => el.classList.contains('is-hovered')), true, 'GMDSS activates during handoff')
@@ -175,7 +182,8 @@ try {
     await page.waitForTimeout(360)
     assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', 'Old card releases its frozen grid height after settling')
     assert.equal(await page.locator('.account-product-slot.is-settling').count(), 0, 'No exiting card remains stuck after handoff')
-    await oicCard.hover()
+    const oicPoint = await cardCenter(oicCard)
+    await page.mouse.move(oicPoint.x, oicPoint.y, { steps: 3 })
     await page.waitForTimeout(360)
     assert.equal(await page.locator('.account-product-slot.is-hovered').count(), 1, 'Returning hover activates exactly one card')
     assert.equal(await gmdssCard.locator('..').evaluate(el => el.style.height), '', 'Neighbor returns to normal grid flow after switching back')
