@@ -371,7 +371,7 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
     options: record.options,
     correctAnswerIndex: answerIndex(record.answer, record.options.length),
     explanation: record.explanation,
-    isRetired: record.isRetired,
+    ...(record.isRetired ? { isRetired: true } : {}),
     difficulty: difficulty(i + 1)
   }));
 }
