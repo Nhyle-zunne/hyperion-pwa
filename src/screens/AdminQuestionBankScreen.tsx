@@ -5,7 +5,7 @@ import { withPageLoading } from '../lib/pageLoading'
 import { editBankQuestion, readEditableBank, type QuestionEdit } from '../lib/questionBankEditor'
 
 type Asset = { path: string; label: string; track: string; competenceId: string; part: number | null; format: 'standard' | 'gmdss'; repositoryPath?: string }
-type QuestionPreview = { questionText: string; options: string[]; correctAnswerIndex: number; explanation?: string }
+type QuestionPreview = { questionText: string; options: string[]; correctAnswerIndex: number; explanation?: string; isRetired?: boolean }
 type Preview = { requestId: string; baseHead: string; validationId: string; files: { path: string; questionCount: number; previousCount: number; changed: number; appended: number; explanationsPreserved?: number; staleExplanationsCleared?: number; corrections: { number: number; before: QuestionPreview; after: QuestionPreview }[] }[] }
 type QueueStatus = 'ready' | 'publishing' | 'success' | 'error'
 type QueueItem = { id: string; file: File; targetPath: string; status: QueueStatus; error?: string; questionCount?: number; baseHead?: string }
@@ -359,9 +359,10 @@ export default function AdminQuestionBankScreen() {
             <label>Explanation<textarea rows={3} value={editorDraft.explanation} onChange={event => setEditorDraft({ ...editorDraft, explanation: event.target.value })}
               style={{ width: '100%', marginTop: 4, color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} /></label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" checked={editorDraft.retired} onChange={event => setEditorDraft({ ...editorDraft, retired: event.target.checked })} />
+              <input type="checkbox" checked={editorDraft.retired} disabled={selectedEditorQuestion.fixedLegacyRetirement} onChange={event => setEditorDraft({ ...editorDraft, retired: event.target.checked })} />
               <strong>Retired (exclude from new study sessions)</strong>
             </label>
+            {selectedEditorQuestion.fixedLegacyRetirement && <p style={secondaryText}>This is one of the three original C10 retirements, which remain enforced by the packaged Android application and cannot be restored here.</p>}
             <p style={secondaryText}>Restoring an item allows it in future sessions. Existing bookmarks and History are never deleted. Always apply this edit before selecting another question.</p>
             <button type="button" className="btn btn-outline" disabled={busy} onClick={applyEditorDraft}>APPLY QUESTION EDIT TO DRAFT</button>
           </div>}
@@ -474,7 +475,7 @@ export default function AdminQuestionBankScreen() {
         <p style={secondaryText}>Destination: Android shared question assets on GitHub. Existing saved records are not modified. Files publish together or the live release stays unchanged.</p>
         {preview.files.map(file => <details key={file.path} style={{ margin: '12px 0' }}>
           <summary><strong>{file.path}</strong> · {file.questionCount.toLocaleString()} questions · {file.changed} corrected · {file.appended} appended{file.explanationsPreserved ? ` · ${file.explanationsPreserved} explanations preserved` : ''}{file.staleExplanationsCleared ? ` · ${file.staleExplanationsCleared} stale explanations cleared` : ''}</summary>
-          {file.corrections.map(change => <div key={change.number} style={{ margin: '10px 0', padding: 10, borderLeft: '3px solid var(--accent)' }}><strong>Question {change.number}</strong>{(['before', 'after'] as const).map(side => <div key={side} style={{ margin: '8px 0' }}><strong>{side === 'before' ? 'Previous' : 'Updated'}</strong><p>{change[side].questionText}</p><ol type="A">{change[side].options.map((option, index) => <li key={index} style={{ color: index === change[side].correctAnswerIndex ? 'var(--accent)' : 'var(--text)' }}>{option}{index === change[side].correctAnswerIndex ? ' · Correct answer' : ''}</li>)}</ol>{change[side].explanation && <p style={secondaryText}>{change[side].explanation}</p>}</div>)}</div>)}
+          {file.corrections.map(change => <div key={change.number} style={{ margin: '10px 0', padding: 10, borderLeft: '3px solid var(--accent)' }}><strong>Question {change.number}</strong>{(['before', 'after'] as const).map(side => <div key={side} style={{ margin: '8px 0' }}><strong>{side === 'before' ? 'Previous' : 'Updated'}</strong><p>{change[side].questionText}</p><ol type="A">{change[side].options.map((option, index) => <li key={index} style={{ color: index === change[side].correctAnswerIndex ? 'var(--accent)' : 'var(--text)' }}>{option}{index === change[side].correctAnswerIndex ? ' · Correct answer' : ''}</li>)}</ol>{change[side].explanation && <p style={secondaryText}>{change[side].explanation}</p>}{change[side].isRetired && <strong style={{ color: 'var(--danger, #dc2626)' }}>Retired from new sessions</strong>}</div>)}</div>)}
           {file.changed > file.corrections.length && <p style={secondaryText}>Showing the first {file.corrections.length} text previews. Review the full uploaded file for all {file.changed} corrections, including answer changes.</p>}
         </details>)}
       </section>}
