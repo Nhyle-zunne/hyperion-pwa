@@ -92,6 +92,18 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
           return reply({ assets, configured: !!token, source: 'github', repository: GITHUB_BANK_REPOSITORY, root: GITHUB_BANK_ROOT, head: state?.head, bankRevision: state?.release.revision, deliveryRevision: (await source.release()).revision })
         }
         if (!token) return reply({ error: 'GitHub publishing is not configured. Add GITHUB_BANK_WRITE_TOKEN as a Cloudflare Worker secret.' }, 503)
+        if (body.action === 'editor-load') {
+          // This action is reached only after the same server-side Supabase Auth
+          // admin check required for publishing. Never expose raw CSV to guests.
+          const path = (body as PublishInput & { path?: unknown }).path
+          if (typeof path !== 'string' || !SOURCE_ASSETS.includes(path)) return reply({ error: 'Unsupported question-bank destination.' }, 400)
+          const state = await publisherState(fetcher, token)
+          const release = await source.release()
+          if (state.release.revision !== release.revision) return reply({ error: 'The question-bank release is updating. Reload and retry.' }, 409)
+          const csvText = await source.read(path, release, false)
+          if (new TextEncoder().encode(csvText).length > 700000) return reply({ error: 'This question bank is too large for direct editing. Use the CSV uploader.' }, 413)
+          return reply({ path, csvText, baseHead: state.head, bankRevision: release.revision })
+        }
         if (body.action === 'validate') return reply({ preview: await validateGithubBatch(body, fetcher, token) })
         if (body.action === 'publish') { const result = await publishGithubBatch(body, fetcher, token); source.invalidate(); return reply({ ...result, source: 'github' }) }
         return reply({ error: 'Unknown administration action.' }, 400)
