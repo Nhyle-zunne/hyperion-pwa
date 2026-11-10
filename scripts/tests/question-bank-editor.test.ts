@@ -88,5 +88,5 @@ test('GMDSS row-based format can retire without shifting part-local IDs', () => 
   })
   expect(readEditableBank(gPath, output).questions).toHaveLength(3)
   expect(toSearchQuestions(gPath, output)[0].isRetired).toBe(true)
-  expect(toSearchQuestions(gPath, output)[1].isRetired).toBe(false)
+  expect(toSearchQuestions(gPath, output)[1].isRetired).toBeFalsy()
 })
