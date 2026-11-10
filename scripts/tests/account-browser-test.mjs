@@ -54,6 +54,33 @@ try {
     }
     await page.screenshot({ path: `account-checkout-${width}.png`, fullPage: true })
   }
+  // Payment labels must match the only method configured for PayMongo
+  // on *both* desktop and mobile, including the pending-checkout state.
+  const pendingPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await pendingPage.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  await pendingPage.addInitScript(() => localStorage.setItem('fixture-pending-orders', 'yes'))
+  await pendingPage.goto(process.env.HYPERION_RECOVERY_TEST_URL)
+  await pendingPage.getByRole('heading', { name: 'Pending checkouts', exact: true }).waitFor()
+  for (const width of [390, 320, 1531]) {
+    await pendingPage.setViewportSize({ width, height: 900 })
+    const rows = pendingPage.locator('.basket-pending-row')
+    assert.equal(await rows.count(), 2, 'Each pending checkout still has its own resume/cancel actions')
+    const methods = await pendingPage.locator('.basket-payment-methods span').allTextContents()
+    assert.deepEqual(methods, ['QR Ph'], `Only the actual QR Ph payment method is advertised at ${width}px`)
+    assert(await pendingPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Pending checkout has no horizontal overflow at ${width}px`)
+    if (width <= 800) {
+      const row = rows.first()
+      const details = await row.locator('.basket-pending-detail').boundingBox()
+      const actions = await row.locator('.basket-pending-actions').boundingBox()
+      const resume = await row.getByRole('button', { name: 'RESUME CHECKOUT' }).boundingBox()
+      const cancel = await row.getByRole('button', { name: 'CANCEL' }).boundingBox()
+      assert(details && actions && resume && cancel)
+      assert(actions.y >= details.y + details.height - 2, 'Mobile pending payment actions appear beneath the full track details')
+      assert(Math.abs(resume.y - cancel.y) < 3 && resume.width > 90 && cancel.width > 70, 'Resume and Cancel form a readable, single row')
+      assert(actions.x >= 0 && actions.x + actions.width <= width, 'Pending checkout controls fit the mobile viewport')
+    }
+  }
+  await pendingPage.close()
   await page.setViewportSize({ width: 1531, height: 900 })
   await page.getByRole('button', { name: 'Orders & payment history', exact: true }).click()
   await page.getByRole('heading', { name: 'Orders & payment history', exact: true }).waitFor()
