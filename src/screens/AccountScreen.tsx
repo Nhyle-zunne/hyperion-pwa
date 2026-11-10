@@ -894,6 +894,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                       setHoveredStore(item.code)
                     }}
                     onMouseLeave={event => {
+                      if (!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return
                       setHoveredStore(current => current === item.code ? null : current)
                       settleStoreCardLift(event.currentTarget)
                     }}>
