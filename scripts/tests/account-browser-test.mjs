@@ -142,7 +142,7 @@ try {
   await oicCard.hover()
   await page.waitForTimeout(450)
   const hover = await oicCard.evaluate(el => ({ matrix: getComputedStyle(el).transform, zIndex: getComputedStyle(el).zIndex, benefitHeight: el.querySelector('.store-benefits-list').getBoundingClientRect().height }))
-  assert(hover.matrix !== 'none' && new DOMMatrixReadOnly(hover.matrix).a > 1.03, 'Desktop hover makes the card noticeably bigger')
+  assert(hover.matrix !== 'none' && Number(hover.matrix.match(/^matrix\(([^,]+)/)?.[1]) > 1.03, 'Desktop hover makes the card noticeably bigger')
   assert(hover.benefitHeight > collapsedHeight + 50, 'Hover reveals the full premium features list')
   await page.mouse.move(0, 0)
   await oicCard.getByRole('button', { name: 'See all 9 premium features' }).click()
