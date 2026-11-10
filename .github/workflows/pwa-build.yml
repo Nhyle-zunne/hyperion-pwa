@@ -40,6 +40,11 @@ jobs:
         run: deno check --no-lock --node-modules-dir=auto supabase/functions/question-bank/index.ts supabase/functions/learning-progress/index.ts supabase/functions/admin-payment-review/index.ts supabase/functions/link-google-play-subscription/index.ts supabase/functions/google-play-rtdn/index.ts supabase/functions/create-checkout/index.ts supabase/functions/verify-checkout/index.ts supabase/functions/paymongo-webhook/index.ts supabase/functions/submit-manual-payment/index.ts supabase/functions/admin-license-management/index.ts supabase/functions/expire-inactive-accounts/index.ts supabase/functions/reconcile-google-play-subscriptions/index.ts
       - name: Test Google Play account-binding safeguards
         run: deno test --no-lock --allow-env --node-modules-dir=auto supabase/tests/google_play_account_binding_test.ts supabase/tests/learning_progress_preservation_test.ts supabase/tests/learning_progress_archive_batch_test.ts supabase/tests/learning_progress_conditional_read_test.ts supabase/tests/github_delivery_access_test.ts
+      # Deno's --node-modules-dir=auto creates a second Vite/Rollup type
+      # tree under node_modules/.deno; TypeScript then sees incompatible plugin
+      # types from two installations. The Deno checks already finished.
+      - name: Remove Deno-only npm type tree before Bun build
+        run: rm -rf node_modules/.deno
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
       - name: Release-safety smoke checks
