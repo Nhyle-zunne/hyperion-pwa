@@ -141,7 +141,8 @@ export function editBankQuestion(bank: EditableBank, ordinal: number, edit: Ques
   if ((row[questionColumn] || '').trim() !== source.questionText) throw Error('The source question changed. Reload this set.')
   row[questionColumn] = edit.questionText
   for (let i = 0; i < maxOptions; i++) row[choiceColumn + i] = edit.options[i] || ''
-  row[answerColumn] = 'ABCDEF'[edit.correctAnswerIndex]
+  const numericAnswer = bank.format === 'gmdss' && /^[1-6]$/.test((row[answerColumn] || '').trim())
+  row[answerColumn] = numericAnswer ? String(edit.correctAnswerIndex + 1) : 'ABCDEF'[edit.correctAnswerIndex]
   row[explanationColumn] = edit.explanation
   let statusIndex = bank.statusIndex
   if (statusIndex < 0) {
