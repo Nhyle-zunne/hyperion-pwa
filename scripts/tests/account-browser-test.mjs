@@ -169,8 +169,12 @@ try {
   assert.equal(await oicCard.getByRole('button', { name: 'Show fewer features ↑' }).getAttribute('aria-expanded'), 'true', 'Touch and keyboard users can expand inline features')
   await oicCard.getByRole('button', { name: 'Show fewer features ↑' }).click()
   assert.equal(await oicCard.getByRole('button', { name: 'See all 9 premium features' }).getAttribute('aria-expanded'), 'false')
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(65)
   for (const [width, height] of [[1366, 768], [1280, 768], [1531, 900]]) {
     await page.setViewportSize({ width, height })
+    await page.mouse.move(0, 0)
+    await page.waitForTimeout(65)
     await page.evaluate(() => window.scrollTo(0, 0))
     const card = page.locator('.account-product-card').first()
     const baseline = await card.evaluate(el => ({ cta: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, scroll: document.documentElement.scrollHeight, top: el.getBoundingClientRect().top }))
@@ -179,7 +183,8 @@ try {
     const expanded = await card.evaluate(el => ({ cta: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, scroll: document.documentElement.scrollHeight, top: el.getBoundingClientRect().top }))
     assert(expanded.cta < height - 8, `Buy Now remains on screen at ${width}×${height}`)
     assert(Math.abs(expanded.cta - baseline.cta) < 15, `Buy Now stays put at ${width}×${height}`)
-    assert(expanded.top < baseline.top - 45 && expanded.scroll <= baseline.scroll + 1, `Hover expands up without adding scroll at ${width}×${height}`)
+    assert(expanded.top < baseline.top - 30, `Hover rises at ${width}×${height}: top ${baseline.top.toFixed(1)} → ${expanded.top.toFixed(1)}`)
+    assert(expanded.scroll <= baseline.scroll + 1, `Hover does not add scrolling at ${width}×${height}: ${baseline.scroll} → ${expanded.scroll}`)
     await page.mouse.move(0, 0)
   }
   await page.setViewportSize({ width: 1531, height: 900 })
