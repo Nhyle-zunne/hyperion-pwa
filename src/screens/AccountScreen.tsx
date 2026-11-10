@@ -28,6 +28,47 @@ type Order = {
 type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
+const STORE_FEATURES = [
+  'Unlimited practice sessions',
+  'Unlimited timed mock exams',
+  'Full question bank for your licensed track',
+  'Custom drills and question ranges',
+  'Quick Scan Mode',
+  'Mistakes Notebook and bookmarks',
+  'Full-text question search',
+  'Offline review after downloading',
+  'Study history and cross-device progress sync'
+] as const
+
+const STORE_TRACK_CAPTIONS: Record<PaidTrack, string> = {
+  oic_nw: 'DECK · OPERATIONAL',
+  engine_ew: 'ENGINE · OPERATIONAL',
+  gmdss: 'GMDSS · RADIO',
+  deck_mgt: 'DECK · MANAGEMENT',
+  engine_mgt: 'ENGINE · MANAGEMENT'
+}
+
+function StoreTrackIcon({ code }: { code: PaidTrack }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" width="33" height="33" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+    {code === 'gmdss' ? <>
+      <path d="M12 20V11m-4 9h8m-4-11a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/>
+      <path d="M6.9 8.2a7 7 0 0 0 0 8m10.2-8a7 7 0 0 1 0 8M3.3 5.2a11 11 0 0 0 0 14m17.4-14a11 11 0 0 1 0 14"/>
+    </> : code === 'deck_mgt' ? <>
+      <path d="M12 2 20 5v6c0 5.1-3.1 8.6-8 11-4.9-2.4-8-5.9-8-11V5l8-3Z"/>
+      <path d="M12 7v9m-4-6 4-3 4 3M7.5 15.5c2.7 1.8 6.3 1.8 9 0"/>
+    </> : code === 'engine_mgt' ? <>
+      <path d="M12 2 20 5v6c0 5.1-3.1 8.6-8 11-4.9-2.4-8-5.9-8-11V5l8-3Z"/>
+      <circle cx="12" cy="12" r="3.5"/><path d="M12 6v2.5m0 7V18m-6-6h2.5m7 0H18m-9.9-3.9 1.8 1.8m4.2 4.2 1.8 1.8m0-7.8-1.8 1.8m-4.2 4.2-1.8 1.8"/>
+    </> : code === 'engine_ew' ? <>
+      <circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9 7 7m10 10 2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/>
+      <path d="M12 9v6m-3-3h6"/>
+    </> : <>
+      <circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.3"/>
+      <path d="M12 1.5v8.2m0 4.6v8.2M1.5 12h8.2m4.6 0h8.2M4.6 4.6l5.8 5.8m3.2 3.2 5.8 5.8m0-14.8-5.8 5.8m-3.2 3.2-5.8 5.8"/>
+    </>}
+  </svg>
+}
+
 function safeAccountError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : ''
   if (!message || /supabase|postgrest|postgres|sqlstate|provider credentials|redirect settings|edge function|row[- ]level security|\bpgrst\b|\bjwt\b|database schema|relation .* does not exist|violates .* constraint/i.test(message)) return fallback
@@ -116,6 +157,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [inactiveLicenses, setInactiveLicenses] = useState<OwnedTrack[]>([])
   const [renewalGraceUntil, setRenewalGraceUntil] = useState<string | null>(null)
   const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>(() => Object.fromEntries(PAID_PRODUCTS.map(item => [item.code, basket.find(entry => entry.code === item.code)?.term ?? 'year'])) as Record<PaidTrack, LicenseTerm>)
+  const [expandedStorePerks, setExpandedStorePerks] = useState<PaidTrack | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
   const entitlementExpiryRevision = useLicenseStore(s => s.entitlementExpiryRevision)
@@ -507,27 +549,48 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
 
 
 
-  return <div className="screen account-page" style={{ width: 'min(calc(100% - 2rem), 1320px)', maxWidth: 1320, margin: '0 auto', paddingTop: '.75rem', paddingBottom: '2rem' }}>
+  return <div className="screen account-page" style={{ width: isLayout ? 'min(calc(100% - 2rem), 1320px)' : 'min(calc(100% - 2rem), 1540px)', maxWidth: isLayout ? 1320 : 1540, margin: '0 auto', paddingTop: '.75rem', paddingBottom: '2rem' }}>
     <style>{`
-      .account-page .account-layout{display:grid;grid-template-columns:minmax(220px,22%) minmax(0,1fr);gap:clamp(.75rem,1.2vw,1rem);align-items:start}
+      .account-page .account-layout{display:grid;grid-template-columns:minmax(230px,19%) minmax(0,1fr);gap:clamp(.75rem,1.1vw,1rem);align-items:start}
       .account-page > [role="status"] + .account-layout{margin-top:1.1rem}
       .account-page .account-sidebar{display:grid;gap:1rem;align-content:start;position:sticky;top:80px;min-width:0;align-self:start}
       .account-page .account-main{min-width:0}
       .account-page .account-main > .screen{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
       @media(max-width:1180px){.account-page .basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.account-page .basket-page .basket-summary{position:static}}
       .account-page .account-section-tabs{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;min-width:0}
-      .account-page .account-section-tabs button{min-height:44px;padding:.65rem 1rem;font-weight:850;border-radius:9px;white-space:nowrap}
+      .account-page .account-section-tabs button{min-height:48px;padding:.7rem 1rem;font-weight:850;font-size:.9rem;border-radius:9px;white-space:nowrap}
       .account-page .account-section-tabs button[aria-selected="true"]{background:#147d43;border-color:#147d43;color:#fff}
       .account-page .account-toolbar-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
       .account-page .account-toolbar-actions button{min-height:42px}
-      .account-page .account-products-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;gap:clamp(.4rem,.7vw,.75rem)}
-      .account-page .account-product-card{min-width:0;display:flex;flex-direction:column;padding:clamp(.55rem,.7vw,.75rem);border:1px solid var(--border);border-radius:12px;background:var(--bg-card);transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}
-      .account-page .account-product-card:hover{border-color:var(--accent);box-shadow:0 7px 20px rgba(4,35,83,.08);transform:translateY(-2px)}
-      .account-page .account-product-card .product-art{display:flex;align-items:center;justify-content:center;gap:.4rem;min-height:46px;padding:.25rem .35rem;border-radius:9px;background:linear-gradient(135deg,#042353,#0d376b);color:#4ade80;font-size:1.2rem;margin-bottom:.45rem;position:relative;overflow:hidden}
-      .account-page .account-product-card .product-art:after{content:"";position:absolute;width:84px;height:84px;border:1px solid rgba(34,197,94,.28);border-radius:50%;right:-25px;top:-42px;pointer-events:none}
-      .account-page .account-product-card .product-art span{font-size:.55rem;letter-spacing:.07em;font-weight:900;color:#fff;line-height:1.15}
-      .account-page .product-price{font-size:clamp(1.18rem,1.45vw,1.4rem);font-weight:900;line-height:1.15;color:var(--text);margin:.35rem 0 .45rem}
+      .account-page .account-products-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;gap:clamp(.55rem,.75vw,.9rem);isolation:isolate;align-items:start}
+      .account-page .account-product-card{position:relative;z-index:0;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:13px;background:var(--bg-card);transition:transform .3s cubic-bezier(.2,.8,.2,1),border-color .3s ease,box-shadow .3s ease;transform-origin:50% 20%;will-change:transform}
+      .account-page .account-product-card:focus-within{z-index:5;border-color:#d9ad36;box-shadow:0 14px 30px rgba(4,35,83,.13)}
+      .account-page .account-product-card .product-art{min-height:58px;display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border-radius:9px;background:radial-gradient(circle at 95% 0%,#17497d 0,transparent 45%),linear-gradient(125deg,#042353,#061a3b);color:#f6c84a;margin-bottom:.6rem;position:relative;overflow:hidden;border:1px solid rgba(241,195,70,.5)}
+      .account-page .account-product-card .product-art:before{content:"";position:absolute;inset:0;border-top:2px solid #f3c452;pointer-events:none}
+      .account-page .account-product-card .product-art:after{content:"";position:absolute;width:96px;height:96px;border:1px solid rgba(244,191,51,.25);border-radius:50%;right:-37px;top:-51px;pointer-events:none}
+      .account-page .store-banner-logo{position:relative;z-index:1;width:36px;height:36px;object-fit:contain;flex-shrink:0}
+      .account-page .store-banner-text{position:relative;z-index:1;min-width:0;flex:1;display:grid;gap:.2rem}
+      .account-page .store-banner-text strong{display:block;color:#ffcf55;font-size:.76rem;line-height:1.1;font-weight:950;letter-spacing:.065em}
+      .account-page .store-banner-text small{color:#f8e6a7;font-size:.53rem;font-weight:800;letter-spacing:.045em;line-height:1.25}
+      .account-page .store-banner-track{position:relative;z-index:1;display:flex;flex-shrink:0;color:#f6c84a}
+      .account-page .product-price{font-size:clamp(1.2rem,1.4vw,1.48rem);font-weight:950;line-height:1.1;color:var(--text);margin:.4rem 0 .55rem}
+      .account-page .store-feature-highlight{font-size:.7rem;font-weight:850;letter-spacing:.02em;color:#b4871b;margin:.15rem 0 .2rem}
+      .account-page .store-benefits-list{display:grid;gap:.14rem;list-style:none;padding:0;margin:.3rem 0 .1rem;max-height:3.55rem;overflow:hidden;transition:max-height .35s cubic-bezier(.2,.8,.2,1)}
+      .account-page .store-benefits-list li{display:flex;gap:.3rem;align-items:flex-start;line-height:1.25;font-size:.66rem;color:var(--text-muted);overflow-wrap:anywhere}
+      .account-page .store-benefits-list li:before{content:"✓";color:#b68714;font-weight:900;flex-shrink:0}
+      .account-page .account-product-card.perks-expanded .store-benefits-list{max-height:18rem}
+      .account-page .store-benefits-toggle{margin:.15rem 0 .5rem;padding:.15rem 0;border:0;text-align:left;background:none;color:var(--accent);font:inherit;font-size:.67rem;font-weight:850;line-height:1.3;cursor:pointer;align-self:flex-start}
+      .account-page .store-benefits-toggle:hover{text-decoration:underline}
+      .account-page .store-benefits-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
       .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:850;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
+      @media (hover:hover) and (pointer:fine){
+        .account-page .account-product-card:hover{z-index:7;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-7px) scale(1.055)}
+        .account-page .account-product-card:hover .store-benefits-list{max-height:18rem}
+      }
+      @media(prefers-reduced-motion:reduce){
+        .account-page .account-product-card,.account-page .store-benefits-list{transition:none}
+        .account-page .account-product-card:hover{transform:none}
+      }
       .account-page .account-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
       .account-page .account-cart-row{display:flex;align-items:center;justify-content:space-between;gap:.8rem;border-bottom:1px solid var(--border);padding:.75rem 0}
       .account-page .account-cart-row:last-child{border-bottom:0}
@@ -540,7 +603,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       @media(prefers-reduced-motion:reduce){.account-page .profile-mobile-toggle svg{transition:none}}
       .account-page .account-profile-content{display:block}
       .account-page .account-section-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
-      .account-page .account-section-tabs button{min-height:44px;padding:.7rem .85rem;font-weight:850;border-radius:9px}
+      .account-page .account-section-tabs button{min-height:48px;padding:.75rem 1rem;font-weight:850;border-radius:9px}
       .account-page .profile-side-links{font-size:.76rem;color:var(--text-muted);line-height:1.4}
       .account-cart-fab{position:fixed;right:max(1.25rem,env(safe-area-inset-right));bottom:max(1.25rem,env(safe-area-inset-bottom));z-index:160;display:grid;place-items:center;width:56px;height:56px;padding:0;border:2px solid #e2e8f0;border-radius:50%;background:#fff;color:#147d43;line-height:1;box-shadow:0 8px 24px rgba(4,35,83,.24);cursor:pointer;touch-action:manipulation;transition:box-shadow .2s ease}
       [data-theme='dark'] .account-cart-fab{background:#147d43;border-color:#147d43;color:#fff}
@@ -557,7 +620,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       @media(max-width:1279px){.account-page .account-products-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
       @media(max-width:950px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
       @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar-actions{display:flex;justify-content:flex-end}.account-page .profile-mobile-toggle{display:inline-flex}.account-page .account-profile-content{display:none}.account-page .account-profile-content.is-expanded{display:block}.account-page .account-section-tabs{display:grid;grid-template-columns:1fr;gap:.45rem}.account-page .account-section-tabs button{text-align:left}}
-      @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
+      @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:64px}.account-page .account-cart-row{align-items:flex-start}}
 
       .account-page .account-success-backdrop{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:1rem;box-sizing:border-box;background:radial-gradient(ellipse at 50% 36%,rgba(34,197,94,.13),transparent 48%),linear-gradient(135deg,rgba(4,15,35,.94),rgba(8,20,39,.92));backdrop-filter:blur(12px) saturate(125%);-webkit-backdrop-filter:blur(12px) saturate(125%);animation:hyperion-backdrop-enter 260ms ease-out both}
       .account-page .account-success-card{position:relative;overflow:hidden;border-radius:20px!important;border-color:rgba(148,163,184,.28)!important;box-shadow:0 30px 90px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.035)!important;animation:hyperion-success-card-enter 380ms cubic-bezier(.18,.89,.32,1.12) both}
@@ -755,7 +818,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           </> : <>
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
-                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Choose the track or tracks you need. Active licenses cannot be purchased again.</p></div>
+                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Unlimited practice, mock exams, and offline study for your chosen track. Active licenses cannot be purchased again.</p></div>
                 <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>WEEK · MONTH · YEAR ACCESS</span>
               </div>
               <div className="account-products-grid">
@@ -767,9 +830,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   const selectedPrice = priceForTerm(item, selectedTerm)
                   const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
                   const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
-                  return <article className="account-product-card" key={item.code}>
-                    <div className="product-art"><div aria-hidden="true">{item.code === 'gmdss' ? '📡' : item.code === 'engine_ew' || item.code === 'engine_mgt' ? '⚙️' : '⚓'}</div><span>HYPERION REVIEWER</span></div>
-                    <h3 style={{ margin: 0, fontSize: '.91rem', minHeight: '2.3em', lineHeight: 1.15 }}>{item.label}</h3>
+                  return <article className={`account-product-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} key={item.code} aria-label={`${item.label} reviewer plan`}>
+                    <div className="product-art">
+                      <img className="store-banner-logo" src="/logo.png" alt="" aria-hidden="true" />
+                      <div className="store-banner-text"><strong>HYPERION</strong><small>{STORE_TRACK_CAPTIONS[item.code]}</small></div>
+                      <span className="store-banner-track"><StoreTrackIcon code={item.code} /></span>
+                    </div>
+                    <h3 style={{ margin: 0, fontSize: '.94rem', minHeight: '2.3em', lineHeight: 1.2 }}>{item.label}</h3>
                     <div className="product-price">₱{selectedPrice}<span style={{ fontSize: '.68rem', color: 'var(--text-muted)', fontWeight: 650 }}> / {selectedTerm}</span></div>
                     <div style={{ color: 'var(--text-muted)', fontSize: '.61rem', fontWeight: 900, letterSpacing: '.04em' }}>CHOOSE DURATION</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '.25rem', margin: '.35rem 0 .65rem' }}>
@@ -779,6 +846,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                         return <button key={option.code} type="button" aria-label={`${item.label} ${option.label} ₱${optionPrice}`} aria-pressed={isSelected} disabled={busy || isOwned || manualPending} onClick={() => setSelectedTerms(old => ({ ...old, [item.code]: option.code }))} style={{ minWidth: 0, minHeight: 40, border: '1px solid ' + (isSelected ? 'var(--accent)' : 'var(--border)'), borderRadius: 7, padding: '.3rem .1rem', background: isSelected ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)', fontSize: '.66rem', lineHeight: 1.15, fontWeight: 800, cursor: busy || isOwned || manualPending ? 'not-allowed' : 'pointer' }}><span style={{ display: 'block' }}>{option.label}</span><span style={{ display: 'block', marginTop: '.12rem' }}>₱{optionPrice}</span></button>
                       })}
                     </div>
+                    <div className="store-feature-highlight">✦ Full reviewer access</div>
+                    <ul className="store-benefits-list" aria-label={`Premium features for ${item.label}`}>
+                      {STORE_FEATURES.map(feature => <li key={feature}>{feature}</li>)}
+                    </ul>
+                    <button type="button" className="store-benefits-toggle" aria-expanded={expandedStorePerks === item.code} onClick={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}>
+                      {expandedStorePerks === item.code ? 'Show fewer features ↑' : 'See all 9 premium features ↓'}
+                    </button>
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
                     <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)} style={{ width: '100%', marginTop: '.5rem', minHeight: 44, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff', padding: '.5rem .25rem', fontSize: '.78rem' }}>
                       {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'BUY NOW'}
@@ -787,6 +861,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   </article>
                 })}
               </div>
+              <p style={{ margin: '.8rem 0 0', fontSize: '.73rem', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+                Features unlock only for the purchased track during its active license. Offline review requires downloading that track, and cross-device progress uses the same Google account.
+              </p>
             </section>
 
 

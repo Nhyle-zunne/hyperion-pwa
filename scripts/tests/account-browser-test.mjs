@@ -105,7 +105,7 @@ try {
   assert.deepEqual(calls.find(call => call.action === 'update-profile').data, { full_name: 'Updated Member', company: 'Fixture Company', school: 'Fixture School' })
   await page.getByRole('button', { name: 'Bond Store', exact: true }).click()
   await page.getByRole('heading', { name: 'Available reviewer tracks', exact: true }).waitFor()
-  for (const [width, height, expectedColumns] of [[1531, 900, 5], [1366, 768, 5], [1280, 768, 5], [1024, 900, 3], [870, 900, 2], [390, 900, 1]]) {
+  for (const [width, height, expectedColumns] of [[1650, 900, 5], [1531, 900, 5], [1366, 768, 5], [1280, 768, 5], [1024, 900, 3], [870, 900, 2], [390, 900, 1]]) {
     await page.setViewportSize({ width, height })
     await page.evaluate(() => window.scrollTo(0, 0))
     const boxes = await page.locator('.account-product-card').evaluateAll(cards => cards.map(card => {
@@ -118,13 +118,41 @@ try {
     assert(boxes.every(box => box.width >= 140 && box.x >= 0 && box.x + box.width <= width + 1), `Store cards have usable widths and no horizontal overflow at ${width}px`)
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Bond Store has no horizontal scroll at ${width}px`)
     if (width >= 1280) {
-      assert(boxes.every(box => box.bottom < height - 72), `All five desktop track cards fit above the fold at ${width}x${height}`)
-      assert(boxes.every(box => box.buyButtonBottom && box.buyButtonBottom < height - 72), 'All desktop buy buttons remain visible without scrolling')
+      assert(boxes.every(box => box.bottom < height - 12), `All five default desktop track cards fit above the fold at ${width}x${height}`)
+      assert(boxes.every(box => box.buyButtonBottom && box.buyButtonBottom < height - 12), 'All desktop buy buttons remain visible without scrolling')
     }
     if (width === 1366 || width === 390) await page.screenshot({ path: `account-store-${width}.png`, fullPage: true })
   }
   await page.setViewportSize({ width: 1531, height: 900 })
-  const oicCard = page.locator('.account-product-card').first()
+  await page.evaluate(() => window.scrollTo(0, 0))
+  const tabsAndProfile = await page.evaluate(() => ({
+    profileY: document.querySelector('.account-sidebar').getBoundingClientRect().top,
+    tabsY: document.querySelector('.account-section-tabs').getBoundingClientRect().top,
+    rowY: document.querySelector('.account-layout').getBoundingClientRect().top,
+    shellWidth: document.querySelector('.account-page').getBoundingClientRect().width
+  }))
+  // In this standalone test fixture there is no top navigation, so the profile's sticky top:80px can lift it above the row.
+  assert(Math.abs(tabsAndProfile.tabsY - tabsAndProfile.rowY) < 2, 'Store tabs begin at the top of the account row')
+  assert(Math.abs(tabsAndProfile.profileY - Math.max(tabsAndProfile.rowY, 80)) < 2, 'Profile card aligns with the row or its sticky safe offset')
+  assert(tabsAndProfile.shellWidth > 1450, 'Desktop account shell has enough width for readable track cards')
+  const cards = page.locator('.account-product-card')
+  assert.equal(await cards.count(), 5)
+  assert.equal(await cards.first().locator('.store-benefits-list li').count(), 9, 'All nine reviewer benefits are listed for every track')
+  assert.equal(await cards.last().locator('.store-benefits-list li').count(), 9)
+  assert.equal(await cards.first().locator('.product-art img[src="/logo.png"]').count(), 1, 'Cards use the existing Hyperion logo asset')
+  const oicCard = cards.first()
+  const collapsedHeight = await oicCard.locator('.store-benefits-list').evaluate(el => el.getBoundingClientRect().height)
+  await oicCard.hover()
+  await page.waitForTimeout(450)
+  const hover = await oicCard.evaluate(el => ({ matrix: getComputedStyle(el).transform, zIndex: getComputedStyle(el).zIndex, benefitHeight: el.querySelector('.store-benefits-list').getBoundingClientRect().height }))
+  assert(hover.matrix !== 'none' && Number(hover.matrix.match(/^matrix\(([^,]+)/)?.[1]) > 1.03, 'Desktop hover makes the card noticeably bigger')
+  assert(hover.benefitHeight > collapsedHeight + 50, 'Hover reveals the full premium features list')
+  await page.mouse.move(0, 0)
+  await oicCard.getByRole('button', { name: 'See all 9 premium features' }).click()
+  assert.equal(await oicCard.getByRole('button', { name: 'Show fewer features ↑' }).getAttribute('aria-expanded'), 'true', 'Benefits can be expanded by click or keyboard')
+  await oicCard.getByRole('button', { name: 'Show fewer features ↑' }).click()
+  assert.equal(await oicCard.getByRole('button', { name: 'See all 9 premium features' }).getAttribute('aria-expanded'), 'false')
+  
   await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱20' }).click()
   assert.equal(await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱20' }).getAttribute('aria-pressed'), 'true', 'Weekly selection remains functional')
   assert((await oicCard.locator('.product-price').innerText()).includes('₱20'), 'Changing duration updates the track price')
