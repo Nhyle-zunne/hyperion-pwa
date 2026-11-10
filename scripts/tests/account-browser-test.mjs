@@ -181,7 +181,7 @@ try {
     assert.equal(await oicCard.locator('..').evaluate(el => getComputedStyle(el.querySelector('.account-product-card')).position), 'absolute', 'Exiting OIC card stays in an anchored layer during the exit animation')
     await page.waitForTimeout(360)
     assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', 'Old card releases its frozen grid height after settling')
-    assert.equal(await page.locator('.account-product-slot.is-settling').count(), 0, 'No exiting card remains stuck after handoff')
+    assert.equal(await page.locator('.account-product-slot[data-store-lift="settling"]').count(), 0, 'No exiting card remains stuck after handoff')
     const oicPoint = await cardCenter(oicCard)
     await page.mouse.move(oicPoint.x, oicPoint.y, { steps: 3 })
     await page.waitForTimeout(360)
