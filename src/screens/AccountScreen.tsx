@@ -64,20 +64,21 @@ function cancelStoreCardSettle(slot: HTMLElement) {
 function beginStoreCardLift(slot: HTMLElement) {
   cancelStoreCardSettle(slot)
   prepareStoreCardLift(slot)
-  slot.classList.remove('is-settling')
-  slot.classList.add('is-lifting')
+  slot.dataset.storeLift = 'entering'
   // Establish the original absolute geometry before React applies is-hovered,
   // so the horizontal expansion animates rather than instantly jumping.
   void slot.querySelector<HTMLElement>('.account-product-card')?.offsetWidth
 }
 function settleStoreCardLift(slot: HTMLElement, force = false) {
   cancelStoreCardSettle(slot)
-  slot.classList.remove('is-lifting')
-  if (!force && slot.classList.contains('is-expanded')) return
-  slot.classList.add('is-settling')
+  if (!force && slot.classList.contains('is-expanded')) {
+    delete slot.dataset.storeLift
+    return
+  }
+  slot.dataset.storeLift = 'settling'
   const timer = window.setTimeout(() => {
     storeCardSettleTimers.delete(slot)
-    slot.classList.remove('is-settling')
+    delete slot.dataset.storeLift
     releaseStoreCardLift(slot)
   }, 320)
   storeCardSettleTimers.set(slot, timer)
@@ -613,7 +614,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-products-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;gap:clamp(.55rem,.75vw,.9rem);isolation:isolate;align-items:start}
       .account-page .account-product-slot{min-width:0;position:relative;z-index:0}
       .account-page .account-product-slot.is-hovered,.account-page .account-product-slot.is-expanded{z-index:8}
-      .account-page .account-product-slot.is-settling{z-index:1;pointer-events:none}
+      .account-page .account-product-slot[data-store-lift="settling"]{z-index:1;pointer-events:none}
       .account-page .account-product-card{position:relative;z-index:0;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:13px;background:var(--bg-card);transition:left .26s cubic-bezier(.2,.8,.2,1),right .26s cubic-bezier(.2,.8,.2,1),transform .26s cubic-bezier(.2,.8,.2,1),border-color .26s ease,box-shadow .26s ease;transform-origin:50% 100%;will-change:transform;box-sizing:border-box}
       .account-page .account-product-card:focus-within{z-index:5;border-color:#d9ad36;box-shadow:0 14px 30px rgba(4,35,83,.13)}
       .account-page .account-product-card .product-art{min-height:58px;display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border-radius:9px;background:radial-gradient(circle at 95% 0%,#17497d 0,transparent 45%),linear-gradient(125deg,#042353,#061a3b);color:#f6c84a;margin-bottom:.6rem;position:relative;overflow:hidden;border:1px solid rgba(241,195,70,.5)}
@@ -636,12 +637,12 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .store-benefits-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
       .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:850;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
       @media (hover:hover) and (pointer:fine){
-        .account-page .account-product-slot.is-lifting .account-product-card,
+        .account-page .account-product-slot[data-store-lift="entering"] .account-product-card,
         .account-page .account-product-slot.is-hovered .account-product-card,
         .account-page .account-product-slot.is-expanded .account-product-card,
-        .account-page .account-product-slot.is-settling .account-product-card{position:absolute;bottom:0;left:0;right:0}
-        .account-page .account-product-slot.is-hovered:not(.is-settling) .account-product-card,
-        .account-page .account-product-slot.is-expanded:not(.is-settling) .account-product-card{left:calc(-1 * var(--store-hover-left,0px));right:calc(-1 * var(--store-hover-right,0px));z-index:9;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-3px) scale(1.035);transform-origin:50% 100%;background:var(--bg-card)}
+        .account-page .account-product-slot[data-store-lift="settling"] .account-product-card{position:absolute;bottom:0;left:0;right:0}
+        .account-page .account-product-slot.is-hovered:not([data-store-lift="settling"]) .account-product-card,
+        .account-page .account-product-slot.is-expanded:not([data-store-lift="settling"]) .account-product-card{left:calc(-1 * var(--store-hover-left,0px));right:calc(-1 * var(--store-hover-right,0px));z-index:9;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-3px) scale(1.035);transform-origin:50% 100%;background:var(--bg-card)}
       }
       @media(prefers-reduced-motion:reduce){
         .account-page .account-product-card,.account-page .store-benefits-list{transition:none}
