@@ -29,20 +29,27 @@ try {
     await page.setViewportSize({ width, height: 900 })
     const profileBox = await sidebar.boundingBox()
     const contentBox = await page.locator('.account-main').boundingBox()
-    assert(profileBox && contentBox)
-    assert(width > 800 ? profileBox.x + profileBox.width <= contentBox.x : profileBox.y + profileBox.height <= contentBox.y, `Profile placement at ${width}px`)
+    assert(contentBox)
+    if (width > 800) {
+      assert(profileBox && profileBox.x + profileBox.width <= contentBox.x, `Desktop checkout profile stays alongside the content at ${width}px`)
+    } else {
+      assert.equal(profileBox, null, 'Mobile checkout omits the redundant account profile')
+    }
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `No overflow at ${width}px`)
     const tabs = page.getByRole('navigation', { name: 'Account and subscriptions' }).getByRole('button')
-    assert.equal(await tabs.count(), 3, 'Cart is separate from the three account tabs')
-    const tabWidths = await tabs.evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().width))
-    assert(Math.max(...tabWidths) - Math.min(...tabWidths) < 1, `Equal tab widths at ${width}px`)
+    assert.equal(await tabs.count(), width > 800 ? 3 : 0, 'Account navigation is condensed away on mobile checkout only')
+    if (width > 800) {
+      const tabWidths = await tabs.evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().width))
+      assert(Math.max(...tabWidths) - Math.min(...tabWidths) < 1, `Equal tab widths at ${width}px`)
+    }
     assert.equal(await page.getByRole('button', { name: 'Shopping cart', exact: true }).count(), 0, 'Checkout has no floating cart')
     if (width === 390) {
-      const toggle = sidebar.getByRole('button', { name: /^Edit profile/ })
-      assert.equal(await toggle.getAttribute('aria-expanded'), 'false')
-      await toggle.click()
-      assert.equal(await sidebar.getByRole('button', { name: /^Hide profile/ }).getAttribute('aria-expanded'), 'true')
-      await sidebar.getByRole('button', { name: /^Hide profile/ }).click()
+      const action = page.locator('.basket-checkout-action.is-payable')
+      assert.equal(await action.evaluate(el => getComputedStyle(el).position), 'fixed', 'Mobile checkout total and payment action dock above the bottom navigation')
+      assert.equal(await page.getByRole('button', { name: 'Checkout', exact: true }).count(), 1, 'Mobile shows exactly one checkout button')
+      const checkoutRect = await action.boundingBox()
+      assert(checkoutRect && checkoutRect.y >= 0 && checkoutRect.y + checkoutRect.height <= 900 - 48, `Docked payment controls remain within the visible area above bottom navigation: ${JSON.stringify(checkoutRect)}`)
+      assert((await page.locator('.basket-selected-card').boundingBox()).y < 220, 'Selected tracks appear near the top without redundant profile and tabs')
     }
     await page.screenshot({ path: `account-checkout-${width}.png`, fullPage: true })
   }
@@ -103,6 +110,9 @@ try {
   assert.equal(calls.filter(call => call.action === 'table:google_play_entitlements').length, 0, 'Profile layout must not load store entitlements')
   assert.equal(calls.filter(call => call.action === 'verify-checkout:').length, 0, 'Profile layout must not duplicate payment verification')
   assert.deepEqual(calls.find(call => call.action === 'update-profile').data, { full_name: 'Updated Member', company: 'Fixture Company', school: 'Fixture School' })
+  // Checkout intentionally hides account tabs on phones; restore desktop
+  // before using the desktop tab navigation to return to the store.
+  await page.setViewportSize({ width: 1531, height: 900 })
   await page.getByRole('button', { name: 'Bond Store', exact: true }).click()
   await page.getByRole('heading', { name: 'Available reviewer tracks', exact: true }).waitFor()
   for (const [width, height, expectedColumns] of [[1650, 900, 5], [1531, 900, 5], [1366, 768, 5], [1280, 768, 5], [1024, 900, 3], [870, 900, 2], [390, 900, 1]]) {
@@ -266,7 +276,9 @@ try {
   await page.getByRole('button', { name: 'Shopping cart', exact: true }).click()
   await page.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('hyperion-account-basket-v1'))), basket, 'Floating cart navigation preserves saved selections across all account tabs')
-  for (const width of [390, 870, 1531]) {
+  // Navigate away from Checkout while its account tabs are visible on desktop,
+  // then exercise the normal account tabs on successively smaller screens.
+  for (const width of [1531, 870, 390]) {
     await page.setViewportSize({ width, height: 900 })
     for (const tab of ['Bond Store', 'My licenses', 'Orders & payment history']) {
       await page.getByRole('button', { name: tab, exact: true }).click()

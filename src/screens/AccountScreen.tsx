@@ -678,6 +678,12 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       @media(max-width:950px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
       @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar-actions{display:flex;justify-content:flex-end}.account-page .profile-mobile-toggle{display:inline-flex}.account-page .account-profile-content{display:none}.account-page .account-profile-content.is-expanded{display:block}.account-page .account-section-tabs{display:grid;grid-template-columns:1fr;gap:.45rem}.account-page .account-section-tabs button{text-align:left}}
       @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:64px}.account-page .account-cart-row{align-items:flex-start}}
+      /* Checkout is a focused mobile purchase flow, not the profile overview. */
+      @media(max-width:800px){
+        .account-page:has(.basket-page) .account-layout{grid-template-columns:minmax(0,1fr);gap:0}
+        .account-page:has(.basket-page) .account-sidebar{display:none}
+        .account-page:has(.basket-page){padding-top:.3rem!important}
+      }
 
       .account-page .account-success-backdrop{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:1rem;box-sizing:border-box;background:radial-gradient(ellipse at 50% 36%,rgba(34,197,94,.13),transparent 48%),linear-gradient(135deg,rgba(4,15,35,.94),rgba(8,20,39,.92));backdrop-filter:blur(12px) saturate(125%);-webkit-backdrop-filter:blur(12px) saturate(125%);animation:hyperion-backdrop-enter 260ms ease-out both}
       .account-page .account-success-card{position:relative;overflow:hidden;border-radius:20px!important;border-color:rgba(148,163,184,.28)!important;box-shadow:0 30px 90px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.035)!important;animation:hyperion-success-card-enter 380ms cubic-bezier(.18,.89,.32,1.12) both}

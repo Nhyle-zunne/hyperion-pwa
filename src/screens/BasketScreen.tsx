@@ -600,6 +600,41 @@ export default function BasketScreen() {
       .basket-page .manual-fallback-link:hover{background:var(--bg-elevated)}
       @media(max-width:820px){.basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.basket-page .basket-summary{position:static}}
       @media(max-width:520px){.basket-page .basket-row{align-items:flex-start}.basket-page .basket-action-row button{flex:1}}
+      .basket-page .basket-checkout-action{display:contents}
+      @media(max-width:800px){
+        .basket-page{width:100%!important;max-width:100%!important;padding-bottom:calc(8.5rem + env(safe-area-inset-bottom))!important}
+        .basket-page .account-section-tabs{display:none!important}
+        .basket-page .basket-back-link{display:inline-flex;align-items:center;min-height:34px;font-size:.85rem;font-weight:800;margin:0 0 .25rem!important}
+        .basket-page .basket-heading{margin:0 0 .65rem!important;align-items:center!important}
+        .basket-page .basket-heading .basket-heading-brand,.basket-page .basket-heading .subtitle{display:none!important}
+        .basket-page .basket-heading .page-title{font-size:1.45rem!important;line-height:1.15!important}
+        .basket-page .basket-item-count{padding:.3rem .5rem!important;border:0!important;background:transparent!important;font-size:.75rem!important;color:var(--text-muted);white-space:nowrap}
+        .basket-page .basket-layout{gap:.6rem}
+        .basket-page .basket-selected-card,.basket-page .basket-summary{padding:.8rem!important;border-radius:12px!important}
+        .basket-page .basket-selected-heading{gap:.35rem;align-items:center!important;flex-wrap:nowrap!important}
+        .basket-page .basket-selected-heading h2{font-size:.96rem!important}
+        .basket-page .basket-selected-heading .basket-muted{display:none}
+        .basket-page .basket-clear-button{font-size:.68rem;line-height:1.2;min-height:32px;padding:.35rem .45rem!important;white-space:nowrap}
+        .basket-page .basket-row{gap:.5rem;padding:.65rem 0}
+        .basket-page .basket-item-art{width:38px;height:38px;font-size:1.15rem;border-radius:8px}
+        .basket-page .basket-item-description{gap:.5rem!important;align-items:center!important;flex:1;min-width:0}
+        .basket-page .basket-item-description strong{font-size:.84rem;line-height:1.25}
+        .basket-page .basket-item-description .basket-muted{font-size:.74rem;line-height:1.3}
+        .basket-page .basket-item-actions{gap:.15rem!important;align-self:center;flex-shrink:0}
+        .basket-page .basket-item-actions strong{font-size:.86rem;white-space:nowrap}
+        .basket-page .basket-item-actions button{font-size:.7rem;padding:.25rem!important}
+        .basket-page .basket-summary h2{font-size:.94rem!important}
+        .basket-page .basket-summary-count,.basket-page .basket-summary-list{display:none!important}
+        .basket-page .basket-summary-note{font-size:.72rem!important;text-align:left!important;margin:.45rem 0 0!important}
+        .basket-page .basket-payment-methods{justify-content:flex-start!important;margin-top:.55rem!important}
+        .basket-page .basket-payment-methods span{font-size:.66rem!important}
+        .basket-page .basket-checkout-action{display:block}
+        .basket-page .basket-checkout-action.is-payable{position:fixed;left:0;right:0;bottom:calc(72px + env(safe-area-inset-bottom));z-index:110;background:var(--bg-card);border-top:1px solid var(--border);box-shadow:0 -6px 20px rgba(4,35,83,.1);display:flex;align-items:center;gap:.7rem;padding:.6rem max(.8rem,env(safe-area-inset-right)) .6rem max(.8rem,env(safe-area-inset-left))}
+        .basket-page .basket-checkout-action.is-payable .basket-total-row{display:flex;flex:1;min-width:0;flex-direction:column;gap:.12rem!important;border:0!important;margin:0!important;padding:0!important;align-items:flex-start!important}
+        .basket-page .basket-checkout-action.is-payable .basket-total-row strong:first-child{font-size:.68rem;color:var(--text-muted);white-space:nowrap}
+        .basket-page .basket-checkout-action.is-payable .basket-total-row strong:last-child{font-size:1.3rem!important;line-height:1.1;white-space:nowrap}
+        .basket-page .basket-checkout-action.is-payable .checkout-pay-button{width:auto!important;min-width:125px;min-height:44px!important;margin:0!important;padding:.5rem .9rem!important;flex:0 0 auto;font-size:.9rem}
+      }
     `}</style>
     {purchaseConfirmation && <div
       role="presentation"
@@ -675,11 +710,11 @@ export default function BasketScreen() {
             : null}
       </section>
     </div>}
-    <button type="button" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
+    <button type="button" className="basket-back-link" onClick={() => navigate('/account')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
     <AccountSectionTabs active="checkout" />
-    <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
-      <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
-      <span style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'} to purchase</span>
+    <div className="basket-heading" style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div><div className="basket-heading-brand" style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
+      <span className="basket-item-count" style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'} to purchase</span>
     </div>
 
     {!session ? <section style={{ ...style.card, maxWidth: 600 }}>
@@ -725,32 +760,34 @@ export default function BasketScreen() {
       </section>}
 
       <div className="basket-layout">
-        <section style={style.card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.8rem', flexWrap: 'wrap' }}>
+        <section className="basket-selected-card" style={style.card}>
+          <div className="basket-selected-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.8rem', flexWrap: 'wrap' }}>
             <div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>Selected tracks</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Only items shown here will be included in this payment.</p></div>
-            {basket.length > 0 && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setBasket([])}>CLEAR SELECTION</button>}
+            {basket.length > 0 && <button type="button" className="btn btn-outline basket-clear-button" disabled={busy} onClick={() => setBasket([])}>CLEAR SELECTION</button>}
           </div>
           {selectedItems.length ? selectedItems.map(({ code, term, product: item, price }) => {
             const active = ownedCodes.includes(code)
             return <div className="basket-row" key={code}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', minWidth: 0 }}>
+              <div className="basket-item-description" style={{ display: 'flex', alignItems: 'center', gap: '.75rem', minWidth: 0 }}>
                 <div className="basket-item-art">{code === 'gmdss' ? '📡' : code === 'engine_ew' || code === 'engine_mgt' ? '⚙️' : '⚓'}</div>
                 <div style={{ minWidth: 0 }}><strong style={{ display: 'block' }}>{item.label}</strong><div className="basket-muted">{term === 'week' ? '7-day' : term === 'month' ? '1-month' : '12-month'} reviewer license</div>{active && <div style={{ color: 'var(--success, #15803d)', fontWeight: 800, fontSize: '.75rem', marginTop: '.25rem' }}>Already active</div>}</div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', flexShrink: 0 }}><strong>₱{price}</strong><button type="button" disabled={busy} onClick={() => setBasket(current => current.filter(entry => entry.code !== code))} style={{ color: 'var(--danger, #dc2626)', fontWeight: 850, padding: '.35rem' }}>Remove</button></div>
+              <div className="basket-item-actions" style={{ display: 'flex', alignItems: 'center', gap: '.6rem', flexShrink: 0 }}><strong>₱{price}</strong><button type="button" disabled={busy} onClick={() => setBasket(current => current.filter(entry => entry.code !== code))} style={{ color: 'var(--danger, #dc2626)', fontWeight: 850, padding: '.35rem' }}>Remove</button></div>
             </div>
           }) : <div style={{ textAlign: 'center', padding: '2.4rem 1rem', border: '1px dashed var(--border)', borderRadius: 10, marginTop: '1rem' }}><div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🛒</div><strong>Your checkout is empty</strong><p className="basket-muted" style={{ margin: '.35rem 0 1rem' }}>Visit Bond Store and add one or more reviewer tracks.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/account')}>BROWSE TRACKS</button></div>}
         </section>
 
         <aside className="basket-summary" style={style.card}>
           <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Order summary</h2>
-          <p className="basket-muted" style={{ margin: '.3rem 0 1rem' }}>{selectedItems.length} selected track{selectedItems.length === 1 ? '' : 's'}</p>
-          {selectedItems.map(({ code, term, product, price }) => <div key={code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{product.label} <span className="basket-muted">({termLabel(term)})</span></span><strong>₱{price}</strong></div>)}
-          <div style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
+          <p className="basket-muted basket-summary-count" style={{ margin: '.3rem 0 1rem' }}>{selectedItems.length} selected track{selectedItems.length === 1 ? '' : 's'}</p>
+          {selectedItems.map(({ code, term, product, price }) => <div className="basket-summary-list" key={code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{product.label} <span className="basket-muted">({termLabel(term)})</span></span><strong>₱{price}</strong></div>)}
+          <div className={`basket-checkout-action${paymongoCheckoutEnabled === true ? ' is-payable' : ''}`}>
+            <div className="basket-total-row" style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
           {paymongoCheckoutEnabled === true ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length || activeInBasket.length > 0} onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : <>Checkout <span aria-hidden="true">🛒</span></>}</button> : <div role="status" aria-live="polite" style={{ marginTop: '1rem', padding: '.75rem', textAlign: 'center', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text-muted)', fontSize: '.84rem', fontWeight: 750 }}>{paymongoCheckoutEnabled === null ? 'Checking PayMongo checkout availability…' : 'PayMongo checkout is disabled. Use a manual payment option above.'}</div>}
+          </div>
           {activeInBasket.length > 0 && <p style={{ color: 'var(--danger, #dc2626)', fontSize: '.8rem', lineHeight: 1.45 }}>Remove already active tracks to continue checkout.</p>}
-          {paymongoCheckoutEnabled === true && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['GCash','Maya','QR Ph','Card'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>}
-          <p className="basket-muted" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{paymongoCheckoutEnabled === true ? 'Each selected track is activated only after PayMongo confirms this exact basket payment.' : paymongoCheckoutEnabled === null ? 'Checking whether PayMongo checkout is available…' : 'Use the manual-payment option above. Manual payments require admin review before your license is activated.'}</p>
+          {paymongoCheckoutEnabled === true && <div className="basket-payment-methods" style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['GCash','Maya','QR Ph','Card'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>}
+          <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{paymongoCheckoutEnabled === true ? 'Each selected track is activated only after PayMongo confirms this exact basket payment.' : paymongoCheckoutEnabled === null ? 'Checking whether PayMongo checkout is available…' : 'Use the manual-payment option above. Manual payments require admin review before your license is activated.'}</p>
         </aside>
       </div>
     </>}
