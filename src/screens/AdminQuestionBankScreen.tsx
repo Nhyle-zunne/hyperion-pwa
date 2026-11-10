@@ -114,6 +114,8 @@ export default function AdminQuestionBankScreen() {
   }, [queue])
   const totalBytes = useMemo(() => queue.reduce((sum, item) => sum + item.file.size, 0), [queue])
   const successCount = queue.filter(item => item.status === 'success').length
+  const hasUnpublishedFiles = queue.some(item => item.status !== 'success')
+  const allFilesUpdated = queue.length > 0 && !hasUnpublishedFiles
   const problemCount = queue.filter(item => !item.targetPath || duplicatePaths.has(item.targetPath) || item.file.size > fileSizeLimit(item.file) || !!item.error).length
 
   const queueGroups = useMemo(() => {
@@ -499,10 +501,12 @@ export default function AdminQuestionBankScreen() {
       {publishedLink && <p><a href={publishedLink} target="_blank" rel="noopener noreferrer">View the published GitHub commit</a></p>}
       {!!queue.length && <div className="admin-qb-footer">
         <p style={{ ...secondaryText, margin: 0 }}>Up to 10 files publish together as one verified GitHub release. Raw CSV limit: 700 KB; encrypted CSV limit: 1 MiB; combined files limit: 8 MiB.</p>
-        <button type="button" className="btn btn-primary" disabled={busy || loading || !publisherReady || !queue.some(item => item.status !== 'success')}
+        <button type="button" className="btn btn-primary" disabled={busy || loading || !publisherReady || !hasUnpublishedFiles}
+          title={allFilesUpdated ? 'All files in this queue are already published. Add a new file to publish again.' : undefined}
+          style={allFilesUpdated ? { opacity: 0.45, cursor: 'not-allowed', pointerEvents: 'none', filter: 'grayscale(1)', boxShadow: 'none', transform: 'none' } : undefined}
           onClick={() => void withPageLoading(preview ? 'Publishing question updates' : 'Validating question updates', () => publishBatch())}>
           {busy ? (preview ? 'PUBLISHING BATCH…' : 'VALIDATING BATCH…')
-            : queue.length > 0 && queue.every(item => item.status === 'success') ? 'ALL FILES UPDATED ✓'
+            : allFilesUpdated ? 'ALL FILES UPDATED ✓'
               : queue.some(item => item.status === 'error') && !queue.some(item => item.status === 'ready') ? 'RETRY FAILED FILES'
                 : preview ? 'PUBLISH VERIFIED BATCH TO GITHUB' : 'VALIDATE BATCH'}
         </button>
