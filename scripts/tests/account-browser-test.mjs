@@ -163,6 +163,25 @@ try {
   assert(hover.listHeight <= baseCard.listHeight + 5, 'Hover does not reveal features by itself; See all has a meaningful action')
   assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'A hovered card still advertises its collapsed features')
   assert.equal(await page.locator('.store-benefits-popover').count(), 0, 'No dark popup covers account navigation')
+  // Switch between neighboring raised cards repeatedly. The old card must
+  // animate back from the same anchored layer instead of snapping to flow.
+  const gmdssCard = cards.nth(1)
+  for (let switchIndex = 0; switchIndex < 3; switchIndex++) {
+    await gmdssCard.hover()
+    await page.waitForTimeout(45)
+    assert.equal(await page.locator('.account-product-slot.is-hovered').count(), 1, 'Only the destination card is hovered')
+    assert.equal(await gmdssCard.locator('..').evaluate(el => el.classList.contains('is-hovered')), true, 'GMDSS activates during handoff')
+    assert.equal(await oicCard.locator('..').evaluate(el => getComputedStyle(el.querySelector('.account-product-card')).position), 'absolute', 'Exiting OIC card stays in an anchored layer during the exit animation')
+    await page.waitForTimeout(360)
+    assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', 'Old card releases its frozen grid height after settling')
+    assert.equal(await page.locator('.account-product-slot.is-settling').count(), 0, 'No exiting card remains stuck after handoff')
+    await oicCard.hover()
+    await page.waitForTimeout(360)
+    assert.equal(await page.locator('.account-product-slot.is-hovered').count(), 1, 'Returning hover activates exactly one card')
+    assert.equal(await gmdssCard.locator('..').evaluate(el => el.style.height), '', 'Neighbor returns to normal grid flow after switching back')
+    const switched = await readCard(oicCard)
+    assert(switched.ctaBottom < 900 - 8 && switched.scroll <= baseCard.scroll + 1, 'Repeated card switches keep Buy Now visible without new scrolling')
+  }
   await reveal.click()
   await page.waitForTimeout(400)
   const opened = await readCard(oicCard)
