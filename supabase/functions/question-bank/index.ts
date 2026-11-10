@@ -460,14 +460,29 @@ const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v6-retirement";
 function validQuestionCount(path: string, text: string, freeOnly: boolean): number {
   const info = sourceInfo(path);
   if (!info) return 0;
-  const source = freeOnly ? sampleFreeCsv(path, text) : text;
-  const questions = toSearchQuestions(path, source);
-  // C10's original three retirements are excluded by the existing PWA
-  // presentation layer. Do not subtract their CSV markers a second time.
-  return questions.filter((q, index) => {
-    if (!q.isRetired) return true;
-    return path === "engine_mgt/em_c10.csv.enc" && [182, 373, 406].includes(index + 1);
-  }).length;
+  const records = info.format === "gmdss" ? validGmdssRows(text) : validStandardRows(parseCsv(text), path);
+  let count = records.length;
+  if (freeOnly) {
+    if (info.format === "gmdss") count = Math.min(count, info.competenceId === "C1" ? 90 : 65);
+    else if (info.track === "DECK_OIC_NW") {
+      const quotas: Record<string, number> = { C1:420,C2:221,C3:258,C4:160,C5:100,C7:196,C9:176,C10:109,C11:96,C12:110,C13:122,C17:97 };
+      count = Math.min(count, quotas[info.competenceId] ?? 1);
+    } else count = Math.min(count, Math.max(1, Math.round(count * 0.4)));
+  }
+  // Preserve legacy count behavior for unchanged encrypted files, especially
+  // flattened GMDSS samples whose original free quotas are not renumbered.
+  const rows = parseCsv(text);
+  const hi = headerIndex(rows, info.format);
+  const column = (rows[hi] || []).findIndex(value => value.trim().toUpperCase() === "HYPERION_STATUS");
+  if (column < 0) return count;
+  const selected = freeOnly && info.track === "DECK_OIC_NW"
+    ? toSearchQuestions(path, sampleFreeCsv(path, text))
+    : toSearchQuestions(path, text).slice(0, count);
+  const retired = selected.filter((question, index) =>
+    question.isRetired === true &&
+    !(path === "engine_mgt/em_c10.csv.enc" && [182, 373, 406].includes(index + 1))
+  ).length;
+  return Math.max(0, count - retired);
 }
 const COMPETENCE_TITLES: Record<string, string> = {
   "DECK_OIC_NW:C1": "Plan and conduct a passage and determine position",
