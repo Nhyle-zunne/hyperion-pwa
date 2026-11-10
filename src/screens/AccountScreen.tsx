@@ -575,20 +575,25 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .store-banner-track{position:relative;z-index:1;display:flex;flex-shrink:0;color:#f6c84a}
       .account-page .product-price{font-size:clamp(1.2rem,1.4vw,1.48rem);font-weight:950;line-height:1.1;color:var(--text);margin:.4rem 0 .55rem}
       .account-page .store-feature-highlight{font-size:.7rem;font-weight:850;letter-spacing:.02em;color:#b4871b;margin:.15rem 0 .2rem}
-      .account-page .store-benefits-list{display:grid;gap:.14rem;list-style:none;padding:0;margin:.3rem 0 .1rem;max-height:3.55rem;overflow:hidden;transition:max-height .35s cubic-bezier(.2,.8,.2,1)}
+      .account-page .store-benefits-list{display:grid;gap:.14rem;list-style:none;padding:0;margin:.3rem 0 .1rem;min-height:3.55rem}
       .account-page .store-benefits-list li{display:flex;gap:.3rem;align-items:flex-start;line-height:1.25;font-size:.66rem;color:var(--text-muted);overflow-wrap:anywhere}
       .account-page .store-benefits-list li:before{content:"✓";color:#b68714;font-weight:900;flex-shrink:0}
-      .account-page .account-product-card.perks-expanded .store-benefits-list{max-height:18rem}
+      .account-page .store-benefits-popover{position:absolute;bottom:calc(100% + .4rem);left:50%;z-index:12;width:min(300px,calc(100vw - 2rem));box-sizing:border-box;padding:.75rem .85rem;border:1px solid #e7bc41;border-radius:12px;background:linear-gradient(140deg,#042353,#071c3c);color:#f8fafc;box-shadow:0 18px 45px rgba(4,35,83,.28);opacity:0;visibility:hidden;pointer-events:none;transform:translate(-50%,8px);transition:opacity .22s ease,transform .22s ease,visibility .22s ease}
+      .account-page .store-benefits-popover strong{display:block;margin-bottom:.45rem;color:#ffcf55;font-size:.82rem}
+      .account-page .store-benefits-popover ul{display:grid;gap:.25rem;list-style:none;margin:0;padding:0}
+      .account-page .store-benefits-popover li{display:flex;align-items:start;gap:.4rem;font-size:.72rem;line-height:1.3;overflow-wrap:anywhere}
+      .account-page .store-benefits-popover li:before{content:"✓";color:#ffcf55;font-weight:900;flex-shrink:0}
+      .account-page .account-product-card.perks-expanded .store-benefits-popover{opacity:1;visibility:visible;transform:translate(-50%,0)}
       .account-page .store-benefits-toggle{margin:.15rem 0 .5rem;padding:.15rem 0;border:0;text-align:left;background:none;color:var(--accent);font:inherit;font-size:.67rem;font-weight:850;line-height:1.3;cursor:pointer;align-self:flex-start}
       .account-page .store-benefits-toggle:hover{text-decoration:underline}
       .account-page .store-benefits-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
       .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:850;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
       @media (hover:hover) and (pointer:fine){
         .account-page .account-product-card:hover{z-index:7;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-7px) scale(1.055)}
-        .account-page .account-product-card:hover .store-benefits-list{max-height:18rem}
+        .account-page .account-product-card:hover .store-benefits-popover{opacity:1;visibility:visible;transform:translate(-50%,0)}
       }
       @media(prefers-reduced-motion:reduce){
-        .account-page .account-product-card,.account-page .store-benefits-list{transition:none}
+        .account-page .account-product-card,.account-page .store-benefits-popover{transition:none}
         .account-page .account-product-card:hover{transform:none}
       }
       .account-page .account-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
@@ -847,10 +852,16 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                       })}
                     </div>
                     <div className="store-feature-highlight">✦ Full reviewer access</div>
-                    <ul className="store-benefits-list" aria-label={`Premium features for ${item.label}`}>
-                      {STORE_FEATURES.map(feature => <li key={feature}>{feature}</li>)}
+                    <ul className="store-benefits-list" aria-label={`Top premium features for ${item.label}`}>
+                      {STORE_FEATURES.slice(0, 3).map(feature => <li key={feature}>{feature}</li>)}
                     </ul>
-                    <button type="button" className="store-benefits-toggle" aria-expanded={expandedStorePerks === item.code} onClick={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}>
+                    <div className="store-benefits-popover" id={`store-benefits-${item.code}`}>
+                      <strong>All 9 premium features</strong>
+                      <ul aria-label={`All premium features for ${item.label}`}>
+                        {STORE_FEATURES.map(feature => <li key={feature}>{feature}</li>)}
+                      </ul>
+                    </div>
+                    <button type="button" className="store-benefits-toggle" aria-controls={`store-benefits-${item.code}`} aria-expanded={expandedStorePerks === item.code} onClick={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}>
                       {expandedStorePerks === item.code ? 'Show fewer features ↑' : 'See all 9 premium features ↓'}
                     </button>
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
