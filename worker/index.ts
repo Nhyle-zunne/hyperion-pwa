@@ -9,7 +9,7 @@ const reply = (value: unknown, status = 200) => new Response(JSON.stringify(valu
 export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
   let source: ReturnType<typeof createGithubBankSource> | undefined
   let sourceToken: string | undefined
-  type Counts = { competenceId: string; part: number | null; fullCount: number; freeCount: number }[]
+  type Counts = { competenceId: string; part: number | null; fullCount: number; freeCount: number; rawCount: number; retiredPositions: number[]; freeRetiredPositions: number[]; rawFreeCount: number }[]
   const countJobs = new Map<string, Promise<Counts>>()
   return async (request: Request, env: Env): Promise<Response> => {
     const url = new URL(request.url)
@@ -49,8 +49,17 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
               // would exceed the Free plan's 50-subrequest budget on a cold load.
               // Reuse existing asset cache entries, then persist only aggregates.
               const text = await snapshotSource.read(path, release, false)
+              const all = toSearchQuestions(path, text)
+              const sample = toSearchQuestions(path, sampleFreeCsv(path, text))
+              const legacy = (question: Record<string, unknown>, index: number) =>
+                path === 'engine_mgt/em_c10.csv.enc' && [182, 373, 406].includes(index + 1)
+              const retired = (question: Record<string, unknown>, index: number) => question.isRetired === true || legacy(question, index)
               counts.push({ competenceId: info.competenceId, part: info.part,
-                fullCount: validQuestionCount(path, text, false), freeCount: validQuestionCount(path, text, true) })
+                fullCount: validQuestionCount(path, text, false), freeCount: validQuestionCount(path, text, true),
+                rawCount: all.length, rawFreeCount: sample.length,
+                retiredPositions: all.flatMap((question, index) => retired(question, index) ? [index + 1] : []),
+                freeRetiredPositions: sample.flatMap((question, index) => question.isRetired === true ? [index + 1] : [])
+              })
             }
             if (cache) try {
               await cache.put(cacheKey, new Response(JSON.stringify(counts), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=31536000, immutable' } }))
@@ -62,7 +71,7 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         }
         let all: Counts
         try { all = await job } catch (error) { countJobs.delete(key); throw error }
-        const counts = all.map(item => ({ competenceId: item.competenceId, part: item.part, count: freeOnly ? item.freeCount : item.fullCount }))
+        const counts = all.map(item => ({ competenceId: item.competenceId, part: item.part, count: freeOnly ? item.freeCount : item.fullCount, rawCount: freeOnly ? item.rawFreeCount : item.rawCount, retiredPositions: freeOnly ? item.freeRetiredPositions : item.retiredPositions }))
         return new Response(JSON.stringify({ counts, bankRevision: release.revision, source: 'github', access: 'public-catalog-metadata' }), {
           headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', 'ETag': '"' + QUESTION_COUNT_ALGORITHM_VERSION + ':' + release.revision + ':' + track + ':' + Number(freeOnly) + '"' }
         })
