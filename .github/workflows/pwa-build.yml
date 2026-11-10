@@ -69,6 +69,7 @@ jobs:
           bun test scripts/tests/cloud-progress-access.test.ts
           bun test scripts/tests/local-progress-identity.test.ts
           bun test scripts/tests/question-bank-transport.test.ts
+          bun test scripts/tests/retired-c10.test.ts
           bun test scripts/tests/progress-request-policy.test.ts
           bun test scripts/tests/session-archive-batch.test.ts
       - name: Install Chromium for saved-data regression
