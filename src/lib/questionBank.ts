@@ -16,6 +16,7 @@ import {
 import { fingerprintQuestion } from './questionFingerprint.mjs';
 import { parseCsvText } from './csvParser';
 import type { Question, TrackId, Difficulty } from '../types/question';
+import { activeToPublishedC10Position, requiresC10ActivePositionMapping, selectActiveQuestions, visibleCompetenceCount } from './retiredQuestions';
 
 
 /** Bulk question bytes come from the GitHub-backed Worker; account data stays in Supabase. */
@@ -647,9 +648,39 @@ export async function getQuestionsByCompetence(
   limit?: number,
   randomSample = false
 ): Promise<Question[]> {
-  return withPageLoading('Loading questions', () =>
-    loadQuestionsByCompetenceInternal(track, competenceId, part, freeOnly, startItem, limit, randomSample)
-  )
+  return withPageLoading('Loading questions', async () => {
+    if (requiresC10ActivePositionMapping(track, competenceId, freeOnly)) {
+      // The encrypted bank retains all 416 historical IDs, including retired
+      // ones. Translate active positions to published offsets *before* paging.
+      // Filtering only after each page would silently shorten Quick Scan pages
+      // and leave gaps in user-selected practice ranges.
+      if (randomSample) {
+        const full = await loadQuestionsByCompetenceInternal(
+          track, competenceId, part, false, 1, undefined, false
+        )
+        return shuffleQuestions(selectActiveQuestions(full))
+          .slice(0, Math.max(1, Math.floor(limit ?? 200)))
+      }
+      const activeStart = Math.max(1, Math.floor(startItem || 1))
+      const publishedStart = activeToPublishedC10Position(activeStart)
+      const requested = limit == null ? undefined : Math.max(0, Math.floor(limit))
+      if (requested === 0) return []
+      const publishedEnd = requested == null
+        ? undefined
+        : activeToPublishedC10Position(activeStart + requested - 1)
+      const physicalLimit = publishedEnd == null
+        ? undefined
+        : publishedEnd - publishedStart + 1
+      const published = await loadQuestionsByCompetenceInternal(
+        track, competenceId, part, false, publishedStart, physicalLimit, false
+      )
+      return selectActiveQuestions(published).slice(0, requested)
+    }
+    const published = await loadQuestionsByCompetenceInternal(
+      track, competenceId, part, freeOnly, startItem, limit, randomSample
+    )
+    return selectActiveQuestions(published)
+  })
 }
 
 /** Minimal java.util.Random so the free OIC-NW sample matches the Android app exactly. */
@@ -812,7 +843,8 @@ async function loadQuestionsByTrackInternal(track: TrackId, freeOnly = false): P
 }
 
 export async function getQuestionsByTrack(track: TrackId, freeOnly = false): Promise<Question[]> {
-  return withPageLoading('Loading question bank', () => loadQuestionsByTrackInternal(track, freeOnly))
+  return withPageLoading('Loading question bank', async () =>
+    selectActiveQuestions(await loadQuestionsByTrackInternal(track, freeOnly)))
 }
 
 export interface QuestionBankCount {
@@ -933,12 +965,17 @@ export async function getPublicQuestionCountByTrack(track: TrackId): Promise<num
   if (error || !Array.isArray(data?.counts)) {
     throw error || new Error(data?.error || 'Could not load the published question count.');
   }
-  return data.counts.reduce((total: number, item: { count?: unknown }) =>
-    total + Math.max(0, Number(item.count) || 0), 0);
+  return data.counts.reduce((total: number, item: { count?: unknown; competenceId?: unknown }) =>
+    total + visibleCompetenceCount(track, String(item.competenceId || ''),
+      Math.max(0, Number(item.count) || 0), false), 0);
 }
 
 export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false): Promise<QuestionBankCount[]> {
-  return withPageLoading('Loading question counts', () => loadQuestionCountsByTrackInternal(track, freeOnly))
+  return withPageLoading('Loading question counts', async () =>
+    (await loadQuestionCountsByTrackInternal(track, freeOnly)).map(item => ({
+      ...item,
+      count: visibleCompetenceCount(track, item.competenceId, item.count, freeOnly)
+    })))
 }
 
 interface RemoteQuestionSourceVersion {
@@ -1286,7 +1323,8 @@ async function loadFlashcardQuestionsInternal(track: TrackId, competenceId?: str
 
 
 export async function getFlashcardQuestions(track: TrackId, competenceId?: string, limit = 20): Promise<Question[]> {
-  return withPageLoading('Loading flashcards', () => loadFlashcardQuestionsInternal(track, competenceId, limit))
+  return withPageLoading('Loading flashcards', async () =>
+    selectActiveQuestions(await loadFlashcardQuestionsInternal(track, competenceId, limit)))
 }
 
 
@@ -1518,5 +1556,6 @@ async function searchQuestionsInternal(
 
 export async function searchQuestions(track: TrackId, query: string, limit = 40): Promise<Question[]> {
   if (query.trim().length < 2) return []
-  return withPageLoading('Searching questions', () => searchQuestionsInternal(track, query, limit))
+  return withPageLoading('Searching questions', async () =>
+    selectActiveQuestions(await searchQuestionsInternal(track, query, limit)))
 }
