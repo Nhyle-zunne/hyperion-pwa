@@ -32,7 +32,7 @@ function positionStorePopover(card: HTMLElement) {
   const panel = card.querySelector<HTMLElement>('.store-benefits-popover')
   if (!panel) return
   card.style.setProperty('--store-popover-shift', '0px')
-  const top = card.getBoundingClientRect().top - panel.offsetHeight * 1.075 - 12
+  const top = card.getBoundingClientRect().top - panel.offsetHeight * 1.075 - 35
   card.style.setProperty('--store-popover-shift', `${Math.max(0, 12 - top)}px`)
 }
 
@@ -571,7 +571,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-toolbar-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
       .account-page .account-toolbar-actions button{min-height:42px}
       .account-page .account-products-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;gap:clamp(.55rem,.75vw,.9rem);isolation:isolate;align-items:start}
-      .account-page .account-product-card{position:relative;z-index:0;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:13px;background:var(--bg-card);transition:transform .3s cubic-bezier(.2,.8,.2,1),border-color .3s ease,box-shadow .3s ease;transform-origin:50% 20%;will-change:transform}
+      .account-page .account-product-card{position:relative;z-index:0;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:13px;background:var(--bg-card);transition:transform .3s cubic-bezier(.2,.8,.2,1),border-color .3s ease,box-shadow .3s ease;transform-origin:50% 100%;will-change:transform}
       .account-page .account-product-card:focus-within{z-index:5;border-color:#d9ad36;box-shadow:0 14px 30px rgba(4,35,83,.13)}
       .account-page .account-product-card .product-art{min-height:58px;display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border-radius:9px;background:radial-gradient(circle at 95% 0%,#17497d 0,transparent 45%),linear-gradient(125deg,#042353,#061a3b);color:#f6c84a;margin-bottom:.6rem;position:relative;overflow:hidden;border:1px solid rgba(241,195,70,.5)}
       .account-page .account-product-card .product-art:before{content:"";position:absolute;inset:0;border-top:2px solid #f3c452;pointer-events:none}
@@ -597,7 +597,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .store-benefits-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
       .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:850;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
       @media (hover:hover) and (pointer:fine){
-        .account-page .account-product-card:hover{z-index:7;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-7px) scale(1.055)}
+        .account-page .account-product-card:hover{z-index:7;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-4px) scale(1.055)}
         .account-page .account-product-card:hover .store-benefits-popover{opacity:1;visibility:visible;transform:translate(-50%,0)}
       }
       @media(prefers-reduced-motion:reduce){
