@@ -382,6 +382,7 @@ function parseStandardRows(
   src: BankSource
 ): Question[] {
   const list: Question[] = [];
+  const statusIndex = (rows[headerIdx] || []).findIndex(cell => cell.trim().toUpperCase() === 'HYPERION_STATUS');
   let validIndex = 1;
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i];
@@ -420,6 +421,7 @@ function parseStandardRows(
       options,
       correctAnswerIndex: ansIdx,
       explanation,
+      ...(statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED' ? { isRetired: true } : {}),
       difficulty: difficultyForIndex(validIndex)
     });
     validIndex++;
@@ -433,7 +435,8 @@ function pushGmdssQuestion(
   qText: string,
   options: string[],
   explanation: string,
-  ansStr: string
+  ansStr: string,
+  isRetired = false
 ) {
   if (!qText || qText.toLowerCase() === 'question' || options.length < 2) return;
   let ansIdx = mapAnswer(ansStr);
@@ -449,6 +452,7 @@ function pushGmdssQuestion(
     options,
     correctAnswerIndex: ansIdx,
     explanation,
+    ...(isRetired ? { isRetired: true } : {}),
     difficulty: difficultyForIndex(validIndex)
   });
 }
@@ -460,6 +464,7 @@ function parseGmdssRows(
 ): Question[] {
   // Columns: Question, Type, Option1..Option6, Explanation, Answer, Point, Section
   const list: Question[] = [];
+  const statusIndex = (rows[headerIdx] || []).findIndex(cell => cell.trim().toUpperCase() === 'HYPERION_STATUS');
 
   // Multi-line files: one question per row after header
   if (rows.length > 3) {
@@ -475,7 +480,8 @@ function parseGmdssRows(
         (row[0] || '').trim(),
         options,
         (row[8] || '').trim(),
-        (row[9] || '').trim()
+        (row[9] || '').trim(),
+        statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED'
       );
     }
   }
@@ -649,6 +655,51 @@ export async function getQuestionsByCompetence(
   randomSample = false
 ): Promise<Question[]> {
   return withPageLoading('Loading questions', async () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      // Offline packs keep every historic row. Slice only after applying the
+      // retirement view, never mutate persisted bookmark or session records.
+      const full = await loadQuestionsByCompetenceInternal(track, competenceId, part, freeOnly, 1, undefined, false)
+      const active = selectActiveQuestions(full)
+      const start = Math.max(0, Math.floor(startItem || 1) - 1)
+      return randomSample ? shuffleQuestions(active).slice(0, Math.max(1, Math.floor(limit ?? 200)))
+        : active.slice(start, limit == null ? undefined : start + Math.max(0, Math.floor(limit)))
+    }
+    // Read only public catalog metadata for the immutable GitHub revision. The
+    // retired numbers are original physical offsets, not new question IDs.
+    const snapshot = await fetchRevisionQuestionCounts(track, freeOnly)
+    const groups = snapshot.counts.filter(item => item.competenceId === competenceId && (part == null || item.part === part))
+      .sort((a, b) => (a.part ?? 0) - (b.part ?? 0))
+    const physicalCount = groups.reduce((sum, group) => sum + (group.rawCount ?? group.count), 0)
+    let physicalOffset = 0
+    const retiredPositions = groups.flatMap(group => {
+      const positions = (group.retiredPositions || []).map(number => number + physicalOffset)
+      physicalOffset += group.rawCount ?? group.count
+      return positions
+    }).sort((a, b) => a - b)
+    if (retiredPositions.length) {
+      const physicalPosition = (activePosition: number) => {
+        let physical = activePosition
+        for (const retired of retiredPositions) if (retired <= physical) physical++
+        return physical
+      }
+      if (randomSample) {
+        const full = await loadQuestionsByCompetenceInternal(
+          track, competenceId, part, freeOnly, 1, physicalCount, false
+        )
+        return shuffleQuestions(selectActiveQuestions(full)).slice(0, Math.max(1, Math.floor(limit ?? 200)))
+      }
+      const activeStart = Math.max(1, Math.floor(startItem || 1))
+      const originalStart = physicalPosition(activeStart)
+      const requested = limit == null
+        ? Math.max(0, physicalCount - retiredPositions.length - activeStart + 1)
+        : Math.max(0, Math.floor(limit))
+      if (requested === 0 || originalStart > physicalCount) return []
+      const originalEnd = Math.min(physicalCount, physicalPosition(activeStart + requested - 1))
+      const published = await loadQuestionsByCompetenceInternal(
+        track, competenceId, part, freeOnly, originalStart, originalEnd - originalStart + 1, false
+      )
+      return selectActiveQuestions(published).slice(0, requested)
+    }
     if (requiresC10ActivePositionMapping(track, competenceId, freeOnly)) {
       // The encrypted bank retains all 416 historical IDs, including retired
       // ones. Translate active positions to published offsets *before* paging.
@@ -851,6 +902,8 @@ export interface QuestionBankCount {
   competenceId: string;
   part: number | null;
   count: number;
+  rawCount?: number;
+  retiredPositions?: number[];
 }
 
 export type QuestionSetAccess = 'admin' | 'licensed' | 'free-sample';
@@ -910,9 +963,13 @@ async function fetchRevisionQuestionCounts(track: TrackId, freeOnly: boolean, ba
   const { data, error } = await invokeQuestionBank({ body: { action: 'counts', track, freeOnly, bankRevision } })
   if (error || !Array.isArray(data?.counts)) throw error || new Error('Fresh question counts are unavailable.')
   if (bankRevision && data.bankRevision !== bankRevision) throw new Error('The question-bank release changed while checking counts. Retry shortly.')
-  const counts: QuestionBankCount[] = data.counts.map((item: { competenceId: string; part: number | null; count: number }) => {
+  const counts: QuestionBankCount[] = data.counts.map((item: { competenceId: string; part: number | null; count: number; rawCount?: number; retiredPositions?: number[] }) => {
     if (!Number.isSafeInteger(item.count) || item.count < 0) throw new Error('The server returned invalid question counts.')
-    return { competenceId: String(item.competenceId), part: item.part == null ? null : Number(item.part), count: item.count }
+    const rawCount = Number.isSafeInteger(item.rawCount) && Number(item.rawCount) >= item.count ? Number(item.rawCount) : item.count
+    const retiredPositions = Array.isArray(item.retiredPositions)
+      ? item.retiredPositions.filter((value): value is number => Number.isSafeInteger(value) && value > 0 && value <= rawCount)
+      : []
+    return { competenceId: String(item.competenceId), part: item.part == null ? null : Number(item.part), count: item.count, rawCount, retiredPositions }
   })
   return { counts, bankRevision: typeof data.bankRevision === 'string' ? data.bankRevision : undefined }
 }

@@ -15,6 +15,7 @@ export async function invokeBankTransport(options: Options, client: SupabaseClie
     let response: Response
     if (counts) {
       const query = new URLSearchParams({ track: String(options.body.track || ''), freeOnly: options.body.freeOnly === true ? '1' : '0' })
+      query.set('retirement', '1')
       if (typeof options.body.bankRevision === 'string') query.set('bankRevision', options.body.bankRevision)
       response = await fetcher('/api/question-bank/counts?' + query)
     } else {

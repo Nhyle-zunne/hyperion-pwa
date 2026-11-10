@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AdminNavigation from '../components/AdminNavigation'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
+import { editBankQuestion, readEditableBank, type QuestionEdit } from '../lib/questionBankEditor'
 
 type Asset = { path: string; label: string; track: string; competenceId: string; part: number | null; format: 'standard' | 'gmdss'; repositoryPath?: string }
-type QuestionPreview = { questionText: string; options: string[]; correctAnswerIndex: number; explanation?: string }
+type QuestionPreview = { questionText: string; options: string[]; correctAnswerIndex: number; explanation?: string; isRetired?: boolean }
 type Preview = { requestId: string; baseHead: string; validationId: string; files: { path: string; questionCount: number; previousCount: number; changed: number; appended: number; explanationsPreserved?: number; staleExplanationsCleared?: number; corrections: { number: number; before: QuestionPreview; after: QuestionPreview }[] }[] }
 type QueueStatus = 'ready' | 'publishing' | 'success' | 'error'
-type QueueItem = { id: string; file: File; targetPath: string; status: QueueStatus; error?: string; questionCount?: number }
+type QueueItem = { id: string; file: File; targetPath: string; status: QueueStatus; error?: string; questionCount?: number; baseHead?: string }
 const TRACKS = [
   ['DECK_OIC_NW', 'Deck OIC-NW'],
   ['GMDSS_GOC', 'GMDSS GOC'],
@@ -52,6 +53,24 @@ export default function AdminQuestionBankScreen() {
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
   const [batchResult, setBatchResult] = useState<{ attempted: number; updated: number; failed: number } | null>(null)
+  const [editorTarget, setEditorTarget] = useState('')
+  const [editorText, setEditorText] = useState('')
+  const [editorOriginalText, setEditorOriginalText] = useState('')
+  const [editorBaseHead, setEditorBaseHead] = useState('')
+  const [editorSearch, setEditorSearch] = useState('')
+  const [editorOrdinal, setEditorOrdinal] = useState(0)
+  const [editorDraft, setEditorDraft] = useState<QuestionEdit | null>(null)
+  const [editorBusy, setEditorBusy] = useState(false)
+  const [editorError, setEditorError] = useState('')
+  const editorBank = useMemo(() => {
+    if (!editorText || !editorTarget) return null
+    try { return readEditableBank(editorTarget, editorText) } catch { return null }
+  }, [editorTarget, editorText])
+  const editorMatches = useMemo(() => editorBank?.questions.filter(q => {
+    const needle = editorSearch.trim().toLowerCase()
+    return !needle || String(q.ordinal).includes(needle) || q.questionText.toLowerCase().includes(needle)
+  }).slice(0, 150) || [], [editorBank, editorSearch])
+  const selectedEditorQuestion = editorBank?.questions.find(q => q.ordinal === editorOrdinal) || null
 
   const call = useCallback(async (body: Record<string, unknown>) => {
     if (!supabase) throw new Error('Question-bank administration is not configured.')
@@ -138,6 +157,81 @@ export default function AdminQuestionBankScreen() {
     setQueue(old => old.map(item => item.id === id ? { ...item, targetPath, status: item.status === 'success' ? 'success' : 'ready', error: undefined } : item))
   }
 
+
+  const loadEditor = async () => {
+    if (!editorTarget) return
+    setEditorBusy(true)
+    setEditorError('')
+    try {
+      const result = await call({ action: 'editor-load', path: editorTarget })
+      if (result.path !== editorTarget || typeof result.csvText !== 'string' || !/^[a-f0-9]{40}$/.test(result.baseHead || '')) {
+        throw new Error('The question editor received an invalid source revision.')
+      }
+      const bank = readEditableBank(editorTarget, result.csvText)
+      setEditorText(result.csvText)
+      setEditorOriginalText(result.csvText)
+      setEditorBaseHead(result.baseHead)
+      setEditorOrdinal(bank.questions[0].ordinal)
+      const first = bank.questions[0]
+      setEditorDraft({ questionText: first.questionText, options: first.options, correctAnswerIndex: first.correctAnswerIndex, explanation: first.explanation, retired: first.retired })
+      setMessage('Question set loaded securely. Changes are drafts until you validate and publish.')
+      setIsError(false)
+    } catch (reason) {
+      setEditorError(reason instanceof Error ? reason.message : 'The question set could not be opened.')
+      setEditorText('')
+      setEditorOriginalText('')
+      setEditorBaseHead('')
+      setEditorDraft(null)
+    } finally { setEditorBusy(false) }
+  }
+
+  const chooseEditorQuestion = (ordinal: number) => {
+    const question = editorBank?.questions.find(q => q.ordinal === ordinal)
+    if (!question) return
+    setEditorOrdinal(ordinal)
+    setEditorDraft({ questionText: question.questionText, options: question.options.slice(), correctAnswerIndex: question.correctAnswerIndex, explanation: question.explanation, retired: question.retired })
+    setEditorError('')
+  }
+
+  const applyEditorDraft = () => {
+    if (!editorBank || !editorDraft || !selectedEditorQuestion) return
+    try {
+      const updated = editBankQuestion(editorBank, editorOrdinal, editorDraft)
+      const next = readEditableBank(editorTarget, updated)
+      const selection = next.questions.find(q => q.ordinal === editorOrdinal)
+      if (!selection || next.questions.length !== editorBank.questions.length ||
+          next.questions.some((item, i) => item.ordinal !== editorBank.questions[i].ordinal || item.rowIndex !== editorBank.questions[i].rowIndex)) {
+        throw Error('The question-bank structure changed. The edit was not saved.')
+      }
+      setEditorText(updated)
+      setEditorDraft({ questionText: selection.questionText, options: selection.options, correctAnswerIndex: selection.correctAnswerIndex, explanation: selection.explanation, retired: selection.retired })
+      setEditorError('')
+      setMessage('Edit saved as a local draft. Add it to the queue, then validate and publish.')
+      setIsError(false)
+    } catch (reason) {
+      setEditorError(reason instanceof Error ? reason.message : 'This question could not be edited.')
+    }
+  }
+
+  const queueEditorChanges = () => {
+    if (!editorText || !editorTarget || !editorBaseHead) return
+    if (editorText === editorOriginalText) { setEditorError('No changes have been applied yet.'); return }
+    if (queue.some(item => item.status !== 'success' && item.targetPath !== editorTarget)) {
+      setEditorError('Publish the existing upload queue first. An edited question set cannot be mixed with another upload.')
+      return
+    }
+    const file = new File([editorText], rawCsvName(editorTarget), { type: 'text/csv' })
+    if (file.size > MAX_FILE_BYTES) { setEditorError('This edited CSV exceeds 700 KB.'); return }
+    setQueue(old => [...old.filter(item => item.targetPath !== editorTarget || item.status === 'success'), {
+      id: 'editor-' + crypto.randomUUID(), file, targetPath: editorTarget, status: 'ready', baseHead: editorBaseHead
+    }])
+    setPreview(null)
+    setBatchResult(null)
+    setEditorError('')
+    setMessage('Edited questions are in the upload queue. Validate and review the changes before publishing.')
+    setIsError(false)
+  }
+
   const publishBatch = async () => {
     const todo = queue.filter(item => item.status !== 'success')
     if (!todo.length) {
@@ -174,12 +268,16 @@ export default function AdminQuestionBankScreen() {
       return
     }
     if (todo.length > 10) { setMessage('Publish up to 10 files at a time. This keeps validation and publication within the service limits.'); setIsError(true); return }
+    const editorSources = todo.filter(item => !!item.baseHead)
+    if (editorSources.length && (todo.length !== 1 || editorSources.length !== 1)) {
+      setMessage('Publish direct-editor changes by themselves to protect against stale question banks.'); setIsError(true); return
+    }
     setBusy(true)
     setIsError(false)
     try {
       const files = await Promise.all(todo.map(async item => ({ path: item.targetPath, format: isEncryptedCsv(item.file) ? 'encrypted' : 'csv', content: isEncryptedCsv(item.file) ? bytesToBase64(new Uint8Array(await item.file.arrayBuffer())) : await item.file.text() })))
       if (!preview) {
-        const result = await call({ action: 'validate', requestId: crypto.randomUUID(), files })
+        const result = await call({ action: 'validate', requestId: crypto.randomUUID(), expectedHead: editorSources[0]?.baseHead, files })
         setPreview(result.preview)
         setMessage('Validation passed. Review the changes below, then publish this batch to GitHub.')
       } else {
@@ -191,6 +289,7 @@ export default function AdminQuestionBankScreen() {
         setBatchResult({ attempted: todo.length, updated: todo.length, failed: 0 })
         setMessage('Published directly to the Android question-bank folder on GitHub. Website delivery and offline version checks will pick up the verified release within a few minutes. Existing saved study data is preserved.')
         setPreview(null)
+        if (editorSources.length) { setEditorText(''); setEditorOriginalText(''); setEditorBaseHead(''); setEditorDraft(null) }
       }
     } catch (reason) {
       setIsError(true)
@@ -213,6 +312,69 @@ export default function AdminQuestionBankScreen() {
     {publisherReady === false && !loading && <div role="status" style={card}>Publishing needs the GITHUB_BANK_WRITE_TOKEN secret in Cloudflare. Your bank remains available for study.</div>}
     {message && <div role="status" aria-live="polite" style={{ ...card, borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--success, #15803d)' }}>{message}</div>}
     <p style={secondaryText}>Files publish directly to <a href="https://github.com/Nhyle-zunne/hyperion-reviewer/tree/main/app/src/main/assets/questions" target="_blank" rel="noopener noreferrer">the shared Android question folder on GitHub</a>. Upload up to 10 files per release.</p>
+
+    <section style={card} aria-label="Edit or retire questions directly">
+      <h2 style={{ fontSize: '1.1rem', marginTop: 0 }}>Edit, retire or restore questions</h2>
+      <p style={secondaryText}>Select a track and competence to change a question, its choices, correct answer, explanation or retirement status. The original question numbers and historical records stay untouched. Changes use the same encrypted GitHub validation and publication process as CSV uploads.</p>
+      <label style={{ display: 'grid', gap: '.35rem', marginBottom: '.75rem' }}>
+        <strong style={{ fontSize: '.82rem' }}>TRACK / COMPETENCE / PART</strong>
+        <select value={editorTarget} disabled={loading || busy || editorBusy} className="admin-qb-target-select"
+          onChange={event => { setEditorTarget(event.target.value); setEditorText(''); setEditorOriginalText(''); setEditorBaseHead(''); setEditorOrdinal(0); setEditorDraft(null); setEditorError('') }}>
+          <option value="">Select a question bank…</option>
+          {TRACKS.map(([track, label]) => <optgroup key={track} label={label}>{assets.filter(asset => asset.track === track).map(asset =>
+            <option key={asset.path} value={asset.path}>{asset.label}</option>)}</optgroup>)}
+        </select>
+      </label>
+      <button type="button" className="btn btn-outline" disabled={!publisherReady || !editorTarget || editorBusy || busy} onClick={() => void withPageLoading('Opening encrypted question bank for editing', loadEditor)}>
+        {editorBusy ? 'OPENING…' : 'OPEN QUESTION BANK'}
+      </button>
+      {editorError && <p role="alert" style={{ color: 'var(--danger, #dc2626)' }}>{editorError}</p>}
+      {editorBank && <>
+        <p style={secondaryText}>{editorBank.questions.length.toLocaleString()} historical questions · {editorBank.questions.filter(q => q.retired).length} retired · {editorText !== editorOriginalText ? 'Unsaved local draft changes' : 'No edits yet'}</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(170px, 1fr) minmax(0, 2fr)', gap: 12, alignItems: 'start' }}>
+          <div style={{ maxHeight: 420, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+            <input aria-label="Find question by number or text" placeholder="Search question number or text…" value={editorSearch} onChange={event => setEditorSearch(event.target.value)}
+              style={{ width: '100%', padding: 8, marginBottom: 8, background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }} />
+            <div style={{ display: 'grid', gap: 4 }}>
+              {editorMatches.map(question => <button key={question.ordinal} type="button" disabled={busy} onClick={() => chooseEditorQuestion(question.ordinal)}
+                style={{ textAlign: 'left', padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, background: question.ordinal === editorOrdinal ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)', cursor: 'pointer' }}>
+                <strong>#{question.ordinal}</strong> {question.retired ? '· Retired' : ''} · {question.questionText.slice(0, 74)}
+              </button>)}
+              {editorBank.questions.length > 150 && <p style={secondaryText}>Showing up to 150 matches. Search to find a specific question.</p>}
+            </div>
+          </div>
+          {selectedEditorQuestion && editorDraft && <div style={{ display: 'grid', gap: 9, minWidth: 0 }}>
+            <strong>Question #{selectedEditorQuestion.ordinal}</strong>
+            <label>Question text<textarea value={editorDraft.questionText} rows={3} onChange={event => setEditorDraft({ ...editorDraft, questionText: event.target.value })}
+              style={{ width: '100%', marginTop: 4, color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} /></label>
+            {editorDraft.options.map((option, index) => <label key={index} style={{ display: 'grid' }}>Choice {String.fromCharCode(65 + index)}
+              <textarea rows={2} value={option} onChange={event => setEditorDraft({ ...editorDraft, options: editorDraft.options.map((value, i) => i === index ? event.target.value : value) })}
+                style={{ color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} />
+            </label>)}
+            <label>Correct answer
+              <select value={editorDraft.correctAnswerIndex} className="admin-qb-target-select" onChange={event => setEditorDraft({ ...editorDraft, correctAnswerIndex: Number(event.target.value) })}>
+                {editorDraft.options.map((_, i) => <option key={i} value={i}>{String.fromCharCode(65 + i)}</option>)}
+              </select>
+            </label>
+            <label>Explanation<textarea rows={3} value={editorDraft.explanation} onChange={event => setEditorDraft({ ...editorDraft, explanation: event.target.value })}
+              style={{ width: '100%', marginTop: 4, color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} /></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={editorDraft.retired} disabled={selectedEditorQuestion.fixedLegacyRetirement} onChange={event => setEditorDraft({ ...editorDraft, retired: event.target.checked })} />
+              <strong>Retired (exclude from new study sessions)</strong>
+            </label>
+            {selectedEditorQuestion.fixedLegacyRetirement && <p style={secondaryText}>This is one of the three original C10 retirements, which remain enforced by the packaged Android application and cannot be restored here.</p>}
+            <p style={secondaryText}>Restoring an item allows it in future sessions. Existing bookmarks and History are never deleted. Always apply this edit before selecting another question.</p>
+            <button type="button" className="btn btn-outline" disabled={busy} onClick={applyEditorDraft}>APPLY QUESTION EDIT TO DRAFT</button>
+          </div>}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+          <button type="button" className="btn btn-primary" disabled={busy || editorBusy || !editorBaseHead || editorText === editorOriginalText} onClick={queueEditorChanges}>
+            ADD EDITED QUESTIONS TO PUBLISH QUEUE
+          </button>
+        </div>
+      </>}
+      <p style={{ ...secondaryText, marginBottom: 0 }}>Android installations still require a new app release to receive edited packaged bank content. The website receives the next verified bank revision automatically.</p>
+    </section>
     <section style={card}>
       <div className={'admin-qb-drop' + (dragging ? ' is-dragging' : '')}
         onDragOver={event => { event.preventDefault(); setDragging(true) }}
@@ -313,7 +475,7 @@ export default function AdminQuestionBankScreen() {
         <p style={secondaryText}>Destination: Android shared question assets on GitHub. Existing saved records are not modified. Files publish together or the live release stays unchanged.</p>
         {preview.files.map(file => <details key={file.path} style={{ margin: '12px 0' }}>
           <summary><strong>{file.path}</strong> · {file.questionCount.toLocaleString()} questions · {file.changed} corrected · {file.appended} appended{file.explanationsPreserved ? ` · ${file.explanationsPreserved} explanations preserved` : ''}{file.staleExplanationsCleared ? ` · ${file.staleExplanationsCleared} stale explanations cleared` : ''}</summary>
-          {file.corrections.map(change => <div key={change.number} style={{ margin: '10px 0', padding: 10, borderLeft: '3px solid var(--accent)' }}><strong>Question {change.number}</strong>{(['before', 'after'] as const).map(side => <div key={side} style={{ margin: '8px 0' }}><strong>{side === 'before' ? 'Previous' : 'Updated'}</strong><p>{change[side].questionText}</p><ol type="A">{change[side].options.map((option, index) => <li key={index} style={{ color: index === change[side].correctAnswerIndex ? 'var(--accent)' : 'var(--text)' }}>{option}{index === change[side].correctAnswerIndex ? ' · Correct answer' : ''}</li>)}</ol>{change[side].explanation && <p style={secondaryText}>{change[side].explanation}</p>}</div>)}</div>)}
+          {file.corrections.map(change => <div key={change.number} style={{ margin: '10px 0', padding: 10, borderLeft: '3px solid var(--accent)' }}><strong>Question {change.number}</strong>{(['before', 'after'] as const).map(side => <div key={side} style={{ margin: '8px 0' }}><strong>{side === 'before' ? 'Previous' : 'Updated'}</strong><p>{change[side].questionText}</p><ol type="A">{change[side].options.map((option, index) => <li key={index} style={{ color: index === change[side].correctAnswerIndex ? 'var(--accent)' : 'var(--text)' }}>{option}{index === change[side].correctAnswerIndex ? ' · Correct answer' : ''}</li>)}</ol>{change[side].explanation && <p style={secondaryText}>{change[side].explanation}</p>}{change[side].isRetired && <strong style={{ color: 'var(--danger, #dc2626)' }}>Retired from new sessions</strong>}</div>)}</div>)}
           {file.changed > file.corrections.length && <p style={secondaryText}>Showing the first {file.corrections.length} text previews. Review the full uploaded file for all {file.changed} corrections, including answer changes.</p>}
         </details>)}
       </section>}

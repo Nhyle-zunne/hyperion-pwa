@@ -18,7 +18,8 @@ const retiredNumbers = new Set<number>(ENGINE_MGT_C10_RETIRED_NUMBERS)
 export const ENGINE_MGT_C10_RETIRED_IDS =
   ENGINE_MGT_C10_RETIRED_NUMBERS.map(number => `EM-C10-${String(number).padStart(3, '0')}`)
 
-export function isRetiredQuestion(question: Pick<Question, 'id' | 'track' | 'competenceId'>): boolean {
+export function isRetiredQuestion(question: Pick<Question, 'id' | 'track' | 'competenceId' | 'isRetired'>): boolean {
+  if (question.isRetired === true) return true
   if (question.track !== 'ENGINE_MGT' || question.competenceId !== 'C10') return false
   const match = /^EM-C10-(\d+)$/.exec(question.id)
   return match !== null && retiredNumbers.has(Number(match[1]))

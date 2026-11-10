@@ -455,25 +455,34 @@ async function loadTrackFingerprintCache(admin: any, track: string) {
 
 // Bump this whenever valid-question parsing or free-pool sampling rules change.
 // Asset ETags alone cannot invalidate derived counts when only parser logic changes.
-const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v5";
+const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v6-retirement";
 
 function validQuestionCount(path: string, text: string, freeOnly: boolean): number {
-  let count = 0;
   const info = sourceInfo(path);
   if (!info) return 0;
-  if (info.format === "gmdss") {
-    count = validGmdssRows(text).length;
-    if (freeOnly) count = Math.min(count, info.competenceId === "C1" ? 90 : 65);
-    return count;
+  const records = info.format === "gmdss" ? validGmdssRows(text) : validStandardRows(parseCsv(text), path);
+  let count = records.length;
+  if (freeOnly) {
+    if (info.format === "gmdss") count = Math.min(count, info.competenceId === "C1" ? 90 : 65);
+    else if (info.track === "DECK_OIC_NW") {
+      const quotas: Record<string, number> = { C1:420,C2:221,C3:258,C4:160,C5:100,C7:196,C9:176,C10:109,C11:96,C12:110,C13:122,C17:97 };
+      count = Math.min(count, quotas[info.competenceId] ?? 1);
+    } else count = Math.min(count, Math.max(1, Math.round(count * 0.4)));
   }
+  // Preserve legacy count behavior for unchanged encrypted files, especially
+  // flattened GMDSS samples whose original free quotas are not renumbered.
   const rows = parseCsv(text);
-  count = validStandardRows(rows, path).length;
-  if (!freeOnly) return count;
-  if (info.track === "DECK_OIC_NW") {
-    const quotas: Record<string, number> = { C1:420,C2:221,C3:258,C4:160,C5:100,C7:196,C9:176,C10:109,C11:96,C12:110,C13:122,C17:97 };
-    return Math.min(count, quotas[info.competenceId] ?? 1);
-  }
-  return Math.min(count, Math.max(1, Math.round(count * 0.4)));
+  const hi = headerIndex(rows, info.format);
+  const column = (rows[hi] || []).findIndex(value => value.trim().toUpperCase() === "HYPERION_STATUS");
+  if (column < 0) return count;
+  const selected = freeOnly && info.track === "DECK_OIC_NW"
+    ? toSearchQuestions(path, sampleFreeCsv(path, text))
+    : toSearchQuestions(path, text).slice(0, count);
+  const retired = selected.filter((question, index) =>
+    question.isRetired === true &&
+    !(path === "engine_mgt/em_c10.csv.enc" && [182, 373, 406].includes(index + 1))
+  ).length;
+  return Math.max(0, count - retired);
 }
 const COMPETENCE_TITLES: Record<string, string> = {
   "DECK_OIC_NW:C1": "Plan and conduct a passage and determine position",
@@ -567,17 +576,20 @@ function difficulty(index: number) {
 function toSearchQuestions(path: string, text: string): Record<string, unknown>[] {
   const info = sourceInfo(path);
   if (!info) return [];
-  const records: { q: string; options: string[]; explanation: string; answer: string }[] = [];
+  const rows = parseCsv(text);
+  const header = headerIndex(rows, info.format);
+  const statusColumn = (rows[header] || []).findIndex(cell => cell.trim().toUpperCase() === "HYPERION_STATUS");
+  const retired = (row: string[]) => statusColumn >= 0 && (row[statusColumn] || "").trim().toUpperCase() === "RETIRED";
+  const records: { q: string; options: string[]; explanation: string; answer: string; isRetired: boolean }[] = [];
   if (info.format === "gmdss") {
     for (const row of validGmdssRows(text)) {
-      records.push({ q: (row[0] || "").trim(), options: row.slice(2,8).map(x => (x || "").trim()).filter(Boolean), explanation: (row[8] || "").trim(), answer: (row[9] || "").trim() });
+      records.push({ q: (row[0] || "").trim(), options: row.slice(2,8).map(x => (x || "").trim()).filter(Boolean), explanation: (row[8] || "").trim(), answer: (row[9] || "").trim(), isRetired: retired(row) });
     }
   } else {
-    const rows = parseCsv(text);
     for (const row of validStandardRows(rows, path)) {
       const rawOptions = row.slice(2, 6).map(value => (value || "").trim());
       const options = isStrictStandardTrack(path) ? rawOptions : rawOptions.filter(Boolean);
-      records.push({ q: row[1].trim(), options, explanation: (row[7] || "").trim(), answer: row[6].trim() });
+      records.push({ q: row[1].trim(), options, explanation: (row[7] || "").trim(), answer: row[6].trim(), isRetired: retired(row) });
     }
   }
   return records.map((record, i) => ({
@@ -590,6 +602,7 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
     options: record.options,
     correctAnswerIndex: answerIndex(record.answer, record.options.length),
     explanation: record.explanation,
+    ...(record.isRetired ? { isRetired: true } : {}),
     difficulty: difficulty(i + 1)
   }));
 }

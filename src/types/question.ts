@@ -17,6 +17,8 @@ export interface Question {
   options: string[];
   correctAnswerIndex: number;
   explanation: string;
+  /** Optional CSV lifecycle flag; historical saved snapshots need no migration. */
+  isRetired?: boolean;
   difficulty: Difficulty;
 }
 

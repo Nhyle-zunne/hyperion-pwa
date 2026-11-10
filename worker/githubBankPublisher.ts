@@ -62,10 +62,17 @@ export function reconcileC1Explanations(before: string, uploaded: string) {
 export function validateQuestionChanges(path: string, before: string, after: string) {
   if (!allowed.has(path)) throw new PublisherError('Unsupported question-bank destination path.')
   const previous = toSearchQuestions(path, before), next = toSearchQuestions(path, after)
+  // A legacy CSV upload must not silently clear retirement flags set in the
+  // admin editor. Restoration requires an explicit ACTIVE marker per question.
+  const hasStatusColumn = (text: string) => parseCsvText(text).slice(0, 15)
+    .some(row => row.some(value => value.trim().toUpperCase() === 'HYPERION_STATUS'))
+  if (previous.some(question => question.isRetired === true) && !hasStatusColumn(after)) {
+    throw new PublisherError('This CSV omits existing retirement flags. Open the question bank in the admin editor or preserve its HYPERION_STATUS column.', 409)
+  }
   if (!next.length) throw new PublisherError('The CSV does not contain valid questions.')
   if (next.length < previous.length) throw new PublisherError('Removing questions or publishing a shorter list would break saved references. Keep existing questions and append new ones.')
   const identity = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options])
-  const semantic = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options, q.correctAnswerIndex, q.explanation])
+  const semantic = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options, q.correctAnswerIndex, q.explanation, q.isRetired === true])
   const positions = new Map<string, Set<number>>()
   previous.forEach((q, i) => { const key = identity(q); const indexes = positions.get(key) || new Set<number>(); indexes.add(i); positions.set(key, indexes) })
   let changed = 0
@@ -75,7 +82,7 @@ export function validateQuestionChanges(path: string, before: string, after: str
     if (oldPositions && !oldPositions.has(i)) throw new PublisherError(`Question ${i + 1} was reordered from an existing position. Preserve question order to protect bookmarks and mistakes.`)
     if (i < previous.length && semantic(previous[i]) !== semantic(q)) {
       changed++
-      if (corrections.length < 20) corrections.push({ number: i + 1, before: { questionText: previous[i].questionText, options: previous[i].options, correctAnswerIndex: previous[i].correctAnswerIndex, explanation: previous[i].explanation }, after: { questionText: q.questionText, options: q.options, correctAnswerIndex: q.correctAnswerIndex, explanation: q.explanation } })
+      if (corrections.length < 20) corrections.push({ number: i + 1, before: { questionText: previous[i].questionText, options: previous[i].options, correctAnswerIndex: previous[i].correctAnswerIndex, explanation: previous[i].explanation, isRetired: previous[i].isRetired === true }, after: { questionText: q.questionText, options: q.options, correctAnswerIndex: q.correctAnswerIndex, explanation: q.explanation, isRetired: q.isRetired === true } })
     }
     if (i < previous.length && previous[i].id !== q.id) throw new PublisherError('An existing question ID changed.')
   })
