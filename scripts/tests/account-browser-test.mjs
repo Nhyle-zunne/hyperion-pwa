@@ -148,17 +148,18 @@ try {
   await page.mouse.move(0, 0)
   const beforeHover = await oicCard.evaluate(el => {
     const bounds = el.getBoundingClientRect()
-    return { top: bounds.top, bottom: bounds.bottom, ctaBottom: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, listHeight: el.querySelector('.store-benefits-list').getBoundingClientRect().height, scroll: document.documentElement.scrollHeight }
+    return { top: bounds.top, bottom: bounds.bottom, width: bounds.width, ctaBottom: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, listHeight: el.querySelector('.store-benefits-list').getBoundingClientRect().height, scroll: document.documentElement.scrollHeight }
   })
   await oicCard.hover()
   await page.waitForTimeout(450)
   const hover = await oicCard.evaluate(el => {
     const bounds = el.getBoundingClientRect()
-    return { top: bounds.top, bottom: bounds.bottom, ctaBottom: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, listHeight: el.querySelector('.store-benefits-list').getBoundingClientRect().height, scroll: document.documentElement.scrollHeight, matrix: getComputedStyle(el).transform }
+    return { top: bounds.top, bottom: bounds.bottom, width: bounds.width, ctaBottom: el.querySelector('button.btn-primary').getBoundingClientRect().bottom, listHeight: el.querySelector('.store-benefits-list').getBoundingClientRect().height, scroll: document.documentElement.scrollHeight, matrix: getComputedStyle(el).transform }
   })
   assert(hover.matrix !== 'none' && Number(hover.matrix.match(/^matrix\(([^,]+)/)?.[1]) > 1.02, 'Card still pops up and enlarges on hover')
   assert(hover.listHeight > beforeHover.listHeight + 60, 'All nine features unfold inside the original card')
   assert(hover.top < beforeHover.top - 55, 'The expanded card grows upwards')
+  assert(hover.width > beforeHover.width + 28, 'Hover card becomes wider for readable features without covering the navigation')
   assert(Math.abs(hover.ctaBottom - beforeHover.ctaBottom) < 15, 'Buy Now stays anchored near its original position')
   assert(hover.ctaBottom < 900 - 8, 'Buy Now remains visible at desktop height')
   assert(hover.scroll <= beforeHover.scroll + 1, 'Hover does not increase page scroll height')
