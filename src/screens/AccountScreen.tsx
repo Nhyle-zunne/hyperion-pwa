@@ -28,6 +28,30 @@ type Order = {
 type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
+// A raised desktop card needs to retain its collapsed grid-cell height.
+// Reuse this for both hover and explicit See all actions so clicking never
+// makes the card expand into the document or push Buy Now below the screen.
+function prepareStoreCardLift(slot: HTMLElement) {
+  if (slot.style.height) return
+  const card = slot.querySelector<HTMLElement>('.account-product-card')
+  if (!card) return
+  const bounds = slot.getBoundingClientRect()
+  slot.style.height = `${Math.ceil(card.getBoundingClientRect().height)}px`
+  const sidebarRight = document.querySelector('.account-sidebar')?.getBoundingClientRect().right ?? 0
+  const extra = Math.min(54, bounds.width * .24)
+  slot.style.setProperty('--store-hover-left', `${Math.max(0, Math.min(extra, bounds.left - Math.max(12, sidebarRight + 10)))}px`)
+  slot.style.setProperty('--store-hover-right', `${Math.max(0, Math.min(extra, window.innerWidth - bounds.right - 12))}px`)
+}
+
+function releaseStoreCardLift(slot: HTMLElement) {
+  window.requestAnimationFrame(() => {
+    if (slot.matches(':hover') || slot.classList.contains('is-expanded')) return
+    slot.style.height = ''
+    slot.style.removeProperty('--store-hover-left')
+    slot.style.removeProperty('--store-hover-right')
+  })
+}
+
 const STORE_FEATURES = [
   'Unlimited practice sessions',
   'Unlimited timed mock exams',
@@ -557,7 +581,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-toolbar-actions button{min-height:42px}
       .account-page .account-products-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;gap:clamp(.55rem,.75vw,.9rem);isolation:isolate;align-items:start}
       .account-page .account-product-slot{min-width:0;position:relative;z-index:0}
-      .account-page .account-product-slot.is-hovered{z-index:8}
+      .account-page .account-product-slot.is-hovered,.account-page .account-product-slot.is-expanded{z-index:8}
       .account-page .account-product-card{position:relative;z-index:0;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:13px;background:var(--bg-card);transition:transform .3s cubic-bezier(.2,.8,.2,1),border-color .3s ease,box-shadow .3s ease;transform-origin:50% 100%;will-change:transform;box-sizing:border-box}
       .account-page .account-product-card:focus-within{z-index:5;border-color:#d9ad36;box-shadow:0 14px 30px rgba(4,35,83,.13)}
       .account-page .account-product-card .product-art{min-height:58px;display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border-radius:9px;background:radial-gradient(circle at 95% 0%,#17497d 0,transparent 45%),linear-gradient(125deg,#042353,#061a3b);color:#f6c84a;margin-bottom:.6rem;position:relative;overflow:hidden;border:1px solid rgba(241,195,70,.5)}
@@ -580,12 +604,12 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .store-benefits-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
       .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:850;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
       @media (hover:hover) and (pointer:fine){
-        .account-page .account-product-slot.is-hovered .account-product-card{position:absolute;bottom:0;left:calc(-1 * var(--store-hover-left,0px));right:calc(-1 * var(--store-hover-right,0px));z-index:9;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-3px) scale(1.035);transform-origin:50% 100%;background:var(--bg-card)}
-        .account-page .account-product-slot.is-hovered .store-benefits-list{max-height:18rem}
+        .account-page .account-product-slot.is-hovered .account-product-card,
+        .account-page .account-product-slot.is-expanded .account-product-card{position:absolute;bottom:0;left:calc(-1 * var(--store-hover-left,0px));right:calc(-1 * var(--store-hover-right,0px));z-index:9;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-3px) scale(1.035);transform-origin:50% 100%;background:var(--bg-card)}
       }
       @media(prefers-reduced-motion:reduce){
         .account-page .account-product-card,.account-page .store-benefits-list{transition:none}
-        .account-page .account-product-slot.is-hovered .account-product-card{transform:none}
+        .account-page .account-product-slot.is-hovered .account-product-card,.account-page .account-product-slot.is-expanded .account-product-card{transform:none}
       }
       .account-page .account-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
       .account-page .account-cart-row{display:flex;align-items:center;justify-content:space-between;gap:.8rem;border-bottom:1px solid var(--border);padding:.75rem 0}
@@ -826,23 +850,15 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   const selectedPrice = priceForTerm(item, selectedTerm)
                   const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
                   const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
-                  return <div className={`account-product-slot${hoveredStore === item.code ? ' is-hovered' : ''}`} key={item.code}
+                  return <div className={`account-product-slot${hoveredStore === item.code ? ' is-hovered' : ''}${expandedStorePerks === item.code ? ' is-expanded' : ''}`} key={item.code}
                     onMouseEnter={event => {
                       if (!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return
-                      const slot = event.currentTarget
-                      const currentCard = slot.querySelector<HTMLElement>('.account-product-card')
-                      if (currentCard) slot.style.height = `${Math.ceil(currentCard.getBoundingClientRect().height)}px`
-                      const bounds = slot.getBoundingClientRect()
-                      const sidebarRight = document.querySelector('.account-sidebar')?.getBoundingClientRect().right ?? 0
-                      const extra = Math.min(54, bounds.width * .24)
-                      slot.style.setProperty('--store-hover-left', `${Math.max(0, Math.min(extra, bounds.left - Math.max(12, sidebarRight + 10)))}px`)
-                      slot.style.setProperty('--store-hover-right', `${Math.max(0, Math.min(extra, window.innerWidth - bounds.right - 12))}px`)
+                      prepareStoreCardLift(event.currentTarget)
                       setHoveredStore(item.code)
                     }}
                     onMouseLeave={event => {
-                      const slot = event.currentTarget
                       setHoveredStore(current => current === item.code ? null : current)
-                      window.requestAnimationFrame(() => { if (!slot.matches(':hover')) slot.style.height = '' })
+                      releaseStoreCardLift(event.currentTarget)
                     }}>
                     <article className={`account-product-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} aria-label={`${item.label} reviewer plan`}>
                       <div className="product-art">
@@ -867,7 +883,12 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                     <ul className="store-benefits-list" id={`store-benefits-${item.code}`} aria-label={`Premium features for ${item.label}`}>
                       {STORE_FEATURES.map(feature => <li key={feature}>{feature}</li>)}
                     </ul>
-                    <button type="button" className="store-benefits-toggle" aria-controls={`store-benefits-${item.code}`} aria-expanded={expandedStorePerks === item.code} onClick={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}>
+                    <button type="button" className="store-benefits-toggle" aria-controls={`store-benefits-${item.code}`} aria-expanded={expandedStorePerks === item.code} onClick={event => {
+                      const slot = event.currentTarget.closest<HTMLElement>('.account-product-slot')
+                      if (slot && window.matchMedia('(hover:hover) and (pointer:fine)').matches && expandedStorePerks !== item.code) prepareStoreCardLift(slot)
+                      setExpandedStorePerks(current => current === item.code ? null : item.code)
+                      if (slot && expandedStorePerks === item.code) releaseStoreCardLift(slot)
+                    }}>
                       {expandedStorePerks === item.code ? 'Show fewer features ↑' : 'See all 9 premium features ↓'}
                     </button>
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
