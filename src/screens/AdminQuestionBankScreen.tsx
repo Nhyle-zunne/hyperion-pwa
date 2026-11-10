@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AdminNavigation from '../components/AdminNavigation'
+import QuestionBankCombobox from '../components/QuestionBankCombobox'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
 import { editBankQuestion, readEditableBank, type QuestionEdit } from '../lib/questionBankEditor'
@@ -316,18 +317,34 @@ export default function AdminQuestionBankScreen() {
     <section style={card} aria-label="Edit or retire questions directly">
       <h2 style={{ fontSize: '1.1rem', marginTop: 0 }}>Edit, retire or restore questions</h2>
       <p style={secondaryText}>Select a track and competence to change a question, its choices, correct answer, explanation or retirement status. The original question numbers and historical records stay untouched. Changes use the same encrypted GitHub validation and publication process as CSV uploads.</p>
-      <label style={{ display: 'grid', gap: '.35rem', marginBottom: '.75rem' }}>
+      <div style={{ display: 'grid', gap: '.35rem', marginBottom: '.75rem' }}>
         <strong style={{ fontSize: '.82rem' }}>TRACK / COMPETENCE / PART</strong>
-        <select value={editorTarget} disabled={loading || busy || editorBusy} className="admin-qb-target-select"
-          onChange={event => { setEditorTarget(event.target.value); setEditorText(''); setEditorOriginalText(''); setEditorBaseHead(''); setEditorOrdinal(0); setEditorDraft(null); setEditorError('') }}>
-          <option value="">Select a question bank…</option>
-          {TRACKS.map(([track, label]) => <optgroup key={track} label={label}>{assets.filter(asset => asset.track === track).map(asset =>
-            <option key={asset.path} value={asset.path}>{asset.label}</option>)}</optgroup>)}
-        </select>
-      </label>
-      <button type="button" className="btn btn-outline" disabled={!publisherReady || !editorTarget || editorBusy || busy} onClick={() => void withPageLoading('Opening encrypted question bank for editing', loadEditor)}>
+        <QuestionBankCombobox assets={assets} tracks={TRACKS} value={editorTarget}
+          disabled={loading || busy || editorBusy}
+          onChange={path => {
+            setEditorTarget(path)
+            setEditorText('')
+            setEditorOriginalText('')
+            setEditorBaseHead('')
+            setEditorOrdinal(0)
+            setEditorDraft(null)
+            setEditorError('')
+          }} />
+      </div>
+      <button type="button" className="btn btn-outline"
+        disabled={!editorTarget || !assets.some(asset => asset.path === editorTarget) || !publisherReady || editorBusy || busy || loading}
+        style={{
+          opacity: !editorTarget ? .4 : 1,
+          cursor: !editorTarget ? 'not-allowed' : 'pointer',
+          pointerEvents: !editorTarget ? 'none' : undefined,
+          transition: 'opacity .16s ease'
+        }}
+        onClick={() => void withPageLoading('Opening encrypted question bank for editing', loadEditor)}>
         {editorBusy ? 'OPENING…' : 'OPEN QUESTION BANK'}
       </button>
+      {!editorTarget && <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', margin: '.45rem 0 .1rem' }}>
+        Choose a question bank above to enable this button.
+      </p>}
       {editorError && <p role="alert" style={{ color: 'var(--danger, #dc2626)' }}>{editorError}</p>}
       {editorBank && <>
         <p style={secondaryText}>{editorBank.questions.length.toLocaleString()} historical questions · {editorBank.questions.filter(q => q.retired).length} retired · {editorText !== editorOriginalText ? 'Unsaved local draft changes' : 'No edits yet'}</p>
