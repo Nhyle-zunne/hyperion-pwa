@@ -105,6 +105,29 @@ try {
   assert.deepEqual(calls.find(call => call.action === 'update-profile').data, { full_name: 'Updated Member', company: 'Fixture Company', school: 'Fixture School' })
   await page.getByRole('button', { name: 'Bond Store', exact: true }).click()
   await page.getByRole('heading', { name: 'Available reviewer tracks', exact: true }).waitFor()
+  for (const [width, height, expectedColumns] of [[1531, 900, 5], [1366, 768, 5], [1280, 768, 5], [1024, 900, 3], [870, 900, 2], [390, 900, 1]]) {
+    await page.setViewportSize({ width, height })
+    await page.evaluate(() => window.scrollTo(0, 0))
+    const boxes = await page.locator('.account-product-card').evaluateAll(cards => cards.map(card => {
+      const rect = card.getBoundingClientRect()
+      const button = card.querySelector('button.btn-primary')?.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, bottom: rect.bottom, buyButtonBottom: button?.bottom }
+    }))
+    assert.equal(boxes.length, 5, 'All five track cards render')
+    assert.equal(boxes.filter(box => Math.abs(box.y - boxes[0].y) < 2).length, expectedColumns, `Responsive store has ${expectedColumns} columns at ${width}px`)
+    assert(boxes.every(box => box.width >= 140 && box.x >= 0 && box.x + box.width <= width + 1), `Store cards have usable widths and no horizontal overflow at ${width}px`)
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Bond Store has no horizontal scroll at ${width}px`)
+    if (width >= 1280) {
+      assert(boxes.every(box => box.bottom < height - 72), `All five desktop track cards fit above the fold at ${width}x${height}`)
+      assert(boxes.every(box => box.buyButtonBottom && box.buyButtonBottom < height - 72), 'All desktop buy buttons remain visible without scrolling')
+    }
+    if (width === 1366 || width === 390) await page.screenshot({ path: `account-store-${width}.png`, fullPage: true })
+  }
+  await page.setViewportSize({ width: 1531, height: 900 })
+  const oicCard = page.locator('.account-product-card').first()
+  await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱20' }).click()
+  assert.equal(await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱20' }).getAttribute('aria-pressed'), 'true', 'Weekly selection remains functional')
+  assert((await oicCard.locator('.product-price').innerText()).includes('₱20'), 'Changing duration updates the track price')
   await page.getByRole('button', { name: 'Shopping cart', exact: true }).waitFor()
   await page.getByRole('button', { name: 'My licenses', exact: true }).click()
   await page.getByRole('heading', { name: 'Active licenses', exact: true }).waitFor()

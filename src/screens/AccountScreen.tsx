@@ -509,7 +509,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
 
   return <div className="screen account-page" style={{ width: 'min(calc(100% - 2rem), 1320px)', maxWidth: 1320, margin: '0 auto', paddingTop: '.75rem', paddingBottom: '2rem' }}>
     <style>{`
-      .account-page .account-layout{display:grid;grid-template-columns:minmax(250px,300px) minmax(0,1fr);gap:1.25rem;align-items:start}
+      .account-page .account-layout{display:grid;grid-template-columns:minmax(220px,22%) minmax(0,1fr);gap:clamp(.75rem,1.2vw,1rem);align-items:start}
       .account-page > [role="status"] + .account-layout{margin-top:1.1rem}
       .account-page .account-sidebar{display:grid;gap:1rem;align-content:start;position:sticky;top:80px;min-width:0;align-self:start}
       .account-page .account-main{min-width:0}
@@ -520,17 +520,15 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-section-tabs button[aria-selected="true"]{background:#147d43;border-color:#147d43;color:#fff}
       .account-page .account-toolbar-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
       .account-page .account-toolbar-actions button{min-height:42px}
-      .account-page .account-products-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
-      .account-page .account-product-card{min-width:0;display:flex;flex-direction:column;padding:1rem;border:1px solid var(--border);border-radius:12px;background:var(--bg-card);transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}
+      .account-page .account-products-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;gap:clamp(.4rem,.7vw,.75rem)}
+      .account-page .account-product-card{min-width:0;display:flex;flex-direction:column;padding:clamp(.55rem,.7vw,.75rem);border:1px solid var(--border);border-radius:12px;background:var(--bg-card);transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}
       .account-page .account-product-card:hover{border-color:var(--accent);box-shadow:0 7px 20px rgba(4,35,83,.08);transform:translateY(-2px)}
-      .account-page .account-product-card .product-art{display:grid;place-items:center;min-height:105px;border-radius:9px;background:linear-gradient(135deg,#042353,#0d376b);color:#4ade80;font-size:2rem;margin-bottom:.9rem;position:relative;overflow:hidden}
-      .account-page .account-product-card .product-art:after{content:"";position:absolute;width:130px;height:130px;border:1px solid rgba(34,197,94,.28);border-radius:50%;right:-36px;top:-62px}
-      .account-page .account-product-card .product-art span{font-size:.66rem;letter-spacing:.13em;font-weight:900;color:#fff;position:absolute;bottom:.55rem;left:.7rem}
-      .account-page .product-price{font-size:1.55rem;font-weight:900;line-height:1.1;color:var(--text);margin:.75rem 0 .25rem}
-      .account-page .product-meta{font-size:.78rem;color:var(--text-muted);line-height:1.45}
-      .account-page .product-card-spacer{flex:1;min-height:.75rem}
-      .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.28rem .55rem;font-size:.67rem;font-weight:850;letter-spacing:.04em;margin-top:.65rem}
-      .account-page .account-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem}
+      .account-page .account-product-card .product-art{display:flex;align-items:center;justify-content:center;gap:.4rem;min-height:46px;padding:.25rem .35rem;border-radius:9px;background:linear-gradient(135deg,#042353,#0d376b);color:#4ade80;font-size:1.2rem;margin-bottom:.45rem;position:relative;overflow:hidden}
+      .account-page .account-product-card .product-art:after{content:"";position:absolute;width:84px;height:84px;border:1px solid rgba(34,197,94,.28);border-radius:50%;right:-25px;top:-42px;pointer-events:none}
+      .account-page .account-product-card .product-art span{font-size:.55rem;letter-spacing:.07em;font-weight:900;color:#fff;line-height:1.15}
+      .account-page .product-price{font-size:clamp(1.18rem,1.45vw,1.4rem);font-weight:900;line-height:1.15;color:var(--text);margin:.35rem 0 .45rem}
+      .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:850;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
+      .account-page .account-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
       .account-page .account-cart-row{display:flex;align-items:center;justify-content:space-between;gap:.8rem;border-bottom:1px solid var(--border);padding:.75rem 0}
       .account-page .account-cart-row:last-child{border-bottom:0}
       .account-page .account-total-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-top:1rem;margin-top:.4rem;border-top:1px solid var(--border)}
@@ -556,7 +554,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       @media(max-width:899px){.account-cart-fab{bottom:calc(82px + env(safe-area-inset-bottom))}}
       .account-page .payment-method-pills{display:flex;flex-wrap:wrap;gap:.4rem}
       .account-page .payment-method-pills span{padding:.3rem .5rem;border:1px solid var(--border);background:var(--bg-elevated);border-radius:6px;font-size:.7rem;font-weight:750}
-      @media(max-width:1100px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media(max-width:1279px){.account-page .account-products-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+      @media(max-width:950px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
       @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar-actions{display:flex;justify-content:flex-end}.account-page .profile-mobile-toggle{display:inline-flex}.account-page .account-profile-content{display:none}.account-page .account-profile-content.is-expanded{display:block}.account-page .account-section-tabs{display:grid;grid-template-columns:1fr;gap:.45rem}.account-page .account-section-tabs button{text-align:left}}
       @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:88px}.account-page .account-cart-row{align-items:flex-start}}
 
@@ -768,27 +767,20 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   const selectedPrice = priceForTerm(item, selectedTerm)
                   const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
                   const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
-                  const description = item.code === 'oic_nw' ? 'Deck officer examination preparation and reviewer access.'
-                    : item.code === 'gmdss' ? 'GMDSS GOC examination preparation and reviewer access.'
-                    : item.code === 'engine_ew' ? 'Engine OIC-EW examination preparation and reviewer access.'
-                    : item.code === 'deck_mgt' ? 'Deck management examination preparation and reviewer access.'
-                    : 'Engine management examination preparation and reviewer access.'
                   return <article className="account-product-card" key={item.code}>
                     <div className="product-art"><div aria-hidden="true">{item.code === 'gmdss' ? '📡' : item.code === 'engine_ew' || item.code === 'engine_mgt' ? '⚙️' : '⚓'}</div><span>HYPERION REVIEWER</span></div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>CHOOSE ACCESS DURATION</div>
-                    <h3 style={{ margin: '.35rem 0 0', fontSize: '1.03rem', minHeight: '2.4em', lineHeight: 1.2 }}>{item.label}</h3>
-                    <div className="product-price">₱{selectedPrice}<span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 650 }}> / {selectedTerm}</span></div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '.35rem', marginTop: '.6rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '.91rem', minHeight: '2.3em', lineHeight: 1.15 }}>{item.label}</h3>
+                    <div className="product-price">₱{selectedPrice}<span style={{ fontSize: '.68rem', color: 'var(--text-muted)', fontWeight: 650 }}> / {selectedTerm}</span></div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '.61rem', fontWeight: 900, letterSpacing: '.04em' }}>CHOOSE DURATION</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '.25rem', margin: '.35rem 0 .65rem' }}>
                       {LICENSE_TERMS.map(option => {
                         const optionPrice = priceForTerm(item, option.code)
                         const isSelected = selectedTerm === option.code
-                        return <button key={option.code} type="button" aria-pressed={isSelected} disabled={busy || isOwned || manualPending} onClick={() => setSelectedTerms(old => ({ ...old, [item.code]: option.code }))} style={{ border: '1px solid ' + (isSelected ? 'var(--accent)' : 'var(--border)'), borderRadius: 7, padding: '.45rem .2rem', background: isSelected ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)', fontSize: '.72rem', fontWeight: 800, cursor: 'pointer' }}><span style={{ display: 'block' }}>{option.label}</span><span style={{ display: 'block', marginTop: '.15rem' }}>₱{optionPrice}</span></button>
+                        return <button key={option.code} type="button" aria-label={`${item.label} ${option.label} ₱${optionPrice}`} aria-pressed={isSelected} disabled={busy || isOwned || manualPending} onClick={() => setSelectedTerms(old => ({ ...old, [item.code]: option.code }))} style={{ minWidth: 0, minHeight: 40, border: '1px solid ' + (isSelected ? 'var(--accent)' : 'var(--border)'), borderRadius: 7, padding: '.3rem .1rem', background: isSelected ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)', fontSize: '.66rem', lineHeight: 1.15, fontWeight: 800, cursor: busy || isOwned || manualPending ? 'not-allowed' : 'pointer' }}><span style={{ display: 'block' }}>{option.label}</span><span style={{ display: 'block', marginTop: '.12rem' }}>₱{optionPrice}</span></button>
                       })}
                     </div>
-                    <div className="product-meta">{description}</div>
-                    <div className="product-card-spacer" />
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
-                    <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)} style={{ width: '100%', marginTop: '.8rem', minHeight: 43, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff' }}>
+                    <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)} style={{ width: '100%', marginTop: '.5rem', minHeight: 44, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff', padding: '.5rem .25rem', fontSize: '.78rem' }}>
                       {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'BUY NOW'}
                     </button>
 
