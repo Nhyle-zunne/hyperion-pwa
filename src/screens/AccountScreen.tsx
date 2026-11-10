@@ -862,7 +862,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                     <ul className="store-benefits-list" id={`store-benefits-${item.code}`} aria-label={`Premium features for ${item.label}`}>
                       {STORE_FEATURES.map(feature => <li key={feature}>{feature}</li>)}
                     </ul>
-                    <button type="button" className="store-benefits-toggle" aria-controls={`store-benefits-${item.code}`} aria-expanded={hoveredStore === item.code || expandedStorePerks === item.code} onClick={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}>
+                    <button type="button" className="store-benefits-toggle" aria-controls={`store-benefits-${item.code}`} aria-expanded={expandedStorePerks === item.code} onClick={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}>
                       {expandedStorePerks === item.code ? 'Show fewer features ↑' : 'See all 9 premium features ↓'}
                     </button>
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
