@@ -166,6 +166,7 @@ try {
   await page.mouse.move(0, 0)
   await oicCard.getByRole('button', { name: 'See all 9 premium features' }).click()
   assert.equal(await oicCard.getByRole('button', { name: 'Show fewer features ↑' }).getAttribute('aria-expanded'), 'true', 'Benefits can be expanded by click or keyboard')
+  await oicCard.locator('.store-benefits-popover').waitFor({ state: 'visible' })
   assert.equal(await oicCard.locator('.store-benefits-popover').evaluate(el => getComputedStyle(el).visibility), 'visible', 'Toggled popup is visible without hovering')
   await oicCard.getByRole('button', { name: 'Show fewer features ↑' }).click()
   assert.equal(await oicCard.getByRole('button', { name: 'See all 9 premium features' }).getAttribute('aria-expanded'), 'false')
