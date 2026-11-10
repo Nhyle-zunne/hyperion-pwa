@@ -580,7 +580,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .store-benefits-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
       .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:850;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
       @media (hover:hover) and (pointer:fine){
-        .account-page .account-product-slot.is-hovered .account-product-card{position:absolute;inset:auto 0 0;z-index:9;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-3px) scale(1.035);transform-origin:50% 100%;background:var(--bg-card)}
+        .account-page .account-product-slot.is-hovered .account-product-card{position:absolute;bottom:0;left:calc(-1 * var(--store-hover-left,0px));right:calc(-1 * var(--store-hover-right,0px));z-index:9;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-3px) scale(1.035);transform-origin:50% 100%;background:var(--bg-card)}
         .account-page .account-product-slot.is-hovered .store-benefits-list{max-height:18rem}
       }
       @media(prefers-reduced-motion:reduce){
@@ -832,6 +832,11 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                       const slot = event.currentTarget
                       const currentCard = slot.querySelector<HTMLElement>('.account-product-card')
                       if (currentCard) slot.style.height = `${Math.ceil(currentCard.getBoundingClientRect().height)}px`
+                      const bounds = slot.getBoundingClientRect()
+                      const sidebarRight = document.querySelector('.account-sidebar')?.getBoundingClientRect().right ?? 0
+                      const extra = Math.min(54, bounds.width * .24)
+                      slot.style.setProperty('--store-hover-left', `${Math.max(0, Math.min(extra, bounds.left - Math.max(12, sidebarRight + 10)))}px`)
+                      slot.style.setProperty('--store-hover-right', `${Math.max(0, Math.min(extra, window.innerWidth - bounds.right - 12))}px`)
                       setHoveredStore(item.code)
                     }}
                     onMouseLeave={event => {
