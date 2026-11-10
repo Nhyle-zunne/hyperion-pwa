@@ -655,6 +655,51 @@ export async function getQuestionsByCompetence(
   randomSample = false
 ): Promise<Question[]> {
   return withPageLoading('Loading questions', async () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      // Offline packs keep every historic row. Slice only after applying the
+      // retirement view, never mutate persisted bookmark or session records.
+      const full = await loadQuestionsByCompetenceInternal(track, competenceId, part, freeOnly, 1, undefined, false)
+      const active = selectActiveQuestions(full)
+      const start = Math.max(0, Math.floor(startItem || 1) - 1)
+      return randomSample ? shuffleQuestions(active).slice(0, Math.max(1, Math.floor(limit ?? 200)))
+        : active.slice(start, limit == null ? undefined : start + Math.max(0, Math.floor(limit)))
+    }
+    // Read only public catalog metadata for the immutable GitHub revision. The
+    // retired numbers are original physical offsets, not new question IDs.
+    const snapshot = await fetchRevisionQuestionCounts(track, freeOnly)
+    const groups = snapshot.counts.filter(item => item.competenceId === competenceId && (part == null || item.part === part))
+      .sort((a, b) => (a.part ?? 0) - (b.part ?? 0))
+    const physicalCount = groups.reduce((sum, group) => sum + (group.rawCount ?? group.count), 0)
+    let physicalOffset = 0
+    const retiredPositions = groups.flatMap(group => {
+      const positions = (group.retiredPositions || []).map(number => number + physicalOffset)
+      physicalOffset += group.rawCount ?? group.count
+      return positions
+    }).sort((a, b) => a - b)
+    if (retiredPositions.length) {
+      const physicalPosition = (activePosition: number) => {
+        let physical = activePosition
+        for (const retired of retiredPositions) if (retired <= physical) physical++
+        return physical
+      }
+      if (randomSample) {
+        const full = await loadQuestionsByCompetenceInternal(
+          track, competenceId, part, freeOnly, 1, physicalCount, false
+        )
+        return shuffleQuestions(selectActiveQuestions(full)).slice(0, Math.max(1, Math.floor(limit ?? 200)))
+      }
+      const activeStart = Math.max(1, Math.floor(startItem || 1))
+      const originalStart = physicalPosition(activeStart)
+      const requested = limit == null
+        ? Math.max(0, physicalCount - retiredPositions.length - activeStart + 1)
+        : Math.max(0, Math.floor(limit))
+      if (requested === 0 || originalStart > physicalCount) return []
+      const originalEnd = Math.min(physicalCount, physicalPosition(activeStart + requested - 1))
+      const published = await loadQuestionsByCompetenceInternal(
+        track, competenceId, part, freeOnly, originalStart, originalEnd - originalStart + 1, false
+      )
+      return selectActiveQuestions(published).slice(0, requested)
+    }
     if (requiresC10ActivePositionMapping(track, competenceId, freeOnly)) {
       // The encrypted bank retains all 416 historical IDs, including retired
       // ones. Translate active positions to published offsets *before* paging.
