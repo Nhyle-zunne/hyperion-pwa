@@ -20,7 +20,13 @@ try {
       '2,What does cooling do?,Remove heat,Increase wear,Stop flow,Raise friction,A,Temperature control'
     ].join('\r\n')
     const reply = body.action === 'inventory'
-      ? { configured: true, assets: [{ path, label: 'Engine Management · C10', track: 'ENGINE_MGT', competenceId: 'C10', part: null, format: 'standard' }] }
+      ? { configured: true, assets: [
+          { path: 'deck/oic_nw_c1.csv.enc', label: 'Deck OIC-NW · C1', track: 'DECK_OIC_NW', competenceId: 'C1', part: null, format: 'standard' },
+          { path: 'gmdss/c1_part2.csv.enc', label: 'GMDSS GOC · C1 · Part 2', track: 'GMDSS_GOC', competenceId: 'C1', part: 2, format: 'gmdss' },
+          { path: 'engine_ew/ew_c2.csv.enc', label: 'Engine OIC-EW · C2', track: 'ENGINE_OIC_EW', competenceId: 'C2', part: null, format: 'standard' },
+          { path: 'deck_mgt/dm_c3.csv.enc', label: 'Deck Management · C3', track: 'DECK_MGT', competenceId: 'C3', part: null, format: 'standard' },
+          { path, label: 'Engine Management · C10', track: 'ENGINE_MGT', competenceId: 'C10', part: null, format: 'standard' }
+        ] }
       : body.action === 'editor-load'
         ? { path, csvText, baseHead: 'a'.repeat(40) }
         : body.action === 'validate'
@@ -30,7 +36,22 @@ try {
   })
   await editorPage.goto(process.env.HYPERION_RECOVERY_TEST_URL + '?section=question-editor')
   await editorPage.getByRole('heading', { name: 'Edit, retire or restore questions' }).waitFor()
+  const presets = editorPage.getByRole('group', { name: 'Choose examination track' })
+  assert.equal(await presets.locator('button[aria-pressed]').count(), 5, 'All five examination track presets are always available')
+  await presets.getByRole('button', { name: 'Filter GMDSS GOC question banks' }).click()
+  assert.equal(await presets.getByRole('button', { name: 'Filter GMDSS GOC question banks' }).getAttribute('aria-pressed'), 'true')
+  assert.equal(await editorPage.locator('.admin-bank-picker__option').count(), 1, 'Selecting GMDSS shows its parts only')
+  assert.match(await editorPage.locator('.admin-bank-picker__option').first().innerText(), /C1.*Part 2/, 'GMDSS competence and part stay visible')
+  await editorPage.getByRole('button', { name: 'Show all tracks' }).click()
+  assert.equal(await editorPage.locator('.admin-bank-picker__option').count(), 5, 'Clear preset restores all tracks')
   await editorPage.getByRole('combobox', { name: 'Search track, competence or question bank' }).fill('Engine C10')
+  assert.equal(await editorPage.locator('.admin-bank-picker__option').count(), 1, 'Global text search still works')
+  await editorPage.locator('.admin-bank-picker__option').first().click()
+  assert.equal(await editorPage.getByRole('button', { name: 'OPEN QUESTION BANK' }).isEnabled(), true, 'Selecting a competence enables Open')
+  await presets.getByRole('button', { name: 'Filter Deck Management question banks' }).click()
+  assert.equal(await editorPage.getByRole('button', { name: 'OPEN QUESTION BANK' }).isDisabled(), true, 'Changing tracks clears a bank from the previous track')
+  assert.equal(await editorPage.locator('.admin-bank-picker__option').count(), 1, 'Other track is filtered to its own competences')
+  await presets.getByRole('button', { name: 'Filter Engine Management question banks' }).click()
   await editorPage.locator('.admin-bank-picker__option').first().click()
   await editorPage.getByRole('button', { name: 'OPEN QUESTION BANK' }).click()
   await editorPage.getByText('Question #1', { exact: true }).waitFor()
@@ -64,6 +85,8 @@ try {
   assert.equal(editorApiCalls.includes('publish'), false)
   for (const width of [1531, 390]) {
     await editorPage.setViewportSize({ width, height: 900 })
+    const presetBounds = await presets.boundingBox()
+    assert(presetBounds && presetBounds.x >= 0 && presetBounds.x + presetBounds.width <= width, 'Track presets fit viewport width')
     const one = await actions.locator('.admin-qb-editor-action').first().boundingBox()
     const two = await actions.locator('.admin-qb-editor-action').last().boundingBox()
     assert(one && two)
