@@ -386,6 +386,25 @@ Deno.serve(async req => {
     return json(req, { error: 'Invalid request.' }, 400)
   }
 
+  // Use a private single-statement conditional UPSERT. Existing, byte-identical
+  // JSONB archives never execute UPDATE triggers, reducing repeated disk I/O.
+  // A legacy function deployment may not yet have this RPC; retain the
+  // previous conflict-safe upsert while Edge and DB releases roll out.
+  async function storeSessionRows(rows: Array<{
+    user_id: string; session_id: string; data: JsonRecord; updated_at: string
+  }>): Promise<void> {
+    const { error } = await admin.rpc('upsert_learning_session_archives_if_changed', {
+      p_user_id: user!.id,
+      p_sessions: rows.map(row => ({ session_id: row.session_id, data: row.data }))
+    })
+    if (error && error.code !== 'PGRST202') throw error
+    if (error) {
+      const fallback = await admin.from('user_learning_session_archives')
+        .upsert(rows, { onConflict: 'user_id,session_id' })
+      if (fallback.error) throw fallback.error
+    }
+  }
+
   if (body.action === 'recover-saved') {
     const { data, error } = await admin.rpc('recover_learning_progress_collections', { p_user_id: user.id, p_apply: true })
     if (error) return json(req, { error: 'Saved-data recovery is not available yet. Existing data has not been changed.' }, 503)
@@ -412,8 +431,7 @@ Deno.serve(async req => {
         if (!verified.activeSession) return json(req, { error: 'Saved session access could not be verified.' }, 403)
         rows.push({ user_id: user.id, session_id: entry.sessionId, data: verified.activeSession, updated_at: new Date().toISOString() })
       }
-      const { error } = await admin.from('user_learning_session_archives').upsert(rows, { onConflict: 'user_id,session_id' })
-      if (error) throw error
+      await storeSessionRows(rows)
       return json(req, { ok: true, sessionIds: entries.map(entry => entry.sessionId) })
     } catch { return json(req, { error: 'Session archives could not be synchronized. The local copies are preserved.' }, 503) }
   }
@@ -433,8 +451,7 @@ Deno.serve(async req => {
       if (!isRecord(body.snapshot) || body.snapshot.sessionId !== sessionId) return json(req, { error: 'Invalid session snapshot.' }, 400)
       const verified = await sanitizeSnapshot(client, { version: 1, storage: {}, activeSession: body.snapshot }, allowed)
       if (!verified.activeSession) return json(req, { error: 'Saved session access could not be verified.' }, 403)
-      const { error } = await admin.from('user_learning_session_archives').upsert({ user_id: user.id, session_id: sessionId, data: verified.activeSession, updated_at: new Date().toISOString() }, { onConflict: 'user_id,session_id' })
-      if (error) throw error
+      await storeSessionRows([{ user_id: user.id, session_id: sessionId, data: verified.activeSession, updated_at: new Date().toISOString() }])
       return json(req, { ok: true })
     } catch { return json(req, { error: 'Session archive could not be synchronized. The local copy is preserved.' }, 503) }
   }
