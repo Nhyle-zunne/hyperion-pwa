@@ -4,6 +4,7 @@ set local lock_timeout = '5s';
 -- Incremental operations are an additive protocol. Existing progress rows,
 -- revisions, session archives and the full snapshot write contract are intact.
 -- All access is through the JWT-validated learning-progress Edge Function.
+-- SECURITY INVOKER uses only service_role's explicit progress permissions, never elevated database-owner privileges.
 create table if not exists public.user_learning_progress_section_operations (
   user_id uuid not null references auth.users(id) on delete cascade,
   operation_id uuid not null,
@@ -38,7 +39,7 @@ grant execute on function public.learning_progress_section_version(uuid,text,jso
 create or replace function public.read_learning_progress_sections(
   p_user_id uuid, p_keys text[]
 ) returns jsonb
-language plpgsql security definer set search_path = ''
+language plpgsql security invoker set search_path = ''
 as $$
 declare
   progress_data jsonb;
@@ -77,7 +78,7 @@ grant execute on function public.read_learning_progress_sections(uuid,text[]) to
 create or replace function public.write_learning_progress_sections(
   p_user_id uuid, p_operation_id uuid, p_updates jsonb
 ) returns jsonb
-language plpgsql security definer set search_path = ''
+language plpgsql security invoker set search_path = ''
 as $$
 declare
   allowed text[] := array[
