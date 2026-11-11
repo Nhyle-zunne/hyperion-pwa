@@ -67,6 +67,9 @@ assert.equal(await a.acknowledge(ownerB,replacement.operation_id,{ok:true,operat
 assert.deepEqual((await a.pending(ownerB)).updates,b.updates)
 console.log('PASS: owner-bound durable outbox, exact idempotent retries, fail-closed ACK, crash recovery, conflict rebase, storage errors')
 
+assert.equal(await a.acknowledge(ownerA,replacement.operation_id,{
+  ok:true,operation_id:replacement.operation_id,versions:{'hyperion-bookmarks':'f'.repeat(32)}
+}),true)
 await assert.rejects(a.stage(ownerA,[{...action,key:'unknown-progress-data'}],
   'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'),/Invalid incremental progress operation/,
   'Unknown keys are refused even if the caller bypasses the planner')
