@@ -26,6 +26,14 @@ Deno.test('saved-data service scopes recovery and audits, preserves expired-owne
     if (url.pathname.endsWith('/google_play_entitlements')) return json([])
     if (url.pathname.endsWith('/rpc/recover_learning_progress_collections')) return json({ found: true, applied: true })
     if (url.pathname.endsWith('/question-bank')) return json({ bookmarkAllowedIndexes: [], vaultAllowedIndexes: [], legacySavedPracticeAllowed: false, activeSessionAllowed: false })
+    if (url.pathname.endsWith('/rpc/upsert_learning_session_archives_if_changed')) {
+      assert.ok(Array.isArray(body.p_sessions))
+      for (const item of body.p_sessions) {
+        assert.equal(item.data.sessionId,item.session_id)
+        rows.set(body.p_user_id + ':' + item.session_id, item.data)
+      }
+      return json(body.p_sessions.length)
+    }
     if (url.pathname.endsWith('/user_learning_session_archives')) {
       if (req.method === 'GET') {
         const key = url.searchParams.get('user_id')?.replace('eq.', '') + ':' + url.searchParams.get('session_id')?.replace('eq.', '')
