@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { questionBankPickerLabel, searchQuestionBankAssets, type QuestionBankPickerAsset } from '../../src/lib/questionBankPicker'
+import { filterQuestionBankAssets, questionBankPickerLabel, searchQuestionBankAssets, type QuestionBankPickerAsset } from '../../src/lib/questionBankPicker'
 
 const assets: QuestionBankPickerAsset[] = [
   { path: 'engine_mgt/em_c10.csv.enc', track: 'ENGINE_MGT', competenceId: 'C10', part: null, label: 'Engine Management · C10' },
@@ -22,4 +22,15 @@ test('labels are human readable while selected value remains the original bank p
   expect(assets[0].path).toBe('engine_mgt/em_c10.csv.enc')
   expect(searchQuestionBankAssets(assets, '')).toEqual(assets)
   expect(searchQuestionBankAssets(assets, '   ')).toEqual(assets)
+})
+
+test('track preset restricts competence and part results without losing global search', () => {
+  expect(filterQuestionBankAssets(assets, 'ENGINE_MGT', '').map(asset => asset.path)).toEqual(['engine_mgt/em_c10.csv.enc'])
+  expect(filterQuestionBankAssets(assets, 'GMDSS_GOC', 'part 2').map(asset => asset.path)).toEqual(['gmdss/c1_part2.csv.enc'])
+  expect(filterQuestionBankAssets(assets, 'GMDSS_GOC', 'C10')).toEqual([])
+  expect(filterQuestionBankAssets(assets, 'DECK_OIC_NW', 'C10').map(asset => asset.path)).toEqual(['deck/oic_nw_c10.csv.enc'])
+  expect(filterQuestionBankAssets(assets, null, 'C10').map(asset => asset.path)).toEqual([
+    'engine_mgt/em_c10.csv.enc', 'deck/oic_nw_c10.csv.enc', 'deck_mgt/dm_c10.csv.enc'
+  ])
+  expect(filterQuestionBankAssets(assets, null, '')).toEqual(assets)
 })
