@@ -5,6 +5,40 @@ type JsonRecord = Record<string, unknown>
 
 const TRACKS = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'] as const
 const QUESTION_STORAGE_KEYS = ['hyperion-bookmarks', 'hyperion-vault'] as const
+const INCREMENTAL_STORAGE_KEYS = [
+  'hyperion-history', 'hyperion-study-time', 'hyperion-vault', 'hyperion-bookmarks',
+  'hyperion-saved-practice', 'hyperion-mock-exam-plan-v1',
+  'hyperion-question-attempt-history', 'hyperion-progress-deletions'
+] as const
+type IncrementalStorageKey = typeof INCREMENTAL_STORAGE_KEYS[number]
+function isIncrementalStorageKey(value: unknown): value is IncrementalStorageKey {
+  return typeof value === 'string' && INCREMENTAL_STORAGE_KEYS.some(key => key === value)
+}
+function parseIncrementalSectionKeys(value: unknown): IncrementalStorageKey[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 8 ||
+      value.some(item => !isIncrementalStorageKey(item)) ||
+      new Set(value).size !== value.length) return null
+  return value as IncrementalStorageKey[]
+}
+// Canonicalize nested JSON so harmless client wrapper formatting / key ordering
+// never turns a valid licensed question into a false authorization failure.
+function equivalentSectionJson(original: unknown, verified: unknown): boolean {
+  if (original === verified) return true
+  if (typeof original !== 'string' || typeof verified !== 'string') return false
+  try {
+    const canonical = (value: unknown): string => {
+      if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']'
+      if (value && typeof value === 'object') {
+        return '{' + Object.keys(value as JsonRecord).sort().map(key =>
+          JSON.stringify(key) + ':' + canonical((value as JsonRecord)[key])
+        ).join(',') + '}'
+      }
+      return JSON.stringify(value)
+    }
+    return canonical(JSON.parse(original)) === canonical(JSON.parse(verified))
+  } catch { return false }
+}
+
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024
 const PROGRESS_ROW_CACHE_TTL_MS = 45_000
 const PROGRESS_ROW_CACHE_MAX_ENTRIES = 16
@@ -418,6 +452,96 @@ Deno.serve(async req => {
         .upsert(rows, { onConflict: 'user_id,session_id' })
       if (fallback.error) throw fallback.error
     }
+  }
+
+  // V2 is additive. Older Android/PWA builds continue to use read/write.
+  // Storage remains in user_learning_progress so account recovery and historical
+  // revisions retain the existing, audited preservation behavior.
+  if (body.action === 'read-sections') {
+    const keys = parseIncrementalSectionKeys(body.keys)
+    if (!keys) return json(req, { error: 'Invalid progress section keys.' }, 400)
+    let allowed: Set<TrackId>
+    try { allowed = await loadAllowedTracks(admin, user) }
+    catch { return json(req, { error: 'Current license access could not be verified.' }, 503) }
+
+    const { data: result, error } = await admin.rpc('read_learning_progress_sections', {
+      p_user_id: user.id, p_keys: keys
+    })
+    if (error || !isRecord(result) || !isRecord(result.storage) || !isRecord(result.versions)) {
+      return json(req, { error: 'Incremental progress reads are not available; use the full recovery snapshot.' }, 503)
+    }
+    try {
+      const sectionStorage = result.storage as JsonRecord
+      const sectionVersions = result.versions as JsonRecord
+      const sanitized = await sanitizeSnapshot(client, {
+        version: 1, storage: Object.fromEntries(keys.map(key => [key, sectionStorage[key] ?? null]))
+      }, allowed)
+      const verifiedStorage = sanitized.storage as JsonRecord
+      const known = isRecord(body.known_versions) ? body.known_versions : {}
+      const returned: JsonRecord = {}
+      for (const key of keys) {
+        // Version matching is not an authorization decision. Question-bearing
+        // sections must still return newly filtered data after license changes.
+        const isQuestionSection = key === 'hyperion-bookmarks' ||
+          key === 'hyperion-vault' || key === 'hyperion-saved-practice'
+        if (!isQuestionSection && known[key] === sectionVersions[key]) continue
+        returned[key] = verifiedStorage[key] ?? null
+      }
+      return json(req, { ok: true, storage: returned, versions: sectionVersions, updated_at: result.updated_at ?? null })
+    } catch {
+      return json(req, { error: 'Could not safely verify incremental saved-question access.' }, 503)
+    }
+  }
+
+  if (body.action === 'write-sections') {
+    const operationId = body.operation_id
+    const updates = body.updates
+    if (typeof operationId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId) ||
+        !Array.isArray(updates) || updates.length < 1 || updates.length > 8 ||
+        !parseIncrementalSectionKeys(updates.map(entry => isRecord(entry) ? entry.key : null)) ||
+        updates.some(entry => !isRecord(entry) || !Object.prototype.hasOwnProperty.call(entry, 'value') ||
+          !(typeof entry.value === 'string' || entry.value === null) ||
+          typeof entry.expected_version !== 'string' || !/^[0-9a-f]{32}$/i.test(entry.expected_version) ||
+          (typeof entry.value === 'string' && new TextEncoder().encode(entry.value).byteLength > 524288))) {
+      return json(req, { error: 'Invalid incremental progress operation.' }, 400)
+    }
+    let allowed: Set<TrackId>
+    try { allowed = await loadStorageTracks(admin, user) }
+    catch { return json(req, { error: 'Current progress storage permission could not be verified.' }, 503) }
+    if (allowed.size === 0) return json(req, { error: 'Cloud progress requires a licensed or historically licensed track.' }, 403)
+    // Only supplied keys may be committed. sanitizeSnapshot sets nulls on
+    // missing question keys, so do not send its other synthesized keys to SQL.
+    const incoming: JsonRecord = Object.fromEntries(updates.map(entry => [entry.key, entry.value]))
+    try {
+      const verified = await sanitizeSnapshot(client, { version: 1, storage: incoming }, allowed)
+      const storage = verified.storage as JsonRecord
+      for (const entry of updates) {
+        if (entry.key === 'hyperion-bookmarks' || entry.key === 'hyperion-vault' ||
+            entry.key === 'hyperion-saved-practice') {
+          if (!equivalentSectionJson(entry.value, storage[entry.key])) {
+            return json(req, { error: 'Incremental saved-question access could not be verified.' }, 403)
+          }
+        }
+      }
+    } catch {
+      return json(req, { error: 'Incremental saved-question access could not be verified.' }, 503)
+    }
+
+    const { data, error } = await admin.rpc('write_learning_progress_sections', {
+      p_user_id: user.id, p_operation_id: operationId, p_updates: updates
+    })
+    if (error) return json(req, { error: 'Incremental progress could not be saved; local changes remain queued.' }, 503)
+    if (data?.invalid_operation) return json(req, { error: 'Invalid or reused incremental operation ID.' }, 400)
+    if (Array.isArray(data?.conflicts)) return json(req, {
+      error: 'Progress section changed on another device. Read and merge these sections before retrying.',
+      conflicts: data.conflicts, conflict: true
+    }, 409)
+    if (data?.ok !== true || data.operation_id !== operationId || !isRecord(data.versions)) {
+      return json(req, { error: 'Incremental progress acknowledgement was not verified.' }, 503)
+    }
+    progressRowCache.delete(user.id)
+    return json(req, data)
   }
 
   if (body.action === 'recover-saved') {
