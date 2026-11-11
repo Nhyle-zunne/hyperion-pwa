@@ -336,7 +336,9 @@ export default function App() {
       document.removeEventListener('visibilitychange', onResume)
       authListener.data.subscription.unsubscribe()
     }
-  }, [location.pathname, location.search, entitlementsVerified, cloudTrackIds, isAllAccessUnlocked])
+  // Route transitions do not require another activity check. Entitlement
+  // changes and the focus/visibility/online events above cover revisits.
+  }, [entitlementsVerified, cloudTrackIds, isAllAccessUnlocked])
 
 
   useEffect(() => {
