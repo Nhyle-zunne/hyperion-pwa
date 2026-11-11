@@ -211,8 +211,10 @@ export default function App() {
       if (!shouldRefreshLicenseForAuthEvent(event, previousUserId, nextUserId)) return
       clearPaidQuestionCache()
       if (event === 'SIGNED_OUT') {
-        // Explicit logout invalidates the previous account's local access.
-        useLicenseStore.getState().clearLicense()
+        // Auth can report SIGNED_OUT after a transient refresh-token failure.
+        // Do not destroy an otherwise valid signed offline lease. Explicit
+        // Sign Out buttons revoke that lease through clearLicense() themselves.
+        void useLicenseStore.getState().refreshCachedEntitlements()
         setEntitlementsChecked(true)
         return
       }
