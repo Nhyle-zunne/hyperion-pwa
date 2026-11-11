@@ -17,6 +17,50 @@ try {
   await page.getByText('OIC NW C1 refresh test question?', { exact: true }).waitFor()
   assert.match(page.url(), /[?&]resume=refresh-oic-c1(?:&|$)/,
     'A newly started C1 session must pin its exact ID in the URL')
+
+  // Regression for the route-transition transform trapping fixed-position
+  // children inside the scrollable quiz rather than the browser viewport.
+  const assertFixedViewportLayer = async (selector, label) => {
+    const bounds = await page.locator(selector).evaluate(element => {
+      const r = element.getBoundingClientRect()
+      return { top: r.top, left: r.left, right: r.right, bottom: r.bottom,
+        viewportWidth: window.innerWidth, viewportHeight: window.innerHeight }
+    })
+    assert.ok(Math.abs(bounds.top) < 2 && Math.abs(bounds.left) < 2 &&
+      Math.abs(bounds.right - bounds.viewportWidth) < 2 &&
+      Math.abs(bounds.bottom - bounds.viewportHeight) < 2,
+    label + ' must cover the full visual viewport, not the route content: ' + JSON.stringify(bounds))
+  }
+  const assertModalCentered = async (selector, label) => {
+    const box = await page.locator(selector).boundingBox()
+    assert.ok(box, label + ' must be visible')
+    const viewport = page.viewportSize()
+    assert.ok(box.x >= 0 && box.y >= 0 &&
+      box.x + box.width <= viewport.width + 2 &&
+      box.y + box.height <= viewport.height + 2,
+    label + ' must remain fully inside the screen: ' + JSON.stringify(box))
+    assert.ok(Math.abs((box.y + box.height / 2) - viewport.height / 2) < 3,
+    label + ' must be vertically centered in the viewport: ' + JSON.stringify(box))
+  }
+  for (const size of [{ width: 1200, height: 880 }, { width: 390, height: 720 }]) {
+    await page.setViewportSize(size)
+    await page.evaluate(() => window.dispatchEvent(new Event('hyperion:request-exit-practice')))
+    await page.getByRole('dialog', { name: 'Save your progress?' }).waitFor()
+    await assertFixedViewportLayer('.exit-dialog-backdrop', 'Save Progress & Exit backdrop')
+    await assertModalCentered('.exit-dialog', 'Save Progress & Exit dialog')
+    await page.getByRole('button', { name: 'Continue Reviewing' }).click()
+    await page.getByRole('button', { name: 'Question palette' }).click()
+    await page.getByRole('dialog', { name: 'QUESTION PALETTE' }).waitFor()
+    await assertFixedViewportLayer('.practice-quiz-screen [role="presentation"]', 'Question Palette backdrop')
+    await assertModalCentered('.practice-quiz-screen [role="dialog"]', 'Question Palette dialog')
+    await page.getByRole('button', { name: 'CLOSE', exact: true }).click()
+    const footerBottom = await page.getByRole('button', { name: 'Question palette' }).evaluate(element =>
+      element.parentElement.getBoundingClientRect().bottom)
+    assert.ok(Math.abs(footerBottom - size.height) < 2,
+      'Question navigation bar must dock to the visual viewport bottom, not route content')
+  }
+  await page.setViewportSize({ width: 1200, height: 880 })
+
   const latest = await page.evaluate(() => {
     const history = JSON.parse(localStorage.getItem('hyperion-history') || '{}')
     return [...(history.state?.savedSessions || [])].sort((a, b) => b.savedAt - a.savedAt)[0]?.id
