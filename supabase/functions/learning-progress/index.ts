@@ -391,7 +391,7 @@ Deno.serve(async req => {
   // A legacy function deployment may not yet have this RPC; retain the
   // previous conflict-safe upsert while Edge and DB releases roll out.
   async function storeSessionRows(rows: Array<{
-    user_id: string; session_id: string; data: JsonRecord; updated_at: string
+    user_id: string; session_id: string; data: unknown; updated_at: string
   }>): Promise<void> {
     const { error } = await admin.rpc('upsert_learning_session_archives_if_changed', {
       p_user_id: user!.id,
