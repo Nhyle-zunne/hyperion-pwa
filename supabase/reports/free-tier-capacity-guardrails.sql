@@ -1,11 +1,12 @@
 -- Hyperion Free-tier capacity watch: read-only, no customer rows or secrets.
 -- Project-specific Free database allowance at the time of this report:
--- 500 MiB (524,288,000 bytes). Confirm current plan limits in Dashboard.
+-- Supabase documents 500 MB. Use a conservative 500,000,000-byte limit;
+-- this is lower than 500 MiB. Confirm current limits in Dashboard.
 -- Run after deploying optimizations and compare against a prior saved sample.
 -- This is DATABASE SIZE, not full disk usage (WAL/system logs) or physical IOPS.
 WITH size_budget AS (
   SELECT pg_database_size(current_database())::numeric AS used_bytes,
-         (500 * 1024 * 1024)::numeric AS free_database_budget_bytes
+         500000000::numeric AS free_database_budget_bytes
 )
 SELECT now() AS measured_at,
        current_database() AS database_name,
@@ -36,7 +37,7 @@ WHERE schemaname = 'public'
 ORDER BY pg_total_relation_size(relid) DESC
 LIMIT 15;
 
--- Compare against a prior capture; 500 MiB budget applies to the database,
--- not all platform billable storage, bandwith, or Disk IO Budget balance.
+-- Compare against a prior capture; the 500 MB budget applies to the database,
+-- not all platform billable storage, bandwidth, or Disk IO Budget balance.
 -- An alert/green status here does NOT prove Nano is safe. Check the Dashboard
 -- for 7-day minimum Disk IO Budget, IOWait, memory/swap, and outage history.
