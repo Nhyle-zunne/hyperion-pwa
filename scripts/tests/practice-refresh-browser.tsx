@@ -110,7 +110,9 @@ function Fixture() {
     })
     navigate('/scripts/tests/practice-refresh-browser.html?resume=' + encodeURIComponent(oicId))
   }
-  return <div>
+  // Match the production route wrapper. Its entry animation must never
+  // become the containing block for fixed quiz overlays or navigation.
+  return <div className="route-transition">
     <button type="button" onClick={() => { void seed() }}>Start OIC-NW C1 fixture</button>
     {isMock ? <MockExamRunner /> : <PracticeQuizScreen />}
   </div>
