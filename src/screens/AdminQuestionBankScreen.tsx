@@ -63,6 +63,7 @@ export default function AdminQuestionBankScreen() {
   const [editorDraft, setEditorDraft] = useState<QuestionEdit | null>(null)
   const [editorBusy, setEditorBusy] = useState(false)
   const [editorError, setEditorError] = useState('')
+  const [editorNotice, setEditorNotice] = useState<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null)
   const editorBank = useMemo(() => {
     if (!editorText || !editorTarget) return null
     try { return readEditableBank(editorTarget, editorText) } catch { return null }
@@ -72,6 +73,23 @@ export default function AdminQuestionBankScreen() {
     return !needle || String(q.ordinal).includes(needle) || q.questionText.toLowerCase().includes(needle)
   }).slice(0, 150) || [], [editorBank, editorSearch])
   const selectedEditorQuestion = editorBank?.questions.find(q => q.ordinal === editorOrdinal) || null
+  // The form is separate from the applied CSV draft. Do not silently queue
+  // old CSV bytes or discard typed edits when switching questions.
+  const editorFormDirty = !!(selectedEditorQuestion && editorDraft && (
+    editorDraft.questionText.trim() !== selectedEditorQuestion.questionText ||
+    editorDraft.correctAnswerIndex !== selectedEditorQuestion.correctAnswerIndex ||
+    editorDraft.explanation !== selectedEditorQuestion.explanation ||
+    editorDraft.retired !== selectedEditorQuestion.retired ||
+    editorDraft.options.length !== selectedEditorQuestion.options.length ||
+    editorDraft.options.some((option, i) => option.trim() !== selectedEditorQuestion.options[i])
+  ))
+  const editorHasAppliedEdits = !!editorText && editorText !== editorOriginalText
+  const editorDraftQueued = queue.some(item => !!item.baseHead && item.targetPath === editorTarget && item.status !== 'success')
+  const updateEditorDraft = (draft: QuestionEdit) => {
+    setEditorDraft(draft)
+    setEditorError('')
+    setEditorNotice(null)
+  }
 
   const call = useCallback(async (body: Record<string, unknown>) => {
     if (!supabase) throw new Error('Question-bank administration is not configured.')
@@ -165,6 +183,7 @@ export default function AdminQuestionBankScreen() {
     if (!editorTarget) return
     setEditorBusy(true)
     setEditorError('')
+    setEditorNotice(null)
     try {
       const result = await call({ action: 'editor-load', path: editorTarget })
       if (result.path !== editorTarget || typeof result.csvText !== 'string' || !/^[a-f0-9]{40}$/.test(result.baseHead || '')) {
@@ -189,15 +208,27 @@ export default function AdminQuestionBankScreen() {
   }
 
   const chooseEditorQuestion = (ordinal: number) => {
+    if (ordinal !== editorOrdinal && editorFormDirty) {
+      setEditorNotice({ kind: 'error', text: `Question #${editorOrdinal} has unapplied form changes. Apply or discard them before selecting another question.` })
+      return
+    }
     const question = editorBank?.questions.find(q => q.ordinal === ordinal)
     if (!question) return
     setEditorOrdinal(ordinal)
     setEditorDraft({ questionText: question.questionText, options: question.options.slice(), correctAnswerIndex: question.correctAnswerIndex, explanation: question.explanation, retired: question.retired })
     setEditorError('')
+    setEditorNotice(null)
   }
 
   const applyEditorDraft = () => {
-    if (!editorBank || !editorDraft || !selectedEditorQuestion) return
+    if (!editorBank || !editorDraft || !selectedEditorQuestion) {
+      setEditorNotice({ kind: 'error', text: 'Open a question bank and select a question first.' })
+      return
+    }
+    if (!editorFormDirty) {
+      setEditorNotice({ kind: 'info', text: 'No changes to apply yet. Change a question field, answer, explanation or retirement status first.' })
+      return
+    }
     try {
       const updated = editBankQuestion(editorBank, editorOrdinal, editorDraft)
       const next = readEditableBank(editorTarget, updated)
@@ -207,30 +238,53 @@ export default function AdminQuestionBankScreen() {
         throw Error('The question-bank structure changed. The edit was not saved.')
       }
       setEditorText(updated)
-      setEditorDraft({ questionText: selection.questionText, options: selection.options, correctAnswerIndex: selection.correctAnswerIndex, explanation: selection.explanation, retired: selection.retired })
+      setEditorDraft({ questionText: selection.questionText, options: selection.options.slice(), correctAnswerIndex: selection.correctAnswerIndex, explanation: selection.explanation, retired: selection.retired })
+      // If this bank was already queued, applying another change invalidates
+      // the previously built File. Prevent publishing an obsolete snapshot.
+      setQueue(old => old.filter(item => !(item.baseHead && item.targetPath === editorTarget && item.status !== 'success')))
+      setPreview(null)
+      setBatchResult(null)
       setEditorError('')
-      setMessage('Edit saved as a local draft. Add it to the queue, then validate and publish.')
+      setEditorNotice({ kind: 'success', text: `Question #${editorOrdinal} saved to the local draft. ${editorDraftQueued ? 'An older queued version was cleared. ' : ''}Next: add the edited bank to the publish queue.` })
+      setMessage('Question edit saved locally. Add the edited bank to the queue, validate, then publish. No live questions have changed.')
       setIsError(false)
     } catch (reason) {
-      setEditorError(reason instanceof Error ? reason.message : 'This question could not be edited.')
+      const error = reason instanceof Error ? reason.message : 'This question could not be edited.'
+      setEditorError(error)
+      setEditorNotice({ kind: 'error', text: error })
     }
   }
 
   const queueEditorChanges = () => {
-    if (!editorText || !editorTarget || !editorBaseHead) return
-    if (editorText === editorOriginalText) { setEditorError('No changes have been applied yet.'); return }
+    const feedback = (text: string) => { setEditorError(''); setEditorNotice({ kind: 'error', text }) }
+    if (!editorText || !editorTarget || !editorBaseHead) {
+      feedback('Open a question bank before adding changes to the queue.')
+      return
+    }
+    if (editorFormDirty) {
+      feedback('Apply the current edit to the local draft first, then add the edited bank to the queue.')
+      return
+    }
+    if (!editorHasAppliedEdits) {
+      feedback('No applied edits to queue. Change a question and click Apply question edit to draft first.')
+      return
+    }
     if (queue.some(item => item.status !== 'success' && item.targetPath !== editorTarget)) {
-      setEditorError('Publish the existing upload queue first. An edited question set cannot be mixed with another upload.')
+      feedback('Publish or clear the existing upload queue first. An edited question set cannot be mixed with another upload.')
       return
     }
     const file = new File([editorText], rawCsvName(editorTarget), { type: 'text/csv' })
-    if (file.size > MAX_FILE_BYTES) { setEditorError('This edited CSV exceeds 700 KB.'); return }
+    if (file.size > MAX_FILE_BYTES) {
+      feedback('This edited CSV exceeds 700 KB. The current draft was not queued.')
+      return
+    }
     setQueue(old => [...old.filter(item => item.targetPath !== editorTarget || item.status === 'success'), {
       id: 'editor-' + crypto.randomUUID(), file, targetPath: editorTarget, status: 'ready', baseHead: editorBaseHead
     }])
     setPreview(null)
     setBatchResult(null)
     setEditorError('')
+    setEditorNotice({ kind: 'success', text: 'Edited question bank added to the upload queue. Next: validate the batch, review the changes, then publish to GitHub.' })
     setMessage('Edited questions are in the upload queue. Validate and review the changes before publishing.')
     setIsError(false)
   }
