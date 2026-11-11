@@ -43,8 +43,21 @@ FROM pg_catalog.pg_stat_user_tables
 WHERE schemaname='public'
   AND relname IN ('user_learning_progress_revisions','user_learning_session_archives',
                   'user_learning_progress','google_play_purchase_links',
-                  'google_play_entitlements')
+                  'google_play_entitlements','user_learning_progress_section_operations')
 ORDER BY pg_catalog.pg_total_relation_size(relid) DESC;
+
+-- V2 synchronization is currently disabled in both clients. Count its
+-- idempotency receipts separately before enabling it; these can accumulate
+-- indefinitely if retries are not bounded by a safe conflict/ack protocol.
+-- Never truncate receipts while a device might replay an uncertain commit.
+SELECT pg_catalog.now() AS measured_at,
+       COUNT(*) AS v2_receipts,
+       pg_catalog.pg_size_pretty(
+         pg_catalog.pg_total_relation_size('public.user_learning_progress_section_operations'::regclass)
+       ) AS receipt_table_total,
+       MIN(acknowledged_at) AS oldest_receipt,
+       MAX(acknowledged_at) AS newest_receipt
+FROM public.user_learning_progress_section_operations;
 
 -- Scheduled jobs currently maintained; pg_cron works on Free, but frequent
 -- reconciliation may waste database writes. Do not disable license revocation.

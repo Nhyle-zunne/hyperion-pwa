@@ -20,8 +20,10 @@ test('only a complete explicit acknowledgement may advance sync markers', () => 
 })
 
 test('paid cloud archives coalesce frequent draft saves while completed exam audits flush immediately', () => {
-  expect(SESSION_ARCHIVE_CLOUD_BATCH_MS).toBeGreaterThanOrEqual(10000)
-  expect(SESSION_ARCHIVE_CLOUD_BATCH_MS).toBeLessThanOrEqual(30000)
+  // The routine draft timer is anchored at the FIRST change, not continually
+  // restarted on every answer. Active practice is saved to encrypted IndexedDB
+  // immediately, with the cloud requests coalesced into one 30-second window.
+  expect(SESSION_ARCHIVE_CLOUD_BATCH_MS).toBe(30_000)
   expect(flushArchiveImmediately(true)).toBe(true)
   expect(flushArchiveImmediately(false)).toBe(false)
   expect(flushArchiveImmediately(undefined)).toBe(false)
