@@ -340,10 +340,23 @@ async function loadStorageTracks(admin: any, user: { id: string; email?: string 
   const adminEmails = (Deno.env.get('ADMIN_EMAILS') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean)
   if (user.email && adminEmails.includes(user.email.toLowerCase())) return new Set(TRACKS)
 
-  // Website historical ownership already includes every currently active
-  // website entitlement. Do not query those same rows first via
-  // loadAllowedTracks(): storage eligibility is the *historical union*, while
-  // question delivery / read sanitization still check live license expiry.
+  // A private SECURITY INVOKER RPC performs the exact same historical union
+  // in one indexed SQL statement / HTTP request, rather than two PostgREST
+  // queries for every saved-session or progress write. Historical ownership
+  // only authorizes backup; it does NOT grant current premium question access.
+  const { data, error } = await admin.rpc('get_learning_progress_owned_tracks', {
+    p_user_id: user.id
+  })
+  if (!error) {
+    if (!Array.isArray(data)) throw new Error('Historical ownership response was invalid.')
+    return new Set(data.map((row: { track_id?: unknown }) => row.track_id).filter(isTrackId))
+  }
+  // Keep older databases compatible when Edge deploy precedes schema cache
+  // refresh. Other database errors fail closed instead of bypassing checks.
+  if (error.code !== 'PGRST202') {
+    throw new Error('Historical ownership could not be verified.')
+  }
+
   const [website, play] = await Promise.all([
     admin.from('entitlements').select('track_id').eq('user_id', user.id),
     admin.from('google_play_entitlements').select('track_id').eq('user_id', user.id)
@@ -351,7 +364,9 @@ async function loadStorageTracks(admin: any, user: { id: string; email?: string 
   if (website.error) throw new Error('Previous website ownership could not be checked.')
   if (play.error && !['42P01', 'PGRST205'].includes(play.error.code)) throw new Error('Previous Play ownership could not be checked.')
   const tracks = new Set<TrackId>()
-  for (const row of [...(website.data ?? []), ...(play.error ? [] : (play.data ?? []))]) if (isTrackId(row.track_id)) tracks.add(row.track_id)
+  for (const row of [...(website.data ?? []), ...(play.error ? [] : (play.data ?? []))]) {
+    if (isTrackId(row.track_id)) tracks.add(row.track_id)
+  }
   return tracks
 }
 
