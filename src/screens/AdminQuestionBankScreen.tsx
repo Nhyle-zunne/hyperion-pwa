@@ -363,6 +363,21 @@ export default function AdminQuestionBankScreen() {
 
   return <div className="screen" style={{ width: 'min(calc(100% - 1rem), 1180px)', maxWidth: 1180, margin: '0 auto', paddingBottom: '2rem' }}>
     <style>{" .admin-qb-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:190px;border:2px dashed var(--border);border-radius:10px;padding:1.25rem;text-align:center;background:var(--bg-elevated);transition:border-color .15s,background .15s}.admin-qb-drop.is-dragging{border-color:var(--accent);background:var(--bg-card)}.admin-qb-folder{border:1px solid var(--border);border-radius:8px;background:var(--bg-card);overflow:hidden}.admin-qb-folder-summary{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;list-style:none;cursor:pointer;padding:.7rem .8rem;min-height:28px}.admin-qb-folder-summary::-webkit-details-marker{display:none}.admin-qb-folder[open] .admin-qb-folder-summary{border-bottom:1px solid var(--border);background:var(--bg-elevated)}.admin-qb-folder-glyph{font-size:1rem}.admin-qb-folder-name{font-weight:850;font-size:.86rem}.admin-qb-folder-count{color:var(--text-muted);font-size:.78rem}.admin-qb-folder-state{margin-left:auto;font-size:.72rem;font-weight:850;color:var(--text-muted)}.admin-qb-folder-state.is-done{color:var(--success,#15803d)}.admin-qb-folder-state.has-error{color:var(--danger,#dc2626)}.admin-qb-folder-files{padding:.35rem .55rem}.admin-qb-file-row{display:grid;grid-template-columns:minmax(160px,1fr) minmax(200px,1.25fr) minmax(95px,.6fr) auto;gap:.55rem;align-items:center;padding:.5rem .35rem;border-bottom:1px solid var(--border);min-width:0}.admin-qb-file-row:last-child{border-bottom:0}.admin-qb-file-primary{display:flex;align-items:flex-start;gap:.45rem;min-width:0}.admin-qb-file-glyph{font-size:.9rem;margin-top:.05rem}.admin-qb-file-primary>div{display:flex;align-items:baseline;gap:.35rem .5rem;flex-wrap:wrap;min-width:0}.admin-qb-file-name{font-size:.8rem;overflow-wrap:anywhere}.admin-qb-file-size,.admin-qb-file-questions{font-size:.72rem;color:var(--text-muted)}.admin-qb-file-questions{color:var(--success,#15803d)}.admin-qb-target-label{font-size:.64rem;font-weight:850;color:var(--text-muted);min-width:0}.admin-qb-target-select{width:100%;margin-top:.18rem;background:var(--bg-elevated);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.45rem;font:inherit;font-size:.76rem;min-width:0}.admin-qb-path{display:block;font-size:.67rem;font-weight:500;margin-top:.15rem;overflow-wrap:anywhere}.admin-qb-file-status{display:flex;flex-direction:column;align-items:flex-start;gap:.15rem;min-width:0}.admin-qb-status-pill{font-size:.67rem;font-weight:900}.admin-qb-status-pill.success{color:var(--success,#15803d)}.admin-qb-status-pill.error{color:var(--danger,#dc2626)}.admin-qb-status-pill.ready{color:var(--text-muted)}.admin-qb-status-pill.publishing{color:var(--accent)}.admin-qb-row-error{font-size:.68rem;color:var(--danger,#dc2626);overflow-wrap:anywhere}.admin-qb-backup-note{font-size:.66rem;color:var(--text-muted)}.admin-qb-remove{padding:.35rem .5rem;font-size:.72rem}.admin-qb-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:.9rem;padding-top:.7rem;border-top:1px solid var(--border)}@media(max-width:800px){.admin-qb-file-row{grid-template-columns:minmax(0,1fr) auto;gap:.45rem}.admin-qb-target-label{grid-column:1/-1}.admin-qb-file-status{grid-column:1}.admin-qb-remove{grid-column:2;grid-row:3;justify-self:end}}"} </style>
+
+    <style>{`
+      .admin-qb-editor-layout{display:grid;grid-template-columns:minmax(170px,1fr) minmax(0,2fr);gap:12px;align-items:start}
+      .admin-qb-editor-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin-top:1rem;padding:1rem;border:1px solid var(--border);border-radius:10px;background:var(--bg-elevated)}
+      .admin-qb-editor-action{min-width:0;display:flex;flex-direction:column;gap:.45rem;padding:.85rem;border:1px solid var(--border);border-radius:9px;background:var(--bg-card)}
+      .admin-qb-editor-action strong{font-size:.87rem;line-height:1.25}
+      .admin-qb-editor-action p{font-size:.75rem;line-height:1.45;color:var(--text-muted);margin:0 0 .3rem}
+      .admin-qb-editor-action .btn{width:100%;min-height:44px;margin-top:auto;white-space:normal;line-height:1.3;padding:.55rem .65rem}
+      .admin-qb-editor-action .admin-qb-discard{align-self:flex-start;margin-top:.2rem;padding:.15rem 0;background:transparent;border:0;color:var(--danger,#dc2626);cursor:pointer;font-size:.74rem;font-weight:750;text-decoration:underline}
+      .admin-qb-editor-status{grid-column:1/-1;margin:0;padding:.65rem .8rem;border:1px solid var(--border);border-radius:8px;font-size:.79rem;line-height:1.45;background:var(--bg-card);overflow-wrap:anywhere}
+      .admin-qb-editor-status.is-success{border-color:var(--success,#15803d);color:var(--success,#15803d)}
+      .admin-qb-editor-status.is-error{border-color:var(--danger,#dc2626);color:var(--danger,#dc2626)}
+      .admin-qb-editor-queue-link{grid-column:1/-1;justify-self:start;color:var(--accent);font-weight:800;font-size:.79rem}
+      @media(max-width:800px){.admin-qb-editor-layout{grid-template-columns:minmax(0,1fr)}.admin-qb-editor-actions{grid-template-columns:minmax(0,1fr);padding:.7rem}.admin-qb-editor-action{padding:.75rem}}
+    `}</style>
     <AdminNavigation />
     <h1 className="page-title" style={{ textAlign: 'left' }}>Question Bank Update</h1>
     <p className="subtitle" style={{ textAlign: 'left' }}>Drag in raw .csv files or already-encrypted .csv.enc files, individually or in bulk. Hyperion matches filenames to question sets and validates each file before replacement.</p>
@@ -385,6 +400,7 @@ export default function AdminQuestionBankScreen() {
             setEditorOrdinal(0)
             setEditorDraft(null)
             setEditorError('')
+            setEditorNotice(null)
           }} />
       </div>
       <button type="button" className="btn btn-outline"
@@ -401,10 +417,10 @@ export default function AdminQuestionBankScreen() {
       {!editorTarget && <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', margin: '.45rem 0 .1rem' }}>
         Choose a question bank above to enable this button.
       </p>}
-      {editorError && <p role="alert" style={{ color: 'var(--danger, #dc2626)' }}>{editorError}</p>}
+      {editorError && !editorBank && <p role="alert" style={{ color: 'var(--danger, #dc2626)' }}>{editorError}</p>}
       {editorBank && <>
-        <p style={secondaryText}>{editorBank.questions.length.toLocaleString()} historical questions · {editorBank.questions.filter(q => q.retired).length} retired · {editorText !== editorOriginalText ? 'Unsaved local draft changes' : 'No edits yet'}</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(170px, 1fr) minmax(0, 2fr)', gap: 12, alignItems: 'start' }}>
+        <p style={secondaryText}>{editorBank.questions.length.toLocaleString()} historical questions · {editorBank.questions.filter(q => q.retired).length} retired · {editorFormDirty ? 'Unapplied form changes' : editorHasAppliedEdits ? 'Edits saved locally (not published)' : 'No applied edits yet'}{editorDraftQueued ? ' · In publish queue' : ''}</p>
+        <div className="admin-qb-editor-layout">
           <div style={{ maxHeight: 420, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
             <input aria-label="Find question by number or text" placeholder="Search question number or text…" value={editorSearch} onChange={event => setEditorSearch(event.target.value)}
               style={{ width: '100%', padding: 8, marginBottom: 8, background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }} />
@@ -418,32 +434,47 @@ export default function AdminQuestionBankScreen() {
           </div>
           {selectedEditorQuestion && editorDraft && <div style={{ display: 'grid', gap: 9, minWidth: 0 }}>
             <strong>Question #{selectedEditorQuestion.ordinal}</strong>
-            <label>Question text<textarea value={editorDraft.questionText} rows={3} onChange={event => setEditorDraft({ ...editorDraft, questionText: event.target.value })}
+            <label>Question text<textarea value={editorDraft.questionText} rows={3} onChange={event => updateEditorDraft({ ...editorDraft, questionText: event.target.value })}
               style={{ width: '100%', marginTop: 4, color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} /></label>
             {editorDraft.options.map((option, index) => <label key={index} style={{ display: 'grid' }}>Choice {String.fromCharCode(65 + index)}
-              <textarea rows={2} value={option} onChange={event => setEditorDraft({ ...editorDraft, options: editorDraft.options.map((value, i) => i === index ? event.target.value : value) })}
+              <textarea rows={2} value={option} onChange={event => updateEditorDraft({ ...editorDraft, options: editorDraft.options.map((value, i) => i === index ? event.target.value : value) })}
                 style={{ color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} />
             </label>)}
             <label>Correct answer
-              <select value={editorDraft.correctAnswerIndex} className="admin-qb-target-select" onChange={event => setEditorDraft({ ...editorDraft, correctAnswerIndex: Number(event.target.value) })}>
+              <select value={editorDraft.correctAnswerIndex} className="admin-qb-target-select" onChange={event => updateEditorDraft({ ...editorDraft, correctAnswerIndex: Number(event.target.value) })}>
                 {editorDraft.options.map((_, i) => <option key={i} value={i}>{String.fromCharCode(65 + i)}</option>)}
               </select>
             </label>
-            <label>Explanation<textarea rows={3} value={editorDraft.explanation} onChange={event => setEditorDraft({ ...editorDraft, explanation: event.target.value })}
+            <label>Explanation<textarea rows={3} value={editorDraft.explanation} onChange={event => updateEditorDraft({ ...editorDraft, explanation: event.target.value })}
               style={{ width: '100%', marginTop: 4, color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} /></label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" checked={editorDraft.retired} disabled={selectedEditorQuestion.fixedLegacyRetirement} onChange={event => setEditorDraft({ ...editorDraft, retired: event.target.checked })} />
+              <input type="checkbox" checked={editorDraft.retired} disabled={selectedEditorQuestion.fixedLegacyRetirement} onChange={event => updateEditorDraft({ ...editorDraft, retired: event.target.checked })} />
               <strong>Retired (exclude from new study sessions)</strong>
             </label>
             {selectedEditorQuestion.fixedLegacyRetirement && <p style={secondaryText}>This is one of the three original C10 retirements, which remain enforced by the packaged Android application and cannot be restored here.</p>}
-            <p style={secondaryText}>Restoring an item allows it in future sessions. Existing bookmarks and History are never deleted. Always apply this edit before selecting another question.</p>
-            <button type="button" className="btn btn-outline" disabled={busy} onClick={applyEditorDraft}>APPLY QUESTION EDIT TO DRAFT</button>
+            <p style={secondaryText}>Retiring a question excludes it from future sessions but keeps existing bookmarks and History. Question IDs and order are preserved. Apply a changed form before selecting another question.</p>
           </div>}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-          <button type="button" className="btn btn-primary" disabled={busy || editorBusy || !editorBaseHead || editorText === editorOriginalText} onClick={queueEditorChanges}>
-            ADD EDITED QUESTIONS TO PUBLISH QUEUE
-          </button>
+        <div className="admin-qb-editor-actions" aria-label="Question editing actions">
+          <div className="admin-qb-editor-action">
+            <strong>Step 1 · Apply the current question edit</strong>
+            <p>{editorFormDirty ? 'You have unapplied changes in this form.' : 'Save this question to a local draft, without publishing it.'}</p>
+            <button type="button" className="btn btn-outline" disabled={busy || editorBusy} onClick={applyEditorDraft}>APPLY QUESTION EDIT TO DRAFT</button>
+            {editorFormDirty && selectedEditorQuestion && <button type="button" className="admin-qb-discard" disabled={busy || editorBusy}
+              onClick={() => {
+                setEditorDraft({ questionText: selectedEditorQuestion.questionText, options: selectedEditorQuestion.options.slice(), correctAnswerIndex: selectedEditorQuestion.correctAnswerIndex, explanation: selectedEditorQuestion.explanation, retired: selectedEditorQuestion.retired })
+                setEditorError('')
+                setEditorNotice({ kind: 'info', text: 'Unapplied form changes discarded. Previously applied draft edits were not changed.' })
+              }}>Discard form changes</button>}
+          </div>
+          <div className="admin-qb-editor-action">
+            <strong>Step 2 · Add the edited bank to the queue</strong>
+            <p>{editorFormDirty ? 'Apply your current form edit first.' : editorDraftQueued ? 'A draft is queued for validation and review.' : editorHasAppliedEdits ? 'Your applied edits are ready to queue.' : 'Apply at least one question edit first.'}</p>
+            <button type="button" className="btn btn-primary" disabled={busy || editorBusy} onClick={queueEditorChanges}>ADD EDITED QUESTIONS TO PUBLISH QUEUE</button>
+          </div>
+          {editorNotice && <div role={editorNotice.kind === 'error' ? 'alert' : 'status'} aria-live="polite"
+            className={`admin-qb-editor-status is-${editorNotice.kind}`}>{editorNotice.text}</div>}
+          {editorDraftQueued && <a className="admin-qb-editor-queue-link" href="#admin-qb-upload-queue">Step 3 · Go to upload queue to validate and publish ↓</a>}
         </div>
       </>}
       <p style={{ ...secondaryText, marginBottom: 0 }}>Android installations still require a new app release to receive edited packaged bank content. The website receives the next verified bank revision automatically.</p>
