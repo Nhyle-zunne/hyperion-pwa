@@ -23,9 +23,15 @@ create or replace function public.learning_progress_section_version(
   p_user_id uuid, p_key text, p_section jsonb
 ) returns text
 language sql immutable set search_path = ''
-as $$
-  select md5(p_user_id::text || '|' || p_key || '|' || coalesce(p_section::text,'<ABSENT>'));
-$$;
+as $
+  -- Old native/PWA full writes can reformat JSON strings even when a section's
+  -- actual objects and arrays did not change. Use parsed, canonical jsonb for
+  -- section fingerprints, retaining array order and every real value change.
+  select md5(p_user_id::text || '|' || p_key || '|' || coalesce(
+    case when jsonb_typeof(p_section)='string'
+      then coalesce(public.progress_json_or_null(p_section #>> '{}')::text,p_section::text)
+      else p_section::text end, '<ABSENT>'));
+$;
 revoke all on function public.learning_progress_section_version(uuid,text,jsonb) from public,anon,authenticated;
 grant execute on function public.learning_progress_section_version(uuid,text,jsonb) to service_role;
 
