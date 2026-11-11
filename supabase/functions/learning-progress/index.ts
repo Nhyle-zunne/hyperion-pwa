@@ -20,6 +20,24 @@ function parseIncrementalSectionKeys(value: unknown): IncrementalStorageKey[] | 
       new Set(value).size !== value.length) return null
   return value as IncrementalStorageKey[]
 }
+// Canonicalize nested JSON so harmless client wrapper formatting / key ordering
+// never turns a valid licensed question into a false authorization failure.
+function equivalentSectionJson(original: unknown, verified: unknown): boolean {
+  if (original === verified) return true
+  if (typeof original !== 'string' || typeof verified !== 'string') return false
+  try {
+    const canonical = (value: unknown): string => {
+      if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']'
+      if (value && typeof value === 'object') {
+        return '{' + Object.keys(value as JsonRecord).sort().map(key =>
+          JSON.stringify(key) + ':' + canonical((value as JsonRecord)[key])
+        ).join(',') + '}'
+      }
+      return JSON.stringify(value)
+    }
+    return canonical(JSON.parse(original)) === canonical(JSON.parse(verified))
+  } catch { return false }
+}
 
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024
 const PROGRESS_ROW_CACHE_TTL_MS = 45_000
@@ -465,7 +483,7 @@ Deno.serve(async req => {
       for (const entry of updates) {
         if (entry.key === 'hyperion-bookmarks' || entry.key === 'hyperion-vault' ||
             entry.key === 'hyperion-saved-practice') {
-          if (storage[entry.key] !== entry.value) {
+          if (!equivalentSectionJson(entry.value, storage[entry.key])) {
             return json(req, { error: 'Incremental saved-question access could not be verified.' }, 403)
           }
         }
