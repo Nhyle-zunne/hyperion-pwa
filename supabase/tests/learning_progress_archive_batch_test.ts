@@ -6,7 +6,7 @@ Deno.test('archive batches authenticate owners and validate every item before on
   const other = '22222222-2222-4222-8222-222222222222'
   const originalFetch = globalThis.fetch, originalServe = Deno.serve
   let handler: Handler | undefined
-  let allowed = true, historical = false, writeFailure = false
+  let allowed = true, historical = false, writeFailure = false, rpcMissing = false, legacyUpserts = 0
   const writes: any[] = []
   let entitlementReads = 0
   const json = (value: unknown, status = 200) => Response.json(value, { status })
@@ -25,7 +25,17 @@ Deno.test('archive batches authenticate owners and validate every item before on
     }
     if (url.pathname.endsWith('/google_play_entitlements')) return json([])
     if (url.pathname.endsWith('/question-bank')) return json({ bookmarkAllowedIndexes: [], vaultAllowedIndexes: [], legacySavedPracticeAllowed: false, activeSessionAllowed: false })
+    if (url.pathname.endsWith('/rpc/upsert_learning_session_archives_if_changed')) {
+      if (rpcMissing) return json({code:'PGRST202',message:'Function is not yet installed'},404)
+      if (writeFailure) return json({message:'Unavailable'},503)
+      const args = JSON.parse(await req.text())
+      assert.equal(args.p_user_id,user)
+      assert.ok(Array.isArray(args.p_sessions))
+      writes.push(args.p_sessions.map((row: any) => ({...row,user_id:args.p_user_id})))
+      return json(args.p_sessions.length)
+    }
     if (url.pathname.endsWith('/user_learning_session_archives')) {
+      legacyUpserts++
       const body = JSON.parse(await req.text())
       if (writeFailure) return json({ message: 'Unavailable' }, 503)
       writes.push(body)
@@ -67,6 +77,12 @@ Deno.test('archive batches authenticate owners and validate every item before on
     allowed = true; writeFailure = true
     assert.equal((await send([item('retry-later')])).status, 503)
     assert.equal(writes.length, 2)
+    assert.equal(legacyUpserts,0,'New deployments use the private conditional UPSERT')
+    writeFailure = false; rpcMissing = true
+    const fallback = await send([item('legacy-server')])
+    assert.equal(fallback.status,200,'Rolling deployment fallback must keep older DBs working')
+    assert.equal(legacyUpserts,1)
+    assert.equal(writes.length,3)
   } finally {
     globalThis.fetch = originalFetch
     Object.assign(Deno, { serve: originalServe })
