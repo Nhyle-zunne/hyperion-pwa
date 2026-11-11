@@ -1,7 +1,11 @@
 // Durable local IndexedDB saves remain immediate. Coalesce normal paid-session
 // cloud uploads to reduce one Edge Function invocation per answer/navigation.
-// Completed audits still flush immediately and hiding the app flushes pending IDs.
-export const SESSION_ARCHIVE_CLOUD_BATCH_MS = 12_000
+// Completed exams are still immediate cloud checkpoints; hiding the app attempts
+// an early best-effort flush. On every intermediate edit the encrypted IndexedDB
+// snapshot is durable immediately, independent of cloud connectivity.
+// Using one 30-second window from the first draft edit reduces short repeated
+// uploads without indefinite debounce during continuous question navigation.
+export const SESSION_ARCHIVE_CLOUD_BATCH_MS = 30_000
 
 export function flushArchiveImmediately(finished: unknown): boolean {
   return finished === true
