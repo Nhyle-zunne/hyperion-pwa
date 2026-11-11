@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { PGlite } from '@electric-sql/pglite'
 
-const migration = '20261111233000_add_incremental_progress_sections.sql'
+const migration = '20261111203417_add_incremental_progress_sections.sql'
 const baseline = [
   '20261026071721_create_user_learning_progress.sql',
   '20261028181820_revoke_client_execute_on_learning_progress_trigger.sql',
