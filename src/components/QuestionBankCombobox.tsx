@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
+  filterQuestionBankAssets,
   questionBankPickerLabel,
-  searchQuestionBankAssets,
   type QuestionBankPickerAsset
 } from '../lib/questionBankPicker'
 import './QuestionBankCombobox.css'
@@ -21,9 +21,10 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
+  const [trackFilter, setTrackFilter] = useState<string | null>(null)
 
   const selected = assets.find(asset => asset.path === value)
-  const matches = useMemo(() => searchQuestionBankAssets(assets, query), [assets, query])
+  const matches = useMemo(() => filterQuestionBankAssets(assets, trackFilter, query), [assets, trackFilter, query])
   const groups = useMemo(() => tracks.map(([track, label]) => ({
     track, label, items: matches.filter(asset => asset.track === track)
   })).filter(group => group.items.length > 0), [matches, tracks])
@@ -53,6 +54,18 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
     setQuery('')
     setActiveIndex(0)
     setOpen(true)
+  }
+
+  function selectTrack(track: string | null) {
+    if (disabled) return
+    // A filter is not a competence selection. Never let Open Question Bank
+    // retain a previous track's path when the administrator switches tracks.
+    if (track && value && selected?.track !== track) onChange('')
+    setTrackFilter(track)
+    setQuery('')
+    setActiveIndex(0)
+    setOpen(true)
+    inputRef.current?.focus()
   }
 
   function choose(asset: QuestionBankPickerAsset) {
@@ -91,6 +104,23 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
   }
 
   return <div ref={rootRef} className={'admin-bank-picker' + (disabled ? ' admin-bank-picker--disabled' : '')}>
+    <div className="admin-bank-picker__preset-heading">
+      <strong>CHOOSE A TRACK</strong>
+      {trackFilter && <button type="button" disabled={disabled} className="admin-bank-picker__all-tracks"
+        onClick={() => selectTrack(null)}>Show all tracks</button>}
+    </div>
+    <div className="admin-bank-picker__presets" role="group" aria-label="Choose examination track">
+      {tracks.map(([track, label]) => <button key={track} type="button" disabled={disabled}
+        className={'admin-bank-picker__preset' + (trackFilter === track ? ' is-selected' : '')}
+        aria-label={`Filter ${label} question banks`} aria-pressed={trackFilter === track}
+        onClick={() => selectTrack(track)}>
+        <span>{label}</span>
+        <span className="admin-bank-picker__preset-count" aria-hidden="true">{assets.filter(asset => asset.track === track).length}</span>
+      </button>)}
+    </div>
+    <p className="admin-bank-picker__preset-instruction" aria-live="polite">{trackFilter
+      ? `${tracks.find(([track]) => track === trackFilter)?.[1] || trackFilter} selected · ${matches.length} matching question set${matches.length === 1 ? '' : 's'}. Choose a competence or part below.`
+      : 'Select a track above, then choose a competence or part. Or search all tracks below.'}</p>
     <div className="admin-bank-picker__control">
       <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
         <circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 5 5" />
@@ -107,7 +137,7 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
         autoComplete="off"
         spellCheck={false}
         disabled={disabled}
-        placeholder="Search a track or competence (e.g. Engine C10)"
+        placeholder={trackFilter ? 'Search competence or part (e.g. C10 or Part 2)' : 'Search a track or competence (e.g. Engine C10)'}
         value={open ? query : selected ? questionBankPickerLabel(selected) : ''}
         onFocus={() => { if (!open) openSearch() }}
         onClick={() => { if (!open) openSearch() }}
@@ -142,7 +172,7 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
       </button>
     </div>
     {open && !disabled && <div className="admin-bank-picker__list" id={listId} role="listbox" aria-label="Available question banks">
-      <div className="admin-bank-picker__hint">SELECT TRACK &amp; COMPETENCE <span>{visible.length} result{visible.length === 1 ? '' : 's'}</span></div>
+      <div className="admin-bank-picker__hint">{trackFilter ? 'SELECT COMPETENCE / PART' : 'SELECT TRACK & COMPETENCE'} <span>{visible.length} result{visible.length === 1 ? '' : 's'}</span></div>
       {groups.map(group => <div key={group.track} role="group" aria-label={group.label}>
         <div className="admin-bank-picker__group-title" role="presentation">{group.label} <span>{group.items.length}</span></div>
         {group.items.map(asset => {
@@ -159,8 +189,8 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
           </button>
         })}
       </div>)}
-      {!visible.length && <div className="admin-bank-picker__empty">No matching question banks. Try a track name, competence number, or GMDSS part.</div>}
+      {!visible.length && <div className="admin-bank-picker__empty">{trackFilter ? 'No matching competences or parts for this track. Try another search or Show all tracks.' : 'No matching question banks. Try a track name, competence number, or GMDSS part.'}</div>}
     </div>}
-    <p className="admin-bank-picker__tip">Type to filter by track, competence, or part. Use ↑ ↓ and Enter to select.</p>
+    <p className="admin-bank-picker__tip">Choose a preset track or type to search. Use ↑ ↓ and Enter to select a question set.</p>
   </div>
 }
