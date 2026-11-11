@@ -122,7 +122,7 @@ export default function MockExamScreen() {
   const trackParam = params.get('track') || 'oic_nw'
   const trackId = TRACK_MAP[trackParam] || 'DECK_OIC_NW'
   const startSession = usePracticeStore((s) => s.startSession)
-  const refreshCloudEntitlements = useLicenseStore((s) => s.refreshCloudEntitlements)
+  const refreshCachedEntitlements = useLicenseStore((s) => s.refreshCachedEntitlements)
   const [stage, setStage] = useState<Stage>(() => {
     const requestedStage = params.get('stage')
     const saved = readMockExamPlan(trackId)
@@ -153,8 +153,9 @@ export default function MockExamScreen() {
     setStartError('')
 
     void (async () => {
-      // Refresh entitlements before requesting the inventory permitted for this track.
-      await refreshCloudEntitlements()
+      // Verify the signed local lease before loading counts. The protected bank
+      // endpoint independently enforces server-side access where required.
+      await refreshCachedEntitlements()
       const licenseState = useLicenseStore.getState()
       const hasTrackAccess = licenseState.isAllAccessUnlocked || licenseState.isTrackUnlocked(trackId)
       const freeOnly = !hasTrackAccess
@@ -170,7 +171,7 @@ export default function MockExamScreen() {
     })
 
     return () => { cancelled = true }
-  }, [trackId, refreshCloudEntitlements])
+  }, [trackId, refreshCachedEntitlements])
 
   const competences = listAvailableCompetences(trackId)
   const competenceCounts = useMemo(() => {
