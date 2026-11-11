@@ -35,7 +35,7 @@ try {
     'select (select count(*) from public.entitlements) e, (select count(*) from public.google_play_entitlements) p'
   )).rows[0]
   await db.exec(await readFile(
-    new URL('20261111182200_unify_progress_owned_tracks.sql',root),'utf8'
+    new URL('20261111184053_unify_progress_owned_tracks.sql',root),'utf8'
   ))
   await db.exec('set role service_role')
   const owned = await db.query(
