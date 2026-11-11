@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { canSkipUnchangedGooglePlayWrite, type VerifiedEntitlement } from './noop.ts'
 
 const PACKAGE_NAME = 'com.nhyle.hyperionmaritime'
 const BATCH_SIZE = 20
@@ -148,14 +149,34 @@ Deno.serve(async (req: Request) => {
   if (cronAuthorized !== true) return respond(401, { error: 'Unauthorized reconciliation request.' })
 
   const { data: links, error: linkQueryError } = await admin.from('google_play_purchase_links')
-    .select('id,user_id,purchase_token,purchase_token_sha256,subscription_state')
+    .select('id,user_id,purchase_token,purchase_token_sha256,subscription_state,status,product_ids,expires_at,last_verified_at')
     .neq('subscription_state', 'SUBSCRIPTION_STATE_REPLACED')
     .order('last_reconciliation_attempt_at', { ascending: true })
     .order('id', { ascending: true })
     .limit(BATCH_SIZE)
   if (linkQueryError) return respond(503, { error: 'Could not load Google Play subscriptions for reconciliation.' })
 
-  const stats = { processed: 0, verified: 0, revoked: 0, failed: 0 }
+  // One lightweight batch read lets us compare the Google-verified result
+  // against current grants. If it fails, retain the exact original atomic
+  // RPC path; a failed optimization may NEVER prevent license reconciliation.
+  const entitlementsByLink = new Map<string, VerifiedEntitlement[]>()
+  let canCompare = false
+  if (links?.length) {
+    const { data: existingGrants, error: grantsError } = await admin
+      .from('google_play_entitlements')
+      .select('purchase_link_id,track_id,product_code,status,expires_at')
+      .in('purchase_link_id', links.map(link => link.id))
+    if (!grantsError && Array.isArray(existingGrants)) {
+      canCompare = true
+      for (const grant of existingGrants) {
+        const list = entitlementsByLink.get(grant.purchase_link_id) ?? []
+        list.push(grant)
+        entitlementsByLink.set(grant.purchase_link_id, list)
+      }
+    }
+  }
+
+  const stats = { processed: 0, verified: 0, revoked: 0, failed: 0, unchanged: 0 }
   for (const link of links ?? []) {
     stats.processed++
     const attemptAt = new Date().toISOString()
@@ -259,6 +280,29 @@ Deno.serve(async (req: Request) => {
         }
         if (priorLink && priorLink.id !== link.id) priorPurchaseLinkId = priorLink.id
       }
+    }
+
+    // Google was queried on *every* pass, so refunds, early revocations,
+    // renewals, changed expiry times and linked-token replacements are still
+    // detected at the original cadence. Only skip redundant database UPDATEs
+    // for identical grants, with a forced durable refresh every six hours.
+    if (canCompare && canSkipUnchangedGooglePlayWrite(
+      link,
+      entitlementsByLink.get(link.id) ?? [],
+      {
+        status: entitledNow ? 'active' : 'inactive',
+        subscription_state: subscriptionState,
+        product_ids: productIds,
+        expires_at: new Date(maxExpiry).toISOString(),
+        entitlements: entitlementRows
+      },
+      now,
+      priorPurchaseLinkId !== null
+    )) {
+      stats.unchanged++
+      if (entitledNow) stats.verified++
+      else stats.revoked++
+      continue
     }
 
     const { error: syncError } = await admin.rpc('sync_google_play_subscription_atomic', {
