@@ -6,6 +6,10 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
   'Vary': 'Origin'
 }
+// Account retention has a 30-day inactivity window plus a 30-day grace.
+// Record no more than one successful timestamp per six hours per account;
+// this is NOT a license recheck, so it never delays revocations/renewals.
+const ACCOUNT_ACTIVITY_INTERVAL_MS = 6 * 60 * 60 * 1000
 const allowedOrigins = new Set([
   'https://hyperionmaritime.org',
   'https://www.hyperionmaritime.org',
@@ -55,9 +59,11 @@ Deno.serve(async req => {
     .maybeSingle()
   if (readError) return json(req, { error: 'Could not record account activity.' }, 500)
 
-  // Limit writes while still updating the record if an active browser/PWA is revisited later.
+  // Cross-device write suppression remains server-authoritative even when
+  // older PWA versions still report every 15 minutes. The 60-day retention
+  // period is unaffected by a maximum six-hour timestamp granularity.
   const last = existing?.last_accessed_at ? Date.parse(existing.last_accessed_at) : 0
-  if (Number.isFinite(last) && now - last < 15 * 60 * 1000) {
+  if (Number.isFinite(last) && now - last < ACCOUNT_ACTIVITY_INTERVAL_MS) {
     return json(req, { ok: true, updated: false, lastAccessedAt: existing.last_accessed_at })
   }
 
