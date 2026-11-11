@@ -3,6 +3,7 @@ import { setLocalProgressIdentity, markLocalProgressReady } from './localProgres
 import { canSyncCloudProgress } from './cloudProgressAccess'
 import type { SavedQuestionContext } from './savedQuestionSets'
 import { syncSessionArchives, claimLocalSessionSnapshots } from './sessionArchive'
+import { flushArchiveImmediately, SESSION_ARCHIVE_CLOUD_BATCH_MS } from './sessionArchiveBatch'
 import { ProgressRequestPolicy } from './progressRequestPolicy'
 import type { Question, TrackId, UserAnswer } from '../types/question'
 import type { SessionMode } from '../stores/historyStore'
@@ -1378,26 +1379,40 @@ export function startLearningProgressSync(): () => void {
   const handleSavedPracticeChange = () => noteLocalChange('practice')
   window.addEventListener('hyperion:progress-local-change', handleMockPlanChange)
   window.addEventListener('hyperion:practice-progress-saved', handleSavedPracticeChange)
+  const flushPendingArchiveSync = () => {
+    if (archiveTimer) { clearTimeout(archiveTimer); archiveTimer = null }
+    const userId = activeUserId
+    const ids = [...pendingArchiveIds]
+    pendingArchiveIds.clear()
+    if (!userId || !canSyncCloudProgress(userId) || localStorage.getItem(OWNER_KEY) !== userId) return
+    if (ids.length) void syncSessionArchives(userId, ids)
+    else void syncCurrentSessionArchives(userId) // Compatible with legacy no-detail events.
+  }
   const handleArchiveSaved = (event: Event) => {
-    // History metadata has its own store subscription. Archive-only writes must
-    // not dirty and re-upload the entire progress snapshot. Follow the one
-    // changed encrypted IDB record instead of scanning all saved sessions.
+    // IndexedDB writes already committed before this event fires. Coalesce the
+    // protected cloud copies to avoid an Edge invocation for every answer.
     const userId = activeUserId
     if (!userId || !canSyncCloudProgress(userId)) return
-    const detail = (event as CustomEvent<{ id?: unknown; ownerId?: unknown }>).detail
+    const detail = (event as CustomEvent<{ id?: unknown; ownerId?: unknown; finished?: unknown }>).detail
     if (detail && detail.ownerId !== userId) return
     if (typeof detail?.id === 'string' && detail.id) pendingArchiveIds.add(detail.id)
+    // Completed exams are important recovery boundaries: sync now, not after
+    // the normal autosave interval.
+    if (flushArchiveImmediately(detail?.finished)) { flushPendingArchiveSync(); return }
     if (archiveTimer) return
-    archiveTimer = setTimeout(() => {
-      archiveTimer = null
-      const ids = [...pendingArchiveIds]
-      pendingArchiveIds.clear()
-      if (activeUserId !== userId || !canSyncCloudProgress(userId)) return
-      if (ids.length) void syncSessionArchives(userId, ids)
-      else void syncCurrentSessionArchives(userId) // Compatible with legacy no-detail events.
-    }, 750)
+    archiveTimer = setTimeout(flushPendingArchiveSync, SESSION_ARCHIVE_CLOUD_BATCH_MS)
+  }
+  const flushPendingOnHide = () => {
+    // Best effort only. Browsers may abort network after pagehide; encrypted
+    // local snapshots remain and the next login/reconnect rescans them.
+    if (archiveTimer || pendingArchiveIds.size) flushPendingArchiveSync()
+  }
+  const onArchiveVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') flushPendingOnHide()
   }
   window.addEventListener('hyperion:session-archive-saved', handleArchiveSaved)
+  document.addEventListener('visibilitychange', onArchiveVisibilityChange)
+  window.addEventListener('pagehide', flushPendingOnHide)
 
   authSubscription = client.auth.onAuthStateChange((event, session) => {
     if (event === 'INITIAL_SESSION' && !session && navigator.onLine === false) return
@@ -1479,6 +1494,8 @@ export function startLearningProgressSync(): () => void {
     window.removeEventListener('hyperion:progress-local-change', handleMockPlanChange)
     window.removeEventListener('hyperion:practice-progress-saved', handleSavedPracticeChange)
     window.removeEventListener('hyperion:session-archive-saved', handleArchiveSaved)
+    document.removeEventListener('visibilitychange', onArchiveVisibilityChange)
+    window.removeEventListener('pagehide', flushPendingOnHide)
     authSubscription?.unsubscribe()
     authSubscription = null
     unsubscribeStores.forEach((unsubscribe) => unsubscribe())
