@@ -3,6 +3,76 @@ import { chromium } from 'playwright'
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
 try {
+  // Real admin editor UI in a synthetic auth/API fixture. No network writes
+  // to real question banks; this exercises click feedback and publish staging.
+  const editorPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
+  const editorErrors = []
+  const editorApiCalls = []
+  editorPage.on('pageerror', error => editorErrors.push(error.message))
+  await editorPage.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  await editorPage.route('**/api/question-bank/admin', async route => {
+    const body = route.request().postDataJSON()
+    editorApiCalls.push(body.action)
+    const path = 'engine_mgt/em_c10.csv.enc'
+    const csvText = [
+      'No.,Question,A,B,C,D,Correct Answer,Explanation',
+      '1,Why is water treated?,Prevent corrosion,Improve color,Reduce speed,Increase noise,A,Prevent scale',
+      '2,What does cooling do?,Remove heat,Increase wear,Stop flow,Raise friction,A,Temperature control'
+    ].join('\r\n')
+    const reply = body.action === 'inventory'
+      ? { configured: true, assets: [{ path, label: 'Engine Management · C10', track: 'ENGINE_MGT', competenceId: 'C10', part: null, format: 'standard' }] }
+      : body.action === 'editor-load'
+        ? { path, csvText, baseHead: 'a'.repeat(40) }
+        : body.action === 'validate'
+          ? { preview: { requestId: body.requestId, baseHead: 'a'.repeat(40), validationId: 'fixture-validation', files: [{ path, questionCount: 2, previousCount: 2, changed: 1, appended: 0, corrections: [] }] } }
+          : { error: 'Synthetic fixture does not publish to GitHub.' }
+    await route.fulfill({ status: body.action === 'publish' ? 400 : 200, contentType: 'application/json', body: JSON.stringify(reply) })
+  })
+  await editorPage.goto(process.env.HYPERION_RECOVERY_TEST_URL + '?section=question-editor')
+  await editorPage.getByRole('heading', { name: 'Edit, retire or restore questions' }).waitFor()
+  await editorPage.getByRole('combobox', { name: 'Search track, competence or question bank' }).fill('Engine C10')
+  await editorPage.locator('.admin-bank-picker__option').first().click()
+  await editorPage.getByRole('button', { name: 'OPEN QUESTION BANK' }).click()
+  await editorPage.getByText('Question #1', { exact: true }).waitFor()
+  const actions = editorPage.locator('.admin-qb-editor-actions')
+  assert.equal(await actions.count(), 1, 'Both edit actions share a single, organized workflow bar')
+  const applyButton = actions.getByRole('button', { name: /APPLY QUESTION EDIT TO DRAFT/i })
+  const queueButton = actions.getByRole('button', { name: /ADD EDITED QUESTIONS TO PUBLISH QUEUE/i })
+  const actionFeedback = actions.locator('[role="status"], [role="alert"]')
+  await applyButton.click()
+  assert.match(await actionFeedback.innerText(), /no changes|change (a field|the question)/i, 'Unchanged question explains why applying had no effect near the button')
+  await queueButton.click()
+  assert.match(await actionFeedback.innerText(), /apply|no (applied )?edits/i, 'Queue explains missing applied edits instead of being silently disabled')
+  await editorPage.getByLabel('Explanation').fill('Better cooling explanation')
+  await queueButton.click()
+  assert.match(await actionFeedback.innerText(), /apply.*(first|edit)/i, 'Unsaved form inputs cannot silently publish stale edited text')
+  await applyButton.click()
+  assert.match(await actionFeedback.innerText(), /saved.*draft/i, 'Applied edit confirms locally next to the button, not only at the top of the page')
+  assert.equal(await queueButton.isEnabled(), true)
+  await queueButton.click()
+  assert.match(await actionFeedback.innerText(), /queue/i, 'Queue action confirms locally near its button')
+  await editorPage.getByRole('heading', { name: 'Upload queue (1)' }).waitFor()
+  assert.equal(editorApiCalls.includes('publish'), false, 'Neither action publishes to the server')
+  // If editing continues after queuing, the previously staged file is stale.
+  await editorPage.getByLabel('Explanation').fill('A second cooling explanation')
+  await applyButton.click()
+  assert.equal(await editorPage.getByRole('heading', { name: 'Upload queue (0)' }).count(), 1, 'New edits revoke stale previously queued editor bytes')
+  await queueButton.click()
+  await editorPage.getByRole('button', { name: 'VALIDATE BATCH', exact: true }).click()
+  await editorPage.getByRole('heading', { name: 'Review before publishing' }).waitFor()
+  assert.deepEqual(editorApiCalls.filter(a => a === 'validate'), ['validate'], 'Validation is a distinct deliberate step')
+  assert.equal(editorApiCalls.includes('publish'), false)
+  for (const width of [1531, 390]) {
+    await editorPage.setViewportSize({ width, height: 900 })
+    const one = await actions.locator('.admin-qb-editor-action').first().boundingBox()
+    const two = await actions.locator('.admin-qb-editor-action').last().boundingBox()
+    assert(one && two)
+    assert(width > 800 ? Math.abs(one.y - two.y) < 5 && two.x > one.x : two.y > one.y + 15, 'Edit actions align side by side on desktop and stack on mobile')
+    assert(await editorPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Admin editor fits available viewport width')
+  }
+  assert.deepEqual(editorErrors, [], 'No runtime errors in admin editor workflow')
+  await editorPage.close()
+
   const page = await browser.newPage({ viewport: { width: 1531, height: 900 } })
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
