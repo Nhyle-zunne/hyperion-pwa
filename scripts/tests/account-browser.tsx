@@ -15,7 +15,7 @@ import '../../src/index.css'
 Object.assign(window, { releaseFixtureEntitlements, switchFixtureAccount, accountFixtureCalls: fixtureCalls, beginFixtureLoading: beginPageLoading })
 document.documentElement.dataset.theme = 'light'
 const section = new URLSearchParams(location.search).get('section')
-const initialPath = section === 'account' ? '/account?tab=payments' : section === 'admin' ? '/admin/licenses' : section === 'basket' ? '/BASKET' : section === 'orders' ? '/orders' : section === 'payment' ? '/checkout?payment=success&order_id=fixture-order' : '/checkout?buy_product=gmdss&buy_term=month'
+const initialPath = section === 'account' ? '/account?tab=payments' : section === 'admin' ? '/admin/licenses' : section === 'question-editor' ? '/admin/questions' : section === 'basket' ? '/BASKET' : section === 'orders' ? '/orders' : section === 'payment' ? '/checkout?payment=success&order_id=fixture-order' : '/checkout?buy_product=gmdss&buy_term=month'
 createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={[initialPath]}>
   <TopLoadingIndicator />
   <div className="route-transition">
