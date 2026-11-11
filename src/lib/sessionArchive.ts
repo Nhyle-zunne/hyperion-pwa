@@ -147,16 +147,23 @@ export function saveSessionSnapshot(id: string, snapshot: SessionSnapshot): Prom
     const db = await database()
     await migrateLegacySnapshots(db)
     const previous = await db.get('snapshots', id)
-    if (previous && previous.finished !== false && previous.ciphertext && previous.iv) {
+    if (previous?.ciphertext && previous.iv) {
       try {
         const key = await getOrCreateEncryptionKey(db)
         const older = await decryptJsonPayload<SessionSnapshot>(previous.iv, previous.ciphertext, key)
+        // Finished audits stay immutable, even when an older request arrives.
         if (older.finished) return
+        // The browser already holds an encrypted copy of this exact draft.
+        // Avoid another encryption, IndexedDB write and cloud-sync event.
+        // Verify ownership before treating a matching payload as a no-op.
+        if (previous.ownerId === ownerId && JSON.stringify(older) === JSON.stringify(snapshot)) return
       } catch { /* A verified replacement may repair an unreadable local copy. */ }
     }
     const encrypted = await makeEncryptedRecord(db, id, snapshot, ownerId)
     await db.put('snapshots', encrypted)
-    window.dispatchEvent(new Event('hyperion:session-archive-saved'))
+    // Identify the one changed snapshot. Full scans are still used on login,
+    // reconnect and recovery, but not after each routine answer/save.
+    window.dispatchEvent(new CustomEvent('hyperion:session-archive-saved', { detail: { id, ownerId } }))
   })
 }
 
