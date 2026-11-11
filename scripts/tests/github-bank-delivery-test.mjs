@@ -56,6 +56,31 @@ assert.equal(page.questions.length, 20)
 const originalSource = createGithubBankSource(fakeFetch)
 const text = await originalSource('deck/oic_nw_c1.csv.enc')
 assert.deepEqual(page.questions, toSearchQuestions('deck/oic_nw_c1.csv.enc', text).slice(0, 20))
+const encryptedPath = 'deck/oic_nw_c1.csv.enc'
+const encryptedRequest = (body, handler = worker, token = 'test-user') => handler(
+  new Request('https://hyperionmaritime.org/api/question-bank/encrypted-source', {
+    method: 'POST',
+    headers: token ? { Authorization: 'Bearer ' + token } : {},
+    body: JSON.stringify(body)
+  }), { ASSETS: assets }
+)
+const encryptedSelection = { track:'DECK_OIC_NW', path: encryptedPath, bankRevision:GITHUB_BANK_REVISION }
+const encryptedResponse = await encryptedRequest(encryptedSelection)
+assert.equal(encryptedResponse.status, 200)
+assert.match(encryptedResponse.headers.get('Cache-Control'), /no-store/)
+assert.equal(encryptedResponse.headers.get('X-Hyperion-Source-SHA256'),
+  manifest.files.find(file => file.path === encryptedPath).sha256)
+assert.equal(encryptedResponse.headers.get('X-Hyperion-Source-Bytes'),
+  String(bank.get(encryptedPath).length))
+assert.equal(createHash('sha256').update(Buffer.from(await encryptedResponse.arrayBuffer())).digest('hex'),
+  manifest.files.find(file => file.path === encryptedPath).sha256)
+const readsBeforeInvalidEncrypted = upstreamBankReads
+assert.equal((await encryptedRequest(encryptedSelection, worker, '')).status, 401)
+assert.equal((await encryptedRequest({...encryptedSelection, path: '../secrets.csv.enc'})).status, 400)
+assert.equal((await encryptedRequest({...encryptedSelection, track:'ENGINE_MGT'})).status, 400)
+assert.equal((await encryptedRequest({...encryptedSelection, bankRevision:'a'.repeat(40)})).status, 409)
+assert.equal(upstreamBankReads, readsBeforeInvalidEncrypted,
+  'An unsigned, invalid or stale encrypted-source request must not read GitHub ciphertext')
 const reads = upstreamBankReads
 licensed = false
 response = await request(selection)
@@ -63,6 +88,9 @@ assert.equal(response.status, 403)
 assert.equal(upstreamBankReads, reads, 'A warm cache must not bypass a revoked license')
 response = await request(selection, worker, '')
 assert.equal(response.status, 403)
+assert.equal((await encryptedRequest(encryptedSelection)).status, 403)
+assert.equal(upstreamBankReads, reads,
+  'Revoked accounts cannot request encrypted source blobs even when a prior request succeeded')
 const beforeFreeAuth = supabaseRequests
 response = await request({ ...selection, freeOnly: true }, worker, '')
 assert.equal(response.status, 200)
