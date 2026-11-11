@@ -10,8 +10,7 @@ const base = [
   '20261031094513_add_low_egress_progress_snapshot_comparison.sql',
   '20261102090000_preserve_saved_progress_and_session_audits.sql',
   '20261104010000_optimize_progress_revision_storage.sql',
-  '20261104020000_preserve_exact_progress_noops.sql',
-  '20261104030000_bound_future_progress_revisions.sql'
+  '20261104020000_preserve_exact_progress_noops.sql'
 ]
 const checkpoint = '20261112010000_throttle_recovery_checkpoints.sql'
 const a = '11111111-1111-4111-8111-111111111111'
@@ -39,6 +38,9 @@ try {
   await write(a,2)
   const originalA = await revisions(a)
   const originalB = await revisions(b)
+  // Install the existing 10-revision cap AFTER these old recovery records;
+  // only subsequent records may be pruned.
+  await db.exec(await readFile(new URL('20261104030000_bound_future_progress_revisions.sql',root),'utf8'))
   const oldCutoff = Number((await db.query(
     'select protected_through_id from public.user_learning_progress_revision_retention'
   )).rows[0].protected_through_id)
@@ -49,9 +51,9 @@ try {
 
   await write(a,3)
   const first = await revisions(a)
-  assert.equal(first.length,originalA.length,
-    'A recent, already-saved future backup covers the next routine edit without another WAL-heavy copy')
-  assert.equal(first.at(-1).data.syntheticStep,1)
+  assert.equal(first.length,originalA.length+1,
+    'First future recovery point is never skipped when the account has no recent future backup')
+  assert.equal(first.at(-1).data.syntheticStep,2)
   for(let i=4;i<=22;i++) await write(a,i)
   assert.equal((await revisions(a)).length,first.length,
     'Repeated real saves during the interval change current progress but not backup/WAL')
