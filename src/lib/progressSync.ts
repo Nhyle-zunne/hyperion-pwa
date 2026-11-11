@@ -83,6 +83,7 @@ let localRecovery: Promise<unknown> = Promise.resolve()
 let pendingLocalRestore: {owner: string; snapshot: LearningProgressSnapshot} | null = null
 let localReadyIdentity: string | null | undefined
 let archiveTimer: ReturnType<typeof setTimeout> | null = null
+const pendingArchiveIds = new Set<string>()
 const requestPolicy = new ProgressRequestPolicy({ getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) })
 let currentGeneration = 0
 let cloudUpdatedAt: string | null = null
@@ -1349,6 +1350,7 @@ export function startLearningProgressSync(): () => void {
     uploadQueued = false
     for (const timer of [uploadTimer, retryTimer, archiveTimer]) if (timer) clearTimeout(timer)
     uploadTimer = retryTimer = archiveTimer = null
+    pendingArchiveIds.clear()
   }
   const unsubscribeLicense = useLicenseStore.subscribe(() => {
     const next = canSyncCloudProgress(authIdentity)
@@ -1376,13 +1378,23 @@ export function startLearningProgressSync(): () => void {
   const handleSavedPracticeChange = () => noteLocalChange('practice')
   window.addEventListener('hyperion:progress-local-change', handleMockPlanChange)
   window.addEventListener('hyperion:practice-progress-saved', handleSavedPracticeChange)
-  const handleArchiveSaved = () => {
+  const handleArchiveSaved = (event: Event) => {
     // History metadata has its own store subscription. Archive-only writes must
-    // not dirty and re-upload the entire progress snapshot.
-    if (!activeUserId || !canSyncCloudProgress(activeUserId) || archiveTimer) return
+    // not dirty and re-upload the entire progress snapshot. Follow the one
+    // changed encrypted IDB record instead of scanning all saved sessions.
+    const userId = activeUserId
+    if (!userId || !canSyncCloudProgress(userId)) return
+    const detail = (event as CustomEvent<{ id?: unknown; ownerId?: unknown }>).detail
+    if (detail && detail.ownerId !== userId) return
+    if (typeof detail?.id === 'string' && detail.id) pendingArchiveIds.add(detail.id)
+    if (archiveTimer) return
     archiveTimer = setTimeout(() => {
       archiveTimer = null
-      if (activeUserId) void syncCurrentSessionArchives(activeUserId)
+      const ids = [...pendingArchiveIds]
+      pendingArchiveIds.clear()
+      if (activeUserId !== userId || !canSyncCloudProgress(userId)) return
+      if (ids.length) void syncSessionArchives(userId, ids)
+      else void syncCurrentSessionArchives(userId) // Compatible with legacy no-detail events.
     }, 750)
   }
   window.addEventListener('hyperion:session-archive-saved', handleArchiveSaved)
@@ -1456,6 +1468,7 @@ export function startLearningProgressSync(): () => void {
     if (localCacheTimer) clearTimeout(localCacheTimer)
     localCacheTimer = null
     uploadTimer = retryTimer = archiveTimer = null
+    pendingArchiveIds.clear()
     cloudUpdatedAt = null
     lastUploadedUserId = null
     lastUploadedSignature = null
