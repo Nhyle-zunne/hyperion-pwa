@@ -28,6 +28,11 @@ type Order = {
 type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
+// Owner-bound in-memory display cache for this browser session. These rows are
+// informational only: server-side question/download/payment authorization never
+// relies on them. Explicit Sync, purchase confirmation and sign-out invalidate it.
+const accountOverviewCache = new Map<string, { entitlementRows: OwnedTrack[]; orders: Order[] }>()
+
 // A raised desktop card needs to retain its collapsed grid-cell height.
 // Reuse this for both hover and explicit See all actions so clicking never
 // makes the card expand into the document or push Buy Now below the screen.
@@ -236,7 +241,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   useEffect(() => {
     if (!supabase) return
     void supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'SIGNED_OUT') accountOverviewCache.clear()
       // Keep the page the user acted on mounted behind the success dialog until Continue is pressed.
       if (nextSession || !keepSuccessBackdropRef.current) setSession(nextSession)
     })
@@ -302,6 +308,24 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     if (isLayout) return
     const loadAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setInactiveLicenses([]); setOrders([]); setRenewalGraceUntil(null); return }
+    const ownerId = session.user.id
+    const cached = refreshEntitlements ? undefined : accountOverviewCache.get(ownerId)
+    if (cached) {
+      const now = Date.now()
+      const active = cached.entitlementRows.filter(row => isCurrentLicense(row, now))
+      const inactive = cached.entitlementRows.filter(row => !isCurrentLicense(row, now))
+      const latestExpired = cached.entitlementRows.reduce((latest, row) => {
+        if (row.status === 'revoked') return latest
+        const expiry = row.expires_at ? Date.parse(row.expires_at) : 0
+        return Number.isFinite(expiry) && expiry > 0 && expiry <= now ? Math.max(latest, expiry) : latest
+      }, 0)
+      const graceUntil = latestExpired + 30 * 24 * 60 * 60 * 1000
+      setOwned(active)
+      setInactiveLicenses(inactive)
+      setOrders(cached.orders)
+      setRenewalGraceUntil(active.length === 0 && latestExpired > 0 && graceUntil > now ? new Date(graceUntil).toISOString() : null)
+      return
+    }
     const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,checkout_batch_id'
     const [entitlements, playEntitlements, orderResult] = await Promise.all([
       supabase.from('entitlements')
@@ -383,6 +407,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     const combinedOrders = [...recentOrders, ...linkedOrders.filter(linked => !recentOrders.some(recent => recent.id === linked.id))]
     combinedOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     setOrders(combinedOrders)
+    if (!entitlementError && !orderResult.error) {
+      accountOverviewCache.set(ownerId, { entitlementRows, orders: combinedOrders })
+    }
     if (refreshEntitlements) await refreshCloudEntitlements()
     }
     return quiet ? loadAccount() : withPageLoading('Loading account and licenses', loadAccount)
