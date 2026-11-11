@@ -7,6 +7,7 @@ let snapshotPresent = true;
 let hangAuth = false;
 let hangBackend = false;
 let noSession = false;
+let authCalls = 0;
 let releaseCache: (() => void) | null = null;
 let pauseCache = false;
 const timers = new Map<number, () => void>();
@@ -17,7 +18,7 @@ const originalNow = Date.now;
 const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
 
 mock.module('../../src/lib/supabase', () => ({ supabase: {
-  auth: { getSession: async () => hangAuth ? new Promise(() => {}) : { data: { session: noSession ? null : { user: { id: owner } } } } },
+  auth: { getSession: async () => { authCalls++; return hangAuth ? new Promise(() => {}) : { data: { session: noSession ? null : { user: { id: owner } } } } } },
   functions: { invoke: async () => hangBackend ? new Promise(() => {}) : { error: new Error('unreachable') } }
 } }));
 mock.module('../../src/lib/offlineQuestionCache', () => ({
@@ -39,6 +40,7 @@ beforeEach(() => {
   hangAuth = false;
   hangBackend = false;
   noSession = false;
+  authCalls = 0;
   pauseCache = false;
   releaseCache = null;
   Date.now = () => now;
@@ -148,4 +150,14 @@ test('in-flight cache verification cannot restore access after intentional sign-
   await refresh;
   expect(useLicenseStore.getState().isTrackUnlocked('DECK_OIC_NW')).toBe(false);
   expect(snapshotPresent).toBe(false);
+});
+
+test('signed lease expiring while online uses local verification without a server auth lookup', async () => {
+  await useLicenseStore.getState().refreshCachedEntitlements();
+  expect(useLicenseStore.getState().isTrackUnlocked('DECK_OIC_NW')).toBe(true);
+  const previousAuthCalls = authCalls;
+  navigator.onLine = true;
+  await fireExpiry();
+  expect(authCalls).toBe(previousAuthCalls);
+  expect(useLicenseStore.getState().isTrackUnlocked('DECK_OIC_NW')).toBe(false);
 });
