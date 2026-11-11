@@ -437,8 +437,10 @@ Deno.serve(async req => {
       return json(req, { error: 'Incremental progress reads are not available; use the full recovery snapshot.' }, 503)
     }
     try {
+      const sectionStorage = result.storage as JsonRecord
+      const sectionVersions = result.versions as JsonRecord
       const sanitized = await sanitizeSnapshot(client, {
-        version: 1, storage: Object.fromEntries(keys.map(key => [key, result.storage[key] ?? null]))
+        version: 1, storage: Object.fromEntries(keys.map(key => [key, sectionStorage[key] ?? null]))
       }, allowed)
       const verifiedStorage = sanitized.storage as JsonRecord
       const known = isRecord(body.known_versions) ? body.known_versions : {}
@@ -448,10 +450,10 @@ Deno.serve(async req => {
         // sections must still return newly filtered data after license changes.
         const isQuestionSection = key === 'hyperion-bookmarks' ||
           key === 'hyperion-vault' || key === 'hyperion-saved-practice'
-        if (!isQuestionSection && known[key] === result.versions[key]) continue
+        if (!isQuestionSection && known[key] === sectionVersions[key]) continue
         returned[key] = verifiedStorage[key] ?? null
       }
-      return json(req, { ok: true, storage: returned, versions: result.versions, updated_at: result.updated_at ?? null })
+      return json(req, { ok: true, storage: returned, versions: sectionVersions, updated_at: result.updated_at ?? null })
     } catch {
       return json(req, { error: 'Could not safely verify incremental saved-question access.' }, 503)
     }
