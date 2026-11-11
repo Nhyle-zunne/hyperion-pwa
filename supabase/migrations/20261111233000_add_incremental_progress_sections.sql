@@ -120,15 +120,29 @@ begin
   end loop;
 
   operation_hash := md5(p_updates::text);
-  -- Lock/create only this account's row. Older full writers lock the same row
-  -- and use updated_at CAS, so their existing behavior remains compatible.
-  insert into public.user_learning_progress(user_id,data)
-    values(p_user_id,jsonb_build_object('version',1,'savedAt',0,
-      'changedSections','[]'::jsonb,'activeSessionChangedAt',0,
-      'activeSession','null'::jsonb,'storage','{}'::jsonb))
-    on conflict (user_id) do nothing;
+  -- Do not create even an empty progress row for an invalid/stale first write.
+  -- The canonical user row is also the serialization point for old full writers.
   select data,updated_at into current_data,updated from public.user_learning_progress
     where user_id=p_user_id for update;
+  if not found then
+    foreach element in array array(select value from jsonb_array_elements(p_updates)) loop
+      k := element->>'key';
+      if public.learning_progress_section_version(p_user_id,k,null) is distinct from
+        element->>'expected_version' then
+        collisions := array_append(collisions,k);
+      end if;
+    end loop;
+    if array_length(collisions,1)>0 then
+      return jsonb_build_object('conflicts',to_jsonb(collisions));
+    end if;
+    insert into public.user_learning_progress(user_id,data)
+      values(p_user_id,jsonb_build_object('version',1,'savedAt',0,
+        'changedSections','[]'::jsonb,'activeSessionChangedAt',0,
+        'activeSession','null'::jsonb,'storage','{}'::jsonb))
+      on conflict (user_id) do nothing;
+    select data,updated_at into current_data,updated from public.user_learning_progress
+      where user_id=p_user_id for update;
+  end if;
   if not found then
     raise exception using errcode='22023',message='Progress owner is not available.';
   end if;
