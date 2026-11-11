@@ -58,14 +58,15 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
 
   function selectTrack(track: string | null) {
     if (disabled) return
-    // A filter is not a competence selection. Never let Open Question Bank
-    // retain a previous track's path when the administrator switches tracks.
-    if (track && value && selected?.track !== track) onChange('')
-    setTrackFilter(track)
+    // Clicking an active preset deselects it. A filter is not a competence
+    // selection: changing tracks must not retain an incompatible bank path.
+    const nextTrack = track === trackFilter ? null : track
+    if (nextTrack && value && selected?.track !== nextTrack) onChange('')
+    setTrackFilter(nextTrack)
     setQuery('')
     setActiveIndex(0)
-    setOpen(true)
-    inputRef.current?.focus()
+    // The preset is independent of search visibility. Do not focus the input
+    // or open/close the list: preserve whichever state the user left it in.
   }
 
   function choose(asset: QuestionBankPickerAsset) {
