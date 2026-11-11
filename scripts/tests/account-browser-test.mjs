@@ -42,7 +42,7 @@ try {
   assert.equal(await presets.getByRole('button', { name: 'Filter GMDSS GOC question banks' }).getAttribute('aria-pressed'), 'true')
   assert.equal(await editorPage.locator('.admin-bank-picker__option').count(), 1, 'Selecting GMDSS shows its parts only')
   assert.match(await editorPage.locator('.admin-bank-picker__option').first().innerText(), /C1.*Part 2/, 'GMDSS competence and part stay visible')
-  await presets.getByRole('button', { name: 'Show all tracks' }).click()
+  await editorPage.getByRole('button', { name: 'Show all tracks' }).click()
   assert.equal(await editorPage.locator('.admin-bank-picker__option').count(), 5, 'Clear preset restores all tracks')
   await editorPage.getByRole('combobox', { name: 'Search track, competence or question bank' }).fill('Engine C10')
   assert.equal(await editorPage.locator('.admin-bank-picker__option').count(), 1, 'Global text search still works')
