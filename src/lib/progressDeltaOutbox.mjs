@@ -4,9 +4,17 @@
 // All callers must hold the existing per-account sync lock across network I/O.
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const TOKEN=/^[a-f0-9]{32}$/i
-const outboxKey=owner=>'hyperion:delta-outbox:'+owner
-const isChange=update=>update && typeof update.key==='string' &&
+const MAX_SECTION_BYTES=524288
+const ALLOWED=new Set(['hyperion-history','hyperion-study-time','hyperion-vault',
+  'hyperion-bookmarks','hyperion-saved-practice','hyperion-mock-exam-plan-v1',
+  'hyperion-question-attempt-history','hyperion-progress-deletions'])
+const outboxKey=owner=>{
+  if(!UUID.test(owner))throw Error('Invalid progress outbox account owner.')
+  return 'hyperion:delta-outbox:'+owner.toLowerCase()
+}
+const isChange=update=>update && ALLOWED.has(update.key) &&
   (typeof update.value==='string'||update.value===null) &&
+  (update.value===null||new TextEncoder().encode(update.value).byteLength<=MAX_SECTION_BYTES) &&
   TOKEN.test(update.expected_version)
 function validate(owner,op) {
   if(!op||op.version!==1||op.owner!==owner||!UUID.test(op.operation_id) ||
@@ -45,7 +53,8 @@ export class ProgressDeltaOutbox {
     await this.driver.remove(outboxKey(owner))
     return true
   }
-  async replaceConflicted(owner,previousId,newUpdates,newId){
+  async replaceConflicted(owner,previousId,newUpdates,newId,conflictConfirmed=false){
+    if(conflictConfirmed!==true)throw Error('Rebase requires a confirmed HTTP 409 conflict.')
     const current=await this.pending(owner)
     if(!current||current.operation_id!==previousId)
       throw Error('Cannot rebase a missing or different pending operation.')
