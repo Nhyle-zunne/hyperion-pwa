@@ -44,8 +44,14 @@ await assert.rejects(a.stage(ownerA,[action],'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb
 assert.equal(await a.pending(ownerA),null,'Persistence failure does not fabricate an acknowledged operation')
 failWrite=false
 const staged=await a.stage(ownerA,[action],'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+await assert.rejects(
+  a.replaceConflicted(ownerA,staged.operation_id,[{...action,expected_version:'c'.repeat(32)}],
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc'),
+  /confirmed HTTP 409/,
+  'A timeout or ambiguous response must never replace an in-flight operation'
+)
 await a.replaceConflicted(ownerA,staged.operation_id,[{...action,expected_version:'c'.repeat(32)}],
-  'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',true)
 const replacement=await a.pending(ownerA)
 assert.equal(replacement.operation_id,'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
 assert.equal(replacement.updates[0].expected_version,'c'.repeat(32))
@@ -60,3 +66,10 @@ assert.equal((await a.pending(ownerB)).operation_id,b.operation_id)
 assert.equal(await a.acknowledge(ownerB,replacement.operation_id,{ok:true,operation_id:replacement.operation_id,versions:{'hyperion-bookmarks':'e'.repeat(32)}}),false)
 assert.deepEqual((await a.pending(ownerB)).updates,b.updates)
 console.log('PASS: owner-bound durable outbox, exact idempotent retries, fail-closed ACK, crash recovery, conflict rebase, storage errors')
+
+await assert.rejects(a.stage(ownerA,[{...action,key:'unknown-progress-data'}],
+  'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'),/Invalid incremental progress operation/,
+  'Unknown keys are refused even if the caller bypasses the planner')
+await assert.rejects(a.stage(ownerA,[{...action,value:'x'.repeat(524289)}],
+  'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'),/Invalid incremental progress operation/,
+  'Oversized values cannot enter the encrypted outbox')
