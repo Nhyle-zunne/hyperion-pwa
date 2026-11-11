@@ -64,7 +64,7 @@ Deno.serve(async req => {
   // period is unaffected by a maximum six-hour timestamp granularity.
   const last = existing?.last_accessed_at ? Date.parse(existing.last_accessed_at) : 0
   if (Number.isFinite(last) && now - last < ACCOUNT_ACTIVITY_INTERVAL_MS) {
-    return json(req, { ok: true, updated: false, lastAccessedAt: existing.last_accessed_at })
+    return json(req, { ok: true, updated: false, lastAccessedAt: existing?.last_accessed_at ?? null })
   }
 
   const timestamp = new Date(now).toISOString()
