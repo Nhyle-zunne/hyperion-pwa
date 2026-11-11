@@ -34,7 +34,7 @@ begin
     from public.user_learning_progress_revision_retention where singleton = true;
 
     -- Fail safe: a missing/invalid policy preserves a full recovery revision on
-    -- EVERY meaningful change. Never skip the first future recovery point.
+    -- EVERY meaningful change. Never skip a recovery point when no recent future backup exists.
     if safe_through is not null
        and checkpoint_interval between 1 and 3600
        and exists (
