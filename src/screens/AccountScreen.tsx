@@ -298,7 +298,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     } catch { setMessage('Unable to save profile details. Please try again.') }
     finally { setBusy(false) }
   })
-  const refreshAccount = async (quiet = false, refreshEntitlements = true) => {
+  const refreshAccount = async (quiet = false, refreshEntitlements = false) => {
     if (isLayout) return
     const loadAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setInactiveLicenses([]); setOrders([]); setRenewalGraceUntil(null); return }
@@ -426,7 +426,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             ? data.productCodes
             : typeof data.productCode === 'string' ? [data.productCode] : []
           clearBasketItems(paidCodes)
-          await refreshAccount()
+          await refreshAccount(false, true)
           const purchased = paidCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
           if (!cancelled) setMessage(`Payment confirmed. Activated: ${purchased.join(', ')}. No manual approval is needed.`)
           return
@@ -522,7 +522,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           const labels = uniqueCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
           setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
           clearBasketItems(uniqueCodes)
-          await refreshAccount()
+          await refreshAccount(false, true)
         }
       } catch {
         // A transient network or provider issue is retried with bounded backoff.
@@ -816,7 +816,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           <section style={card}>
             <div className="account-panel-title">
               <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
-              <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
+                <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
+                <button type="button" className="btn btn-outline" style={{ padding: '.35rem .7rem', minHeight: 38, fontSize: '.78rem' }}
+                  onClick={() => void withPageLoading('Syncing licenses', () => refreshAccount(false, true))}>
+                  Sync licenses
+                </button>
+              </div>
             </div>
             {owned.length ? owned.map(item => {
               const transaction = orders.find(order => order.id === item.order_id)
