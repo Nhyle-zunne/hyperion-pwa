@@ -10,7 +10,7 @@
     "test:security": "node scripts/security-smoke-tests.mjs",
     "test:offline-build": "node scripts/offline-build-smoke.mjs",
     "test:progress-revisions": "node scripts/tests/progress-revision-storage-test.mjs && node scripts/tests/progress-revision-retention-test.mjs",
-    "test:saved-data:sql": "node scripts/tests/progress-recovery-sql-test.mjs && node scripts/tests/session-archive-noop-test.mjs && node scripts/tests/progress-section-delta-pg-test.mjs && node scripts/tests/progress-section-plan-test.mjs",
+    "test:saved-data:sql": "node scripts/tests/progress-recovery-sql-test.mjs && node scripts/tests/session-archive-noop-test.mjs && node scripts/tests/progress-section-delta-pg-test.mjs && node scripts/tests/progress-section-plan-test.mjs && node scripts/tests/progress-delta-outbox-test.mjs",
     "test:saved-data:browser": "node scripts/tests/run-recovery-browser.mjs",
     "test:offline-licenses": "bun test scripts/tests/license-offline.test.ts"
   },
