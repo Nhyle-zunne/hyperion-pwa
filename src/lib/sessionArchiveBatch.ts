@@ -1,3 +1,12 @@
+// Durable local IndexedDB saves remain immediate. Coalesce normal paid-session
+// cloud uploads to reduce one Edge Function invocation per answer/navigation.
+// Completed audits still flush immediately and hiding the app flushes pending IDs.
+export const SESSION_ARCHIVE_CLOUD_BATCH_MS = 12_000
+
+export function flushArchiveImmediately(finished: unknown): boolean {
+  return finished === true
+}
+
 const TARGET_BYTES = 1024 * 1024
 
 export function archiveBatches<T extends { sessionId: string; snapshot: unknown }>(entries: T[]): T[][] {

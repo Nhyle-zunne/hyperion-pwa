@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { archiveBatches, archiveBatchAcknowledged } from '../../src/lib/sessionArchiveBatch'
+import { archiveBatches, archiveBatchAcknowledged, SESSION_ARCHIVE_CLOUD_BATCH_MS, flushArchiveImmediately } from '../../src/lib/sessionArchiveBatch'
 
 test('archives split at ten items without dropping or duplicating IDs', () => {
   const items = Array.from({ length: 23 }, (_, i) => ({ sessionId: 's' + i, snapshot: { value: i } }))
@@ -17,4 +17,13 @@ test('only a complete explicit acknowledgement may advance sync markers', () => 
   for (const result of [{ ok: true }, { ok: true, sessionIds: ['a'] }, { ok: true, sessionIds: ['a', 'a'] }, { ok: true, sessionIds: ['a', 'other'] }, { ok: false, sessionIds: ['a', 'b'] }]) {
     expect(archiveBatchAcknowledged(result, ['a', 'b'])).toBe(false)
   }
+})
+
+test('paid cloud archives coalesce frequent draft saves while completed exam audits flush immediately', () => {
+  expect(SESSION_ARCHIVE_CLOUD_BATCH_MS).toBeGreaterThanOrEqual(10000)
+  expect(SESSION_ARCHIVE_CLOUD_BATCH_MS).toBeLessThanOrEqual(30000)
+  expect(flushArchiveImmediately(true)).toBe(true)
+  expect(flushArchiveImmediately(false)).toBe(false)
+  expect(flushArchiveImmediately(undefined)).toBe(false)
+  expect(flushArchiveImmediately('true')).toBe(false)
 })

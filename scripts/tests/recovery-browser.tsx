@@ -61,8 +61,18 @@ Object.assign(window, { recoveryFixture: {
   },
   seedRetryArchives: async () => {
     const ids = ['retry-audit-1', 'retry-audit-2', 'retry-audit-3']
-    for (const sessionId of ids) await saveSessionSnapshot(sessionId, { sessionId, questions: [recoveryQuestions[0]], answers: {}, currentIndex: 0, track: 'DECK_OIC_NW', competenceId: 'C1', part: null, mode: 'PRACTICE', startedAt: Date.now(), timeLimitSec: 0, timeLeftSec: 0, streak: 0, bestStreak: 0, finished: true })
-    return ids
+    // This setup needs exactly one explicit failed batch after the test
+    // enables its 400 response. New production completion events upload
+    // immediately, so silence only this synthetic fixture's seed events.
+    const dispatch = window.dispatchEvent.bind(window)
+    window.dispatchEvent = ((event: Event) => event.type === 'hyperion:session-archive-saved'
+      ? true : dispatch(event)) as typeof window.dispatchEvent
+    try {
+      for (const sessionId of ids) await saveSessionSnapshot(sessionId, { sessionId, questions: [recoveryQuestions[0]], answers: {}, currentIndex: 0, track: 'DECK_OIC_NW', competenceId: 'C1', part: null, mode: 'PRACTICE', startedAt: Date.now(), timeLimitSec: 0, timeLeftSec: 0, streak: 0, bestStreak: 0, finished: true })
+      return ids
+    } finally {
+      window.dispatchEvent = dispatch
+    }
   },
   syncRetryArchives: async (ids: string[]) => syncSessionArchives(localStorage.getItem('hyperion-progress-owner')!, ids),
   localArchive: (id: string) => getSessionSnapshot(id, true),

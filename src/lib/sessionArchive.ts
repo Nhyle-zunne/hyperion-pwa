@@ -163,7 +163,7 @@ export function saveSessionSnapshot(id: string, snapshot: SessionSnapshot): Prom
     await db.put('snapshots', encrypted)
     // Identify the one changed snapshot. Full scans are still used on login,
     // reconnect and recovery, but not after each routine answer/save.
-    window.dispatchEvent(new CustomEvent('hyperion:session-archive-saved', { detail: { id, ownerId } }))
+    window.dispatchEvent(new CustomEvent('hyperion:session-archive-saved', { detail: { id, ownerId, finished: snapshot.finished } }))
   })
 }
 

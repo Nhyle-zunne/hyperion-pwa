@@ -34,9 +34,20 @@ grant(localStorage.getItem('fixture-license') !== 'free' && id !== null, id || u
   bookmarks: () => useBookmarksStore.getState().items.map(x=>x.id),
   seedUnowned: async () => { const owner=localStorage.getItem('hyperion-progress-owner');localStorage.removeItem('hyperion-progress-owner');await saveSessionSnapshot('unclaimed-private',snapshot('unclaimed-private'));if(owner)localStorage.setItem('hyperion-progress-owner',owner);return 'unclaimed-private' },
   seed: async (prefix: string, count: number) => {
+    // This fixture tests *explicit* archive batch transport and retry.
+    // Avoid auto-cloud-uploading 23 synthetic already-finished sessions before
+    // the test invokes upload() and checks its bounded ten-item batches.
+    // Production still emits completion events and flushes immediately.
     const ids = Array.from({ length: count }, (_, i) => prefix + i)
-    for (const id of ids) await saveSessionSnapshot(id, snapshot(id))
-    return ids
+    const dispatch = window.dispatchEvent.bind(window)
+    window.dispatchEvent = ((event: Event) => event.type === 'hyperion:session-archive-saved'
+      ? true : dispatch(event)) as typeof window.dispatchEvent
+    try {
+      for (const id of ids) await saveSessionSnapshot(id, snapshot(id))
+      return ids
+    } finally {
+      window.dispatchEvent = dispatch
+    }
   },
   upload: (ids: string[]) => syncSessionArchives(localStorage.getItem('hyperion-progress-owner')!, ids),
   local: (id: string) => getSessionSnapshot(id, true),
