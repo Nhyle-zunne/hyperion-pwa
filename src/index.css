@@ -445,16 +445,12 @@ a {
 }
 
 
-/* The route-enter keyframe retains translateY(0) after it finishes.
-   Even a zero transform creates a fixed-position containing block, so a
-   checkout pay bar can dock halfway up a short mobile page instead of at
-   the visual viewport bottom. Keep other route animations unchanged. */
-@media (max-width: 800px) {
-  .route-transition:has(.basket-page) {
-    animation: none !important;
-    transform: none !important;
-  }
-}
+/* Route wrappers must NOT retain a transform or a persistent stacking
+   context: fixed descendants (Save & Exit, Question Palette, mock dialogs,
+   and the checkout footer) must stay pinned to the browser viewport.
+   The previous page-enter animation with fill-mode "both" retained
+   translateY(0), which still creates a fixed-position containing block.
+   Use a finite, opacity-only route fade with no fill-mode. */
 
 /* Smooth, app-like interaction and navigation motion */
 :root {
@@ -465,9 +461,15 @@ a {
 
 @media (prefers-reduced-motion: no-preference) {
   .route-transition {
-    animation: page-enter 240ms var(--motion-ease) both;
+    animation: route-fade-enter 240ms var(--motion-ease);
   }
 
+  @keyframes route-fade-enter {
+    from { opacity: 0.72; }
+    to { opacity: 1; }
+  }
+
+  /* Other non-route entry animations can still use the vertical motion. */
   @keyframes page-enter {
     from { opacity: 0.72; transform: translateY(7px); }
     to { opacity: 1; transform: translateY(0); }
