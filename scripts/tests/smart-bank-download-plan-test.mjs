@@ -38,7 +38,8 @@ const unavailableVersion = planSmartBankReuse(
   { ...previous, sourceVersions: { ...versions, [groups[0].path]: undefined } },
   remote, groups, cached
 )
-assert.equal(unavailableVersion.reused.length, 2)
+assert.equal(unavailableVersion.reused.length, 0,
+  'An invalid prior hash requires the conservative full-download fallback')
 
 assert.equal(planSmartBankReuse({ ...previous, complete: false }, remote, groups, cached).reused.length, 0,
   'An incomplete pack must not be reused')
