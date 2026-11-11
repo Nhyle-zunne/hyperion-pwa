@@ -90,6 +90,21 @@ try {
   await page.evaluate(async () => { window.syncFixture.release(); await window.lateUpload })
   assert.equal(await page.evaluate(id => localStorage.getItem(`hyperion-archive-synced:${window.syncFixture.users.a}:${id}`), privateId), null)
   assert.equal(await page.evaluate(id => localStorage.getItem(`fixture-archive:${window.syncFixture.users.b}:${id}`), privateId), null)
+  // IndexedDB is the local source of truth. Saving the *same* draft twice
+  // must neither encrypt/rewrite it nor trigger another cloud-sync wakeup.
+  const beforeEvents = await page.evaluate(() => window.syncFixture.archiveEvents.length)
+  await page.evaluate(async () => {
+    await window.syncFixture.saveDraft('idb-noop', 1)
+    await window.syncFixture.saveDraft('idb-noop', 1)
+    await window.syncFixture.saveDraft('idb-noop', 0)
+  })
+  const newEvents = await page.evaluate(start => window.syncFixture.archiveEvents.slice(start), beforeEvents)
+  assert.deepEqual(newEvents.map(event => event.id), ['idb-noop', 'idb-noop'], 'Only the first and genuinely changed draft emit sync events')
+  assert(newEvents.every(event => event.ownerId === window.syncFixture.users.b), 'Events never leak across signed-in accounts')
+  const savedDraft = await page.evaluate(() => window.syncFixture.local('idb-noop'))
+  assert.equal(savedDraft.answers[savedDraft.questions[0].id].selectedIndex, 0, 'Encrypted IndexedDB retains the latest answer after a skipped no-op write')
+  assert.equal(savedDraft.finished, false, 'Draft remains locally resumable')
+
   assert.deepEqual(external, [], 'Synthetic browser tests must not contact production services')
   console.log('PASS: coalesced archive unions, three writes for 23 archives, no-op downloads, retry preservation, versioned recovery and bounded restore retries.')
 } finally { await browser.close() }
