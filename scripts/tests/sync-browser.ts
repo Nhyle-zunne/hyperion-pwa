@@ -13,9 +13,16 @@ useLicenseStore.setState({refreshCloudEntitlements: async () => {grant(localStor
 grant(localStorage.getItem('fixture-license') !== 'free')
 let stop: () => void = () => {}
 const snapshot = (sessionId: string) => ({ sessionId, questions: [recoveryQuestions[0]], answers: {}, currentIndex: 0, track: 'DECK_OIC_NW' as const, competenceId: 'C1', part: null, mode: 'PRACTICE' as const, startedAt: Date.now(), timeLimitSec: 0, timeLeftSec: 0, streak: 0, bestStreak: 0, finished: true })
+const archiveEvents: {id: string; ownerId: string | null}[] = []
+window.addEventListener('hyperion:session-archive-saved', event => archiveEvents.push((event as CustomEvent<{id: string; ownerId: string | null}>).detail))
 Object.assign(window, { syncFixture: {
   ready: localProgressReady,
   calls: fixtureCalls, users: fixtureUsers,
+  archiveEvents,
+  saveDraft: (id: string, answer: number) => saveSessionSnapshot(id, {
+    ...snapshot(id), startedAt: 1_700_000_000_000, finished: false,
+    currentIndex: answer, answers: { q1: { selectedIndex: answer, confirmed: true, isCorrect: answer === 1 } }
+  }),
   holdRecovery: fixtureHoldRecovery, releaseRecovery: fixtureReleaseRecovery,
   holdRead: fixtureHoldNextRead, releaseRead: fixtureReleaseRead, restart: () => { stop(); stop = startLearningProgressSync() },
   pause: fixturePauseArchives, release: fixtureReleaseArchives,
