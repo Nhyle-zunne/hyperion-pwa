@@ -31,6 +31,11 @@ Deno.test('incremental progress section API authenticates, sanitizes, acknowledg
       return json((url.searchParams.has('status') ? entitled : historical)
         ? [{ track_id: 'DECK_OIC_NW' }] : [])
     }
+    if (url.pathname.endsWith('/rpc/get_learning_progress_owned_tracks')) {
+      const input = JSON.parse(await req.text())
+      assert.equal(input.p_user_id,user,'Historical ownership must bind gateway-verified account')
+      return json(historical ? [{track_id:'DECK_OIC_NW'}] : [])
+    }
     if (url.pathname.endsWith('/google_play_entitlements')) return json([])
     if (url.pathname.endsWith('/question-bank')) return json({
       bookmarkAllowedIndexes: [], vaultAllowedIndexes: [],
