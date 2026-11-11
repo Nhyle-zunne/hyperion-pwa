@@ -23,7 +23,7 @@ begin
   end if;
   count_entries := pg_catalog.jsonb_array_length(p_sessions);
   if count_entries < 1 or count_entries > 10 or
-     pg_catalog.octet_length(p_sessions::text) > 1258291 then
+     pg_catalog.octet_length(p_sessions::text) > 8388608 then
     raise exception using errcode='22023',message='Invalid session archive batch size.';
   end if;
   if exists(
