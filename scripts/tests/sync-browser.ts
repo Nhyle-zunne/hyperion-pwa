@@ -21,7 +21,7 @@ Object.assign(window, { syncFixture: {
   archiveEvents,
   saveDraft: (id: string, answer: number) => saveSessionSnapshot(id, {
     ...snapshot(id), startedAt: 1_700_000_000_000, finished: false,
-    currentIndex: answer, answers: { q1: { selectedIndex: answer, confirmed: true, isCorrect: answer === 1 } }
+    currentIndex: answer, answers: { [recoveryQuestions[0].id]: { questionId: recoveryQuestions[0].id, selectedIndex: answer, isCorrect: answer === 1, isFlagged: false } }
   }),
   holdRecovery: fixtureHoldRecovery, releaseRecovery: fixtureReleaseRecovery,
   holdRead: fixtureHoldNextRead, releaseRead: fixtureReleaseRead, restart: () => { stop(); stop = startLearningProgressSync() },
