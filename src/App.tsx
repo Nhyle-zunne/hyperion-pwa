@@ -7,6 +7,7 @@ import KeywordHighlightSetting from './components/KeywordHighlightSetting'
 import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useLicenseStore } from './stores/licenseStore'
 import { shouldRefreshLicenseForAuthEvent } from './lib/licenseRefreshPolicy.mjs'
+import { shouldRecordAccountActivity, canAttemptAccountActivity } from './lib/accountActivityPolicy.mjs'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import InstallPrompt from './components/InstallPrompt'
 import RouteErrorBoundary from './components/RouteErrorBoundary'
@@ -276,8 +277,20 @@ export default function App() {
         const userId = session?.user?.id
         if (!userId || !active) return
         const storageKey = `hyperion:last-website-activity:${userId}`
-        const lastAttempt = Number(sessionStorage.getItem(storageKey) || 0)
-        if (Date.now() - lastAttempt < 15 * 60 * 1000) return
+        const attemptKey = `hyperion:website-activity-last-attempt:${userId}`
+        // Cross-tab, per-account success hints avoid redundant Auth/Edge/SQL
+        // work on route changes, token refreshes and repeated page loads.
+        // Never allow a hint to grant a license: the signed lease is still
+        // checked below before any cloud request.
+        let lastReported = 0
+        let lastAttempt = 0
+        try { lastReported = Number(localStorage.getItem(storageKey) || 0) } catch { /* optional hint */ }
+        try {
+          lastReported = Math.max(lastReported, Number(sessionStorage.getItem(storageKey) || 0))
+          lastAttempt = Number(sessionStorage.getItem(attemptKey) || 0)
+        } catch { /* optional hint */ }
+        const now = Date.now()
+        if (!shouldRecordAccountActivity(lastReported, now) || !canAttemptAccountActivity(lastAttempt, now)) return
 
         // The license store may briefly hold the previous account's grant
         // during a Google account switch. Verify the signed, account-bound
@@ -285,8 +298,15 @@ export default function App() {
         const lease = await getCachedOfflineEntitlementSnapshot(userId)
         if (!active || !lease || lease.userId !== userId ||
             (!lease.isAdmin && Object.keys(lease.trackExpiries).length === 0)) return
+        // Mark an attempt before sending so a temporary Auth/network outage
+        // cannot cause a burst of retries on every focus/visibility event.
+        try { sessionStorage.setItem(attemptKey, String(Date.now())) } catch { /* optional throttle */ }
         const { error } = await client.functions.invoke('record-user-activity')
-        if (!error && active) sessionStorage.setItem(storageKey, String(Date.now()))
+        if (!error && active) {
+          const recordedAt = String(Date.now())
+          try { localStorage.setItem(storageKey, recordedAt) } catch { /* optional cross-tab hint */ }
+          try { sessionStorage.setItem(storageKey, recordedAt) } catch { /* optional reload hint */ }
+        }
       } catch {
         // Tracking is best effort and must never prevent a page from loading.
       } finally {
