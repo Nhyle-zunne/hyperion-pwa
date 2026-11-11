@@ -7,6 +7,7 @@ Deno.test('archive batches authenticate owners and validate every item before on
   const originalFetch = globalThis.fetch, originalServe = Deno.serve
   let handler: Handler | undefined
   let allowed = true, historical = false, writeFailure = false, rpcMissing = false, legacyUpserts = 0
+  let ownedRpcMissing = false, ownedRpcFailure = false, ownedRpcReads = 0
   const writes: any[] = []
   let entitlementReads = 0
   const json = (value: unknown, status = 200) => Response.json(value, { status })
@@ -17,6 +18,14 @@ Deno.test('archive batches authenticate owners and validate every item before on
   Deno.env.set('ADMIN_EMAILS', '')
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init), url = new URL(req.url)
+    if (url.pathname.endsWith('/rpc/get_learning_progress_owned_tracks')) {
+      ownedRpcReads++
+      const args = JSON.parse(await req.text())
+      assert.equal(args.p_user_id, user, 'Cloud storage ownership must be scoped to the gateway-verified account')
+      if (ownedRpcMissing) return json({ code: 'PGRST202', message: 'Historical ownership function not yet deployed' }, 404)
+      if (ownedRpcFailure) return json({ code: 'XX000', message: 'Backend unavailable' }, 503)
+      return json((allowed || historical) ? [{ track_id: 'DECK_OIC_NW' }] : [])
+    }
     if (url.pathname.endsWith('/entitlements')) {
       entitlementReads++
       // An active entitlement is always present in the complete historical query.
@@ -56,7 +65,8 @@ Deno.test('archive batches authenticate owners and validate every item before on
     assert.equal(writes[0].length, 2)
     assert.ok(writes[0].every((row: any) => row.user_id === user))
     assert.equal(writes[0][1].data.answers.q1.selectedIndex, 1)
-    assert.equal(entitlementReads, 1, 'Historical ownership already includes active entitlements; query only once per batch')
+    assert.equal(ownedRpcReads, 1, 'Historical ownership uses just one private server-side request')
+    assert.equal(entitlementReads, 0, 'No separate website entitlement read on the optimized path')
 
     const reads = entitlementReads
     for (const invalid of [[], Array.from({ length: 11 }, (_, i) => item('s' + i)), [item('same'), item('same')], [{ ...item('bad'), snapshot: item('different').snapshot }]]) {
@@ -83,6 +93,21 @@ Deno.test('archive batches authenticate owners and validate every item before on
     assert.equal(fallback.status,200,'Rolling deployment fallback must keep older DBs working')
     assert.equal(legacyUpserts,1)
     assert.equal(writes.length,3)
+
+    // Independently verify rollout compatibility when a new Edge deployment
+    // reaches an older database that has neither RPC installed.
+    ownedRpcMissing = true
+    const legacyOwned = await send([item('older-database')])
+    assert.equal(legacyOwned.status, 200, 'Old-DB fallback preserves paid user sessions')
+    assert.equal(entitlementReads, 1, 'Fallback queries old entitlements once')
+    assert.equal(writes.length, 4)
+
+    // Any error other than missing RPC must fail closed. Otherwise a database
+    // outage could silently authorize uploads without a verified ownership set.
+    ownedRpcMissing = false; ownedRpcFailure = true
+    const beforeFailure = writes.length
+    assert.equal((await send([item('backend-failure')])).status, 503)
+    assert.equal(writes.length, beforeFailure, 'Failed ownership checks never persist an archive')
   } finally {
     globalThis.fetch = originalFetch
     Object.assign(Deno, { serve: originalServe })
