@@ -49,8 +49,9 @@ try {
 
   await write(a,3)
   const first = await revisions(a)
-  assert.equal(first.length,originalA.length+1,'First post-policy recovery point is never skipped')
-  assert.equal(first.at(-1).data.syntheticStep,2)
+  assert.equal(first.length,originalA.length,
+    'A recent, already-saved future backup covers the next routine edit without another WAL-heavy copy')
+  assert.equal(first.at(-1).data.syntheticStep,1)
   for(let i=4;i<=22;i++) await write(a,i)
   assert.equal((await revisions(a)).length,first.length,
     'Repeated real saves during the interval change current progress but not backup/WAL')
