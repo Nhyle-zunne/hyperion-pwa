@@ -76,17 +76,17 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
     scheduleEntitlementExpiryRefresh(userId, expiryValues, (expectedUserId) => {
       void (async () => {
         try {
-          // Expiry enforcement must never wait for auth refresh or a network request.
-          // Verify the signed local grant first, even if the browser reports online.
-          await applyCachedOfflineEntitlements();
-          set((state) => ({ entitlementExpiryRevision: state.entitlementExpiryRevision + 1 }));
-          if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-          if (!supabase) return;
-          const current = await supabase.auth.getSession();
-          if (current.data.session?.user.id !== expectedUserId) return;
-          await get().refreshCloudEntitlements();
+          // Signed, owner-bound expiry enforcement is LOCAL. Expiration must
+          // never fetch a fresh grant in the background or extend an expired
+          // subscription. Renewal is picked up at next login, manual Sync,
+          // or successful checkout/purchase restoration.
+          if (get().entitlementUserId !== expectedUserId) return;
+          await applyCachedOfflineEntitlements(expectedUserId);
+          if (get().entitlementUserId === expectedUserId) {
+            set((state) => ({ entitlementExpiryRevision: state.entitlementExpiryRevision + 1 }));
+          }
         } catch {
-          // The next focus/visibility/online refresh retries if the browser was suspended or offline.
+          // The next foreground local-cache check still enforces expiry.
         }
       })();
     }, verifiedNow);
