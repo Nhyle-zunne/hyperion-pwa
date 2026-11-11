@@ -495,7 +495,7 @@ export default function AdminQuestionBankScreen() {
     <section style={card}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Upload queue ({queue.length})</h2>
+          <h2 id="admin-qb-upload-queue" style={{ margin: 0, fontSize: '1.05rem', scrollMarginTop: 96 }}>Upload queue ({queue.length})</h2>
           {!!queue.length && <p style={{ ...secondaryText, margin: '.25rem 0 0' }}>{queue.length} files · {(totalBytes / 1024).toFixed(1)} KB · {successCount} published · {problemCount} need attention</p>}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
