@@ -6,6 +6,7 @@ import QuestionBookmarkButton from './components/QuestionBookmarkButton'
 import KeywordHighlightSetting from './components/KeywordHighlightSetting'
 import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useLicenseStore } from './stores/licenseStore'
+import { shouldRefreshLicenseForAuthEvent } from './lib/licenseRefreshPolicy.mjs'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import InstallPrompt from './components/InstallPrompt'
 import RouteErrorBoundary from './components/RouteErrorBoundary'
@@ -156,10 +157,9 @@ export default function App() {
   const lastCloudTrackIds = useRef<string[]>([])
   useEffect(() => {
     let alive = true
-    let lastRefreshAt = 0
     let refreshInFlight: Promise<void> | null = null
     let forcedRefreshQueued = false
-    const minimumRefreshIntervalMs = 10 * 60 * 1000
+    let observedAuthUserId: string | null = null
 
     const refresh = async (showLoadingIndicator = false, force = false) => {
       // Focus and visibility events often fire together. Share one request and avoid
@@ -170,7 +170,6 @@ export default function App() {
         if (force) forcedRefreshQueued = true
         return refreshInFlight
       }
-      if (!force && Date.now() - lastRefreshAt < minimumRefreshIntervalMs) return
 
       const task = (async () => {
         try {
@@ -184,7 +183,6 @@ export default function App() {
           // question directory forever. Unverified access is never paid access.
         } finally {
           if (alive) setEntitlementsChecked(true)
-          lastRefreshAt = Date.now()
         }
       })()
       refreshInFlight = task
@@ -199,22 +197,41 @@ export default function App() {
       }
     }
 
+    // One authoritative check during app startup. Supabase emits INITIAL_SESSION
+    // as part of initialization; it must NOT cause a second identical request.
     void refresh(true, true)
-    const authListener = supabase?.auth.onAuthStateChange(() => {
+    const authListener = supabase?.auth.onAuthStateChange((event, session) => {
+      const nextUserId = session?.user?.id ?? null
+      if (event === 'INITIAL_SESSION') {
+        observedAuthUserId = nextUserId
+        return
+      }
+      const previousUserId = observedAuthUserId
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') observedAuthUserId = nextUserId
+      if (!shouldRefreshLicenseForAuthEvent(event, previousUserId, nextUserId)) return
       clearPaidQuestionCache()
+      if (event === 'SIGNED_OUT') {
+        // Explicit logout invalidates the previous account's local access.
+        useLicenseStore.getState().clearLicense()
+        setEntitlementsChecked(true)
+        return
+      }
       setEntitlementsChecked(false)
+      // Defer the async auth lookup out of Supabase's auth-event callback.
       window.setTimeout(() => { void refresh(false, true) }, 0)
     })
     const refreshOnWake = () => {
       if (document.visibilityState === 'visible') {
-        // Browser timers may be suspended during sleep. Local expiry checks must
-        // run on every wake, independently of the cloud refresh throttle.
-        void useLicenseStore.getState().refreshCachedEntitlements().then(() => refresh())
+        // Never call Supabase just because the tab regained focus.
+        // Re-check signed local expiry (including timers suspended during sleep).
+        void useLicenseStore.getState().refreshCachedEntitlements()
       }
     }
-    // Recheck when the account changes, the app returns to the foreground,
-    // or connectivity returns. Do not poll licenses on a fixed interval.
-    const refreshOnOnline = () => { void refresh(false, true) }
+    const refreshOnOnline = () => {
+      // Connectivity returning must not auto-poll licenses. Failed manual/login
+      // sync remains retryable from the account page.
+      void useLicenseStore.getState().refreshCachedEntitlements()
+    }
     window.addEventListener('focus', refreshOnWake)
     document.addEventListener('visibilitychange', refreshOnWake)
     window.addEventListener('online', refreshOnOnline)
