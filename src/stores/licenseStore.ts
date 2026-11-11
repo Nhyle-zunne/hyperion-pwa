@@ -213,6 +213,12 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
           cloudSyncExpiresAt: signedLease.expiresAt,
           cloudSyncVerified: true
         });
+        // Account overview rows are display-only and may have changed after
+        // another-device purchase, manual Sync or a successful Google sign-in.
+        // Tell cached account screens to drop their previous display snapshot.
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('hyperion:license-server-refreshed', { detail: { userId } }));
+        }
       } catch {
         if (generation !== refreshGeneration) return;
         set({ cloudSyncVerified: false });
