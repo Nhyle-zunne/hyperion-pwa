@@ -62,7 +62,7 @@ try {
   const acknowledgement=await write(owner,opA,addBookmark)
   assert.equal(acknowledgement.ok,true)
   assert.equal(acknowledgement.conflict,undefined)
-  assert.equal((await row()).data.storage['hyperion-history'],before.data.storage['hyperion-history'])
+  assert.deepEqual(JSON.parse((await row()).data.storage['hyperion-history']),JSON.parse(before.data.storage['hyperion-history']), 'Independent bookmark writes preserve the history content')
   assert.deepEqual(JSON.parse((await row()).data.storage['hyperion-bookmarks']).state.items.map(x=>x.id).sort(),['first','second'])
   const revisionsAfterA=await nrevisions()
   assert.equal(revisionsAfterA,originalRevisions+1, 'Genuine delta retains recovery revision')
