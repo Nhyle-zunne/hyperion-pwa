@@ -26,7 +26,7 @@ try {
   ]) await db.exec(await readFile(new URL(filename,root),'utf8'))
   await db.query('insert into auth.users values($1),($2)',[owner,other])
   const before = await db.query('select count(*)::integer n from public.user_learning_session_archives')
-  await db.exec(await readFile(new URL('20261112011000_skip_duplicate_archive_upserts.sql',root),'utf8'))
+  await db.exec(await readFile(new URL('20261111174409_skip_duplicate_archive_upserts.sql',root),'utf8'))
   assert.equal((await db.query('select count(*)::integer n from public.user_learning_session_archives')).rows[0].n,
     before.rows[0].n,'Installing private archive UPSERT never modifies saved sessions')
 

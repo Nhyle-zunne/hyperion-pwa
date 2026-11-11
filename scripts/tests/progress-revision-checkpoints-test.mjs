@@ -12,7 +12,7 @@ const base = [
   '20261104010000_optimize_progress_revision_storage.sql',
   '20261104020000_preserve_exact_progress_noops.sql'
 ]
-const checkpoint = '20261112010000_throttle_recovery_checkpoints.sql'
+const checkpoint = '20261111174403_throttle_recovery_checkpoints.sql'
 const a = '11111111-1111-4111-8111-111111111111'
 const b = '22222222-2222-4222-8222-222222222222'
 const db = new PGlite()

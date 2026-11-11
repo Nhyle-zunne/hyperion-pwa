@@ -34,6 +34,15 @@ Do not delete old backups or run `VACUUM FULL` on these tables as an I/O optimiz
 3. **Configurable emergency switch:** privileged operator sets `min_checkpoint_seconds = 0` to restore per-change full backups without changing applications or deleting data.
 4. A permanent **read-only monitoring report** at `supabase/reports/disk-io-health.sql`, to compare actual query WAL/write counts and Supabase's Disk IO % consumed before and after.
 
+## Recorded production migration versions
+
+Both SQL migrations have been deployed to Supabase; its API recorded deployment-time UTC migration IDs. GitHub filenames now match these recorded IDs to prevent accidental reapplication on a later `supabase db push`:
+
+- `20261111174403_throttle_recovery_checkpoints.sql`
+- `20261111174409_skip_duplicate_archive_upserts.sql`
+
+This repository correction does **not** execute SQL, change Edge Function code, alter retention values, or delete saved sessions. Production `learning-progress` Edge Function version 130 was verified with JWT enforcement.
+
 ## Release order and verification
 
 - Run local isolated PGlite migration tests, complete Supabase stack validation, PWA security and browser tests.
