@@ -44,6 +44,22 @@ Keep `user_learning_progress.data` as the canonical and legacy-readable snapshot
 - Network failure after commit: retry the exact same operation ID/content; acknowledgement is stable.
 - SQL or sanitization failure: no partial write and no client acknowledgement.
 
+## Portable preferences — identified gap before rollout
+
+The existing PWA V1 cloud `STORAGE_KEYS` do **not** include its local UI
+preferences (`hyperion-ui-v3` theme, `hyperion-question-text-scale` and
+`hyperion-practice-automations`). They are currently device-local. Therefore
+the staged eight-section V2 cannot yet be described as cross-device **settings**
+synchronization, and no implementation should quietly treat a missing value
+as an intentional reset.
+
+Before enabling V2, agree on a separately versioned portable preferences
+payload and timestamped per-field merge rules, map both Android and PWA
+settings without leaking device-specific values, add the key to server and
+client allowlists, and prove old V1 full writes cannot delete or roll back that
+new key. Free users must continue using local settings without Supabase reads.
+Use a compatibility migration and tests before syncing settings across devices.
+
 ## Non-goals of server foundation phase
 
 Do not delete historic progress, backfill data, replace session archives, change subscriptions, or silently deploy a new protocol to production. No production DDL/application until synthetic migration and client regressions pass.
