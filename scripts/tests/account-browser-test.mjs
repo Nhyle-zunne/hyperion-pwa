@@ -53,7 +53,7 @@ try {
   assert.match(await editorPage.locator('.admin-bank-picker__preset-instruction').innerText(), /GMDSS GOC selected.*1 matching question set/)
   await gmdssPreset.click()
   assert.equal(await gmdssPreset.getAttribute('aria-pressed'), 'false', 'Clicking the selected preset deselects it')
-  assert.equal(await editorPage.getByRole('button', { name: 'Show all tracks' }).count(), 0, 'Deselecting a track restores all-tracks state')
+  assert.equal(await editorPage.getByRole('button', { name: 'Show all tracks' }).count(), 0, 'Redundant Show all tracks link is absent')
   assert.equal(await combobox.getAttribute('aria-expanded'), 'false', 'Deselecting a track also keeps search closed')
 
   // If the search box was open, switching or deselecting a track must keep it open.
@@ -69,9 +69,10 @@ try {
   await deckPreset.click()
   assert.equal(await combobox.getAttribute('aria-expanded'), 'true', 'Switching tracks never toggles an open dropdown')
   assert.equal(await results.count(), 1, 'Deck Management shows its own competence')
-  await editorPage.getByRole('button', { name: 'Show all tracks' }).click()
-  assert.equal(await combobox.getAttribute('aria-expanded'), 'true', 'Show all tracks also preserves open dropdown state')
-  assert.equal(await results.count(), 5, 'Show all tracks restores complete list')
+  await deckPreset.click()
+  assert.equal(await combobox.getAttribute('aria-expanded'), 'true', 'Deselecting a track preserves open dropdown state')
+  assert.equal(await deckPreset.getAttribute('aria-pressed'), 'false', 'Clicking the selected track restores all-tracks state')
+  assert.equal(await results.count(), 5, 'Deselecting restores the complete list without a separate link')
 
   await combobox.fill('Engine C10')
   assert.equal(await results.count(), 1, 'Global text search still works')

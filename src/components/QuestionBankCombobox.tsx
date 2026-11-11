@@ -107,8 +107,6 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
   return <div ref={rootRef} className={'admin-bank-picker' + (disabled ? ' admin-bank-picker--disabled' : '')}>
     <div className="admin-bank-picker__preset-heading">
       <strong>CHOOSE A TRACK</strong>
-      {trackFilter && <button type="button" disabled={disabled} className="admin-bank-picker__all-tracks"
-        onClick={() => selectTrack(null)}>Show all tracks</button>}
     </div>
     <div className="admin-bank-picker__presets" role="group" aria-label="Choose examination track">
       {tracks.map(([track, label]) => <button key={track} type="button" disabled={disabled}
