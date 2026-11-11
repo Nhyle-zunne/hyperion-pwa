@@ -323,6 +323,10 @@ export default function App() {
     window.addEventListener('focus', onResume)
     window.addEventListener('online', onResume)
     document.addEventListener('visibilitychange', onResume)
+    // A continuously visible study tab may never get another focus event.
+    // One inexpensive hourly local check keeps account-retention activity
+    // fresh, while the six-hour owner-scoped hint prevents extra Edge writes.
+    const activityHeartbeat = window.setInterval(onResume, 60 * 60 * 1000)
     const authListener = client.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
         window.setTimeout(() => { void recordActivity() }, 0)
@@ -334,6 +338,7 @@ export default function App() {
       window.removeEventListener('focus', onResume)
       window.removeEventListener('online', onResume)
       document.removeEventListener('visibilitychange', onResume)
+      window.clearInterval(activityHeartbeat)
       authListener.data.subscription.unsubscribe()
     }
   // Route transitions do not require another activity check. Entitlement
