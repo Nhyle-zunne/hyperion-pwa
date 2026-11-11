@@ -60,3 +60,25 @@ Do **not** mark the transition complete until all are verified:
 - Supabase Free inactivity pause and lack of automatic daily backups consciously accepted as business availability risks.
 
 **No guarantee of zero outage** is possible on Free. This runbook is a risk-reduction checklist, not a claim of paid-tier reliability.
+
+
+## 6. November 12 archive traffic reduction and safe measurement
+
+- PWA routine **draft** session archives now use a **30-second window beginning at the first changed encrypted IndexedDB save**, rather than the previous 12-second window. This only coalesces network uploads: IndexedDB writes for every real change still complete immediately.
+- A completed exam remains an **immediate cloud checkpoint**. Hiding or navigating away from the app makes an additional best-effort flush, but browsers may abort it; the durable IndexedDB archive and login/reconnect retry are the recovery safety net.
+- The deduplicating SQL RPC still rejects unchanged and stale archive writes. Server licensing and user ownership are checked on every cloud request; nothing is cached to circumvent entitlement expiration.
+- This is **not** a promise of a particular percentage reduction. The savings depend on whether an active user generates multiple draft edits within each coalescing window. Rare or isolated saves are unaffected.
+- In Edge Function logs, group request counts by **deployment version** as well as endpoint and hour. On November 12, approximately 16,796 of 17,490 recent progress requests came from historical Edge version 129; extrapolating that 24-hour total would greatly overstate the projected rate for version 132. New backend/client features cannot be assessed using old versions' traffic.
+- Review the project's **actual billable Edge invocations** (not raw request log counts), cached and uncached bandwidth, and Auth users in **Billing → Usage**; compare at least **48–72 hours of representative traffic** following the PWA release against the same times of day before release. Use a conservative buffer: if a 30-day projection is anywhere near the Free allowance, do not downgrade.
+- `supabase/reports/free-tier-readiness.sql` now also reports the size and count of V2 operation receipts. Receipts should be zero while both clients keep V2 disabled. Do not manually remove receipts when the protocol eventually becomes active because an offline client may need to replay an unacknowledged operation.
+- A public-GitHub CI synthetic database backup test is **not** a verified offsite production backup. Secure encrypted external backups and restore them in an isolated test project before going Free.
+
+### Verification of draft archive delivery
+
+1. Start a paid session online, change several answers during 30 seconds, and verify encrypted local resume survives reload **before** cloud confirmation.
+2. Finish an exam and verify the completed record and audit can be opened again after switching devices.
+3. Go offline during a draft, edit questions, reconnect, and verify cloud history catches up without overwriting a newer completed audit.
+4. Switch Google accounts and verify no progress from the previous account is sent to the newly signed-in one.
+5. Revoke/expire a license and verify that paid question access is denied while prior saved user history is preserved.
+
+Do **not** claim a production Free transition is complete until these acceptance cases and the independent backup are confirmed.
