@@ -3,7 +3,9 @@
 -- periodically afterward. These are current logical sizes, not the host's
 -- Disk IO % consumed, monthly bandwidth usage, or backup health.
 --
--- 2026-11 Free quotas: 500 MiB PostgreSQL database, 1 GiB Storage objects.
+-- 2026-11 published Free quotas: 500 MB PostgreSQL database, 1 GB Storage objects.
+-- Use conservative decimal bytes (500,000,000 / 1,000,000,000) rather than
+-- assuming binary MiB/GiB. Check the latest Billing quota before downgrade.
 -- 75% database utilization is an early-warning threshold; 85% is critical.
 WITH database_usage AS (
   SELECT pg_catalog.pg_database_size(pg_catalog.current_database())::numeric AS used_bytes
@@ -16,11 +18,11 @@ storage_usage AS (
   FROM storage.objects
 ),
 quota AS (
-  SELECT 'database' AS resource, used_bytes, (500*1024*1024)::numeric AS quota_bytes,
+  SELECT 'database' AS resource, used_bytes, 500000000::numeric AS quota_bytes,
          75 AS warn_percent,85 AS critical_percent
   FROM database_usage
   UNION ALL
-  SELECT 'storage',used_bytes,(1024*1024*1024)::numeric,75,85
+  SELECT 'storage',used_bytes,1000000000::numeric,75,85
   FROM storage_usage
 )
 SELECT pg_catalog.now() AS measured_at,resource,
