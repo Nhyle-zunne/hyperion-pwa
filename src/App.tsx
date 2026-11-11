@@ -284,10 +284,13 @@ export default function App() {
         // checked below before any cloud request.
         let lastReported = 0
         let lastAttempt = 0
-        try { lastReported = Number(localStorage.getItem(storageKey) || 0) } catch { /* optional hint */ }
+        try {
+          lastReported = Number(localStorage.getItem(storageKey) || 0)
+          lastAttempt = Number(localStorage.getItem(attemptKey) || 0)
+        } catch { /* optional hint */ }
         try {
           lastReported = Math.max(lastReported, Number(sessionStorage.getItem(storageKey) || 0))
-          lastAttempt = Number(sessionStorage.getItem(attemptKey) || 0)
+          lastAttempt = Math.max(lastAttempt, Number(sessionStorage.getItem(attemptKey) || 0))
         } catch { /* optional hint */ }
         const now = Date.now()
         if (!shouldRecordAccountActivity(lastReported, now) || !canAttemptAccountActivity(lastAttempt, now)) return
@@ -300,6 +303,7 @@ export default function App() {
             (!lease.isAdmin && Object.keys(lease.trackExpiries).length === 0)) return
         // Mark an attempt before sending so a temporary Auth/network outage
         // cannot cause a burst of retries on every focus/visibility event.
+        try { localStorage.setItem(attemptKey, String(Date.now())) } catch { /* optional cross-tab throttle */ }
         try { sessionStorage.setItem(attemptKey, String(Date.now())) } catch { /* optional throttle */ }
         const { error } = await client.functions.invoke('record-user-activity')
         if (!error && active) {
