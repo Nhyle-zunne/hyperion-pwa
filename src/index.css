@@ -445,16 +445,12 @@ a {
 }
 
 
-/* The route-enter keyframe retains translateY(0) after it finishes.
-   Even a zero transform creates a fixed-position containing block, so a
-   checkout pay bar can dock halfway up a short mobile page instead of at
-   the visual viewport bottom. Keep other route animations unchanged. */
-@media (max-width: 800px) {
-  .route-transition:has(.basket-page) {
-    animation: none !important;
-    transform: none !important;
-  }
-}
+/* Route wrappers must NOT retain a transform or a persistent stacking
+   context: fixed descendants (Save & Exit, Question Palette, mock dialogs,
+   and the checkout footer) must stay pinned to the browser viewport.
+   The previous page-enter animation with fill-mode "both" retained
+   translateY(0), which still creates a fixed-position containing block.
+   Use a finite, opacity-only route fade with no fill-mode. */
 
 /* Smooth, app-like interaction and navigation motion */
 :root {
@@ -465,9 +461,15 @@ a {
 
 @media (prefers-reduced-motion: no-preference) {
   .route-transition {
-    animation: page-enter 240ms var(--motion-ease) both;
+    animation: route-fade-enter 240ms var(--motion-ease);
   }
 
+  @keyframes route-fade-enter {
+    from { opacity: 0.72; }
+    to { opacity: 1; }
+  }
+
+  /* Other non-route entry animations can still use the vertical motion. */
   @keyframes page-enter {
     from { opacity: 0.72; transform: translateY(7px); }
     to { opacity: 1; transform: translateY(0); }
@@ -801,8 +803,30 @@ a:focus-visible,
 .app-bottom-nav a span { font-size:1.25rem; }
 .nav-theme-toggle { display:flex; align-items:center; justify-content:center; min-width:52px; }
 .facebook-mark { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:4px; color:#fff; background:#1877f2; font-weight:900; font-family:Arial,sans-serif; font-size:1.2rem; }
-.exit-dialog-backdrop { position:fixed; inset:0; z-index:500; display:grid; place-items:center; padding:1rem; background:rgba(2,6,23,.72); }
-.exit-dialog { width:min(100%,440px); padding:1.4rem; background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-top:3px solid var(--accent); box-shadow:0 24px 80px rgba(0,0,0,.3); }
+.exit-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  box-sizing: border-box;
+  background: rgba(2,6,23,.72);
+}
+.exit-dialog {
+  width: min(100%, 440px);
+  max-height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  border-radius: 14px;
+  padding: clamp(1rem, 3vw, 1.4rem);
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  box-shadow: 0 24px 80px rgba(0,0,0,.3);
+}
 .exit-dialog h2 { font-size:1.25rem; margin-bottom:.5rem; }
 .exit-dialog p { color:var(--text-muted); line-height:1.55; }
 @media (min-width:900px) {
