@@ -32,6 +32,12 @@ type BasketItem = { code: PaidTrack; term: LicenseTerm }
 // informational only: server-side question/download/payment authorization never
 // relies on them. Explicit Sync, purchase confirmation and sign-out invalidate it.
 const accountOverviewCache = new Map<string, { entitlementRows: OwnedTrack[]; orders: Order[] }>()
+if (typeof window !== 'undefined') {
+  window.addEventListener('hyperion:license-server-refreshed', (event) => {
+    const owner = (event as CustomEvent<{ userId?: string }>).detail?.userId
+    if (owner) accountOverviewCache.delete(owner)
+  })
+}
 
 // A raised desktop card needs to retain its collapsed grid-cell height.
 // Reuse this for both hover and explicit See all actions so clicking never
@@ -308,6 +314,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     if (isLayout) return
     const loadAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setInactiveLicenses([]); setOrders([]); setRenewalGraceUntil(null); return }
+    // Explicit Sync and verified payment refresh the signed grant FIRST. That
+    // invalidates previously displayed rows before retrieving fresh details.
+    if (refreshEntitlements) await refreshCloudEntitlements()
     const ownerId = session.user.id
     const cached = refreshEntitlements ? undefined : accountOverviewCache.get(ownerId)
     if (cached) {
@@ -410,7 +419,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     if (!entitlementError && !orderResult.error) {
       accountOverviewCache.set(ownerId, { entitlementRows, orders: combinedOrders })
     }
-    if (refreshEntitlements) await refreshCloudEntitlements()
     }
     return quiet ? loadAccount() : withPageLoading('Loading account and licenses', loadAccount)
   }
