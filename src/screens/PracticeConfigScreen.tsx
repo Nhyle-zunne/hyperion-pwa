@@ -52,7 +52,7 @@ export default function PracticeConfigScreen({ savedSelection }: { savedSelectio
   const sessionMode = isDrill ? 'DRILL' : 'PRACTICE'
   const openPaywall = useUIStore(s => s.openPaywall)
   const isUnlocked = useLicenseStore(s => s.isTrackUnlocked(trackId) || s.isAllAccessUnlocked)
-  const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
+  const refreshCachedEntitlements = useLicenseStore(s => s.refreshCachedEntitlements)
   const startSession = usePracticeStore(s => s.startSession)
   const historyEntries = useHistoryStore(s => s.entries)
   const savedSessions = useHistoryStore(s => s.savedSessions)
@@ -225,9 +225,10 @@ export default function PracticeConfigScreen({ savedSelection }: { savedSelectio
         navigate(sessionRunnerPath({ id: startedId, mode: usePracticeStore.getState().mode }))
         return
       }
-      // Free Reviewer needs no license/network check. Paid modes must still
-      // refresh at the action boundary instead of trusting a stale UI flag.
-      if (!freeMode) await refreshCloudEntitlements()
+      // Free Reviewer never needs a paid license. Paid modes verify the
+      // owner-bound signed local expiry without making another Supabase
+      // request; the protected question endpoint still authorizes retrieval.
+      if (!freeMode) await refreshCachedEntitlements()
       const entitlement = useLicenseStore.getState()
       const hasLicense = entitlement.entitlementsVerified && (
         entitlement.isAllAccessUnlocked ||

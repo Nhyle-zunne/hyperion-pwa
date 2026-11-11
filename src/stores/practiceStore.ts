@@ -294,7 +294,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     // when creating a NEW session from the saved collection.
     const activeQuestions = selectActiveQuestions(questions);
     if (activeQuestions.length === 0) return false;
-    await useLicenseStore.getState().refreshCloudEntitlements();
+    await useLicenseStore.getState().refreshCachedEntitlements();
     const access = await authorizeQuestionSetAccess(track, activeQuestions);
     if (!access) {
       set({ loading: false, error: 'These saved questions are no longer available for this account. Renew the track license or use the free reviewer sample.' });
@@ -351,11 +351,11 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
     });
 
     try {
-      // Explicit Free Reviewer never needs an entitlement refresh: it is public
-      // online-only practice. Paid practice, drills, and mock exams still verify
-      // access at the session boundary (mock exams may use paid full questions).
+      // Explicit Free Reviewer never needs a paid license check. Signed
+      // local expiry is rechecked for paid modes; the question bank backend
+      // separately enforces live access for online protected content.
       const isFreeReviewerSession = mode === 'PRACTICE' && free === true;
-      if (!isFreeReviewerSession) await useLicenseStore.getState().refreshCloudEntitlements();
+      if (!isFreeReviewerSession) await useLicenseStore.getState().refreshCachedEntitlements();
       const lic = useLicenseStore.getState();
       const licensed = lic.isAllAccessUnlocked || lic.cloudTrackIds.includes('ALL') || lic.isTrackUnlocked(track);
       // Only the explicitly launched Free Reviewer may use a free pool in PRACTICE mode.
@@ -648,13 +648,10 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
           set({ loading: false, error: 'The saved session does not match its track or competence in History. It was not opened; your saved data remains intact.' });
           return false;
         }
-        // A full entitlement refresh makes multiple network requests and can stall
-        // indefinitely while Airplane Mode is enabled. Offline authorization below
-        // verifies the signed local lease; online authorization is checked directly
-        // by the protected question-bank endpoint.
-        if (typeof navigator === 'undefined' || navigator.onLine !== false) {
-          await useLicenseStore.getState().refreshCloudEntitlements();
-        }
+        // Re-evaluate the signed local expiry without a network refresh.
+        // Online resumes are still authorized by the protected question-bank
+        // service; offline resumes require a valid signed owner-bound lease.
+        await useLicenseStore.getState().refreshCachedEntitlements();
         const access = await authorizeQuestionSetAccess(snapshot.track, snapshot.questions);
         if (!access) {
           set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample.' });

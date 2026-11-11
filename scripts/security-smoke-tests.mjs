@@ -239,11 +239,14 @@ assert.ok(app.includes("import TopLoadingIndicator from './components/TopLoading
 assert.ok(
   app.includes("withPageLoading('Checking licenses and access'") &&
   app.includes('void refresh(true, true)') &&
-  app.includes('minimumRefreshIntervalMs = 10 * 60 * 1000') &&
   app.includes('if (refreshInFlight)') &&
   app.includes('let forcedRefreshQueued = false') &&
-  app.includes('if (force) forcedRefreshQueued = true'),
-  'Entitlement refreshes are throttled, deduplicated, and re-run after an in-flight account change'
+  app.includes('if (force) forcedRefreshQueued = true') &&
+  app.includes('shouldRefreshLicenseForAuthEvent') &&
+  app.includes("event === 'INITIAL_SESSION'") &&
+  app.includes('refreshCachedEntitlements()') &&
+  !app.includes('minimumRefreshIntervalMs = 10 * 60 * 1000'),
+  'Entitlement refreshes run on startup/account change or explicit action, while wake checks signed expiry locally'
 );
 assert.ok(topLoadingIndicator.includes('location.pathname') && topLoadingIndicator.includes('location.search') && topLoadingIndicator.includes('ROUTE_TRANSITION_MS = 480'), 'Top loader activates on page and query-string navigation');
 assert.ok(topLoadingIndicator.includes('src="/logo.png"') && !topLoadingIndicator.includes('/logo.png?') && topLoadingIndicator.includes('hyperion-top-loader__logo'), 'Top loader uses the exact precached local Hyperion logo URL as its animated symbol');
@@ -324,7 +327,7 @@ for (const route of [
 assert.ok(practiceStore.includes('useHistoryStore.getState().saveSession'), 'Practice session saves History metadata');
 assert.ok(practiceStore.includes('await saveSessionSnapshot(snapshot.sessionId, snapshot)'), 'Practice session snapshot is persisted');
 assert.ok(practiceStore.includes('authorizeQuestionSetAccess(snapshot.track, snapshot.questions)'), 'Restoring saved questions rechecks authorization');
-assert.ok(mockExam.includes("getQuestionCountsByTrack(trackId, freeOnly)") && mockExam.includes("refreshCloudEntitlements"), 'Mock exam refreshes entitlement and requests counts for the correct access tier');
+assert.ok(mockExam.includes("getQuestionCountsByTrack(trackId, freeOnly)") && mockExam.includes("refreshCachedEntitlements"), 'Mock exam validates cached signed access and asks the protected inventory endpoint for the correct access tier');
 assert.ok(!mockExam.includes("getQuestionsByTrack(trackId, true)"), 'Mock exam selection never preloads the free question text for all users');
 assert.ok(mockExam.includes("free: false") && mockExam.includes("limit: examItemCount") && mockExam.includes("timeLimitSec: examItemCount * 60"), 'Mock exam requests the configured competence count without forcing the free pool or shrinking the timer');
 assert.ok(mockExam.includes("MOCK_COMPETENCES_BY_FUNCTION") && mockExam.includes("functionForCompetence(trackId, competence.id)"), 'Mock exam maps function and competence selection independently of loaded question text');
@@ -343,7 +346,7 @@ assert.ok(app.includes("setupParams.get('free') === '1' && setupMode !== 'drill'
 assert.ok(app.includes("isMockRunner && currentMode === 'MOCK'") && app.includes("isPracticeQuiz && currentMode === 'PRACTICE'") && !app.includes("isPracticeQuiz && (currentMode === 'PRACTICE' || currentMode === 'DRILL')") && app.includes('const isPermittedFreeRunner = isFreeSession') && practiceStore.includes('authorizeQuestionSetAccess(track, activeQuestions)') && practiceStore.includes("isFreeSession: access === 'free-sample'"), 'Question-runner permits free-sample Free Reviewer and Mock sessions but never free-sample mistake drills');
 assert.ok(practiceStore.includes("mode !== 'MOCK' && !licensed && !isFreeReviewerSession") && practiceStore.includes("mode === 'PRACTICE' && free === true"), 'Practice store blocks unlicensed Practice All Questions and Drill sessions except explicit Free Reviewer');
 assert.ok(practiceStore.includes("mode === 'MOCK' ? !licensed : isFreeReviewerSession"), 'Mock Exam remains usable as a free feature and uses the full pool only for licensed users');
-assert.ok(practiceConfigScreen.includes('await refreshCloudEntitlements()') && practiceConfigScreen.includes('if (!freeMode && !hasLicense)') && practiceConfigScreen.includes('shuffleChoices, free: freeMode'), 'Practice configuration rechecks entitlement and no longer silently downgrades paid mode into free practice');
+assert.ok(practiceConfigScreen.includes('await refreshCachedEntitlements()') && practiceConfigScreen.includes('if (!freeMode && !hasLicense)') && practiceConfigScreen.includes('shuffleChoices, free: freeMode'), 'Practice configuration enforces signed local expiry without repeated network license refresh');
 assert.ok(practiceCompetenceScreen.includes("if (!freeMode && !unlocked)") && practiceCompetenceScreen.includes("openPaywall('Practice')"), 'Practice competence links without the explicit free reviewer flag require a license');
 assert.ok(trackHubScreen.includes("title: 'PRACTICE ALL QUESTIONS'") && trackHubScreen.includes("title: 'QUICK SCAN MODE'") && trackHubScreen.includes("title: 'FLASHCARD REVISION'") && trackHubScreen.includes('locked: !unlocked'), 'Track hub keeps paid practice, Quick Scan and Flashcards locked without the track license');
 assert.ok(drillScreen.includes("if (!isUnlocked)") && drillScreen.includes("openPaywall('Drill')"), 'Drill mode requires an active track license');
@@ -967,7 +970,7 @@ const localCompetenceEnd = offlineQuestionCache.indexOf('export async function g
 const localCompetenceReader = offlineQuestionCache.slice(localCompetenceStart, localCompetenceEnd);
 assert.ok(localCompetenceReader.includes('getValidatedPackMetadata') && localCompetenceReader.includes("validated.db.get('packs', meta.id)") && !localCompetenceReader.includes('getOfflineQuestionPacks(track, freeOnly)'), 'Offline competence loading decrypts only the selected competence/part rather than every pack for the track');
 assert.ok(questionBankClient.includes('const status = await getOfflinePackStatus(track, true)') && questionBankClient.includes('status?.complete && status.sampleVersion === 2'), 'A validated free pack skips the expensive repair/full-bank scan on every question load');
-assert.ok(practiceStore.includes("if (typeof navigator === 'undefined' || navigator.onLine !== false)") && practiceStore.includes('await useLicenseStore.getState().refreshCloudEntitlements()'), 'Resuming saved sessions skips network entitlement refresh while offline');
+assert.ok(practiceStore.includes('await useLicenseStore.getState().refreshCachedEntitlements()') && !practiceStore.includes('refreshCloudEntitlements()') && practiceStore.includes('authorizeQuestionSetAccess(snapshot.track, snapshot.questions)'), 'Saved-session resume checks local signed expiry and online server authorization without extra license refresh');
 assert.ok(questionFingerprintSource.includes('fingerprintCache.get(question)') && questionFingerprintSource.includes('fingerprintCache.set(question'), 'Repeated saved-session fingerprint checks reuse cached hashes for the same in-memory question objects');
 const fallbackStart = questionBankClient.indexOf('// Safari/iOS and installed PWAs can report online while the API is unreachable.');
 const fallbackBlock = questionBankClient.slice(fallbackStart, questionBankClient.indexOf('  } catch {', fallbackStart));

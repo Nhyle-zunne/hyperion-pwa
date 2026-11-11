@@ -28,6 +28,17 @@ type Order = {
 type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
+// Owner-bound in-memory display cache for this browser session. These rows are
+// informational only: server-side question/download/payment authorization never
+// relies on them. Explicit Sync, purchase confirmation and sign-out invalidate it.
+const accountOverviewCache = new Map<string, { entitlementRows: OwnedTrack[]; orders: Order[] }>()
+if (typeof window !== 'undefined') {
+  window.addEventListener('hyperion:license-server-refreshed', (event) => {
+    const owner = (event as CustomEvent<{ userId?: string }>).detail?.userId
+    if (owner) accountOverviewCache.delete(owner)
+  })
+}
+
 // A raised desktop card needs to retain its collapsed grid-cell height.
 // Reuse this for both hover and explicit See all actions so clicking never
 // makes the card expand into the document or push Buy Now below the screen.
@@ -236,7 +247,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   useEffect(() => {
     if (!supabase) return
     void supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'SIGNED_OUT') accountOverviewCache.clear()
       // Keep the page the user acted on mounted behind the success dialog until Continue is pressed.
       if (nextSession || !keepSuccessBackdropRef.current) setSession(nextSession)
     })
@@ -298,10 +310,31 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     } catch { setMessage('Unable to save profile details. Please try again.') }
     finally { setBusy(false) }
   })
-  const refreshAccount = async (quiet = false, refreshEntitlements = true) => {
+  const refreshAccount = async (quiet = false, refreshEntitlements = false) => {
     if (isLayout) return
     const loadAccount = async () => {
     if (!supabase || !session?.user.id) { setOwned([]); setInactiveLicenses([]); setOrders([]); setRenewalGraceUntil(null); return }
+    // Explicit Sync and verified payment refresh the signed grant FIRST. That
+    // invalidates previously displayed rows before retrieving fresh details.
+    if (refreshEntitlements) await refreshCloudEntitlements()
+    const ownerId = session.user.id
+    const cached = refreshEntitlements ? undefined : accountOverviewCache.get(ownerId)
+    if (cached) {
+      const now = Date.now()
+      const active = cached.entitlementRows.filter(row => isCurrentLicense(row, now))
+      const inactive = cached.entitlementRows.filter(row => !isCurrentLicense(row, now))
+      const latestExpired = cached.entitlementRows.reduce((latest, row) => {
+        if (row.status === 'revoked') return latest
+        const expiry = row.expires_at ? Date.parse(row.expires_at) : 0
+        return Number.isFinite(expiry) && expiry > 0 && expiry <= now ? Math.max(latest, expiry) : latest
+      }, 0)
+      const graceUntil = latestExpired + 30 * 24 * 60 * 60 * 1000
+      setOwned(active)
+      setInactiveLicenses(inactive)
+      setOrders(cached.orders)
+      setRenewalGraceUntil(active.length === 0 && latestExpired > 0 && graceUntil > now ? new Date(graceUntil).toISOString() : null)
+      return
+    }
     const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,checkout_batch_id'
     const [entitlements, playEntitlements, orderResult] = await Promise.all([
       supabase.from('entitlements')
@@ -383,7 +416,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     const combinedOrders = [...recentOrders, ...linkedOrders.filter(linked => !recentOrders.some(recent => recent.id === linked.id))]
     combinedOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     setOrders(combinedOrders)
-    if (refreshEntitlements) await refreshCloudEntitlements()
+    if (!entitlementError && !orderResult.error) {
+      accountOverviewCache.set(ownerId, { entitlementRows, orders: combinedOrders })
+    }
     }
     return quiet ? loadAccount() : withPageLoading('Loading account and licenses', loadAccount)
   }
@@ -426,7 +461,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             ? data.productCodes
             : typeof data.productCode === 'string' ? [data.productCode] : []
           clearBasketItems(paidCodes)
-          await refreshAccount()
+          await refreshAccount(false, true)
           const purchased = paidCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
           if (!cancelled) setMessage(`Payment confirmed. Activated: ${purchased.join(', ')}. No manual approval is needed.`)
           return
@@ -522,7 +557,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           const labels = uniqueCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
           setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
           clearBasketItems(uniqueCodes)
-          await refreshAccount()
+          await refreshAccount(false, true)
         }
       } catch {
         // A transient network or provider issue is retried with bounded backoff.
@@ -816,7 +851,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           <section style={card}>
             <div className="account-panel-title">
               <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
-              <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
+                <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
+                <button type="button" className="btn btn-outline" style={{ padding: '.35rem .7rem', minHeight: 38, fontSize: '.78rem' }}
+                  onClick={() => void withPageLoading('Syncing licenses', () => refreshAccount(false, true))}>
+                  Sync licenses
+                </button>
+              </div>
             </div>
             {owned.length ? owned.map(item => {
               const transaction = orders.find(order => order.id === item.order_id)
