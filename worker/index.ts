@@ -1,5 +1,5 @@
 import { PublisherError, publisherState, validateGithubBatch, publishGithubBatch, type PublishInput } from './githubBankPublisher.ts'
-import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, githubAssetPath, readBounded } from '../supabase/functions/_shared/githubBankSource.ts'
+import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, githubAssetPath, githubBankRequest, sha256, readBounded } from '../supabase/functions/_shared/githubBankSource.ts'
 import { SOURCE_ASSETS, sourceInfo, toSearchQuestions, sampleFreeCsv, validQuestionCount, QUESTION_COUNT_ALGORITHM_VERSION } from '../supabase/functions/_shared/bankCodec.ts'
 
 type Env = { ASSETS: { fetch: typeof fetch }; GITHUB_BANK_READ_TOKEN?: string; GITHUB_BANK_WRITE_TOKEN?: string }
@@ -119,6 +119,74 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         return reply({ error: 'Unknown administration action.' }, 400)
       } catch (error) { return reply({ error: error instanceof PublisherError ? error.message : 'GitHub administration is temporarily unavailable. Your live bank and saved progress remain preserved.' }, error instanceof PublisherError ? error.status : 503) }
     }
+    // Android may request a *single* encrypted, immutable source file after
+    // checking the small server manifest. Unlike public free-question pages,
+    // every encrypted-source request requires a freshly verified paid license.
+    // Verify the ciphertext against the pinned GitHub release before returning
+    // any bytes; never disclose repository credentials or bypass authorization
+    // with an edge cache.
+    if (url.pathname === '/api/question-bank/encrypted-source') {
+      if (request.method !== 'POST') return reply({ error: 'Method not allowed.' }, 405)
+      if (Number(request.headers.get('Content-Length')) > 4096) return reply({ error: 'Request is too large.' }, 413)
+      let body: { track?: string; path?: string; bankRevision?: string }
+      try {
+        body = JSON.parse(new TextDecoder().decode(await readBounded(request.body, 4096)))
+      } catch { return reply({ error: 'Invalid source download request.' }, 400) }
+      const path = body?.path
+      const track = body?.track
+      const info = typeof path === 'string' ? sourceInfo(path) : null
+      if (!info || !SOURCE_ASSETS.includes(path!) || track !== info.track ||
+          typeof body.bankRevision !== 'string' || !/^[a-f0-9]{40}$/.test(body.bankRevision)) {
+        return reply({ error: 'Invalid question-bank source.' }, 400)
+      }
+      const authorization = request.headers.get('Authorization')
+      if (!authorization?.startsWith('Bearer ')) return reply({ error: 'A current signed-in license is required.' }, 401)
+      try {
+        const configuration = await env.ASSETS.fetch(new Request(new URL('/hyperion-public-config.json', url)))
+        if (!configuration.ok) throw new Error('Missing authorization configuration.')
+        const config = await configuration.json() as Config
+        if (config.supabaseUrl !== 'https://evnjoezffghtrzqacwcj.supabase.co' || !config.supabaseAnonKey) {
+          throw new Error('Invalid authorization configuration.')
+        }
+        const verified = await fetcher(config.supabaseUrl + '/functions/v1/question-bank', {
+          method: 'POST',
+          headers: { Authorization: authorization, apikey: config.supabaseAnonKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'github-delivery-access', track, freeOnly: false, deliveryRoot: GITHUB_BANK_ROOT }),
+          signal: AbortSignal.timeout(15000)
+        })
+        if (!verified.ok) return reply({
+          error: verified.status === 401 || verified.status === 403
+            ? 'A current license is required for this track.' : 'Could not verify question access.'
+        }, verified.status === 401 || verified.status === 403 ? verified.status : 503)
+        const grant = await verified.json() as { allowed?: boolean; track?: string; access?: string }
+        if (grant.allowed !== true || grant.track !== track ||
+            (grant.access !== 'admin' && grant.access !== 'licensed')) {
+          return reply({ error: 'Could not verify question access.' }, 503)
+        }
+        const release = await source.release()
+        if (release.revision !== body.bankRevision) return reply({ error: 'The bank release changed. Retry the version check.' }, 409)
+        const file = release.files.find(item => item.path === path)
+        if (!file || file.bytes <= 28 || file.bytes > 1048576 ||
+            !/^[a-f0-9]{64}$/.test(file.sha256)) throw new Error('Invalid release metadata.')
+        const upstream = await fetcher(githubBankRequest(path!, release.revision, readToken))
+        if (!upstream.ok) throw new Error('The source is unavailable.')
+        const bytes = await readBounded(upstream.body, 1048576)
+        if (bytes.length !== file.bytes || await sha256(bytes) !== file.sha256) {
+          throw new Error('Question-bank source integrity check failed.')
+        }
+        return new Response(bytes, { status: 200, headers: {
+          'Content-Type': 'application/octet-stream',
+          'Cache-Control': 'private, no-store',
+          'X-Hyperion-Bank-Revision': release.revision,
+          'X-Hyperion-Source-SHA256': file.sha256,
+          'X-Hyperion-Source-Bytes': String(file.bytes),
+          'X-Content-Type-Options': 'nosniff'
+        } })
+      } catch {
+        return reply({ error: 'Encrypted question-bank delivery is temporarily unavailable; the existing offline bank is preserved.' }, 503)
+      }
+    }
+
     if (url.pathname !== '/api/question-bank/questions') return env.ASSETS.fetch(request)
     if (request.method !== 'POST') return reply({ error: 'Method not allowed.' }, 405)
     if (Number(request.headers.get('Content-Length')) > 8192) return reply({ error: 'Request is too large.' }, 413)
