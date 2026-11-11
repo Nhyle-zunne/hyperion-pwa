@@ -14,6 +14,7 @@ import {
   saveOfflineQuestionPackSets
 } from './offlineQuestionCache';
 import { fingerprintQuestion } from './questionFingerprint.mjs';
+import { planSmartBankReuse } from './smartBankDownloadPlan.mjs';
 import { parseCsvText } from './csvParser';
 import type { Question, TrackId, Difficulty } from '../types/question';
 import { activeToPublishedC10Position, requiresC10ActivePositionMapping, selectActiveQuestions, visibleCompetenceCount } from './retiredQuestions';
@@ -1454,7 +1455,53 @@ async function downloadOfflinePackInternal(
   const freeVersionsBefore = sourceVersionMap(versionsBefore, true)
 
   if (!versionsBefore.bankRevision) throw new Error('Question delivery is being upgraded. Your existing offline pack is preserved; retry shortly.')
+  // A valid, already-current encrypted pack should never trigger question-page
+  // downloads. The local ciphertext is read through AES-GCM before trusting it:
+  // incomplete, evicted or damaged groups will be downloaded again.
+  const previousManifest = await getOfflinePackManifest(track, false)
+  const previousPacks = previousManifest?.complete &&
+    previousManifest.sourceVersionFormat === versionsBefore.versionFormat &&
+    previousManifest.sourceVersions
+    ? await getOfflineQuestionPacks(track, false)
+    : null
+  const sameSourceRelease = previousManifest?.sourceVersions &&
+    Object.keys(previousManifest.sourceVersions).length === Object.keys(fullVersionsBefore).length &&
+    changedVersionPaths(previousManifest.sourceVersions, fullVersionsBefore).length === 0
+  if (previousPacks && previousManifest?.complete && sameSourceRelease &&
+      previousPacks.length === previousManifest.groupCount &&
+      previousPacks.reduce((sum, pack) => sum + pack.questions.length, 0) === previousManifest.questionCount) {
+    assertDownloadAccount()
+    await recordOfflinePackVersionCheck(track, false, {
+      checkedAt: Date.now(), state: 'current',
+      sourceVersions: fullVersionsBefore,
+      sourceVersionFormat: versionsBefore.versionFormat,
+      availableSources: []
+    })
+    onProgress?.(previousManifest.questionCount, previousManifest.questionCount)
+    return { questionCount: previousManifest.questionCount, groupCount: previousManifest.groupCount }
+  }
+
   const counts = (await fetchRevisionQuestionCounts(track, false, versionsBefore.bankRevision)).counts
+  // Match a published source path to its competence/part. An unknown mapping
+  // fails closed to a fresh download rather than falsely reusing stale content.
+  const publishedGroups = counts.filter(group => group.count > 0).map(group => ({
+    competenceId: group.competenceId,
+    part: group.part ?? null,
+    count: group.count,
+    path: SOURCES.find(source => source.track === track &&
+      source.competenceId === group.competenceId &&
+      (track !== 'GMDSS_GOC' || Number(source.path.match(/_part(\d+)\./)?.[1]) === group.part)
+    )?.path ?? ''
+  }))
+  const reusePlan = planSmartBankReuse<Question>(
+    previousManifest,
+    { versionFormat: versionsBefore.versionFormat, sourceVersions: fullVersionsBefore },
+    publishedGroups,
+    previousPacks
+  )
+  const reusableGroups = new Map(reusePlan.reused.map(group => [
+    `${group.competenceId}:${group.part ?? 'all'}`, group.questions
+  ] as const))
   const totalExpected = counts.reduce((sum, item) => sum + item.count, 0)
   if (!counts.length || totalExpected <= 0) throw new Error('No questions are available to download for this track.')
 
@@ -1468,6 +1515,15 @@ async function downloadOfflinePackInternal(
     // Some banks can include a registered competence with no published questions.
     // Do not create empty pack records for those entries.
     if (group.count <= 0) continue
+    const reuse = reusableGroups.get(`${group.competenceId}:${group.part ?? 'all'}`)
+    if (reuse) {
+      assertDownloadAccount()
+      writtenGroups.push({ competenceId: group.competenceId, part: group.part, questions: reuse })
+      allQuestions.push(...reuse)
+      downloaded += reuse.length
+      onProgress?.(Math.min(downloaded, totalExpected), totalExpected)
+      continue
+    }
     const questions: Question[] = []
     for (let offset = 0; offset < group.count; offset += 200) {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connection lost. Reconnect and retry the offline download.')
