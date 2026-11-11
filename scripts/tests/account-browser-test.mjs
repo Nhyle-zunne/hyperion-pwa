@@ -9,6 +9,7 @@ try {
   const editorErrors = []
   const editorApiCalls = []
   editorPage.on('pageerror', error => editorErrors.push(error.message))
+  await editorPage.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
   await editorPage.route('**/api/question-bank/admin', async route => {
     const body = route.request().postDataJSON()
     editorApiCalls.push(body.action)
@@ -27,7 +28,6 @@ try {
           : { error: 'Synthetic fixture does not publish to GitHub.' }
     await route.fulfill({ status: body.action === 'publish' ? 400 : 200, contentType: 'application/json', body: JSON.stringify(reply) })
   })
-  await editorPage.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
   await editorPage.goto(process.env.HYPERION_RECOVERY_TEST_URL + '?section=question-editor')
   await editorPage.getByRole('heading', { name: 'Edit, retire or restore questions' }).waitFor()
   await editorPage.getByRole('combobox', { name: 'Search track, competence or question bank' }).fill('Engine C10')
