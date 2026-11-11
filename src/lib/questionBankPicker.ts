@@ -41,3 +41,9 @@ export function searchQuestionBankAssets<T extends QuestionBankPickerAsset>(asse
     return terms.every(term => haystack.includes(term))
   })
 }
+
+/** Filter by the exact publisher track before applying the existing fuzzy search.
+ * A null track keeps the original global search behavior intact. */
+export function filterQuestionBankAssets<T extends QuestionBankPickerAsset>(assets: T[], track: string | null, query: string): T[] {
+  return searchQuestionBankAssets(track ? assets.filter(asset => asset.track === track) : assets, query)
+}
