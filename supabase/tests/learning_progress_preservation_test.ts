@@ -22,6 +22,10 @@ Deno.test('saved-data service scopes recovery and audits, preserves expired-owne
     const url = new URL(req.url)
     const body = req.method === 'GET' ? null : JSON.parse(await req.text() || 'null')
     calls.push({ url, body })
+    if (url.pathname.endsWith('/rpc/get_learning_progress_owned_tracks')) {
+      assert.ok([userA,userB].includes(body.p_user_id))
+      return json(historical ? [{ track_id: 'DECK_OIC_NW' }] : [])
+    }
     if (url.pathname.endsWith('/entitlements')) return json((url.searchParams.has('status') ? active : historical) ? [{ track_id: 'DECK_OIC_NW' }] : [])
     if (url.pathname.endsWith('/google_play_entitlements')) return json([])
     if (url.pathname.endsWith('/rpc/recover_learning_progress_collections')) return json({ found: true, applied: true })
