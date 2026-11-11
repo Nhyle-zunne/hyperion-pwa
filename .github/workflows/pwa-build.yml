@@ -37,9 +37,9 @@ jobs:
         with:
           deno-version: v2.x
       - name: Type-check protected question-bank and Google Play subscription functions
-        run: deno check --no-lock --node-modules-dir=auto supabase/functions/question-bank/index.ts supabase/functions/learning-progress/index.ts supabase/functions/admin-payment-review/index.ts supabase/functions/link-google-play-subscription/index.ts supabase/functions/google-play-rtdn/index.ts supabase/functions/create-checkout/index.ts supabase/functions/verify-checkout/index.ts supabase/functions/paymongo-webhook/index.ts supabase/functions/submit-manual-payment/index.ts supabase/functions/admin-license-management/index.ts supabase/functions/expire-inactive-accounts/index.ts supabase/functions/reconcile-google-play-subscriptions/index.ts
+        run: deno check --no-lock --node-modules-dir=auto supabase/functions/question-bank/index.ts supabase/functions/learning-progress/index.ts supabase/functions/admin-payment-review/index.ts supabase/functions/link-google-play-subscription/index.ts supabase/functions/google-play-rtdn/index.ts supabase/functions/create-checkout/index.ts supabase/functions/verify-checkout/index.ts supabase/functions/paymongo-webhook/index.ts supabase/functions/submit-manual-payment/index.ts supabase/functions/admin-license-management/index.ts supabase/functions/expire-inactive-accounts/index.ts supabase/functions/record-user-activity/index.ts supabase/functions/reconcile-google-play-subscriptions/index.ts
       - name: Test Google Play account-binding safeguards
-        run: deno test --no-lock --allow-env --node-modules-dir=auto supabase/tests/google_play_account_binding_test.ts supabase/tests/google_play_reconcile_noop_test.ts supabase/tests/learning_progress_preservation_test.ts supabase/tests/learning_progress_archive_batch_test.ts supabase/tests/learning_progress_conditional_read_test.ts supabase/tests/learning_progress_sections_test.ts supabase/tests/github_delivery_access_test.ts
+        run: deno test --no-lock --allow-env --node-modules-dir=auto supabase/tests/google_play_account_binding_test.ts supabase/tests/google_play_reconcile_noop_test.ts supabase/tests/learning_progress_preservation_test.ts supabase/tests/learning_progress_archive_batch_test.ts supabase/tests/learning_progress_conditional_read_test.ts supabase/tests/learning_progress_sections_test.ts supabase/tests/record_user_activity_throttle_test.ts supabase/tests/github_delivery_access_test.ts
       # Deno's --node-modules-dir=auto creates a second Vite/Rollup type
       # tree under node_modules/.deno; TypeScript then sees incompatible plugin
       # types from two installations. The Deno checks already finished.
@@ -79,6 +79,7 @@ jobs:
           bun test scripts/tests/question-bank-picker.test.ts
           bun test scripts/tests/question-bank-editor.test.ts
           bun test scripts/tests/progress-request-policy.test.ts
+          bun test scripts/tests/account-activity-policy.test.ts
           bun test scripts/tests/session-archive-batch.test.ts
       - name: Install Chromium for saved-data regression
         run: bunx playwright install --with-deps chromium

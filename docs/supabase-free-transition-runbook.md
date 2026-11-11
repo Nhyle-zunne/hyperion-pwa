@@ -82,3 +82,26 @@ Do **not** mark the transition complete until all are verified:
 5. Revoke/expire a license and verify that paid question access is denied while prior saved user history is preserved.
 
 Do **not** claim a production Free transition is complete until these acceptance cases and the independent backup are confirmed.
+
+
+## Nano compute and I/O eligibility — 2026-11-12
+
+**Do not treat a high PostgreSQL cache hit rate or a small database as proof that Nano is safe.** Current PostgreSQL counters are cumulative since their own reset timestamps. In the Nov 12 audit, database ~246 MiB, cumulative cache hit ~99.96%, active connections low, zero replication slots; however `pg_stat_wal` recorded ~18 GB **since Oct 2**, mainly from older full progress and session-archive writes. This is **not** current disk I/O in GB/day.
+
+Published Nano minima: 250 sustained IOPS, 5 MB/s sustained throughput, and up to 0.5 GB RAM (versus Micro 500 IOPS, 11 MB/s, 1 GB RAM). Nano is available as the base **Free-plan** compute, not a normal newly selectable paid-Pro instance. Compute resizing can incur downtime; do not alter the organization plan before verifying backups.
+
+1. Use `supabase/reports/nano-io-readiness.sql` twice, 15–60 minutes apart, and calculate **deltas** of WAL bytes, page reads, write counts and table growth. These are database indicators and do not equal physical IOPS, actual hardware throughput or disk-budget balance.
+2. In Supabase Dashboard → Observability → Database Health and Infrastructure settings, compare the **lowest sampled Disk IO Budget balance over seven days** (not just averaged balance), CPU/IOWait, memory pressure, swap, throughput and read/write IOPS. A low historical average is not enough if short periods hit zero. Track after the most recent PWA rollout, not mixed legacy function versions.
+3. Look for a full normal weekday plus a peak user session and scheduled Google Play reconciliation. Project Nano's smaller memory footprint can increase cache misses and swap I/O even when current compute has 99.96% cache hits.
+4. Before downsizing, produce a **real, encrypted, offsite production database + all private Storage files backup** and perform an isolated restore. Previous CI only tested synthetic fixtures.
+5. Confirm actual monthly Edge **billable invocations**, bandwidth, Free storage limits, Auth limits, and accept Free projects' inactivity pauses. No Nano guarantee is possible until the actual infrastructure I/O and memory metrics are observed.
+6. If those metrics suggest margin, use a scheduled low-traffic maintenance window to move to Free/Nano (or the smallest supported plan/compute), and monitor the worst IO balance, swap, checkout, license renewals, and saved audits after the change. Be prepared to restore higher compute if I/O throttles.
+
+### Activity tracking efficiency
+
+Routine paid-account activity (used solely to protect accounts from long-term inactivity cleanup) is now attempted at most once every **six hours per account/device** from the PWA; success hints persist across browser reloads and tabs, while failures back off for ten minutes rather than retrying on every focus. The service itself suppresses redundant cross-device database writes for six hours, including requests from older PWA versions. A 30-day inactivity period **plus** a further 30-day grace is still evaluated by the existing retention worker; payment licensing, expiry, renewal and immediate admin revocations are independent of activity markers. Free/unsigned users remain excluded from optional activity calls.
+
+This reduces unnecessary Edge, Supabase Auth and PostgreSQL activity for frequent PWA visits. **It does not reduce the full-snapshot progress WAL by itself**. Only compare like-for-like post-deploy traffic to quantify the benefit.
+
+Current compute documentation: https://supabase.com/docs/guides/platform/compute-and-disk
+High Disk I/O troubleshooting: https://supabase.com/kb/troubleshooting/exhaust-disk-io
