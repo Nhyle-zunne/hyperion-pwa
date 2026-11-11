@@ -4,7 +4,7 @@ Updated 2026-11-12. Project: `hyperion-maritime` (`evnjoezffghtrzqacwcj`). **Thi
 
 ## 1. Measured baseline (read-only, 2026-11-12)
 
-- PostgreSQL database: **241 MB (253,138,611 bytes)**; 500 MiB Free quota; ~48% used, ~259 MiB available.
+- PostgreSQL database: prior sample **241 MB (253,138,611 bytes)**; later read-only sample **257,586,867 bytes (~257.6 MB decimal)**, **51.52%** of a conservatively interpreted 500,000,000-byte Free database quota. Supabase documents **500 MB**, not an explicit 500 MiB allotment. The current value will change.
 - Question-bank private Storage bucket: **220 objects, ~20 MB**; Free storage quota: 1 GiB. These are encrypted application assets; do not delete them to save 20 MB.
 - Major PostgreSQL tables: progress revisions ~148 MB, session archives ~52 MB, current progress ~15 MB.
 - PostgreSQL cumulative update counts: `google_play_purchase_links` 43,853; `google_play_entitlements` 23,201. Historical counters are **not** daily usage and don't prove their current rate.
@@ -24,6 +24,8 @@ Free plan (Supabase's current documentation): 500 MB database, 1 GB Storage, 5 G
 
 ## 3. Backup BEFORE downgrading
 
+**Current blocker (2026-11-12):** The existing `.github/workflows/private-database-backup.yml` intentionally runs only for a **private** repository, while `Nhyle-zunne/hyperion-pwa` is currently **public**. Therefore the daily database backup job is **skipped**, not protecting production, and the existing script does not export actual Storage object bytes. Keep the security guard: do not enable private-data backups into public-repo Actions artifacts. Use a separately controlled private backup environment or a trusted local machine, with secrets and encryption keys kept outside the public repository. Neither a production ciphertext nor a successful isolated restore was verified in this audit.
+
 **Most important difference:** Free does not provide automatic Supabase daily database backups. Supabase recommends independent offsite exports. Do not downgrade until you have verified **a recent recoverable database backup and a separate copy of Storage objects**.
 
 1. From Pro, download the latest available backup in Supabase **Database → Backups**, or perform a supported logical export with the Supabase CLI `supabase db dump`/PostgreSQL `pg_dump` using an authorized direct or pooler connection. A database export contains sensitive user, entitlement, order and audit records.
@@ -36,7 +38,7 @@ Source: https://supabase.com/docs/guides/platform/backups
 
 ## 4. Monitor quota and operational safety
 
-- Run `supabase/reports/free-tier-readiness.sql` in Supabase SQL Editor. Record readings by date. Suggested internal alarms: **375 MB (75%) warning, 425 MB (85%) stop-and-investigate**; absolute Free quota 500 MB. **Do not delete customer recovery data to lower the meter**.
+- Run `supabase/reports/free-tier-readiness.sql` in Supabase SQL Editor. It now uses conservative decimal limits of **500,000,000 bytes for the database** and **1,000,000,000 bytes for Storage**, with **75% warning / 85% critical** thresholds. Record dated readings; a quota-only green result is not Nano I/O readiness. **Do not delete customer recovery data to lower the meter**.
 - In Supabase organization **Billing → Usage**, review uncached/cached egress and Edge Function invocations *over the current billing period*. The SQL report cannot inspect them. Look specifically for authenticated question-bank bytes accidentally served through Supabase rather than the GitHub/Cloudflare delivery path.
 - In **Observability**, inspect Disk IO % consumed over days, not only cumulative WAL totals. Free has shared CPU and less RAM; a low logical database size does not guarantee low disk pressure.
 - Test a real PayMongo checkout return + webhook license grant, revocation, Google sign-in, Android/PWA license sync, active/expired Google Play entitlements, offline licensed packs and saved-session recovery after the plan change. Avoid live duplicate payments: perform controlled purchases/refunds with the correct environment.

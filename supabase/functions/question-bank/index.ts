@@ -1,6 +1,7 @@
 import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_FILES, GITHUB_BANK_PUBLISHED_AT, GITHUB_BANK_ROOT, type BankRelease } from "../_shared/githubBankSource.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { canAccessPaidTrack } from "./access.mjs";
+import { canSkipQuestionBankAuthLookup } from "./publicAuthPolicy.ts";
 
 const SOURCE_ASSETS: string[] = ["deck/oic_nw_c1.csv.enc","deck/oic_nw_c10.csv.enc","deck/oic_nw_c11.csv.enc","deck/oic_nw_c12.csv.enc","deck/oic_nw_c13.csv.enc","deck/oic_nw_c17.csv.enc","deck/oic_nw_c2.csv.enc","deck/oic_nw_c3.csv.enc","deck/oic_nw_c4.csv.enc","deck/oic_nw_c5.csv.enc","deck/oic_nw_c7.csv.enc","deck/oic_nw_c9.csv.enc","deck_mgt/dm_c1.csv.enc","deck_mgt/dm_c10.csv.enc","deck_mgt/dm_c11.csv.enc","deck_mgt/dm_c12.csv.enc","deck_mgt/dm_c13.csv.enc","deck_mgt/dm_c14.csv.enc","deck_mgt/dm_c15.csv.enc","deck_mgt/dm_c16.csv.enc","deck_mgt/dm_c17.csv.enc","deck_mgt/dm_c18.csv.enc","deck_mgt/dm_c2.csv.enc","deck_mgt/dm_c20.csv.enc","deck_mgt/dm_c3.csv.enc","deck_mgt/dm_c4.csv.enc","deck_mgt/dm_c5.csv.enc","deck_mgt/dm_c6.csv.enc","deck_mgt/dm_c8.csv.enc","deck_mgt/dm_c9.csv.enc","engine_ew/ew_c1.csv.enc","engine_ew/ew_c10.csv.enc","engine_ew/ew_c11.csv.enc","engine_ew/ew_c15.csv.enc","engine_ew/ew_c16.csv.enc","engine_ew/ew_c2.csv.enc","engine_ew/ew_c3.csv.enc","engine_ew/ew_c4.csv.enc","engine_ew/ew_c5.csv.enc","engine_ew/ew_c6.csv.enc","engine_ew/ew_c7.csv.enc","engine_ew/ew_c8.csv.enc","engine_ew/ew_c9.csv.enc","engine_mgt/em_c1.csv.enc","engine_mgt/em_c10.csv.enc","engine_mgt/em_c11.csv.enc","engine_mgt/em_c12.csv.enc","engine_mgt/em_c13.csv.enc","engine_mgt/em_c14.csv.enc","engine_mgt/em_c2.csv.enc","engine_mgt/em_c3.csv.enc","engine_mgt/em_c4.csv.enc","engine_mgt/em_c5.csv.enc","engine_mgt/em_c6.csv.enc","engine_mgt/em_c7.csv.enc","engine_mgt/em_c8.csv.enc","engine_mgt/em_c9.csv.enc","gmdss/c1_part1.csv.enc","gmdss/c1_part10.csv.enc","gmdss/c1_part2.csv.enc","gmdss/c1_part3.csv.enc","gmdss/c1_part4.csv.enc","gmdss/c1_part5.csv.enc","gmdss/c1_part6.csv.enc","gmdss/c1_part7.csv.enc","gmdss/c1_part8.csv.enc","gmdss/c1_part9.csv.enc","gmdss/c2_part1.csv.enc","gmdss/c2_part2.csv.enc"];
 const corsHeaders = {
@@ -817,7 +818,9 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { return json(req, { error: "Invalid request body." }, 400); }
   let user: any = null, isAdmin = false;
   const authHeader = req.headers.get("Authorization");
-  if (authHeader) {
+  if (authHeader && !canSkipQuestionBankAuthLookup(body)) {
+    // The public free-review actions have no account-specific output.
+    // All premium delivery and identity-dependent actions still verify Auth.
     // This endpoint deliberately allows publishable-key-only guests to retrieve
     // the free sample, so verify_jwt stays disabled at the gateway. Resolve any
     // supplied user token against Auth before trusting its identity or email.
