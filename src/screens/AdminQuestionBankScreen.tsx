@@ -501,7 +501,7 @@ export default function AdminQuestionBankScreen() {
                 <input type="text" maxLength={160} value={imageAlt} placeholder="e.g., Radar plotting diagram" onChange={event=>setImageAlt(event.target.value)} style={{width:'100%',marginTop:4}}/>
               </label>
               <label>Image placement
-                <select value={imagePlacement} onChange={event=>setImagePlacement(event.target.value as 'question'|'explanation')} className="admin-qb-target-select">
+                <select aria-label="Image placement" value={imagePlacement} onChange={event=>setImagePlacement(event.target.value as 'question'|'explanation')} className="admin-qb-target-select">
                   <option value="question">Below question</option><option value="explanation">Below explanation</option>
                 </select>
               </label>
