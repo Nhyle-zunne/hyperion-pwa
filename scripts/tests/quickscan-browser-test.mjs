@@ -73,8 +73,52 @@ try {
     assert.ok((await header.getByRole('switch', { name: 'Night Mode' }).boundingBox()).x >= 0)
     await gear().click()
   }
-  await header.getByRole('button', { name: 'Back to Quick Scan competences' }).click()
-  await page.waitForFunction(() => !document.querySelector('.quick-scan-screen'))
+  // Quick Scan reader must persist *only* a small position in local IndexedDB.
+  // Returning through the header immediately after jumping must not race a
+  // pending IDB write, and the position must survive a hard reload.
+  page.once('dialog', dialog => dialog.accept('51'))
+  await page.getByRole('button', { name: 'Jump to Question' }).click()
+  await page.getByText('Vessel fixture 51 gives way.', { exact: true }).waitFor()
+  await page.waitForFunction(async () => {
+    const request = indexedDB.open('hyperion-quick-scan-reading-position')
+    const db = await new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const tx = db.transaction('positions', 'readonly')
+    const get = tx.objectStore('positions').getAll()
+    const rows = await new Promise((resolve, reject) => {
+      get.onsuccess = () => resolve(get.result)
+      get.onerror = () => reject(get.error)
+    })
+    db.close()
+    return rows.some(row => row.track === 'DECK_OIC_NW' && row.competenceId === 'C1' &&
+      row.questionIndex === 50 && row.questionId === 'quickscan-fixture-51')
+  })
+
+  const goBack = async () => {
+    await header.getByRole('button', { name: 'Back to Quick Scan competences' }).click()
+    await page.getByText('Select Competence', { exact: true }).waitFor()
+  }
+  await goBack()
+  await page.getByText('RESUME QUICK SCAN', { exact: true }).waitFor()
+  await page.getByRole('button', { name: /GO BACK TO WHERE YOU LEFT OFF \\(Q #51\\)/ }).click()
+  await page.getByText('Vessel fixture 51 gives way.', { exact: true }).waitFor()
+
+  // Reopening the same competence normally asks whether to resume, just as
+  // the Android viewer does. A reload must not silently reset the cursor to Q1.
+  await page.reload()
+  const resumeDialog = page.getByRole('dialog', { name: 'RESUME PREVIOUS READING?' })
+  await resumeDialog.waitFor()
+  await resumeDialog.getByRole('button', { name: 'YES, GO TO Q #51' }).click()
+  await page.getByText('Vessel fixture 51 gives way.', { exact: true }).waitFor()
+  await goBack()
+  await page.getByRole('button', { name: /C1.*OPEN/i }).first().click()
+  await resumeDialog.waitFor()
+  await resumeDialog.getByRole('button', { name: 'NO, START AT Q #1' }).click()
+  await page.getByText('Vessel fixture 1 gives way.', { exact: true }).waitFor()
+  await goBack()
+  assert.equal(await page.getByText('RESUME QUICK SCAN', { exact: true }).count(), 0)
   assert.deepEqual(errors, [])
-  console.log('PASS: shared topbar/settings, desktop width, mobile layout, green Save, cross-view bookmarks/highlights, correct-answer display, Previous/Next/Jump and Back.')
+  console.log('PASS: shared Quick Scan UI, bookmarks/highlights, page boundary and Jump, local IndexedDB cursor, resume card, reload, resume/start-over, and Back without Supabase writes.')
 } finally { await browser.close() }
