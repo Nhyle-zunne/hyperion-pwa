@@ -49,12 +49,11 @@ export function validateBankManifest(value: unknown): BankFile[] {
 
 /** Files and manifests use immutable commits. Only the small release pointer is refreshed. */
 export function createGithubBankSource(fetcher: typeof fetch = fetch, cache?: Cache, readToken?: string, now = Date.now) {
-  const memory = new Map<string, Promise<string>>()
-  let verified: BankRelease | undefined, checkedAt = -Infinity, pending: Promise<BankRelease> | undefined
+  const memory = new Map<string, string>()
+  let verified: BankRelease | undefined, checkedAt = -Infinity
   async function release(force = false): Promise<BankRelease> {
     if (!force && verified && now() - checkedAt < 60000) return verified
-    if (pending) return pending
-    pending = (async () => {
+    return (async () => {
       try {
         let response: Response
         try { response = await fetcher(githubBankRequest(GITHUB_BANK_RELEASE, 'main', readToken, now())) } catch { throw new SourceUnavailable('GitHub release is temporarily unavailable.') }
@@ -81,13 +80,12 @@ export function createGithubBankSource(fetcher: typeof fetch = fetch, cache?: Ca
         throw error
       }
     })()
-    try { return await pending } finally { pending = undefined }
   }
   async function read(path: string, snapshot: BankRelease, persistToEdgeCache = true): Promise<string> {
     const file = snapshot.files.find(item => item.path === path)
     if (!paths.has(path) || !file) throw new Error('Unsupported GitHub question-bank path.')
     const key = file.sha256 + ':' + path
-    const found = memory.get(key); if (found) return found
+    const found = memory.get(key); if (found !== undefined) return found
     const load = (async () => {
       const request = githubBankRequest(path, snapshot.revision, readToken)
       const cached = await cache?.match(request), response = cached || await fetcher(request)
@@ -98,9 +96,11 @@ export function createGithubBankSource(fetcher: typeof fetch = fetch, cache?: Ca
       if (!cached && cache && persistToEdgeCache) { try { await cache.put(request, new Response(new Uint8Array(bytes).buffer, { headers: { 'Cache-Control': 'public, max-age=31536000, immutable' } })) } catch { /* Verified content remains usable if edge caching is unavailable. */ } }
       return text
     })()
+    const text = await load
+    // Cache completed data only; unfinished I/O belongs to its request.
     if (memory.size >= paths.size * 2) memory.delete(memory.keys().next().value!)
-    memory.set(key, load)
-    try { return await load } catch (error) { memory.delete(key); throw error }
+    memory.set(key, text)
+    return text
   }
   const source = async (path: string) => read(path, await release())
   return Object.assign(source, { release, read, invalidate: () => { checkedAt = -Infinity } })

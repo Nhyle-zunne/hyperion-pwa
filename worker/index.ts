@@ -10,11 +10,11 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
   let source: ReturnType<typeof createGithubBankSource> | undefined
   let sourceToken: string | undefined
   type Counts = { competenceId: string; part: number | null; fullCount: number; freeCount: number; rawCount: number; retiredPositions: number[]; freeRetiredPositions: number[]; rawFreeCount: number }[]
-  const countJobs = new Map<string, Promise<Counts>>()
+  const completedCounts = new Map<string, Counts>()
   return async (request: Request, env: Env): Promise<Response> => {
     const url = new URL(request.url)
     const readToken = env.GITHUB_BANK_READ_TOKEN
-    if (!source || sourceToken !== readToken) { sourceToken = readToken; source = createGithubBankSource(fetcher, cache, readToken); countJobs.clear() }
+    if (!source || sourceToken !== readToken) { sourceToken = readToken; source = createGithubBankSource(fetcher, cache, readToken); completedCounts.clear() }
     if (url.pathname === '/api/question-bank/source' && request.method === 'GET') {
       try { const release = await source.release(); return reply({ source: 'github', repository: GITHUB_BANK_REPOSITORY, root: GITHUB_BANK_ROOT, revision: release.revision, publishedAt: release.publishedAt, files: release.files.length }) }
       catch { return reply({ error: 'The GitHub release is temporarily unavailable.' }, 503) }
@@ -30,10 +30,10 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         const release = await source.release()
         if (pinned && pinned !== release.revision) return reply({ error: 'The question bank changed. Reload and retry.' }, 409)
         const key = QUESTION_COUNT_ALGORITHM_VERSION + ':' + release.revision + ':' + track
-        let job = countJobs.get(key)
-        if (!job) {
+        let all = completedCounts.get(key)
+        if (!all) {
           const snapshotSource = source
-          job = (async (): Promise<Counts> => {
+          all = await (async (): Promise<Counts> => {
             // Cache aggregates only. The namespace includes parser version and an
             // immutable release; no account identity or question text is stored.
             const cacheKey = new Request(new URL('/__hyperion-counts/' + QUESTION_COUNT_ALGORITHM_VERSION + '/' + release.revision + '/' + track, url.origin))
@@ -66,11 +66,9 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
             } catch { /* Verified counts remain usable without persistent caching. */ }
             return counts
           })()
-          countJobs.set(key, job)
-          while (countJobs.size > 10) countJobs.delete(countJobs.keys().next().value!)
+          completedCounts.set(key, all)
+          while (completedCounts.size > 10) completedCounts.delete(completedCounts.keys().next().value!)
         }
-        let all: Counts
-        try { all = await job } catch (error) { countJobs.delete(key); throw error }
         const retirementMetadata = url.searchParams.get('retirement') === '1'
         const counts = all.map(item => ({ competenceId: item.competenceId, part: item.part, count: freeOnly ? item.freeCount : item.fullCount, ...(retirementMetadata ? { rawCount: freeOnly ? item.rawFreeCount : item.rawCount, retiredPositions: freeOnly ? item.freeRetiredPositions : item.retiredPositions } : {}) }))
         return new Response(JSON.stringify({ counts, bankRevision: release.revision, source: 'github', access: 'public-catalog-metadata' }), {

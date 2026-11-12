@@ -62,6 +62,7 @@ jobs:
           node scripts/tests/github-bank-publisher-test.mjs
           node scripts/tests/github-publisher-transaction-test.mjs
           node scripts/tests/github-bank-delivery-test.mjs
+          node scripts/tests/github-bank-request-isolation-test.mjs
           node scripts/tests/smart-bank-download-plan-test.mjs
           bun test scripts/tests/github-offline-version.test.ts
           bun test scripts/tests/github-download-revision.test.ts
