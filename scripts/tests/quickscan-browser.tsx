@@ -7,8 +7,20 @@ import { useLicenseStore } from '../../src/stores/licenseStore'
 import { usePracticeStore } from '../../src/stores/practiceStore'
 import { useBookmarksStore } from '../../src/stores/bookmarksStore'
 import { fixtureQuestions } from './quickscan-bank-fixture'
+import { getQuickScanPosition, listQuickScanPositions, saveQuickScanPosition, quickScanLocalOwner } from '../../src/lib/quickScanPosition'
 import '../../src/index.css'
 registerSW({ immediate: true })
+// The test fixture exposes local-only cursor operations to Playwright so
+// account separation and IndexedDB/localStorage recovery are verified without
+// mocking the production license/auth services or adding test routes to prod.
+Object.assign(window, {
+  __hyperionQuickScanTest: {
+    getQuickScanPosition,
+    listQuickScanPositions,
+    saveQuickScanPosition,
+    quickScanLocalOwner
+  }
+})
 // Stub only remote entitlement restoration in this test entry. All UI, routing,
 // question navigation, bookmarks, and encrypted keyword storage are the real code.
 useLicenseStore.setState({ entitlementsVerified: true, isAllAccessUnlocked: true, cloudTrackIds: ['DECK_OIC_NW'], refreshCloudEntitlements: async () => {} })
