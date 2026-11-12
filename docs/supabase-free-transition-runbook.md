@@ -50,6 +50,28 @@ https://supabase.com/docs/guides/platform/billing-on-supabase
 https://supabase.com/docs/guides/platform/free-project-pausing
 https://supabase.com/docs/guides/platform/manage-your-subscription
 
+## Current paid-entitlement read consolidation
+
+- The website and Google Play active grants can be read through a single
+  `get_active_paid_track_entitlements` SQL query. The query is
+  `SECURITY INVOKER`, available only to the service role and read-only.
+  This reduces per-request HTTP round trips from **two to one** in paid
+  question-bank and signed offline-license checks. It does **not** cache
+  purchases, change reconciliation schedules, or defer cancellations.
+- Saved-progress **read authorization** now considers current Play grants as
+  well as PayMongo/admin grants. Historical grants still authorize backups
+  only; they must never grant reading premium question content.
+- The original two-query path is retained solely for a rolling deployment
+  where the new RPC returns `PGRST202` (not installed). Every other lookup
+  failure fails closed. Deploy the SQL migration before the new Edge Functions;
+  never make the public RPC executable by `anon` or `authenticated`.
+- After rollout, monitor `/rest/v1/rpc/get_active_paid_track_entitlements`
+  and the previous two entitlement endpoints in **Supabase Logs** at matching
+  traffic levels. A reduction in network/REST calls is expected, but disk I/O
+  and billable usage must still be measured, not inferred.
+- Exercise website-only, Play-only, overlapping, expired and revoked
+  subscriptions before treating the Free migration as ready.
+
 ## 5. Free transition acceptance criteria
 
 Do **not** mark the transition complete until all are verified:
