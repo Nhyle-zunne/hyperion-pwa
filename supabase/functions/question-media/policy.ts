@@ -35,7 +35,7 @@ export function imageSignatureMatches(bytes: Uint8Array, mime: ImageMime): boole
   return false
 }
 export async function sha256(bytes: Uint8Array): Promise<string> {
-  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)))
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', Uint8Array.from(bytes))))
     .map(part => part.toString(16).padStart(2, '0')).join('')
 }
 export function activePaidTrackRows(rows: unknown, userId: string, track: ImageTrack, now = Date.now()): boolean {
