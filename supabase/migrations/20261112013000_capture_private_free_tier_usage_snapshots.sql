@@ -45,7 +45,7 @@ begin
     (pg_catalog.now() at time zone 'UTC')::date,
     pg_catalog.now(),
     pg_catalog.pg_database_size(pg_catalog.current_database()),
-    (select pg_catalog.coalesce(pg_catalog.sum(
+    (select coalesce(pg_catalog.sum(
       case when obj.metadata->>'size' ~ '^[0-9]+$'
         then (obj.metadata->>'size')::numeric else 0 end
     ), 0)::bigint from storage.objects as obj),
