@@ -219,6 +219,42 @@ try {
     restored: 77, persisted: 77, fallbackCleared: true, afterStaleWrite: 77
   })
 
+  const otherScopes = await page.evaluate(async () => {
+    const t = window.__hyperionQuickScanTest
+    const owner = t.quickScanLocalOwner()
+    // Test fallback-list recovery independently from single-competence reads.
+    const c2 = {
+      id: owner + ':DECK_OIC_NW:C2', ownerId: owner, track: 'DECK_OIC_NW',
+      competenceId: 'C2', questionIndex: 13, questionId: 'c2-synthetic-14', savedAt: Date.now()
+    }
+    const key = 'hyperion:quick-scan-reading:v1:' + c2.id
+    localStorage.setItem(key, JSON.stringify(c2))
+    // Malformed cross-owner IDs must never be imported even if JSON claims
+    // the current owner, track and competence.
+    localStorage.setItem('hyperion:quick-scan-reading:v1:' + owner + ':DECK_OIC_NW:C3',
+      JSON.stringify({ ...c2, competenceId: 'C3', id: 'another-owner:DECK_OIC_NW:C3' }))
+    const all = await t.listQuickScanPositions('DECK_OIC_NW')
+    const migrated = await t.getQuickScanPosition('DECK_OIC_NW', 'C2')
+    const invalid = await t.getQuickScanPosition('DECK_OIC_NW', 'C3')
+    const engineBefore = await t.getQuickScanPosition('ENGINE_MGT', 'C1')
+    await t.saveQuickScanPosition('ENGINE_MGT', 'C1', 8, 'engine-fixture-9')
+    const deckAfter = await t.getQuickScanPosition('DECK_OIC_NW', 'C1')
+    const engineAfter = await t.getQuickScanPosition('ENGINE_MGT', 'C1')
+    return {
+      c2InDirectory: all.some(row => row.competenceId === 'C2' && row.questionIndex === 13),
+      c2Migrated: migrated?.questionIndex,
+      fallbackGone: localStorage.getItem(key) === null,
+      invalid,
+      engineBefore,
+      engineAfter: engineAfter?.questionIndex,
+      deckAfter: deckAfter?.questionIndex
+    }
+  })
+  assert.deepEqual(otherScopes, {
+    c2InDirectory: true, c2Migrated: 13, fallbackGone: true,
+    invalid: null, engineBefore: null, engineAfter: 8, deckAfter: 77
+  })
+
   // If a protected question page fails, the viewer must provide a usable
   // retry path rather than trapping the reader on a blank page.
   await page.evaluate(() => localStorage.setItem('hyperion-quickscan-fixture-bank-mode', 'fail-load'))
