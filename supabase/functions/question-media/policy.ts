@@ -44,3 +44,12 @@ export function activePaidTrackRows(rows: unknown, userId: string, track: ImageT
     row.user_id === userId && row.track_id === track &&
     typeof row.expires_at === 'string' && Date.parse(row.expires_at) > now)
 }
+
+/** Match the existing question-bank administrator allowlist format exactly.
+ * No token-supplied admin claim is trusted without a verified email match. */
+export function isConfiguredQuestionBankAdmin(email: string | undefined, allowedEmails: string): boolean {
+  const allowed = allowedEmails
+    .split(/[;,\s]+/).map(value => value.trim().toLowerCase()).filter(Boolean)
+  return typeof email === 'string' && email.length > 0 &&
+    allowed.includes(email.toLowerCase())
+}

@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
   BUCKET, MAX_IMAGE_BYTES, mediaObjectPath, validMime, validTrack,
-  imageSignatureMatches, sha256, activePaidTrackRows
+  imageSignatureMatches, sha256, activePaidTrackRows, isConfiguredQuestionBankAdmin
 } from './policy.ts'
 
 const allowedOrigins = new Set([
@@ -26,9 +26,7 @@ function json(req: Request, data: unknown, status = 200) {
   })
 }
 function validAdminEmail(email: string | undefined): boolean {
-  const allowed = (Deno.env.get('ADMIN_EMAILS') || '')
-    .split(',').map(value => value.trim().toLowerCase()).filter(Boolean)
-  return !!email && allowed.includes(email.toLowerCase())
+  return isConfiguredQuestionBankAdmin(email, Deno.env.get('ADMIN_EMAILS') || '')
 }
 async function readVerifiedObject(admin: any, path: string, mime: string, expectedSha: string): Promise<Uint8Array | null> {
   const { data, error } = await admin.storage.from(BUCKET).download(path)
