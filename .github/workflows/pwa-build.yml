@@ -105,6 +105,10 @@ jobs:
         env:
           HYPERION_BROWSER_FIXTURE: results
         run: bun run test:saved-data:browser
+      - name: Quick Scan local IndexedDB resume browser regression
+        env:
+          HYPERION_BROWSER_FIXTURE: quickscan
+        run: bun run test:saved-data:browser
       - name: Practice hard-refresh exact-session regression
         env:
           HYPERION_BROWSER_FIXTURE: practice-refresh
