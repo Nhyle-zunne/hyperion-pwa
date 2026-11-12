@@ -102,7 +102,7 @@ try {
   }
   await goBack()
   await page.getByText('RESUME QUICK SCAN', { exact: true }).waitFor()
-  await page.getByRole('button', { name: /GO BACK TO WHERE YOU LEFT OFF \\(Q #51\\)/ }).click()
+  await page.getByRole('button', { name: /GO BACK TO WHERE YOU LEFT OFF/ }).click()
   await page.getByText('Vessel fixture 51 gives way.', { exact: true }).waitFor()
 
   // Reopening the same competence normally asks whether to resume, just as
