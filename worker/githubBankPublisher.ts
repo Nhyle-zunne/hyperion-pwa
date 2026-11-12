@@ -1,5 +1,6 @@
 import { decryptToText, deriveKeyBytes, toSearchQuestions } from '../supabase/functions/_shared/bankCodec.ts'
 import { parseCsvText } from '../src/lib/csvParser.ts'
+import { parseQuestionImageRefs } from '../src/lib/questionMedia.ts'
 import { GITHUB_BANK_FILES, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, GITHUB_BANK_MANIFEST, GITHUB_BANK_RELEASE, githubAssetPath, INITIAL_BANK_RELEASE, readBounded, sha256, validateBankManifest, type BankRelease } from '../supabase/functions/_shared/githubBankSource.ts'
 
 export class PublisherError extends Error { status: number; constructor(message: string, status = 400) { super(message); this.status = status } }
@@ -69,10 +70,31 @@ export function validateQuestionChanges(path: string, before: string, after: str
   if (previous.some(question => question.isRetired === true) && !hasStatusColumn(after)) {
     throw new PublisherError('This CSV omits existing retirement flags. Open the question bank in the admin editor or preserve its HYPERION_STATUS column.', 409)
   }
+  // Match bankCodec's header selection so a marker in a data cell cannot authorize image removal.
+  const rows = parseCsvText(after), gmdss = path.startsWith('gmdss/')
+  const detectedHeader = rows.slice(0, 15).findIndex(row => {
+    const joined = row.map(cell => cell.trim().toLowerCase()).join('|')
+    return gmdss ? joined.includes('question') && joined.includes('option1')
+      : (joined.includes('question') && (joined.includes('correct') || joined.includes('|a|')))
+        || (row[0]?.trim().toLowerCase() === 'no.' && row[1]?.trim().toLowerCase() === 'question')
+  })
+  const header = detectedHeader < 0 ? (gmdss ? 3 : 0) : detectedHeader
+  const mediaColumn = (rows[header] || []).findIndex(value => value.trim().toUpperCase() === 'HYPERION_MEDIA')
+  if (previous.some(question => Array.isArray(question.imageAttachments) && question.imageAttachments.length) && mediaColumn < 0) {
+    throw new PublisherError('This CSV omits existing question images. Preserve its HYPERION_MEDIA column; to remove images intentionally, keep the column and explicitly clear their cells.', 409)
+  }
+  if (mediaColumn >= 0) {
+    for (const row of rows.slice(header + 1)) {
+      const value = row[mediaColumn] || ''
+      if (value.trim() && !parseQuestionImageRefs(value).length) {
+        throw new PublisherError('The HYPERION_MEDIA column contains invalid image metadata. Preserve valid attachment references or explicitly clear the cell to remove images.')
+      }
+    }
+  }
   if (!next.length) throw new PublisherError('The CSV does not contain valid questions.')
   if (next.length < previous.length) throw new PublisherError('Removing questions or publishing a shorter list would break saved references. Keep existing questions and append new ones.')
   const identity = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options])
-  const semantic = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options, q.correctAnswerIndex, q.explanation, q.isRetired === true])
+  const semantic = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options, q.correctAnswerIndex, q.explanation, q.isRetired === true, q.imageAttachments || []])
   const positions = new Map<string, Set<number>>()
   previous.forEach((q, i) => { const key = identity(q); const indexes = positions.get(key) || new Set<number>(); indexes.add(i); positions.set(key, indexes) })
   let changed = 0
@@ -82,7 +104,7 @@ export function validateQuestionChanges(path: string, before: string, after: str
     if (oldPositions && !oldPositions.has(i)) throw new PublisherError(`Question ${i + 1} was reordered from an existing position. Preserve question order to protect bookmarks and mistakes.`)
     if (i < previous.length && semantic(previous[i]) !== semantic(q)) {
       changed++
-      if (corrections.length < 20) corrections.push({ number: i + 1, before: { questionText: previous[i].questionText, options: previous[i].options, correctAnswerIndex: previous[i].correctAnswerIndex, explanation: previous[i].explanation, isRetired: previous[i].isRetired === true }, after: { questionText: q.questionText, options: q.options, correctAnswerIndex: q.correctAnswerIndex, explanation: q.explanation, isRetired: q.isRetired === true } })
+      if (corrections.length < 20) corrections.push({ number: i + 1, before: { questionText: previous[i].questionText, options: previous[i].options, correctAnswerIndex: previous[i].correctAnswerIndex, explanation: previous[i].explanation, isRetired: previous[i].isRetired === true, imageAttachments: previous[i].imageAttachments || [] }, after: { questionText: q.questionText, options: q.options, correctAnswerIndex: q.correctAnswerIndex, explanation: q.explanation, isRetired: q.isRetired === true, imageAttachments: q.imageAttachments || [] } })
     }
     if (i < previous.length && previous[i].id !== q.id) throw new PublisherError('An existing question ID changed.')
   })

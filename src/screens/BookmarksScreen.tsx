@@ -1,3 +1,4 @@
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import { createSavedQuestionSelection } from '../lib/savedQuestionSets'
 import SavedQuestionSearch from '../components/SavedQuestionSearch'
 import { useEffect, useMemo, useState } from 'react'
@@ -146,8 +147,10 @@ export default function BookmarksScreen() {
                         </button>
                         {expanded && <div style={{marginTop:'.6rem',lineHeight:1.5}}>
                           <div>{item.questionText}</div>
+                          <QuestionImageGallery question={item} placement="question" />
                           <ol type="A" style={{paddingLeft:'1.4rem'}}>{item.options.map((option,i)=><li key={i} style={{color:i===item.correctAnswerIndex?'var(--success)':'var(--text)'}}>{option}{i===item.correctAnswerIndex?' ✓':''}</li>)}</ol>
                           {item.explanation && <p style={{color:'var(--text-muted)'}}>Explanation: {item.explanation}</p>}
+                          <QuestionImageGallery question={item} placement="explanation" />
                         </div>}
                       </article>
                     })}

@@ -25,3 +25,13 @@ Example metadata in one CSV cell (CSV quotes/escaping required):
 3. The existing production `question-bank` function may have a different question parser from the repository. Patch only optional image metadata extraction into the live deployed parser; do not blindly overwrite its question count or retirement logic.
 4. Deploy PWA after media backend is live. Review signed-in paid user and unlicensed user behavior before adding diagrams to any production bank.
 5. Existing snapshots and history retain compatible optional image metadata and never store image bytes.
+
+## Reader coverage and cache behavior
+
+The PWA displays prompt diagrams in practice, mock exams, Quick Scan, flashcards and expanded search, bookmark, mistake, history and results views. Explanation diagrams appear only after evaluation or in answer/review views; flipping a flashcard reveals its explanation diagram. Android also covers its competence mock, free practice, mistake vault and results readers. Media access still requires the existing current entitlement; adding a gallery does not grant free access.
+
+Failed loads provide Retry. Enlargement clears when the question, references, account or access changes. The PWA enlargement uses a modal outside transformed cards, supports Escape and restores keyboard focus. Android supports pinch and explicit zoom controls. Both clients recheck ownership and access before returning cached/downloaded media.
+
+Offline reuse covers verified images already viewed on that device, while access remains valid. Images are fetched on demand, not bundled into a complete offline track download. The PWA keeps at most 100 cache entries; eviction, browser storage cleanup or an unviewed diagram can require another online download. Saved bookmarks and mistakes retain reference metadata, never image bytes; older saved records that already lost references cannot safely reconstruct them automatically.
+
+When replacing an existing bank through CSV upload, retain the `HYPERION_MEDIA` column if that bank contains attachments. Uploads that omit it are rejected to prevent silent removal. To intentionally remove an attachment, keep the column and clear its cell. Malformed nonempty metadata is rejected. Image-only changes are included in the publish correction summary.

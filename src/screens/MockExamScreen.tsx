@@ -1,3 +1,4 @@
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import QuestionBookmarkButton from '../components/QuestionBookmarkButton'
 import SessionResults from '../components/SessionResults'
 import { showResultsProcessing } from '../components/ResultsProcessing'
@@ -582,6 +583,7 @@ export function MockExamRunner() {
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>{q.competenceId}</span><QuestionBookmarkButton question={q} questionNumber={index + 1} paidAtSave={!isFreeSession} /></span>
           </div>
           <div style={{ fontSize: 'calc(1.08rem * var(--quiz-text-scale))', lineHeight: 1.55, margin: '0 0 1rem', fontWeight: 800 }}><KeywordQuestionText question={q} headingId={'mock-question-' + index} /></div>
+          <QuestionImageGallery question={q} placement="question" />
           <div role="radiogroup" aria-label={'Answers for question ' + (index + 1)} style={{ display: 'grid', gap: 10 }}>
             {q.options.map((option, optionIndex) => {
               const isSelected = selected === optionIndex

@@ -1,73 +1,85 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Question, TrackId } from '../types/question'
 import type { QuestionImageRef } from '../lib/questionMedia'
 import { loadLicensedQuestionImage } from '../lib/questionMediaCache'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Loaded = { url: string; error?: string }
-export default function QuestionImageGallery({
-  question, placement
-}: { question: Question; placement: 'question' | 'explanation' }) {
-  const images = question.imageAttachments?.filter(ref => ref.placement===placement) || []
-  const owner = useLicenseStore(s => s.entitlementUserId)
-  const unlocked = useLicenseStore(s => s.isTrackUnlocked(question.track))
+
+export default function QuestionImageGallery({ question, placement }: { question: Pick<Question, 'id' | 'track' | 'imageAttachments'>; placement: 'question' | 'explanation' }) {
+  const images = question.imageAttachments?.filter(ref => ref.placement === placement) || []
+  const owner = useLicenseStore(state => state.entitlementUserId)
+  const unlocked = useLicenseStore(state => state.isTrackUnlocked(question.track))
+  if (!images.length) return null
+  if (!unlocked) return <p style={{ fontSize: '.85rem', color: 'var(--text-muted)' }}>This question's diagram requires a licensed track.</p>
+  if (!owner) return <p role="status">Sign in to download this question's diagram.</p>
+  // Discard thumbnails and zoom synchronously when the account or question changes.
+  const scope = JSON.stringify([question.track, question.id, placement, images, owner])
+  return <ImageSession key={scope} track={question.track} images={images} />
+}
+
+function ImageSession({ track, images }: { track: TrackId; images: QuestionImageRef[] }) {
   const [loaded, setLoaded] = useState<Record<string, Loaded>>({})
-  const [zoom, setZoom] = useState<string | null>(null)
-  const refs = images.map(ref => `${ref.sha256}:${ref.placement}`).join(',')
+  const [zoom, setZoom] = useState<{ url: string; alt: string } | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const refs = JSON.stringify(images)
   useEffect(() => {
-    let active = true
+    const controller = new AbortController()
     const urls: string[] = []
     setLoaded({})
     setZoom(null)
-    if (!unlocked || !owner || !images.length) return
-    const start = async (ref: QuestionImageRef) => {
+    for (const ref of images) void (async () => {
       try {
-        const blob = await loadLicensedQuestionImage(question.track as TrackId, ref)
-        if (!active) return
+        const blob = await loadLicensedQuestionImage(track, ref, controller.signal)
+        if (controller.signal.aborted) return
         const url = URL.createObjectURL(blob)
         urls.push(url)
-        setLoaded(prev => ({...prev,[ref.sha256]:{url}}))
+        setLoaded(old => ({ ...old, [ref.sha256]: { url } }))
       } catch (error) {
-        if (!active) return
-        setLoaded(prev => ({...prev,[ref.sha256]:{
-          url:'',error:error instanceof Error ? error.message : 'Image unavailable'
-        }}))
+        if (controller.signal.aborted) return
+        setLoaded(old => ({ ...old, [ref.sha256]: { url: '', error: error instanceof Error ? error.message : 'Image unavailable' } }))
       }
-    }
-    for (const ref of images) void start(ref)
-    return () => {active=false;for(const url of urls)URL.revokeObjectURL(url)}
-    // refs provides stable identity for the small immutable hash-addressed list.
+    })()
+    return () => { controller.abort(); for (const url of urls) URL.revokeObjectURL(url) }
+    // The serialized refs retain stable identity across unrelated screen renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [question.track,question.id,placement,refs,owner,unlocked])
-  if (!images.length) return null
-  if (!unlocked) return <p style={{fontSize:'.85rem',color:'var(--text-muted)'}}>
-    This question's diagram requires a licensed track.
-  </p>
-  return <div style={{display:'grid',gap:12,margin:'1rem 0'}} aria-label="Question diagrams">
+  }, [track, refs, attempt])
+  return <div style={{ display: 'grid', gap: 12, margin: '1rem 0' }} aria-label="Question diagrams">
     {images.map(ref => {
-      const image=loaded[ref.sha256]
-      return <figure key={ref.sha256} style={{margin:0}}>
-        {image?.url ? <button type="button" title="Tap to enlarge diagram"
-            style={{display:'block',padding:4,background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:8,cursor:'zoom-in',maxWidth:'100%'}}
-            onClick={() => setZoom(image.url)}>
-          <img src={image.url} alt={ref.alt}
-            style={{maxWidth:'100%',maxHeight:420,objectFit:'contain',display:'block'}}/>
-        </button> :
-          <div role={image?.error?'alert':'status'} style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}>
-            {image?.error || 'Loading diagram from protected storage…'}
-          </div>}
-        <figcaption style={{fontSize:'.82rem',color:'var(--text-muted)',marginTop:5}}>{ref.alt}</figcaption>
+      const image = loaded[ref.sha256]
+      return <figure key={ref.sha256} style={{ margin: 0 }}>
+        {image?.url ? <button type="button" title="Tap to enlarge diagram" aria-label={'Enlarge diagram: ' + ref.alt}
+          style={{ display: 'block', padding: 4, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'zoom-in', maxWidth: '100%' }}
+          onClick={() => setZoom({ url: image.url, alt: ref.alt })}>
+          <img src={image.url} alt={ref.alt} style={{ maxWidth: '100%', maxHeight: 420, objectFit: 'contain', display: 'block' }}
+            onError={() => { setZoom(null); setLoaded(old => ({ ...old, [ref.sha256]: { url: '', error: 'This diagram could not be displayed.' } })) }} />
+        </button> : <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 8 }}>
+          <p role={image?.error ? 'alert' : 'status'}>{image?.error || 'Loading diagram from protected storage…'}</p>
+          {image?.error && <button type="button" className="btn btn-outline" onClick={() => setAttempt(value => value + 1)}>Retry image</button>}
+        </div>}
+        <figcaption style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 5 }}>{ref.alt}</figcaption>
       </figure>
     })}
-    {zoom && <div role="presentation" onClick={() => setZoom(null)}
-      style={{position:'fixed',inset:0,zIndex:9000,background:'rgba(0,0,0,.92)',display:'grid',placeItems:'center',padding:12}}>
-      <div role="dialog" aria-modal="true" aria-label="Enlarged question diagram"
-        style={{maxWidth:'100%',maxHeight:'100%',display:'grid',gap:10}}>
-        <button type="button" className="btn btn-outline"
-          onClick={() => setZoom(null)} style={{justifySelf:'end'}}>Close image ✕</button>
-        <img src={zoom} alt="Enlarged maritime question diagram"
-          style={{maxWidth:'95vw',maxHeight:'85vh',objectFit:'contain'}}/>
-      </div>
-    </div>}
+    {zoom && <ImageZoom image={zoom} close={() => setZoom(null)} />}
   </div>
+}
+
+function ImageZoom({ image, close }: { image: { url: string; alt: string }; close: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    const element = dialog.current!
+    const trigger = document.activeElement
+    element.showModal()
+    return () => { element.close(); if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus() }
+  }, [])
+  return createPortal(<dialog ref={dialog} aria-label="Enlarged question diagram" className="question-diagram-zoom"
+    onCancel={event => { event.preventDefault(); close() }} onClick={event => { if (event.target === event.currentTarget) close() }}
+    style={{ padding: 12, border: 0, borderRadius: 10, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 24px)', background: 'var(--bg-card)', color: 'var(--text)' }}>
+    <div style={{ display: 'grid', gap: 10 }}>
+      <button type="button" className="btn btn-outline" onClick={close} style={{ justifySelf: 'end' }}>Close image ✕</button>
+      <img src={image.url} alt={image.alt} style={{ maxWidth: 'min(92vw, 1200px)', maxHeight: '80dvh', objectFit: 'contain' }} />
+      <p style={{ margin: 0 }}>{image.alt}</p>
+    </div>
+  </dialog>, document.body)
 }

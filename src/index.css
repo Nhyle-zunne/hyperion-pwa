@@ -2544,3 +2544,7 @@ a:focus-visible {
     font-size: clamp(.7rem, 3.2vw, .8rem);
   }
 }
+
+.question-diagram-zoom::backdrop {
+  background: rgba(0, 0, 0, .9);
+}
