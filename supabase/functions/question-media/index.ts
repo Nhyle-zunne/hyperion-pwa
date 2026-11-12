@@ -27,7 +27,7 @@ function json(req: Request, data: unknown, status = 200) {
 }
 function validAdminEmail(email: string | undefined): boolean {
   const allowed = (Deno.env.get('ADMIN_EMAILS') || '')
-    .split(',').map(value => value.trim().toLowerCase()).filter(Boolean)
+    .split(/[;,\\s]+/).map(value => value.trim().toLowerCase()).filter(Boolean)
   return !!email && allowed.includes(email.toLowerCase())
 }
 async function readVerifiedObject(admin: any, path: string, mime: string, expectedSha: string): Promise<Uint8Array | null> {
