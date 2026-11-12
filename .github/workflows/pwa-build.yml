@@ -64,6 +64,7 @@ jobs:
           node scripts/tests/github-bank-delivery-test.mjs
           node scripts/tests/github-bank-request-isolation-test.mjs
           node scripts/tests/smart-bank-download-plan-test.mjs
+          node scripts/tests/keyword-tokens-test.mjs
           bun test scripts/tests/github-offline-version.test.ts
           bun test scripts/tests/github-download-revision.test.ts
       - name: Saved-data database and offline-license regressions
@@ -84,6 +85,14 @@ jobs:
           bun test scripts/tests/session-archive-batch.test.ts
       - name: Install Chromium for saved-data regression
         run: bunx playwright install --with-deps chromium
+      - name: Keyword text and choice editing browser regression
+        env:
+          HYPERION_BROWSER_FIXTURE: keywords
+        run: bun run test:saved-data:browser
+      - name: Keyword editing answer-isolation browser regression
+        env:
+          HYPERION_BROWSER_FIXTURE: keyword-runner
+        run: bun run test:saved-data:browser
       - name: Saved-data browser regression
         run: bun run test:saved-data:browser
       - name: Background sync request and archive batching regression

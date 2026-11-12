@@ -1,7 +1,7 @@
 import QuestionBookmarkButton from '../components/QuestionBookmarkButton'
 import SessionResults from '../components/SessionResults'
 import { showResultsProcessing } from '../components/ResultsProcessing'
-import KeywordQuestionText from '../components/KeywordQuestionText'
+import KeywordQuestionText, { KeywordQuestionScope, KeywordChoiceText, KeywordAnswerChoice } from '../components/KeywordQuestionText'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -572,7 +572,7 @@ export function MockExamRunner() {
     <div style={{ display: 'grid', gap: 12 }}>
       {questions.map((q, index) => {
         const selected = answers[q.id]?.selectedIndex
-        return <section
+        return <KeywordQuestionScope key={q.id} question={q}><section
           key={q.id}
           style={{ padding: '1.25rem 0 1.5rem', borderBottom: index < questions.length - 1 ? '1px solid var(--border)' : '0' }}
           aria-labelledby={'mock-question-' + index}
@@ -585,7 +585,7 @@ export function MockExamRunner() {
           <div role="radiogroup" aria-label={'Answers for question ' + (index + 1)} style={{ display: 'grid', gap: 10 }}>
             {q.options.map((option, optionIndex) => {
               const isSelected = selected === optionIndex
-              return <button
+              return <KeywordAnswerChoice
                 key={optionIndex}
                 type="button"
                 role="radio"
@@ -625,11 +625,11 @@ export function MockExamRunner() {
                 }}>
                   {isSelected && <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--accent)' }} />}
                 </span>
-                <span style={{ flex: 1, minWidth: 0, background: 'transparent', fontWeight: 600 }}>{option}</span>
-              </button>
+                <span style={{ flex: 1, minWidth: 0, background: 'transparent', fontWeight: 600 }}><KeywordChoiceText text={option} /></span>
+              </KeywordAnswerChoice>
             })}
           </div>
-        </section>
+        </section></KeywordQuestionScope>
       })}
     </div>
     <div style={{ ...card, marginTop: 16, position: 'sticky', bottom: 0, zIndex: 15, boxShadow: '0 -5px 20px rgba(0,0,0,.08)' }}>
