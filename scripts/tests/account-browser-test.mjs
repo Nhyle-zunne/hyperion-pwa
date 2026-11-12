@@ -8,11 +8,13 @@ try {
   const editorPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
   const editorErrors = []
   const editorApiCalls = []
+  let editorValidatedFiles = []
   editorPage.on('pageerror', error => editorErrors.push(error.message))
   await editorPage.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
   await editorPage.route('**/api/question-bank/admin', async route => {
     const body = route.request().postDataJSON()
     editorApiCalls.push(body.action)
+    if (body.action === 'validate') editorValidatedFiles = body.files
     const path = 'engine_mgt/em_c10.csv.enc'
     const csvText = [
       'No.,Question,A,B,C,D,Correct Answer,Explanation',
@@ -98,6 +100,24 @@ try {
   assert.match(await actionFeedback.innerText(), /no changes|change (a field|the question)/i, 'Unchanged question explains why applying had no effect near the button')
   await queueButton.click()
   assert.match(await actionFeedback.innerText(), /apply|no (applied )?edits/i, 'Queue explains missing applied edits instead of being silently disabled')
+  const imagePicker = editorPage.getByLabel('Attach question image', { exact: true })
+  const imageDescription = editorPage.getByLabel('Image description (optional)', { exact: true })
+  await imageDescription.waitFor()
+  assert.equal(await imageDescription.inputValue(), '', 'A description need not be supplied to attach a diagram')
+  await imagePicker.setInputFiles({ name: 'invalid.png', mimeType: 'image/png', buffer: Buffer.from('bad') })
+  await editorPage.getByRole('alert').filter({ hasText: /Choose a PNG, JPEG or WebP/ }).waitFor()
+  assert.equal(await editorPage.getByRole('button', { name: 'Choose image', exact: true }).isEnabled(), true, 'Upload failure remains visible and retryable')
+  const png = Buffer.from(await editorPage.evaluate(() => { const canvas = document.createElement('canvas'); canvas.width = 20; canvas.height = 20; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#167b40'; ctx.fillRect(0, 0, 20, 20); return canvas.toDataURL('image/png').split(',')[1] }), 'base64')
+  await imagePicker.setInputFiles({ name: 'engine-diagram.png', mimeType: 'image/png', buffer: png })
+  await editorPage.getByText('1 image attached to this question’s draft.', { exact: false }).waitFor({ timeout: 5000 }).catch(async error => { console.error(await editorPage.locator('body').innerText()); throw error })
+  assert.equal(await imagePicker.isVisible(), false, 'Native reset text cannot falsely say No file chosen after upload')
+  assert.equal(await editorPage.getByRole('button', { name: 'Add another image', exact: true }).count(), 1)
+  assert.equal(await editorPage.getByText('Question · Diagram for question 1', { exact: false }).count(), 1, 'Blank description gets a valid default label')
+  await editorPage.getByRole('button', { name: 'Remove', exact: true }).click()
+  assert.equal(await editorPage.getByRole('button', { name: 'Choose image', exact: true }).count(), 1, 'Removing the last attachment restores choose state')
+  await imageDescription.fill('Cooling diagram')
+  await imagePicker.setInputFiles({ name: 'engine-diagram.png', mimeType: 'image/png', buffer: png })
+  await editorPage.getByText('Question · Cooling diagram', { exact: false }).waitFor()
   await editorPage.getByLabel('Explanation').fill('Better cooling explanation')
   await queueButton.click()
   assert.match(await actionFeedback.innerText(), /apply.*(first|edit)/i, 'Unsaved form inputs cannot silently publish stale edited text')
@@ -116,6 +136,8 @@ try {
   await editorPage.getByRole('button', { name: 'VALIDATE BATCH', exact: true }).click()
   await editorPage.getByRole('heading', { name: 'Review before publishing' }).waitFor()
   assert.deepEqual(editorApiCalls.filter(a => a === 'validate'), ['validate'], 'Validation is a distinct deliberate step')
+  assert.match(editorValidatedFiles[0].content, /HYPERION_MEDIA/, 'Queued CSV includes attachment column')
+  assert.match(editorValidatedFiles[0].content, /Cooling diagram/, 'Uploaded image metadata survives apply, queue and validation')
   assert.equal(editorApiCalls.includes('publish'), false)
   for (const width of [1531, 390]) {
     await editorPage.setViewportSize({ width, height: 900 })
@@ -128,6 +150,7 @@ try {
     assert(await editorPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Admin editor fits available viewport width')
   }
   assert.deepEqual(editorErrors, [], 'No runtime errors in admin editor workflow')
+  console.log('PASS: admin image upload, optional descriptions, removal, apply/queue metadata and responsive editor workflow')
   await editorPage.close()
 
   const page = await browser.newPage({ viewport: { width: 1531, height: 900 } })

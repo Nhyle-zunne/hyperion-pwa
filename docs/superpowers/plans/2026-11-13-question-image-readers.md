@@ -22,3 +22,9 @@
 - Android PR #22 at b9f00e9: CI43298571606 unit tests/lint and CI43298571216 compilation/unit tests pass. No signing, version change or Play release performed.
 - Root reviewed diffs and test evidence. A second PWA reviewer checked gallery identity/private cache paths but exhausted its session allowance before completing the full review; remaining review was performed inline.
 - No production banks, images, backend configuration or releases changed. Offline verification covers previously viewed diagrams only, not complete track image packs. Physical Android device acceptance remains a release check.
+
+## Follow-up: attachment upload feedback
+
+The admin upload clears the native file input immediately so the same file can be retried; the resulting browser text incorrectly suggests a successful attachment was not selected. Replace that exposed native picker with a labeled Choose image/Add another image button and persistent attachment count beside the draft list. Make the admin description optional, defaulting to a placement/question label while preserving the shared nonempty alt contract. Keep question text separate and preserve the explicit apply/queue/validate/publish sequence. Browser regression covers blank/custom descriptions, reselecting the same file, removal and existing queue flow against a synthetic upload service.
+
+Follow-up verification: the old UI failed the optional-description browser regression. The new editor passes upload with a blank/default description, custom description, same-file reselection after removal, visible failed-upload retry, and attachment metadata retained through apply/queue/validation. The browser creates its synthetic PNG using canvas so image decoding and WebP conversion exercise the real upload path. Upload errors previously hid when a bank was loaded; the alert now remains rendered.

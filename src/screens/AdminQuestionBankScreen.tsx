@@ -44,6 +44,7 @@ function bytesToBase64(bytes: Uint8Array) {
 }
 
 export default function AdminQuestionBankScreen() {
+  const imagePickerRef = useRef<HTMLInputElement>(null)
   const pickerRef = useRef<HTMLInputElement>(null)
   const [assets, setAssets] = useState<Asset[]>([])
   const [publisherReady, setPublisherReady] = useState<boolean | null>(null)
@@ -238,7 +239,7 @@ export default function AdminQuestionBankScreen() {
       return
     }
     const target = {path:editorTarget,ordinal:editorOrdinal}
-    const alt = imageAlt.trim()
+    const alt = imageAlt.trim() || `${imagePlacement === 'question' ? 'Diagram' : 'Explanation diagram'} for question ${editorOrdinal}`
     const placement = imagePlacement
     setImageUploading(true)
     setEditorError('')
@@ -460,7 +461,7 @@ export default function AdminQuestionBankScreen() {
       {!editorTarget && <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', margin: '.45rem 0 .1rem' }}>
         Choose a question bank above to enable this button.
       </p>}
-      {editorError && !editorBank && <p role="alert" style={{ color: 'var(--danger, #dc2626)' }}>{editorError}</p>}
+      {editorError && <p role="alert" style={{ color: 'var(--danger, #dc2626)' }}>{editorError}</p>}
       {editorBank && <>
         <p style={secondaryText}>{editorBank.questions.length.toLocaleString()} historical questions · {editorBank.questions.filter(q => q.retired).length} retired · {editorFormDirty ? 'Unapplied form changes' : editorHasAppliedEdits ? 'Edits saved locally (not published)' : 'No applied edits yet'}{editorDraftQueued ? ' · In publish queue' : ''}</p>
         <div className="admin-qb-editor-layout">
@@ -497,22 +498,25 @@ export default function AdminQuestionBankScreen() {
                 <span style={{fontSize:'.85rem',overflowWrap:'anywhere'}}>{image.placement==='question'?'Question':'Explanation'} · {image.alt}</span>
                 <button type="button" className="btn btn-outline" disabled={imageUploading} onClick={()=>updateEditorDraft({...editorDraft,imageAttachments:(editorDraft.imageAttachments||[]).filter((_,i)=>i!==index)})}>Remove</button>
               </div>)}
-              <label>Image description (required)
+              <label>Image description (optional)
                 <input type="text" maxLength={160} value={imageAlt} placeholder="e.g., Radar plotting diagram" onChange={event=>setImageAlt(event.target.value)} style={{width:'100%',marginTop:4}}/>
               </label>
+              <p style={secondaryText}>A short diagram description helps people using screen readers. Leave blank to use a default label; question text is edited above.</p>
               <label>Image placement
                 <select aria-label="Image placement" value={imagePlacement} onChange={event=>setImagePlacement(event.target.value as 'question'|'explanation')} className="admin-qb-target-select">
                   <option value="question">Below question</option><option value="explanation">Below explanation</option>
                 </select>
               </label>
-              <label>Attach image
-                <input aria-label="Attach question image" type="file" accept="image/webp,image/png,image/jpeg" disabled={imageUploading || editorBusy || busy || (editorDraft.imageAttachments?.length || 0)>=QUESTION_MEDIA_LIMIT}
-                  onChange={event=>{
-                    const file=event.target.files?.[0]
-                    event.target.value=''
-                    if(file)void attachImageToEditor(file)
-                  }} style={{display:'block',marginTop:6,maxWidth:'100%'}}/>
-              </label>
+              <input ref={imagePickerRef} aria-label="Attach question image" type="file" accept="image/webp,image/png,image/jpeg" hidden disabled={imageUploading || editorBusy || busy || (editorDraft.imageAttachments?.length || 0)>=QUESTION_MEDIA_LIMIT}
+                onChange={event=>{
+                  const file=event.target.files?.[0]
+                  event.target.value=''
+                  if(file)void attachImageToEditor(file)
+                }}/>
+              <button type="button" className="btn btn-outline" disabled={imageUploading || editorBusy || busy || (editorDraft.imageAttachments?.length || 0)>=QUESTION_MEDIA_LIMIT} onClick={()=>imagePickerRef.current?.click()}>
+                {imageUploading ? 'Uploading image…' : editorDraft.imageAttachments?.length ? 'Add another image' : 'Choose image'}
+              </button>
+              {!!editorDraft.imageAttachments?.length && <p role="status" style={secondaryText}>{editorDraft.imageAttachments.length} {editorDraft.imageAttachments.length === 1 ? 'image attached' : 'images attached'} to this question’s draft. Apply the question edit, then add the bank to the publish queue.</p>}
               {imageUploading && <p role="status">Uploading and verifying private image…</p>}
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
