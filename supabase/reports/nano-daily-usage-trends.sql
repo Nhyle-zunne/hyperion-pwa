@@ -37,7 +37,7 @@ SELECT sampled_on,
        THEN rows_updated - previous_rows_updated
        ELSE NULL END as rows_updated_since_previous,
   CASE WHEN previous_measured_at IS NOT NULL
-       THEN pg_catalog.round(pg_catalog.extract(epoch from measured_at - previous_measured_at)::numeric / 3600, 1)
+       THEN pg_catalog.round(pg_catalog.date_part('epoch', measured_at - previous_measured_at)::numeric / 3600, 1)
        ELSE NULL END as hours_between_samples
 FROM sample_with_previous
 ORDER BY sampled_on DESC
