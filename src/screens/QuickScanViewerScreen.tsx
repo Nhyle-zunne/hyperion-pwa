@@ -12,6 +12,57 @@ const TRACK_MAP: Record<string, TrackId> = {
 }
 const PAGE_SIZE = 50
 
+type LoadedQuickScanPage = {
+  questions: Question[]
+  pageStart: number
+  localIndex: number
+  warning: string
+}
+
+/**
+ * A number alone is not a stable resume target when admins retire/add rows.
+ * Verify the saved immutable question ID in the fetched 50-question page.
+ * If it moved within that page, follow the ID; otherwise reset safely to Q1
+ * rather than displaying a different question as the user's old position.
+ * We never fetch the full bank just to resolve a tiny local cursor.
+ */
+async function fetchQuickScanPage(
+  track: TrackId, competenceId: string, requestedIndex: number, expectedQuestionId?: string
+): Promise<LoadedQuickScanPage> {
+  const startItem = Math.floor(requestedIndex / PAGE_SIZE) * PAGE_SIZE + 1
+  let questions = await getQuestionsByCompetence(track, competenceId, undefined, false, startItem, PAGE_SIZE)
+  const originalIndex = requestedIndex - (startItem - 1)
+  if (expectedQuestionId && questions[originalIndex]?.id !== expectedQuestionId) {
+    const moved = questions.findIndex(question => question.id === expectedQuestionId)
+    if (moved >= 0) {
+      return {
+        questions, pageStart: startItem - 1, localIndex: moved,
+        warning: 'This question changed position after a question-bank update. Your original question has been restored.'
+      }
+    }
+    // If a changed bank no longer contains this ID on its former page, do
+    // not trust the old number. Keep additional HTTP reads limited to Q1.
+    if (startItem !== 1) {
+      questions = await getQuestionsByCompetence(track, competenceId, undefined, false, 1, PAGE_SIZE)
+    }
+    if (!questions.length) throw new Error('The selected question bank is empty.')
+    return {
+      questions, pageStart: 0, localIndex: 0,
+      warning: 'The question bank changed and your previous question could not be matched. Started at Question 1 to avoid opening the wrong question.'
+    }
+  }
+  if (!questions[originalIndex]) {
+    if (startItem === 1) throw new Error('The requested question is no longer available.')
+    questions = await getQuestionsByCompetence(track, competenceId, undefined, false, 1, PAGE_SIZE)
+    if (!questions.length) throw new Error('The selected question bank is empty.')
+    return {
+      questions, pageStart: 0, localIndex: 0,
+      warning: 'The question bank changed. Restarted at Question 1 because your saved position is out of range.'
+    }
+  }
+  return { questions, pageStart: startItem - 1, localIndex: originalIndex, warning: '' }
+}
+
 export default function QuickScanViewerScreen({ onQuestionChange }: { onQuestionChange?: (question: Question | null) => void } = {}) {
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
   useEffect(() => {
@@ -33,34 +84,33 @@ export default function QuickScanViewerScreen({ onQuestionChange }: { onQuestion
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [resumeAt, setResumeAt] = useState<number | null>(null)
+  const [resumeQuestionId, setResumeQuestionId] = useState<string | null>(null)
+  const [bankNotice, setBankNotice] = useState('')
   const requestId = useRef(0)
   const competence = listAvailableCompetences(track).find(c => c.id === competenceId)
 
   // A position is only a local navigation hint. It never authorizes paid
   // questions: every page is still fetched through the existing licensed bank.
-  const loadQuestionAt = useCallback(async (targetIndex: number) => {
+  const loadQuestionAt = useCallback(async (targetIndex: number, expectedQuestionId?: string) => {
     if (!Number.isSafeInteger(targetIndex) || targetIndex < 0) return
     const id = ++requestId.current
-    const startItem = Math.floor(targetIndex / PAGE_SIZE) * PAGE_SIZE + 1
     setLoading(true)
     setResumeAt(null)
+    setResumeQuestionId(null)
+    setBankNotice('')
     setError('')
     try {
-      const qs = await getQuestionsByCompetence(track, competenceId, undefined, false, startItem, PAGE_SIZE)
+      const page = await fetchQuickScanPage(track, competenceId, targetIndex, expectedQuestionId)
       if (requestId.current !== id) return
-      if (!qs[targetIndex - (startItem - 1)]) {
-        setQuestions([])
-        setError('The saved question is no longer available. Return to the competence directory and try again.')
-        return
-      }
-      setQuestions(qs)
-      setPageStart(startItem - 1)
-      setIndex(targetIndex - (startItem - 1))
+      setQuestions(page.questions)
+      setPageStart(page.pageStart)
+      setIndex(page.localIndex)
+      setBankNotice(page.warning)
       setStartedAt(current => current ?? Date.now())
     } catch {
       if (requestId.current !== id) return
       setQuestions([])
-      setError('Question access could not be verified. Refresh the page or renew the track license.')
+      setError('Question access could not be verified. Check your connection and license, then retry.')
     } finally {
       if (requestId.current === id) setLoading(false)
     }
@@ -74,6 +124,8 @@ export default function QuickScanViewerScreen({ onQuestionChange }: { onQuestion
     setPageStart(0)
     setStartedAt(null)
     setResumeAt(null)
+    setResumeQuestionId(null)
+    setBankNotice('')
     setLoading(true)
     setError('')
     async function loadInitial() {
@@ -92,16 +144,24 @@ export default function QuickScanViewerScreen({ onQuestionChange }: { onQuestion
           ? saved.questionIndex : null
         if (savedIndex !== null && !resumeImmediately) {
           setResumeAt(savedIndex)
+          setResumeQuestionId(saved?.questionId ?? null)
           return // Wait for the user's choice before downloading any question page.
         }
         const targetIndex = resumeImmediately && savedIndex !== null ? savedIndex : 0
-        const startItem = Math.floor(targetIndex / PAGE_SIZE) * PAGE_SIZE + 1
-        const qs = await getQuestionsByCompetence(track, competenceId, undefined, false, startItem, PAGE_SIZE)
+        const page = await fetchQuickScanPage(
+          track, competenceId, targetIndex,
+          resumeImmediately && savedIndex !== null ? saved?.questionId : undefined
+        )
         if (!active || requestId.current !== id) return
-        setQuestions(qs)
-        setStartedAt(qs.length ? Date.now() : null)
-        setIndex(targetIndex - (startItem - 1))
-        setPageStart(startItem - 1)
+        setQuestions(page.questions)
+        setStartedAt(page.questions.length ? Date.now() : null)
+        setIndex(page.localIndex)
+        setPageStart(page.pageStart)
+        setBankNotice(
+          saved && saved.questionIndex > 0 && saved.questionIndex >= count
+            ? 'Your saved question number is outside the updated question bank. Started at Question 1.'
+            : page.warning
+        )
       } catch {
         if (active && requestId.current === id) {
           setQuestions([])
@@ -161,13 +221,17 @@ export default function QuickScanViewerScreen({ onQuestionChange }: { onQuestion
         <SessionElapsedTimer startedAt={startedAt} inline />
       </div>
     </div>
-    {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
+    {error && <div className="card" role="alert" style={{ borderColor: 'var(--danger)', marginBottom: '1rem' }}>
+      <p style={{ color: 'var(--danger)' }}>{error}</p>
+      <button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Retry opening Quick Scan</button>
+    </div>}
+    {bankNotice && <p role="status" style={{ color: 'var(--text-muted)', fontSize: '.85rem', marginBottom: '1rem' }}>{bankNotice}</p>}
     {resumeAt !== null && !loading && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(3,8,18,.72)', display: 'grid', placeItems: 'center', padding: 16, boxSizing: 'border-box' }}>
       <section role="dialog" aria-modal="true" aria-labelledby="quick-scan-resume-title" className="card" style={{ width: 'min(100%, 460px)', maxHeight: '90vh', overflowY: 'auto', boxSizing: 'border-box', padding: 24, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 24px 70px rgba(0,0,0,.4)' }}>
         <h2 id="quick-scan-resume-title" style={{ margin: '0 0 10px' }}>RESUME PREVIOUS READING?</h2>
         <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>You previously left off at Question #{resumeAt + 1} of {totalCount} in {competenceId.toUpperCase()}. Would you like to continue where you left off?</p>
         <div style={{ display: 'grid', gap: 10, marginTop: 20 }}>
-          <button type="button" className="btn btn-primary" onClick={() => void loadQuestionAt(resumeAt)}>YES, GO TO Q #{resumeAt + 1}</button>
+          <button type="button" className="btn btn-primary" onClick={() => void loadQuestionAt(resumeAt, resumeQuestionId ?? undefined)}>YES, GO TO Q #{resumeAt + 1}</button>
           <button type="button" className="btn btn-outline" onClick={() => void loadQuestionAt(0)}>NO, START AT Q #1</button>
         </div>
       </section>
