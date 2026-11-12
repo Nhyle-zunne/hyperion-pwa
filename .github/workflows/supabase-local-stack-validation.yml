@@ -242,6 +242,11 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/free_tier_daily_usage_telemetry.sql
 
+      - name: Verify question images are stored in a private bucket
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/question_media_private_storage.sql
+
       - name: Lint the migrated local database
         run: supabase db lint --local --fail-on error
 
