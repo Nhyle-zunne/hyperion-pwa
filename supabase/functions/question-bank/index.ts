@@ -754,6 +754,7 @@ async function issueOfflineEntitlement(admin: any, user: any, isAdmin: boolean) 
         tracks[row.track_id] = Math.max(tracks[row.track_id] ?? 0, expiry);
       }
     }
+  }
 
   const claims = { v: 1, userId: user.id, issuedAt: now, admin: isAdmin === true, tracks };
   const payload = encodeBase64Url(new TextEncoder().encode(JSON.stringify(claims)));
