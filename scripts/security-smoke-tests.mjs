@@ -474,7 +474,7 @@ assert.ok(
   'Offline entitlement claims are issued by the authenticated server and cryptographically signed, including the administrator role without a fake expiry'
 );
 const activePaidEntitlements = await read('../supabase/functions/_shared/activePaidEntitlements.ts');
-const activePaidEntitlementMigration = await read('../supabase/migrations/20261112001500_unify_current_paid_entitlement_reads.sql');
+const activePaidEntitlementMigration = await read('../supabase/migrations/20261112002510_unify_current_paid_entitlement_reads.sql');
 assert.ok(questionBank.includes('loadActivePaidEntitlements(admin, user.id)') &&
   activePaidEntitlements.includes("error.code !== 'PGRST202'") &&
   activePaidEntitlements.includes(".eq('status', 'active')") &&
