@@ -14,6 +14,15 @@ Updated 2026-11-12. Project: `hyperion-maritime` (`evnjoezffghtrzqacwcj`). **Thi
 
 Free plan (Supabase's current documentation): 500 MB database, 1 GB Storage, 5 GB uncached + 5 GB cached egress, 500k Edge Function calls/month, 50k Auth MAU, 200 peak Realtime connections. Function wall-time limits and compute RAM differ from paid.
 
+### Daily Free/Nano usage evidence (new safeguard)
+
+A private PostgreSQL-only job, `hyperion-free-tier-usage-daily`, runs **once per day at 00:10 UTC / 08:10 Philippine time**. It records one aggregate sample per UTC day in the non-exposed `hyperion_ops.free_tier_usage_samples` schema, retaining only the most recent **45 days**. It never stores user IDs, question content, payment information or API keys, and never calls an Edge Function. An initial baseline is captured when the migration is applied.
+
+- Run `supabase/reports/nano-daily-usage-trends.sql` as a Supabase SQL Editor administrator to see database/Storage size, daily WAL delta, PostgreSQL buffer reads, write counters and cron-run health. A full day must pass before deltas are meaningful.
+- A WAL reset, database statistics reset, missing day or clock anomaly invalidates that interval's corresponding rate. This is a **trend indicator**, not an actual disk-throughput or throttling metric.
+- **Still required:** check the real Supabase **Disk I/O Budget**, CPU, RAM/swap, network egress and Edge invocation charts for at least seven days of typical production traffic before moving to Nano. Export dated chart evidence; don't infer Nano safety from a growing telemetry history alone.
+- The telemetry's 45-day retention applies **only to telemetry created by this migration**. Customer session archives, revision history, paid entitlements, orders and recovery snapshots are unaffected.
+
 ## 2. Production safeguards and rollback
 
 - Protected preexisting progress revisions remain untouched; maintain 10 future recovery checkpoints per account and 5-minute routine checkpoint spacing.
