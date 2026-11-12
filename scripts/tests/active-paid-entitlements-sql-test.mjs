@@ -39,7 +39,7 @@ try {
   )).rows[0]
 
   await db.exec(await readFile(
-    new URL('20261112001500_unify_current_paid_entitlement_reads.sql',root),'utf8'
+    new URL('20261112002510_unify_current_paid_entitlement_reads.sql',root),'utf8'
   ))
   await db.exec('set role service_role')
   const current = await db.query(
