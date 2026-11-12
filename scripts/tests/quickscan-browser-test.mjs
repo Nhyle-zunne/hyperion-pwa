@@ -64,7 +64,7 @@ try {
   await page.getByRole('button', { name: 'Jump to Question' }).click()
   await page.getByText('Vessel fixture 51 gives way.', { exact: true }).waitFor()
   await page.getByRole('button', { name: '← Previous', exact: true }).click()
-  await page.getByText('Vessel fixture 1 gives way.', { exact: true }).waitFor()
+  await page.getByText('Vessel fixture 50 gives way.', { exact: true }).waitFor()
   await ready()
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 })
