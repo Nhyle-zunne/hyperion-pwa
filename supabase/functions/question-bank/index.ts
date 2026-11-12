@@ -553,23 +553,45 @@ function difficulty(index: number) {
   const m = (index + 1) % 3;
   return m === 1 ? "EASY" : m === 2 ? "MODERATE" : "DIFFICULT";
 }
+function parseProtectedImageRefs(raw: string): Array<{ sha256: string; mime: string; placement: string; alt: string }> {
+  if (!raw || raw.length > 2048) return [];
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return []; }
+  if (!Array.isArray(value) || value.length < 1 || value.length > 4) return [];
+  const seen = new Set<string>();
+  const result: Array<{ sha256: string; mime: string; placement: string; alt: string }> = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).length !== 4 ||
+        typeof row.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(row.sha256) ||
+        !["image/webp","image/png","image/jpeg"].includes(row.mime) ||
+        !["question","explanation"].includes(row.placement) ||
+        typeof row.alt !== "string" || row.alt.trim().length === 0 || row.alt.length > 160 ||
+        row.alt.split("").some((char: string) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ||
+        seen.has(row.sha256 + ":" + row.placement)) return [];
+    seen.add(row.sha256 + ":" + row.placement);
+    result.push({ sha256: row.sha256, mime: row.mime, placement: row.placement, alt: row.alt });
+  }
+  return result;
+}
 function toSearchQuestions(path: string, text: string): Record<string, unknown>[] {
   const info = sourceInfo(path);
   if (!info) return [];
   const rows = parseCsv(text);
   const header = headerIndex(rows, info.format);
   const statusColumn = (rows[header] || []).findIndex(cell => cell.trim().toUpperCase() === "HYPERION_STATUS");
+  const mediaColumn = (rows[header] || []).findIndex(cell => cell.trim().toUpperCase() === "HYPERION_MEDIA");
+  const media = (row: string[]) => mediaColumn < 0 ? [] : parseProtectedImageRefs(row[mediaColumn] || "");
   const retired = (row: string[]) => statusColumn >= 0 && (row[statusColumn] || "").trim().toUpperCase() === "RETIRED";
-  const records: { q: string; options: string[]; explanation: string; answer: string; isRetired: boolean }[] = [];
+  const records: { q: string; options: string[]; explanation: string; answer: string; isRetired: boolean; imageAttachments: ReturnType<typeof parseProtectedImageRefs> }[] = [];
   if (info.format === "gmdss") {
     for (const row of validGmdssRows(text)) {
-      records.push({ q: (row[0] || "").trim(), options: row.slice(2,8).map(x => (x || "").trim()).filter(Boolean), explanation: (row[8] || "").trim(), answer: (row[9] || "").trim(), isRetired: retired(row) });
+      records.push({ q: (row[0] || "").trim(), options: row.slice(2,8).map(x => (x || "").trim()).filter(Boolean), explanation: (row[8] || "").trim(), answer: (row[9] || "").trim(), isRetired: retired(row), imageAttachments: media(row) });
     }
   } else {
     for (const row of validStandardRows(rows, path)) {
       const rawOptions = row.slice(2, 6).map(value => (value || "").trim());
       const options = isStrictStandardTrack(path) ? rawOptions : rawOptions.filter(Boolean);
-      records.push({ q: row[1].trim(), options, explanation: (row[7] || "").trim(), answer: row[6].trim(), isRetired: retired(row) });
+      records.push({ q: row[1].trim(), options, explanation: (row[7] || "").trim(), answer: row[6].trim(), isRetired: retired(row), imageAttachments: media(row) });
     }
   }
   return records.map((record, i) => ({
@@ -582,6 +604,7 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
     options: record.options,
     correctAnswerIndex: answerIndex(record.answer, record.options.length),
     explanation: record.explanation,
+    ...(record.imageAttachments.length ? { imageAttachments: record.imageAttachments } : {}),
     ...(record.isRetired ? { isRetired: true } : {}),
     difficulty: difficulty(i + 1)
   }));

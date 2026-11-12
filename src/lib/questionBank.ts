@@ -16,6 +16,7 @@ import {
 import { fingerprintQuestion } from './questionFingerprint.mjs';
 import { planSmartBankReuse } from './smartBankDownloadPlan.mjs';
 import { parseCsvText } from './csvParser';
+import { parseQuestionImageRefsFromCsv } from './questionMedia';
 import type { Question, TrackId, Difficulty } from '../types/question';
 import { activeToPublishedC10Position, requiresC10ActivePositionMapping, selectActiveQuestions, visibleCompetenceCount } from './retiredQuestions';
 
@@ -411,6 +412,7 @@ function parseStandardRows(
         ? src.topics[(validIndex - 1) % src.topics.length]
         : src.title;
     const explanation = row.length > 7 ? row[7].trim() : '';
+    const imageAttachments = parseQuestionImageRefsFromCsv(rows[headerIdx] || [], row);
 
     list.push({
       id: `${src.idPrefix}-${String(validIndex).padStart(3, '0')}`,
@@ -422,6 +424,7 @@ function parseStandardRows(
       options,
       correctAnswerIndex: ansIdx,
       explanation,
+      ...(imageAttachments.length ? { imageAttachments } : {}),
       ...(statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED' ? { isRetired: true } : {}),
       difficulty: difficultyForIndex(validIndex)
     });
@@ -437,7 +440,8 @@ function pushGmdssQuestion(
   options: string[],
   explanation: string,
   ansStr: string,
-  isRetired = false
+  isRetired = false,
+  imageAttachments = [] as Question['imageAttachments']
 ) {
   if (!qText || qText.toLowerCase() === 'question' || options.length < 2) return;
   let ansIdx = mapAnswer(ansStr);
@@ -453,6 +457,7 @@ function pushGmdssQuestion(
     options,
     correctAnswerIndex: ansIdx,
     explanation,
+    ...(imageAttachments?.length ? { imageAttachments } : {}),
     ...(isRetired ? { isRetired: true } : {}),
     difficulty: difficultyForIndex(validIndex)
   });
@@ -482,7 +487,8 @@ function parseGmdssRows(
         options,
         (row[8] || '').trim(),
         (row[9] || '').trim(),
-        statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED'
+        statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED',
+        parseQuestionImageRefsFromCsv(rows[headerIdx] || [], row)
       );
     }
   }

@@ -5,6 +5,8 @@ export type TrackId =
   | 'DECK_MGT'
   | 'ENGINE_MGT';
 
+import type { QuestionImageRef } from '../lib/questionMedia'
+
 export type Difficulty = 'EASY' | 'MODERATE' | 'DIFFICULT';
 
 export interface Question {
@@ -17,6 +19,8 @@ export interface Question {
   options: string[];
   correctAnswerIndex: number;
   explanation: string;
+  /** Optional hash-addressed images. Image bytes are stored privately. */
+  imageAttachments?: QuestionImageRef[];
   /** Optional CSV lifecycle flag; historical saved snapshots need no migration. */
   isRetired?: boolean;
   difficulty: Difficulty;

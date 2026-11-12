@@ -4,6 +4,7 @@ import SessionResults from '../components/SessionResults'
 import MaterialIcon from '../components/MaterialIcon'
 import { TRACK_LABELS } from '../lib/trackLabels'
 import KeywordQuestionText from '../components/KeywordQuestionText'
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
@@ -281,6 +282,7 @@ export default function PracticeQuizScreen() {
       <div className="card question-protected-card" style={{ marginBottom: '1rem' }}>
         <span className="question-watermark" aria-hidden="true">HYPERION MARITIME</span>
         <div className="question-protected-text" style={{ fontSize: 'calc(1.05rem * var(--quiz-text-scale))', lineHeight: 1.55 }}><KeywordQuestionText question={q} /></div>
+        <QuestionImageGallery question={q} placement="question" />
       </div>
 
       <div className="question-protected-options" style={{ display: 'grid', gap: '0.6rem' }}>
@@ -299,11 +301,12 @@ export default function PracticeQuizScreen() {
         })}
       </div>
 
-      {showFeedback && q.explanation && (
+      {showFeedback && (q.explanation || q.imageAttachments?.some(image => image.placement === 'explanation')) && (
         <div className="card question-protected-card" style={{ marginTop: '1rem', fontSize: 'calc(0.9rem * var(--quiz-text-scale))', color: 'var(--text-muted)' }}>
           <span className="question-watermark" aria-hidden="true">HYPERION MARITIME</span>
           <strong style={{ color: 'var(--text)' }}>Explanation</strong>
           <p style={{ marginTop: 4 }}>{q.explanation}</p>
+          <QuestionImageGallery question={q} placement="explanation" />
         </div>
       )}
 

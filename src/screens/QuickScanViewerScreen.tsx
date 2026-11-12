@@ -1,5 +1,6 @@
 import SessionElapsedTimer from '../components/SessionElapsedTimer'
 import KeywordQuestionText from '../components/KeywordQuestionText'
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { getQuestionCountsByTrack, getQuestionsByCompetence, listAvailableCompetences } from '../lib/questionBank'
@@ -240,12 +241,18 @@ export default function QuickScanViewerScreen({ onQuestionChange }: { onQuestion
     {!loading && q && <>
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: `${1.05 * textScale / 100}rem`, lineHeight: 1.6 }}><KeywordQuestionText question={q} /></div>
+        <QuestionImageGallery question={q} placement="question" />
       </div>
       <div style={{ display: 'grid', gap: 8, marginBottom: '1rem' }}>
         {q.options.map((option, i) => <div key={i} className="card" style={{ borderRadius: 2, border: `1px solid ${i === q.correctAnswerIndex ? 'var(--success)' : 'var(--border)'}`, background: i === q.correctAnswerIndex ? 'rgba(34,197,94,.12)' : 'var(--bg-card)', padding: '0.9rem 1rem', fontSize: `${.95 * textScale / 100}rem`, display: 'flex', gap: 10 }}>
           <strong style={{ color: i === q.correctAnswerIndex ? 'var(--success)' : 'var(--text-muted)' }}>{String.fromCharCode(65 + i)}.</strong><span>{option}</span>{i === q.correctAnswerIndex && <span style={{ marginLeft: 'auto', color: 'var(--success)' }}>✓</span>}
         </div>)}
       </div>
+      {(q.explanation || q.imageAttachments?.some(image => image.placement === 'explanation')) && <details className="card" style={{marginBottom:'1rem'}}>
+        <summary style={{cursor:'pointer',fontWeight:700}}>Explanation and diagrams</summary>
+        {q.explanation && <p style={{marginTop:10,lineHeight:1.55}}>{q.explanation}</p>}
+        <QuestionImageGallery question={q} placement="explanation" />
+      </details>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn btn-outline" disabled={loading || (globalIndex === 0)} onClick={() => void previous()} style={{ flex: 1 }}>← Previous</button>
         <button className="btn btn-primary" disabled={loading || (globalIndex >= totalCount - 1)} onClick={() => void next()} style={{ flex: 1 }}>Next →</button>

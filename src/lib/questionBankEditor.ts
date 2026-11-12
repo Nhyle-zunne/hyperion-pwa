@@ -1,4 +1,5 @@
 import { parseCsvText } from './csvParser'
+import { parseQuestionImageRefsFromCsv, serializeQuestionImageRefs, QUESTION_MEDIA_COLUMN, type QuestionImageRef } from './questionMedia'
 
 /**
  * Editing changes the original CSV cell in-place. Never delete, sort, or
@@ -14,6 +15,7 @@ export type EditableQuestion = {
   options: string[]
   correctAnswerIndex: number
   explanation: string
+  imageAttachments: QuestionImageRef[]
   retired: boolean
   fixedLegacyRetirement: boolean
 }
@@ -105,7 +107,7 @@ export function readEditableBank(path: string, csvText: string): EditableBank {
     questions.push({
       ordinal, rowIndex, numberLabel, questionText, options,
       correctAnswerIndex: keyedAnswer(answer, options.length),
-      explanation, retired: status === 'RETIRED' || legacy,
+      explanation, imageAttachments: parseQuestionImageRefsFromCsv(header, row), retired: status === 'RETIRED' || legacy,
       fixedLegacyRetirement: legacy
     })
   }
@@ -115,7 +117,7 @@ export function readEditableBank(path: string, csvText: string): EditableBank {
   return { path, csvText, headerIndex, statusIndex, questions, format }
 }
 
-export type QuestionEdit = Pick<EditableQuestion, 'questionText' | 'options' | 'correctAnswerIndex' | 'explanation' | 'retired'>
+export type QuestionEdit = Pick<EditableQuestion, 'questionText' | 'options' | 'correctAnswerIndex' | 'explanation' | 'retired'> & { imageAttachments?: QuestionImageRef[] }
 
 function serializeCsv(rows: string[][]) {
   const cell = (value: string) => /[",\r\n]/.test(value) ? '"' + value.replace(/"/g, '""') + '"' : value
@@ -154,5 +156,18 @@ export function editBankQuestion(bank: EditableBank, ordinal: number, edit: Ques
   }
   while (row.length <= statusIndex) row.push('')
   row[statusIndex] = edit.retired ? 'RETIRED' : 'ACTIVE'
+  if (edit.imageAttachments !== undefined) {
+    const header = rows[bank.headerIndex]
+    let mediaIndex = header.findIndex(cell => cell.trim().toUpperCase() === QUESTION_MEDIA_COLUMN)
+    if (mediaIndex < 0 && edit.imageAttachments.length) {
+      mediaIndex = Math.max(bank.format === 'gmdss' ? 12 : 8, ...rows.map(item => item.length))
+      while (header.length <= mediaIndex) header.push('')
+      header[mediaIndex] = QUESTION_MEDIA_COLUMN
+    }
+    if (mediaIndex >= 0) {
+      while (row.length <= mediaIndex) row.push('')
+      row[mediaIndex] = serializeQuestionImageRefs(edit.imageAttachments)
+    }
+  }
   return serializeCsv(rows)
 }
