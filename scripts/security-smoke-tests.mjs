@@ -473,7 +473,20 @@ assert.ok(
     questionBank.includes("crypto.subtle.sign"),
   'Offline entitlement claims are issued by the authenticated server and cryptographically signed, including the administrator role without a fake expiry'
 );
-assert.ok(questionBank.includes('.eq("user_id", user.id)') && questionBank.includes('.eq("status", "active")') && questionBank.includes('.gt("expires_at", new Date(now).toISOString())'), 'Offline entitlement token only contains the signed-in user’s currently active, unexpired tracks');
+const activePaidEntitlements = await read('../supabase/functions/_shared/activePaidEntitlements.ts');
+const activePaidEntitlementMigration = await read('../supabase/migrations/20261112001500_unify_current_paid_entitlement_reads.sql');
+assert.ok(questionBank.includes('loadActivePaidEntitlements(admin, user.id)') &&
+  activePaidEntitlements.includes("error.code !== 'PGRST202'") &&
+  activePaidEntitlements.includes(".eq('status', 'active')") &&
+  activePaidEntitlements.includes(".gt('expires_at', new Date(nowMs).toISOString())") &&
+  activePaidEntitlementMigration.includes("e.status = 'active'") &&
+  activePaidEntitlementMigration.includes("g.status = 'active'") &&
+  activePaidEntitlementMigration.includes("e.expires_at > pg_catalog.now()") &&
+  activePaidEntitlementMigration.includes("g.expires_at > pg_catalog.now()") &&
+  activePaidEntitlementMigration.includes('security invoker') &&
+  activePaidEntitlementMigration.includes('grant execute on function public.get_active_paid_track_entitlements(uuid,text)') &&
+  activePaidEntitlementMigration.includes('to service_role;'),
+  'Offline entitlement tokens must derive only from a private, current, expiry-checked website/Play query; service role only, failures fail closed');
 assert.ok(offlineEntitlementSigningMigration.includes('private_jwk jsonb NOT NULL') && offlineEntitlementSigningMigration.includes('public_jwk jsonb NOT NULL') && offlineEntitlementSigningMigration.includes('ENABLE ROW LEVEL SECURITY'), 'Offline signing keys are stored in an RLS-protected table');
 assert.ok(offlineEntitlementSigningMigration.includes('REVOKE ALL ON TABLE public.offline_entitlement_signing_keys FROM PUBLIC, anon, authenticated') && offlineEntitlementSigningMigration.includes('GRANT SELECT, INSERT ON TABLE public.offline_entitlement_signing_keys TO service_role'), 'Offline private signing keys cannot be read or written by client database roles');
 
