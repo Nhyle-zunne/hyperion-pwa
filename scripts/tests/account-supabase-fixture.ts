@@ -77,8 +77,13 @@ export const supabase = {
     return query
   },
   functions: {
-    invoke: async (name: string, request: { body?: { action?: string; orderId?: string } }) => {
+    invoke: async (name: string, request: { body?: { action?: string; orderId?: string; base64?: string; track?: string; mime?: string } }) => {
       fixtureCalls.push({ action: `${name}:${request.body?.action ?? ''}`, data: request.body })
+      if (name === 'question-media') {
+        const bytes = Uint8Array.from(atob(request.body?.base64 || ''), char => char.charCodeAt(0))
+        const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(value => value.toString(16).padStart(2, '0')).join('')
+        return { data: { track: request.body?.track, mime: request.body?.mime, bytes: bytes.length, sha256 }, error: null }
+      }
       if (name === 'question-bank' && localStorage.getItem('fixture-hold-entitlements') === 'yes') {
         fixtureCalls.push({ action: 'fixture-entitlements-held' })
         return new Promise(resolve => { releaseEntitlements = () => resolve({ data: { token: 'invalid-synthetic-token' }, error: null }) })

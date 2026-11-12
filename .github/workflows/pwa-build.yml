@@ -85,6 +85,10 @@ jobs:
           bun test scripts/tests/session-archive-batch.test.ts
       - name: Install Chromium for saved-data regression
         run: bunx playwright install --with-deps chromium
+      - name: Question image reader and cache browser regression
+        env:
+          HYPERION_BROWSER_FIXTURE: media
+        run: bun run test:saved-data:browser
       - name: Saved-data browser regression
         run: bun run test:saved-data:browser
       - name: Background sync request and archive batching regression

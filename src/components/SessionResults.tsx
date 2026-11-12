@@ -1,3 +1,4 @@
+import QuestionImageGallery from './QuestionImageGallery'
 import { useMemo, useState, type ReactNode } from 'react'
 import { usePracticeStore } from '../stores/practiceStore'
 import { TRACK_LABELS } from '../lib/trackLabels'
@@ -63,8 +64,10 @@ export default function SessionResults({ onTryAgain, onHistory, onHome, extraAct
           <div className="results-score-meta"><strong>{question.competenceId} · Item {index + 1}</strong><span>{answer?.selectedIndex == null ? 'Unanswered' : answer.isCorrect ? 'Correct' : 'Incorrect'}</span></div>
           {question.topic && <p className="results-topic">{question.topic}</p>}
           <h3>{question.questionText}</h3>
+          <QuestionImageGallery question={question} placement="question" />
           <ul className="results-options">{question.options.map((option, optionIndex) => <li key={optionIndex} className={optionIndex === question.correctAnswerIndex ? 'is-correct-option' : optionIndex === answer?.selectedIndex ? 'is-picked-option' : ''}><strong>{String.fromCharCode(65 + optionIndex)}.</strong><span>{option}{optionIndex === question.correctAnswerIndex && <small>Correct answer{optionIndex === answer?.selectedIndex ? ' · Your answer' : ''}</small>}{optionIndex === answer?.selectedIndex && optionIndex !== question.correctAnswerIndex && <small>Your answer</small>}</span></li>)}</ul>
           {question.explanation && <div className="results-explanation"><strong>Explanation &amp; rationale</strong><p>{question.explanation}</p></div>}
+          <QuestionImageGallery question={question} placement="explanation" />
         </article>)}{review.length === 0 && <p className="card" role="status">No missed questions for this competence.</p>}</div>
       </>}
     </div>

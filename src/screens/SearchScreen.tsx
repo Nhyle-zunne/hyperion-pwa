@@ -1,3 +1,4 @@
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { searchQuestions } from '../lib/questionBank'
@@ -160,6 +161,7 @@ export default function SearchScreen() {
               </button>
               {open && (
                 <div style={{ marginTop: 10 }}>
+                  <QuestionImageGallery question={q} placement="question" />
                   {q.options.map((o, i) => (
                     <div
                       key={i}
@@ -177,6 +179,7 @@ export default function SearchScreen() {
                       {q.explanation}
                     </p>
                   )}
+                  <QuestionImageGallery question={q} placement="explanation" />
                   <button
                     className="btn btn-outline"
                     style={{ marginTop: 10, fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}

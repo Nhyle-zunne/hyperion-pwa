@@ -1,3 +1,4 @@
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import MaterialIcon from '../components/MaterialIcon'
 import KeywordQuestionText from '../components/KeywordQuestionText'
 import QuestionBookmarkButton from '../components/QuestionBookmarkButton'
@@ -461,6 +462,7 @@ export default function HistoryScreen() {
                           <QuestionBookmarkButton question={currentQuestion} paidAtSave={review.snapshot.isFreeSession !== true} />
                         </div>
                         <div style={{ fontWeight: 750, lineHeight: 1.5, marginBottom: 8 }}><KeywordQuestionText question={currentQuestion} /></div>
+                        <QuestionImageGallery question={currentQuestion} placement="question" />
                         <div style={{ display: 'grid', gap: '.35rem' }}>
                           {currentQuestion.options.map((option, index) => {
                             const chosen = currentAnswer?.selectedIndex === index
@@ -475,6 +477,7 @@ export default function HistoryScreen() {
                           })}
                         </div>
                         {currentQuestion.explanation && <div style={{ ...secondaryText, marginTop: '.8rem' }}><strong>Explanation:</strong> {currentQuestion.explanation}</div>}
+                        <QuestionImageGallery question={currentQuestion} placement="explanation" />
                       </div>
                     ) : <p role="status" className="history-audit-empty">No missed or unanswered questions in this session.</p>}
                     <div className="history-audit-controls">

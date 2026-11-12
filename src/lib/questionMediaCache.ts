@@ -68,33 +68,67 @@ async function store(owner: string, track: TrackId, ref: QuestionImageRef, blob:
  * entitlement permits this track. Cached bytes are owner-scoped and SHA-verified.
  * An expired or revoked local license cannot display previously stored images.
  */
-export async function loadLicensedQuestionImage(track: TrackId, ref: QuestionImageRef): Promise<Blob> {
+export async function loadLicensedQuestionImage(track: TrackId, ref: QuestionImageRef, signal?: AbortSignal): Promise<Blob> {
   const owner = currentOwner(track)
   if (!owner) throw new Error('An active track license is required to view this image.')
+  const assertAccess = () => {
+    if (signal?.aborted) throw new DOMException('Image loading cancelled.', 'AbortError')
+    if (currentOwner(track) !== owner) throw new Error('License/account changed during image loading.')
+  }
+  assertAccess()
   const existing = await cached(owner,track,ref)
+  assertAccess()
   if (existing) return existing
   if (!supabase || !supabaseUrl || !supabaseAnonKey) throw new Error('Image delivery is unavailable offline.')
   const { data: { session } } = await supabase.auth.getSession()
+  assertAccess()
   if (!session || session.user.id !== owner) throw new Error('Sign in to download the licensed image.')
   const params = new URLSearchParams({track,sha256:ref.sha256,mime:ref.mime})
-  const resp = await fetch(`${supabaseUrl}/functions/v1/question-media?${params.toString()}`,{
-    headers: {
-      'Authorization': `Bearer ${session.access_token}`,
-      'apikey': supabaseAnonKey
-    },
-    cache: 'no-store'
-  })
-  if (!resp.ok) throw new Error(resp.status===403 ? 'This image requires a current track license.' :
-    'The question image could not be downloaded.')
-  if (resp.headers.get('content-type')?.split(';')[0] !== ref.mime ||
-      resp.headers.get('X-Hyperion-Media-SHA256') !== ref.sha256 ||
-      Number(resp.headers.get('content-length')||0) > QUESTION_MEDIA_MAX_BYTES) {
-    throw new Error('The image response did not match its protected reference.')
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort, { once: true })
+  const timeout = setTimeout(abort, 20000)
+  try {
+    assertAccess()
+    const resp = await fetch(`${supabaseUrl}/functions/v1/question-media?${params.toString()}`, {
+      headers: { 'Authorization': `Bearer ${session.access_token}`, 'apikey': supabaseAnonKey },
+      cache: 'no-store', signal: controller.signal
+    })
+    if (!resp.ok) throw new Error(resp.status === 403 ? 'This image requires a current track license.' : 'The question image could not be downloaded.')
+    if (resp.headers.get('content-type')?.split(';')[0] !== ref.mime ||
+        resp.headers.get('X-Hyperion-Media-SHA256') !== ref.sha256 ||
+        Number(resp.headers.get('content-length') || 0) > QUESTION_MEDIA_MAX_BYTES) {
+      await resp.body?.cancel()
+      throw new Error('The image response did not match its protected reference.')
+    }
+    const reader = resp.body?.getReader()
+    if (!reader) throw new Error('The question image response was empty.')
+    const chunks: Uint8Array[] = []
+    let size = 0
+    try {
+      while (true) {
+        assertAccess()
+        const { done, value } = await reader.read()
+        if (done) break
+        size += value.byteLength
+        if (size > QUESTION_MEDIA_MAX_BYTES) throw new Error('The question image exceeds the 512 KB limit.')
+        chunks.push(value)
+      }
+    } catch (error) {
+      await reader.cancel().catch(() => undefined)
+      throw error
+    } finally { reader.releaseLock() }
+    const bytes = new Uint8Array(size)
+    let offset = 0
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
+    if (!await verifyImage(bytes, ref)) throw new Error('Image integrity verification failed.')
+    assertAccess()
+    const blob = new Blob([bytes], { type: ref.mime })
+    await store(owner, track, ref, blob)
+    assertAccess()
+    return blob
+  } finally {
+    clearTimeout(timeout)
+    signal?.removeEventListener('abort', abort)
   }
-  const bytes = new Uint8Array(await resp.arrayBuffer())
-  if (!await verifyImage(bytes,ref)) throw new Error('Image integrity verification failed.')
-  if (currentOwner(track) !== owner) throw new Error('License/account changed during image loading.')
-  const blob = new Blob([bytes], {type:ref.mime})
-  await store(owner,track,ref,blob)
-  return blob
 }

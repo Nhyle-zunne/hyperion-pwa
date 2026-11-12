@@ -14,6 +14,7 @@ export interface BookmarkedQuestion {
   options: string[];
   correctAnswerIndex: number;
   explanation: string;
+  imageAttachments?: Question['imageAttachments'];
   difficulty: string;
   savedAt: number;
   /** False only when explicitly bookmarked from free-sample content. */
@@ -54,6 +55,7 @@ export const useBookmarksStore = create<BookmarksState>()(
             options: q.options,
             correctAnswerIndex: q.correctAnswerIndex,
             explanation: q.explanation,
+            ...(q.imageAttachments?.length ? { imageAttachments: q.imageAttachments } : {}),
             difficulty: q.difficulty,
             savedAt: Date.now(),
             paidAtSave
@@ -87,6 +89,7 @@ export const useBookmarksStore = create<BookmarksState>()(
           options: i.options,
           correctAnswerIndex: i.correctAnswerIndex,
           explanation: i.explanation,
+          ...(i.imageAttachments?.length ? { imageAttachments: i.imageAttachments } : {}),
           difficulty: i.difficulty as Question['difficulty']
         }))
     }),

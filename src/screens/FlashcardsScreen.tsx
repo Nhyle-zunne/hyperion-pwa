@@ -1,3 +1,4 @@
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import CompetenceDirectory from '../components/CompetenceDirectory'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -150,6 +151,7 @@ export default function FlashcardsScreen() {
         </div>
         <span className="flashcard-flip-hint">↻ Tap to flip to {flipped ? 'question' : 'answer'}</span>
       </button>
+      <QuestionImageGallery question={q} placement={flipped ? 'explanation' : 'question'} />
       {error && <div className="flashcard-notice" role="alert">{error}</div>}
       <footer className="flashcard-footer">
         <div className="flashcard-counts"><span><strong>{known}</strong> Knew it</span><span><strong>{unknown}</strong> Still learning</span></div>
