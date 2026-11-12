@@ -79,7 +79,7 @@ Deno.serve(async (req: Request) => {
 
     const bytes = await readVerifiedObject(admin, path, mime, digest)
     if (!bytes) return json(req, { error: 'Verified question image not found.' }, 404)
-    return new Response(bytes, {
+    return new Response(Uint8Array.from(bytes), {
       status: 200,
       headers: {
         ...cors(req),
@@ -117,7 +117,7 @@ Deno.serve(async (req: Request) => {
   // Content-addressed, immutable object. A duplicate upload never replaces a
   // previously published image or changes the meaning of an existing question.
   const { error } = await admin.storage.from(BUCKET).upload(
-    path, new Blob([bytes], { type: input.mime }),
+    path, new Blob([Uint8Array.from(bytes)], { type: input.mime }),
     { contentType: input.mime, cacheControl: '31536000', upsert: false }
   )
   if (error) {
