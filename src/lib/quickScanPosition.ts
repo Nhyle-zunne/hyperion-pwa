@@ -89,6 +89,50 @@ function fallbackList(ownerId: string, track: TrackId): unknown[] {
   }
 }
 
+/** IndexedDB transactions serialize writes even from different tabs. A stale tab
+ * must not replace a newer reading cursor just because it finishes later. */
+async function putIfNewer(db: IDBPDatabase<QuickScanPositionDatabase>, row: QuickScanPosition): Promise<QuickScanPosition> {
+  const tx = db.transaction('positions', 'readwrite')
+  const previous = await tx.store.get(row.id)
+  const newest = previous && validPosition(previous, row.ownerId, row.track) &&
+      previous.savedAt > row.savedAt ? previous : row
+  if (newest === row) await tx.store.put(row)
+  await tx.done
+  return newest
+}
+
+function clearOlderFallback(row: QuickScanPosition): void {
+  try {
+    const key = FALLBACK_PREFIX + row.id
+    const local = fallbackRead(row.id)
+    if (!validPosition(local, row.ownerId, row.track) || local.savedAt <= row.savedAt) {
+      localStorage.removeItem(key)
+    }
+  } catch { /* Browser storage might be blocked; IndexedDB remains authoritative. */ }
+}
+
+/** Use the newer cursor when a browser temporarily fell back to localStorage
+ * and IndexedDB subsequently became available again. Recover it into IDB. */
+async function importFallback(
+  db: IDBPDatabase<QuickScanPositionDatabase>,
+  ownerId: string,
+  track: TrackId,
+  competenceId: string,
+  indexed: QuickScanPosition | null
+): Promise<QuickScanPosition | null> {
+  const local = fallbackRead(storageKey(ownerId, track, competenceId))
+  if (!validPosition(local, ownerId, track) || local.competenceId !== competenceId) return indexed
+  if (indexed && indexed.savedAt >= local.savedAt) {
+    clearOlderFallback(indexed)
+    return indexed
+  }
+  if (ownerId !== quickScanLocalOwner()) return null
+  const newest = await putIfNewer(db, local)
+  if (ownerId !== quickScanLocalOwner()) return null
+  clearOlderFallback(newest)
+  return newest
+}
+
 /** One local IndexedDB read; a same-device fallback is used if IDB is blocked. */
 export async function getQuickScanPosition(
   track: TrackId,
@@ -98,14 +142,18 @@ export async function getQuickScanPosition(
   await writeQueue
   if (ownerId !== quickScanLocalOwner()) return null
   const id = storageKey(ownerId, track, competenceId)
-  let saved: unknown
+  let saved: QuickScanPosition | null = null
   try {
-    saved = await (await database()).get('positions', id)
+    const db = await database()
+    const raw: unknown = await db.get('positions', id)
+    const indexed = validPosition(raw, ownerId, track) && raw.competenceId === competenceId ? raw : null
+    saved = await importFallback(db, ownerId, track, competenceId, indexed)
   } catch {
-    saved = fallbackRead(id)
+    const local = fallbackRead(id)
+    saved = validPosition(local, ownerId, track) && local.competenceId === competenceId ? local : null
   }
   if (ownerId !== quickScanLocalOwner()) return null
-  return validPosition(saved, ownerId, track) && saved.competenceId === competenceId ? saved : null
+  return saved
 }
 
 /** One small local cursor per competence, never uploaded to Supabase. */
@@ -115,10 +163,26 @@ export async function listQuickScanPositions(
 ): Promise<QuickScanPosition[]> {
   await writeQueue
   if (ownerId !== quickScanLocalOwner()) return []
-  let rows: unknown[]
+  let rows: unknown[] = []
   try {
-    rows = await (await database()).getAll('positions')
+    const db = await database()
+    rows = await db.getAll('positions')
+    // Reconcile only this owner's current track. Avoid reading/decrypting
+    // banks or triggering any cloud sync for a simple competence directory.
+    const indexed = new Map(
+      rows.filter((row): row is QuickScanPosition => validPosition(row, ownerId, track))
+        .map(row => [row.competenceId, row])
+    )
+    for (const raw of fallbackList(ownerId, track)) {
+      if (!validPosition(raw, ownerId, track)) continue
+      const recovered = await importFallback(
+        db, ownerId, track, raw.competenceId, indexed.get(raw.competenceId) ?? null
+      )
+      if (recovered) indexed.set(raw.competenceId, recovered)
+    }
+    rows = [...indexed.values()]
   } catch {
+    // If IndexedDB is unavailable, keep the localStorage fallback usable.
     rows = fallbackList(ownerId, track)
   }
   if (ownerId !== quickScanLocalOwner()) return []
@@ -149,8 +213,14 @@ export function saveQuickScanPosition(
     // cursor under the new account. Storage is local and optional.
     if (ownerId !== quickScanLocalOwner()) return
     try {
-      await (await database()).put('positions', position)
+      const newest = await putIfNewer(await database(), position)
+      if (ownerId === quickScanLocalOwner()) clearOlderFallback(newest)
     } catch {
+      // Preserve the newest local cursor even if IndexedDB becomes unavailable.
+      // A later read reconciles the fallback with the restored database.
+      const prior = fallbackRead(position.id)
+      if (validPosition(prior, ownerId, track) && prior.savedAt > position.savedAt) return
+      if (ownerId !== quickScanLocalOwner()) return
       try { localStorage.setItem(FALLBACK_PREFIX + position.id, JSON.stringify(position)) }
       catch { /* The reader remains usable when browser storage is unavailable. */ }
     }
