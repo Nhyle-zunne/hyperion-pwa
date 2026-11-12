@@ -8,14 +8,15 @@ import { chromium } from 'playwright'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const vite = fileURLToPath(new URL('../../node_modules/vite/bin/vite.js', import.meta.url))
 const out = await mkdtemp(join(tmpdir(), 'hyperion-recovery-test-'))
+const quickscan = process.env.HYPERION_BROWSER_FIXTURE === 'quickscan'
 const practiceRefresh = process.env.HYPERION_BROWSER_FIXTURE === 'practice-refresh'
 const results = process.env.HYPERION_BROWSER_FIXTURE === 'results'
 const account = process.env.HYPERION_BROWSER_FIXTURE === 'account'
 const publisher = process.env.HYPERION_BROWSER_FIXTURE === 'publisher'
 const licensed = process.env.HYPERION_BROWSER_FIXTURE === 'licensed'
 const sync = licensed || process.env.HYPERION_BROWSER_FIXTURE === 'sync'
-const entry = practiceRefresh ? 'practice-refresh-browser' : results ? 'results-browser' : account ? 'account-browser' : sync ? 'sync-browser' : publisher ? 'publisher-browser' : 'recovery-browser'
-const env = { ...process.env, HYPERION_BROWSER_FIXTURE: practiceRefresh ? 'practice-refresh' : results ? 'results' : account ? 'account' : sync ? 'sync' : publisher ? 'publisher' : 'recovery', HYPERION_BROWSER_TEST_OUTPUT: out, VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '', VITE_QUESTION_BANK_DELIVERY: '' }
+const entry = quickscan ? 'quickscan-browser' : practiceRefresh ? 'practice-refresh-browser' : results ? 'results-browser' : account ? 'account-browser' : sync ? 'sync-browser' : publisher ? 'publisher-browser' : 'recovery-browser'
+const env = { ...process.env, HYPERION_BROWSER_FIXTURE: quickscan ? 'quickscan' : practiceRefresh ? 'practice-refresh' : results ? 'results' : account ? 'account' : sync ? 'sync' : publisher ? 'publisher' : 'recovery', HYPERION_BROWSER_TEST_OUTPUT: out, VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '', VITE_QUESTION_BANK_DELIVERY: '' }
 const run = args => new Promise((resolve, reject) => {
   const child = spawn(process.execPath, args, { cwd: root, env, stdio: 'inherit' })
   child.once('error', reject)
@@ -30,6 +31,7 @@ try {
   await new Promise(resolve => server.close(resolve))
   preview = spawn(process.execPath, [vite, 'preview', '--config', 'scripts/tests/keyword-browser.config.ts', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: root, env, stdio: 'inherit' })
   env.HYPERION_RECOVERY_TEST_URL = `http://127.0.0.1:${port}/scripts/tests/${entry}.html`
+  if (quickscan) env.HYPERION_QUICKSCAN_TEST_URL = env.HYPERION_RECOVERY_TEST_URL
   env.CHROMIUM_PATH = process.env.CHROMIUM_PATH || chromium.executablePath()
   let ready = false
   for (let i = 0; i < 50; i++) {
