@@ -240,9 +240,7 @@ jobs:
       - name: Validate private daily Nano/Free usage telemetry
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \\
-            -f supabase/tests/free_tier_daily_usage_telemetry.sql
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/free_tier_daily_usage_telemetry.sql
 
       - name: Lint the migrated local database
         run: supabase db lint --local --fail-on error
