@@ -17,7 +17,7 @@ Object.assign(useLicenseStore.getState(), { refreshCachedEntitlements: async () 
 usePracticeStore.setState({ questions: fixtureQuestions.slice(0, 2), currentIndex: 1, track: 'DECK_OIC_NW', competenceId: 'C1', mode: 'PRACTICE', loading: false, finished: false, isFreeSession: false, startedAt: Date.now() })
 void useBookmarksStore.persist.rehydrate().then(() => {
   createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={['/quick-scan/view?track=oic_nw&competence=C1']}>
-    <nav><Link to="/practice/quiz" onClick={() => usePracticeStore.setState({ currentIndex: 0 })}>Practice fixture</Link> · <Link to="/quick-scan/view?track=oic_nw&competence=C1">Quick Scan fixture</Link></nav>
+    <nav><Link to="/practice/quiz" onClick={() => usePracticeStore.setState({ currentIndex: 0 })}>Practice fixture</Link> · <Link to="/quick-scan/view?track=oic_nw&competence=C1">Quick Scan fixture</Link> · <Link to="/quick-scan?track=oic_nw">Quick Scan directory</Link></nav>
     <App />
   </MemoryRouter>)
 })
