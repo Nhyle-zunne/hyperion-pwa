@@ -27,6 +27,11 @@ Deno.test('conditional progress reads omit unchanged data only after fresh acces
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init)
     const url = new URL(req.url)
+    if (url.pathname.endsWith('/rpc/get_active_paid_track_entitlements')) {
+      const body = JSON.parse(await req.text())
+      return entitlementFailure ? json({ message: 'Unavailable' }, 503) :
+        json(entitled ? [{ user_id: body.p_user_id, track_id: 'DECK_OIC_NW', expires_at: '2099-01-01T00:00:00Z' }] : [])
+    }
     if (url.pathname.endsWith('/entitlements')) return entitlementFailure ? json({ message: 'Unavailable' }, 503) : json(entitled ? [{ track_id: 'DECK_OIC_NW' }] : [])
     if (url.pathname.endsWith('/user_learning_progress')) {
       assert.equal(req.method, 'GET', 'Read optimization must never write saved progress')
