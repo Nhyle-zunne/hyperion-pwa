@@ -8,6 +8,9 @@ try {
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(process.env.HYPERION_QUICKSCAN_TEST_URL || 'http://127.0.0.1:4179/scripts/tests/quickscan-browser.html')
+  // The first-visit consent banner can cover navigation controls on 390px screens.
+  // Dismiss it through the real user-facing control before exercising the reader.
+  await page.getByRole('button', { name: 'Essential only' }).click()
   const header = page.getByRole('banner', { name: 'Question navigation' })
   const gear = () => header.getByRole('button', { name: 'Question settings', exact: true })
   const edit = () => page.getByRole('button', { name: 'Edit Keyword', exact: true })
