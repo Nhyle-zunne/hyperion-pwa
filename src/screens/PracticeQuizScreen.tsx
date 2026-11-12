@@ -3,7 +3,7 @@ import SessionElapsedTimer from '../components/SessionElapsedTimer'
 import SessionResults from '../components/SessionResults'
 import MaterialIcon from '../components/MaterialIcon'
 import { TRACK_LABELS } from '../lib/trackLabels'
-import KeywordQuestionText from '../components/KeywordQuestionText'
+import KeywordQuestionText, { KeywordQuestionScope, KeywordChoiceText, KeywordAnswerChoice } from '../components/KeywordQuestionText'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
@@ -41,6 +41,7 @@ export default function PracticeQuizScreen() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savingProgress, setSavingProgress] = useState(false)
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
+  const [keywordEditing, setKeywordEditing] = useState(false)
   const [pendingAnswer, setPendingAnswer] = useState<number | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [jumpNumber, setJumpNumber] = useState('')
@@ -54,7 +55,7 @@ export default function PracticeQuizScreen() {
       window.clearTimeout(autoAdvanceTimerRef.current)
       autoAdvanceTimerRef.current = null
     }
-  }, [currentIndex, mode])
+  }, [currentIndex, mode, keywordEditing])
   useEffect(() => () => {
     if (autoAdvanceTimerRef.current !== null) {
       window.clearTimeout(autoAdvanceTimerRef.current)
@@ -173,6 +174,7 @@ export default function PracticeQuizScreen() {
   const answer = answers[q.id]
   const hasAnswered = answer?.selectedIndex != null
   const commitAnswer = (selectedIndex: number) => {
+    if (keywordEditing) return
     if (mode === 'MOCK') {
       selectAnswer(selectedIndex)
       return
@@ -225,6 +227,7 @@ export default function PracticeQuizScreen() {
     autoAdvanceTimerRef.current = timer
   }
   const confirmAnswer = () => {
+    if (keywordEditing) return
     if (pendingAnswer != null) {
       commitAnswer(pendingAnswer)
       setPendingAnswer(null)
@@ -234,7 +237,7 @@ export default function PracticeQuizScreen() {
   const jumpTo = (index: number) => { if (index >= 0 && index < questions.length) { const delta = index - currentIndex; if (delta > 0) for (let i = 0; i < delta; i++) next(); else for (let i = 0; i > delta; i--) prev(); setPendingAnswer(null); setPaletteOpen(false) } }
 
   return (
-    <div className="screen practice-quiz-screen question-runner-screen" style={{ paddingBottom: "6rem", '--quiz-text-scale': textScale / 100 } as React.CSSProperties}>
+    <KeywordQuestionScope question={q} onEditingChange={setKeywordEditing}><div className="screen practice-quiz-screen question-runner-screen" style={{ paddingBottom: "6rem", '--quiz-text-scale': textScale / 100 } as React.CSSProperties}>
       {showExitDialog && (
         <div className="exit-dialog-backdrop" role="presentation">
           <section className="exit-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-practice-title">
@@ -293,9 +296,9 @@ export default function PracticeQuizScreen() {
           } else if ((hasAnswered && idx === answer!.selectedIndex) || (!hasAnswered && pendingAnswer === idx)) {
             border = 'var(--accent)'; bg = 'var(--quiz-selection-bg)'
           }
-          return <button key={idx} onClick={() => { if (mode === 'MOCK') selectAnswer(idx); else if (!hasAnswered) { if (automations.directAnswer) commitAnswer(idx); else setPendingAnswer(idx) } }} disabled={mode !== 'MOCK' && hasAnswered} style={{textAlign:'left',padding:'0.9rem 1rem',borderRadius:10,border:`1px solid ${border}`,background:bg,color:'var(--text)',fontSize:'calc(0.95rem * var(--quiz-text-scale))',cursor:mode !== 'MOCK' && hasAnswered ? 'default' : 'pointer'}}>
-            <span style={{ fontWeight: 600, marginRight: 8 }}>{String.fromCharCode(65 + idx)}.</span>{opt}
-          </button>
+          return <KeywordAnswerChoice key={idx} onClick={() => { if (mode === 'MOCK') selectAnswer(idx); else if (!hasAnswered) { if (automations.directAnswer) commitAnswer(idx); else setPendingAnswer(idx) } }} disabled={mode !== 'MOCK' && hasAnswered} style={{textAlign:'left',padding:'0.9rem 1rem',borderRadius:10,border:`1px solid ${border}`,background:bg,color:'var(--text)',fontSize:'calc(0.95rem * var(--quiz-text-scale))',cursor:mode !== 'MOCK' && hasAnswered ? 'default' : 'pointer'}}>
+            <span style={{ fontWeight: 600, marginRight: 8 }}>{String.fromCharCode(65 + idx)}.</span><KeywordChoiceText text={opt} />
+          </KeywordAnswerChoice>
         })}
       </div>
 
@@ -324,8 +327,8 @@ export default function PracticeQuizScreen() {
       <div style={{position:'fixed',bottom:0,left:0,right:0,padding:'0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom))',background:'var(--bg-card)',borderTop:'1px solid var(--border)',display:'flex',gap:'0.6rem',maxWidth:720,margin:'0 auto'}}>
         <button className="btn btn-outline" style={{ flex: 1, minWidth: 0 }} onClick={prev} disabled={currentIndex === 0}>← Previous</button>
         <button className="btn btn-outline" style={{ minWidth: 54, padding: '0.65rem' }} onClick={() => { setPaletteOpen(true); setJumpNumber('') }} aria-label="Question palette" title="Question palette"><MaterialIcon name="gridView" size={22} /></button>
-        {mode === 'MOCK' ? <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={() => next()} disabled={!hasAnswered}>{currentIndex === questions.length - 1 ? 'Finish' : 'Next'}</button> : hasAnswered ? <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={() => next()}>{currentIndex === questions.length - 1 ? 'Finish' : 'Next'}</button> : <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={confirmAnswer} disabled={pendingAnswer == null || automations.directAnswer}>Check Answer</button>}
+        {mode === 'MOCK' ? <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={() => next()} disabled={!hasAnswered}>{currentIndex === questions.length - 1 ? 'Finish' : 'Next'}</button> : hasAnswered ? <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={() => next()}>{currentIndex === questions.length - 1 ? 'Finish' : 'Next'}</button> : <button className="btn btn-primary" style={{ flex: 1.5, minWidth: 0 }} onClick={confirmAnswer} disabled={keywordEditing || pendingAnswer == null || automations.directAnswer}>Check Answer</button>}
       </div>
-    </div>
+    </div></KeywordQuestionScope>
   )
 }

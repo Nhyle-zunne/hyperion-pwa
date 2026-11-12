@@ -1,5 +1,5 @@
 import SessionElapsedTimer from '../components/SessionElapsedTimer'
-import KeywordQuestionText from '../components/KeywordQuestionText'
+import KeywordQuestionText, { KeywordQuestionScope, KeywordChoiceText } from '../components/KeywordQuestionText'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { getQuestionCountsByTrack, getQuestionsByCompetence, listAvailableCompetences } from '../lib/questionBank'
@@ -237,13 +237,13 @@ export default function QuickScanViewerScreen({ onQuestionChange }: { onQuestion
       </section>
     </div>}
 
-    {!loading && q && <>
+    {!loading && q && <KeywordQuestionScope question={q}>
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: `${1.05 * textScale / 100}rem`, lineHeight: 1.6 }}><KeywordQuestionText question={q} /></div>
       </div>
       <div style={{ display: 'grid', gap: 8, marginBottom: '1rem' }}>
         {q.options.map((option, i) => <div key={i} className="card" style={{ borderRadius: 2, border: `1px solid ${i === q.correctAnswerIndex ? 'var(--success)' : 'var(--border)'}`, background: i === q.correctAnswerIndex ? 'rgba(34,197,94,.12)' : 'var(--bg-card)', padding: '0.9rem 1rem', fontSize: `${.95 * textScale / 100}rem`, display: 'flex', gap: 10 }}>
-          <strong style={{ color: i === q.correctAnswerIndex ? 'var(--success)' : 'var(--text-muted)' }}>{String.fromCharCode(65 + i)}.</strong><span>{option}</span>{i === q.correctAnswerIndex && <span style={{ marginLeft: 'auto', color: 'var(--success)' }}>✓</span>}
+          <strong style={{ color: i === q.correctAnswerIndex ? 'var(--success)' : 'var(--text-muted)' }}>{String.fromCharCode(65 + i)}.</strong><span><KeywordChoiceText text={option} /></span>{i === q.correctAnswerIndex && <span style={{ marginLeft: 'auto', color: 'var(--success)' }}>✓</span>}
         </div>)}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
@@ -253,6 +253,6 @@ export default function QuickScanViewerScreen({ onQuestionChange }: { onQuestion
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => void jump()}>Jump to Question</button>
       </div>
-    </>}
+    </KeywordQuestionScope>}
   </div>
 }

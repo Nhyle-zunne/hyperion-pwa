@@ -1,5 +1,5 @@
 import MaterialIcon from '../components/MaterialIcon'
-import KeywordQuestionText from '../components/KeywordQuestionText'
+import KeywordQuestionText, { KeywordQuestionScope, KeywordChoiceText } from '../components/KeywordQuestionText'
 import QuestionBookmarkButton from '../components/QuestionBookmarkButton'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
@@ -452,7 +452,7 @@ export default function HistoryScreen() {
                       </button>
                     </div>
                     {currentQuestion ? (
-                      <div className="card history-audit-question">
+                      <KeywordQuestionScope question={currentQuestion}><div className="card history-audit-question">
                         <div className="history-audit-question-meta" style={secondaryText}>QUESTION {reviewIndex + 1} OF {filteredReviewQuestions.length} · {currentQuestion.competenceId} · {currentQuestion.topic}</div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, margin: '.35rem 0' }}>
                           <strong style={{ color: currentAnswer?.selectedIndex == null ? 'var(--text-muted)' : currentAnswer.selectedIndex === currentQuestion.correctAnswerIndex ? 'var(--success)' : 'var(--danger)' }}>
@@ -468,14 +468,14 @@ export default function HistoryScreen() {
                             const border = correct ? 'var(--success)' : chosen ? 'var(--danger)' : 'var(--border)'
                             const background = correct ? 'rgba(34,197,94,.12)' : chosen ? 'rgba(239,68,68,.12)' : 'var(--bg-card)'
                             return <div key={index} style={{ border: '1px solid ' + border, background, borderRadius: 6, padding: '.55rem .65rem', lineHeight: 1.45 }}>
-                              <strong>{String.fromCharCode(65 + index)}.</strong> {option}
+                              <strong>{String.fromCharCode(65 + index)}.</strong> <KeywordChoiceText text={option} />
                               {correct && !chosen && <span style={{ color: 'var(--success)', fontWeight: 900 }}> · CORRECT ANSWER</span>}
                               {chosen && <span style={{ color: correct ? 'var(--success)' : 'var(--danger)', fontWeight: 900 }}> · YOUR ANSWER</span>}
                             </div>
                           })}
                         </div>
                         {currentQuestion.explanation && <div style={{ ...secondaryText, marginTop: '.8rem' }}><strong>Explanation:</strong> {currentQuestion.explanation}</div>}
-                      </div>
+                      </div></KeywordQuestionScope>
                     ) : <p role="status" className="history-audit-empty">No missed or unanswered questions in this session.</p>}
                     <div className="history-audit-controls">
                       <button type="button" className="btn btn-outline" disabled={reviewIndex <= 0 || !filteredReviewQuestions.length} onClick={() => goToReviewQuestion(reviewIndex - 1)}>← Previous</button>
