@@ -15,6 +15,7 @@ Deno.test('GitHub delivery broker verifies identity and current track access wit
     if (url.pathname === '/auth/v1/user') return request.headers.get('Authorization') === 'Bearer valid-user' ? json({ id: userId, email: administrator ? 'admin@example.invalid' : 'licensed@example.invalid' }) : json({ message: 'Invalid JWT' }, 401)
     if (url.pathname.includes('/rest/v1/')) {
       if (unavailable) return json({ message: 'Unavailable' }, 503)
+      if (url.pathname.endsWith('/rpc/get_active_paid_track_entitlements')) return json(licensed ? [{ user_id: wrongOwner ? 'another-user' : userId, track_id: 'DECK_OIC_NW', expires_at: '2099-01-01T00:00:00Z' }] : [])
       if (url.pathname.endsWith('/entitlements')) return json(licensed ? [{ user_id: wrongOwner ? 'another-user' : userId, track_id: 'DECK_OIC_NW', status: 'active', expires_at: '2099-01-01T00:00:00Z' }] : [])
       if (url.pathname.endsWith('/google_play_entitlements')) return json([])
       if (url.pathname.endsWith('/question_bank_migration_state')) return json({
@@ -49,7 +50,7 @@ Deno.test('GitHub delivery broker verifies identity and current track access wit
     assert.equal((await rawRequest('get', '')).status, 401)
     assert.equal(bankReads, 0, 'Denied bulk requests cannot fetch question-bank bytes')
     licensed = true; wrongOwner = true
-    assert.equal((await call()).status, 403)
+    assert.equal((await call()).status, 503, 'Mismatched-owner license records must fail closed')
     wrongOwner = false; unavailable = true
     assert.equal((await call()).status, 503)
     assert.equal((await call(false, 'valid-user', 'UNKNOWN')).status, 400)
