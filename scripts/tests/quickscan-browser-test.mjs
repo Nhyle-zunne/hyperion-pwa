@@ -122,6 +122,114 @@ try {
   await page.getByText('Vessel fixture 1 gives way.', { exact: true }).waitFor()
   await goBack()
   assert.equal(await page.getByText('RESUME QUICK SCAN', { exact: true }).count(), 0)
+
+  // Bank revision: inserting a question before the saved item must use its
+  // stable ID rather than silently resuming at a now-different item number.
+  await page.getByRole('button', { name: /C1.*OPEN/i }).first().click()
+  await page.getByText('Vessel fixture 1 gives way.', { exact: true }).waitFor()
+  page.once('dialog', dialog => dialog.accept('20'))
+  await page.getByRole('button', { name: 'Jump to Question' }).click()
+  await page.getByText('Vessel fixture 20 gives way.', { exact: true }).waitFor()
+  await goBack()
+  await page.evaluate(() => localStorage.setItem('hyperion-quickscan-fixture-bank-mode', 'insert-before-20'))
+  await page.getByRole('button', { name: /GO BACK TO WHERE YOU LEFT OFF/ }).click()
+  await page.getByText('Vessel fixture 20 gives way.', { exact: true }).waitFor()
+  await page.getByText('ITEM 21 OF 121', { exact: true }).waitFor()
+  await page.getByText(/changed position after a question-bank update/).waitFor()
+  await goBack()
+
+  // Restore the original bank; the same immutable ID must move safely back.
+  await page.evaluate(() => localStorage.removeItem('hyperion-quickscan-fixture-bank-mode'))
+  await page.getByRole('button', { name: /GO BACK TO WHERE YOU LEFT OFF/ }).click()
+  await page.getByText('Vessel fixture 20 gives way.', { exact: true }).waitFor()
+  await page.getByText('ITEM 20 OF 120', { exact: true }).waitFor()
+  page.once('dialog', dialog => dialog.accept('51'))
+  await page.getByRole('button', { name: 'Jump to Question' }).click()
+  await page.getByText('Vessel fixture 51 gives way.', { exact: true }).waitFor()
+  await goBack()
+
+  // A retired question must never map to Q52 merely because its old numeric
+  // position still exists. Restart at Q1 with a visible reason.
+  await page.evaluate(() => localStorage.setItem('hyperion-quickscan-fixture-bank-mode', 'remove-51'))
+  await page.getByRole('button', { name: /GO BACK TO WHERE YOU LEFT OFF/ }).click()
+  await page.getByText('Vessel fixture 1 gives way.', { exact: true }).waitFor()
+  await page.getByText(/previous question could not be matched/).waitFor()
+  await goBack()
+  await page.evaluate(() => localStorage.removeItem('hyperion-quickscan-fixture-bank-mode'))
+
+  // Switching local account scopes must not expose another account's cursor,
+  // even though IndexedDB physically holds the previous account's tiny row.
+  const separation = await page.evaluate(async () => {
+    const t = window.__hyperionQuickScanTest
+    const original = localStorage.getItem('hyperion-progress-owner')
+    const own = await t.getQuickScanPosition('DECK_OIC_NW', 'C1')
+    localStorage.setItem('hyperion-progress-owner', 'isolated-synthetic-account')
+    const foreign = await t.getQuickScanPosition('DECK_OIC_NW', 'C1')
+    const foreignList = await t.listQuickScanPositions('DECK_OIC_NW')
+    if (original === null) localStorage.removeItem('hyperion-progress-owner')
+    else localStorage.setItem('hyperion-progress-owner', original)
+    const restored = await t.getQuickScanPosition('DECK_OIC_NW', 'C1')
+    return { own: own?.questionIndex, foreign, foreignListSize: foreignList.length, restored: restored?.questionIndex }
+  })
+  assert.equal(separation.own, 0)
+  assert.equal(separation.foreign, null)
+  assert.equal(separation.foreignListSize, 0)
+  assert.equal(separation.restored, 0)
+
+  // The browser may temporarily deny IDB and recover later. A newer
+  // localStorage fallback must migrate into IDB, not be shadowed by an older
+  // IDB record; a delayed cross-tab write must not overwrite it.
+  const recovery = await page.evaluate(async () => {
+    const t = window.__hyperionQuickScanTest
+    const old = await t.getQuickScanPosition('DECK_OIC_NW', 'C1')
+    const replacement = {
+      ...old, questionIndex: 77, questionId: 'quickscan-fixture-78', savedAt: Date.now() + 500
+    }
+    const fallbackKey = 'hyperion:quick-scan-reading:v1:' + replacement.id
+    localStorage.setItem(fallbackKey, JSON.stringify(replacement))
+    const restored = await t.getQuickScanPosition('DECK_OIC_NW', 'C1')
+    const idb = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('hyperion-quick-scan-reading-position')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const stored = await new Promise((resolve, reject) => {
+      const req = idb.transaction('positions', 'readonly').objectStore('positions').get(replacement.id)
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    idb.close()
+    const fallbackCleared = localStorage.getItem(fallbackKey) === null
+    const originalNow = Date.now
+    try {
+      Date.now = () => replacement.savedAt - 100
+      await t.saveQuickScanPosition('DECK_OIC_NW', 'C1', 5, 'quickscan-fixture-6')
+    } finally {
+      Date.now = originalNow
+    }
+    const afterStaleWrite = await t.getQuickScanPosition('DECK_OIC_NW', 'C1')
+    return {
+      restored: restored?.questionIndex,
+      persisted: stored?.questionIndex,
+      fallbackCleared,
+      afterStaleWrite: afterStaleWrite?.questionIndex
+    }
+  })
+  assert.deepEqual(recovery, {
+    restored: 77, persisted: 77, fallbackCleared: true, afterStaleWrite: 77
+  })
+
+  // If a protected question page fails, the viewer must provide a usable
+  // retry path rather than trapping the reader on a blank page.
+  await page.evaluate(() => localStorage.setItem('hyperion-quickscan-fixture-bank-mode', 'fail-load'))
+  await page.getByRole('button', { name: /C1.*OPEN/i }).first().click()
+  await page.getByRole('button', { name: 'Retry opening Quick Scan' }).waitFor()
+  await page.evaluate(() => localStorage.removeItem('hyperion-quickscan-fixture-bank-mode'))
+  await page.getByRole('button', { name: 'Retry opening Quick Scan' }).click()
+  await page.getByRole('dialog', { name: 'RESUME PREVIOUS READING?' }).waitFor()
+  await page.getByRole('dialog').getByRole('button', { name: 'NO, START AT Q #1' }).click()
+  await page.getByText('Vessel fixture 1 gives way.', { exact: true }).waitFor()
+
   assert.deepEqual(errors, [])
   console.log('PASS: shared Quick Scan UI, bookmarks/highlights, page boundary and Jump, local IndexedDB cursor, resume card, reload, resume/start-over, and Back without Supabase writes.')
 } finally { await browser.close() }
