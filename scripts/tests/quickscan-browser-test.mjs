@@ -223,6 +223,9 @@ try {
   // retry path rather than trapping the reader on a blank page.
   await page.evaluate(() => localStorage.setItem('hyperion-quickscan-fixture-bank-mode', 'fail-load'))
   await page.getByRole('button', { name: /C1.*OPEN/i }).first().click()
+  const failurePrompt = page.getByRole('dialog', { name: 'RESUME PREVIOUS READING?' })
+  await failurePrompt.waitFor()
+  await failurePrompt.getByRole('button', { name: 'NO, START AT Q #1' }).click()
   await page.getByRole('button', { name: 'Retry opening Quick Scan' }).waitFor()
   await page.evaluate(() => localStorage.removeItem('hyperion-quickscan-fixture-bank-mode'))
   await page.getByRole('button', { name: 'Retry opening Quick Scan' }).click()
