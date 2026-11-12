@@ -66,7 +66,7 @@ try {
     'select track_id from public.get_active_paid_track_entitlements($1,null) order by track_id',[userB]
   )
   assert.deepEqual(other.rows.map(row=>row.track_id),['DECK_MGT','GMDSS_GOC'])
-  assert.equal((await db.query('select count(*) n from public.get_active_paid_track_entitlements(null,null)')).rows[0].n,0)
+  assert.equal(Number((await db.query('select count(*) n from public.get_active_paid_track_entitlements(null,null)')).rows[0].n),0)
   await db.exec('reset role')
   assert.deepEqual((await db.query(
     'select (select count(*) from public.entitlements) web, (select count(*) from public.google_play_entitlements) play'
