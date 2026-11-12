@@ -61,6 +61,7 @@ function validPosition(value: unknown, ownerId: string, track: TrackId): value i
   const row = value as Partial<QuickScanPosition>
   return row.ownerId === ownerId && row.track === track &&
     typeof row.competenceId === 'string' && row.competenceId.length > 0 &&
+    row.id === storageKey(ownerId, track, row.competenceId) &&
     Number.isSafeInteger(row.questionIndex) && Number(row.questionIndex) >= 0 &&
     typeof row.questionId === 'string' &&
     Number.isFinite(row.savedAt) && Number(row.savedAt) > 0
