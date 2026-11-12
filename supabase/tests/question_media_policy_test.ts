@@ -1,7 +1,7 @@
 import { assert, assertEquals } from 'jsr:@std/assert@1'
 import {
   MAX_IMAGE_BYTES, mediaObjectPath, imageSignatureMatches,
-  validTrack, activePaidTrackRows, sha256
+  validTrack, activePaidTrackRows, sha256, isConfiguredQuestionBankAdmin
 } from '../functions/question-media/policy.ts'
 
 const digest = 'a'.repeat(64)
@@ -48,4 +48,14 @@ Deno.test('license authorization is specific to authenticated owner, track, expi
   assert(!activePaidTrackRows([{user_id:user,track_id:'DECK_OIC_NW',expires_at:earlier}],user,'DECK_OIC_NW'))
   assert(!activePaidTrackRows(null,user,'DECK_OIC_NW'))
   assert(!activePaidTrackRows([{user_id:user,track_id:'DECK_OIC_NW',expires_at:'bad'}],user,'DECK_OIC_NW'))
+})
+
+Deno.test('private media upload accepts the same administrator email list syntax as question banks', () => {
+  const valid = 'Admin@example.com; admin2@example.org, admin3@example.net\nother@example.com'
+  for (const email of ['admin@example.com','ADMIN2@example.org','admin3@example.net','other@example.com']) {
+    assert(isConfiguredQuestionBankAdmin(email, valid))
+  }
+  assert(!isConfiguredQuestionBankAdmin('unknown@example.com', valid))
+  assert(!isConfiguredQuestionBankAdmin(undefined, valid))
+  assert(!isConfiguredQuestionBankAdmin('admin@example.com', ''))
 })
