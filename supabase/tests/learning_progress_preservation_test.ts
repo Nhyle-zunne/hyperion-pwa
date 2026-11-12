@@ -8,6 +8,7 @@ Deno.test('saved-data service scopes recovery and audits, preserves expired-owne
   const originalServe = Deno.serve
   let handler: Handler | undefined
   let active = true
+  let playOnly = false
   let historical = true
   const rows = new Map<string, unknown>()
   const calls: { url: URL; body: any }[] = []
@@ -24,7 +25,7 @@ Deno.test('saved-data service scopes recovery and audits, preserves expired-owne
     calls.push({ url, body })
     if (url.pathname.endsWith('/rpc/get_active_paid_track_entitlements')) {
       assert.ok([userA,userB].includes(body.p_user_id))
-      return json(active ? [{ user_id: body.p_user_id, track_id: 'DECK_OIC_NW', expires_at: '2099-01-01T00:00:00Z' }] : [])
+      return json(active || playOnly ? [{ user_id: body.p_user_id, track_id: 'DECK_OIC_NW', expires_at: '2099-01-01T00:00:00Z' }] : [])
     }
     if (url.pathname.endsWith('/rpc/get_learning_progress_owned_tracks')) {
       assert.ok([userA,userB].includes(body.p_user_id))
@@ -68,6 +69,10 @@ Deno.test('saved-data service scopes recovery and audits, preserves expired-owne
     response = await request(userA, { action: 'read-session', sessionId: 'audit-1' })
     assert.equal((await response.json()).snapshot.answers.q1.selectedIndex, 0)
     active = false
+    playOnly = true
+    response = await request(userA, { action: 'read-session', sessionId: 'audit-1' })
+    assert.equal((await response.json()).snapshot.sessionId, 'audit-1', 'Google Play-only current access must restore paid session reads')
+    playOnly = false
     response = await request(userA, { action: 'read-session', sessionId: 'audit-1' })
     assert.equal((await response.json()).snapshot, null, 'Expired ownership cannot open paid content')
     assert.ok(rows.has(userA + ':audit-1'), 'Denied reads do not delete the archive')
