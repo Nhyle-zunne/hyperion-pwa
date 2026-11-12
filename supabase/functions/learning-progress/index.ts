@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { loadActivePaidEntitlements } from '../_shared/activePaidEntitlements.ts'
 
 type TrackId = 'DECK_OIC_NW' | 'GMDSS_GOC' | 'ENGINE_OIC_EW' | 'DECK_MGT' | 'ENGINE_MGT'
 type JsonRecord = Record<string, unknown>
@@ -359,13 +360,10 @@ async function loadAllowedTracks(
   const adminEmails = (Deno.env.get('ADMIN_EMAILS') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean)
   if (user.email && adminEmails.includes(user.email.toLowerCase())) return new Set(TRACKS)
 
-  const { data, error } = await admin.from('entitlements')
-    .select('track_id')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .gt('expires_at', new Date().toISOString())
-  if (error) throw new Error('Current entitlements could not be verified.')
-  const rows = (data ?? []) as { track_id?: unknown }[]
+  // Read current grants from both PayMongo/admin and Google Play in one
+  // server-only query. An expired or revoked track never authorizes reading
+  // paid question content, but historical ownership can still back up work.
+  const rows = await loadActivePaidEntitlements(admin, user.id)
   return new Set(rows.map(row => row.track_id).filter(isTrackId))
 }
 
