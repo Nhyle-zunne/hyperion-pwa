@@ -22,7 +22,7 @@ Deno.test('only exact tracks, lowercase content hashes and image MIME are valid'
   assert(!validTrack('ADMIN'))
 })
 
-Deno.test('image signatures prevent HTML/SVG uploads disguised as image files', () => {
+Deno.test('image signatures prevent HTML/SVG uploads disguised as image files', async () => {
   const webp = new Uint8Array(16)
   webp.set(new TextEncoder().encode('RIFF'),0)
   webp.set(new TextEncoder().encode('WEBP'),8)
