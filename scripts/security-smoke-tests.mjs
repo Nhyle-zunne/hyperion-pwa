@@ -1058,22 +1058,27 @@ assert.ok(
   'Admin website license management remains available before the Play table migration and still fails closed on other query errors'
 );
 assert.ok(
-  questionBank.includes('function isMissingGooglePlayEntitlementsTable(error: unknown)') &&
-    questionBank.includes('candidate.code !== "PGRST205"') &&
-    questionBank.includes('message.includes("google_play_entitlements")') &&
-    questionBank.includes('message.includes("schema cache")'),
-  'Protected question-bank licensing recognizes only the exact missing optional Google Play table response'
+  activePaidEntitlements.includes('function missingLegacyPlayTable(error:') &&
+    activePaidEntitlements.includes("error?.code === 'PGRST205'") &&
+    activePaidEntitlements.includes("includes('google_play_entitlements')") &&
+    activePaidEntitlements.includes("includes('schema cache')"),
+  'Protected paid-track licensing recognizes only the exact missing optional Google Play table response'
 );
 assert.ok(
-  questionBank.includes('if (website.error || (play.error && !playTableMissing))') &&
-    questionBank.includes('playTableMissing ? null : play.data') &&
-    questionBank.includes('playTableMissing ? [] : (play.data ?? [])'),
-  'Website paid-track authorization and signed offline-license issuance remain compatible before the Google Play migration, while other query errors fail closed'
+  activePaidEntitlements.includes("error.code !== 'PGRST202'") &&
+    activePaidEntitlements.includes('if (website.error || (play.error && !missingLegacyPlayTable(play.error)))') &&
+    activePaidEntitlements.includes('play.error ? [] : (play.data ?? [])'),
+  'Rolling migration fallback is allowed only for a missing RPC and fails closed for all other errors'
 );
 assert.ok(
-  questionBank.includes('.eq("user_id", userId).eq("track_id", track).eq("status", "active").gt("expires_at", now)') &&
-    questionBank.includes('.order("expires_at", { ascending: false }).limit(1).maybeSingle()'),
-  'Paid-track authorization only considers active unexpired rows and safely handles historical duplicate entitlements'
+  questionBank.includes('loadActivePaidEntitlements(admin, userId, track)') &&
+    activePaidEntitlements.includes(".eq('status', 'active')") &&
+    activePaidEntitlements.includes(".gt('expires_at', new Date(nowMs).toISOString())") &&
+    activePaidEntitlements.includes('Date.parse(previous.expires_at) < expiry') &&
+    activePaidEntitlementMigration.includes("e.expires_at > pg_catalog.now()") &&
+    activePaidEntitlementMigration.includes("g.expires_at > pg_catalog.now()") &&
+    activePaidEntitlementMigration.includes('group by grants.track_id'),
+  'Paid-track authorization uses active unexpired grants and picks the latest overlapping expiry'
 );
 assert.ok(googlePlayLinkFunction.includes("userClient.auth.getUser()"), 'Google Play purchase linking requires a verified authenticated Hyperion user');
 assert.ok(googlePlayLinkFunction.includes("admin.rpc('sync_google_play_subscription_atomic'") && !googlePlayLinkFunction.includes('upsertPlayEntitlement'), 'The verified link endpoint reconciles the whole subscription in one database transaction');
