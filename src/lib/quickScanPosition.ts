@@ -128,10 +128,16 @@ async function importFallback(
     return indexed
   }
   if (ownerId !== quickScanLocalOwner()) return null
-  const newest = await putIfNewer(db, local)
-  if (ownerId !== quickScanLocalOwner()) return null
-  clearOlderFallback(newest)
-  return newest
+  try {
+    const newest = await putIfNewer(db, local)
+    if (ownerId !== quickScanLocalOwner()) return null
+    clearOlderFallback(newest)
+    return newest
+  } catch {
+    // A quota/transaction failure must not hide the better fallback or
+    // the other already persisted competence positions.
+    return ownerId === quickScanLocalOwner() ? local : null
+  }
 }
 
 /** One local IndexedDB read; a same-device fallback is used if IDB is blocked. */
