@@ -566,7 +566,7 @@ function parseProtectedImageRefs(raw: string): Array<{ sha256: string; mime: str
         !["image/webp","image/png","image/jpeg"].includes(row.mime) ||
         !["question","explanation"].includes(row.placement) ||
         typeof row.alt !== "string" || row.alt.trim().length === 0 || row.alt.length > 160 ||
-        /[\\x00-\\x1F\\x7F]/.test(row.alt) ||
+        row.alt.split("").some((char: string) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ||
         seen.has(row.sha256 + ":" + row.placement)) return [];
     seen.add(row.sha256 + ":" + row.placement);
     result.push({ sha256: row.sha256, mime: row.mime, placement: row.placement, alt: row.alt });
