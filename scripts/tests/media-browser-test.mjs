@@ -367,7 +367,7 @@ try {
       assert(await minus.isDisabled())
       await close.click()
       await dialog.waitFor({ state: 'hidden' })
-      assert.equal(await page.evaluate(() => getComputedStyle(document.body).overflow), '', 'Background scrolling is restored')
+      assert.equal(await page.evaluate(() => document.body.style.overflow), '', 'Background scrolling is restored')
       assert(await thumb.evaluate(el => el === document.activeElement), 'Closing image returns focus to thumbnail')
     }
   })
