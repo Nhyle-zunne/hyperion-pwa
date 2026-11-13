@@ -6,7 +6,7 @@ import TrackHubScreen from '../../src/screens/TrackHubScreen'
 import PaywallDialog from '../../src/components/PaywallDialog'
 import TrackPurchaseDialog from '../../src/components/TrackPurchaseDialog'
 import QuestionImageGallery from '../../src/components/QuestionImageGallery'
-import { MockExamRunner } from '../../src/screens/MockExamScreen'
+import MockExamScreen, { MockExamRunner } from '../../src/screens/MockExamScreen'
 import FlashcardsScreen from '../../src/screens/FlashcardsScreen'
 import BookmarksScreen from '../../src/screens/BookmarksScreen'
 import VaultScreen from '../../src/screens/VaultScreen'
@@ -108,10 +108,12 @@ async function main() {
         })
       },
       goTrack(key: string) { navigate('/track?track=' + encodeURIComponent(key)) },
+      goMock(key: string) { navigate('/mock?track=' + encodeURIComponent(key)) },
     } })
     return <>
       <Routes>
         <Route path="/track" element={<TrackHubScreen />} />
+        <Route path="/mock" element={<MockExamScreen />} />
         <Route path="*" element={<div data-testid="hub-destination">{location.pathname}{location.search}</div>} />
       </Routes>
       <PaywallDialog />
