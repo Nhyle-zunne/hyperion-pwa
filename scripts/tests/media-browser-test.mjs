@@ -90,6 +90,15 @@ try {
     for (const width of [320, 390, 768, 1280]) {
       await page.setViewportSize({ width, height: 840 })
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Free-mode cards do not overflow ' + width)
+      const cards = await page.locator('.hub-mode-card').evaluateAll(elements => elements.map(element => {
+        const { x, y, width: cardWidth, height } = element.getBoundingClientRect()
+        return { x, y, width: cardWidth, height }
+      }))
+      assert.equal(cards.length, 2, 'Only the two free-mode cards show at ' + width)
+      assert(Math.abs(cards[0].y - cards[1].y) < 2, 'Free Reviewer and Unlock FULL reviewer share the original card row at ' + width)
+      assert(Math.abs(cards[0].width - cards[1].width) < 2, 'Free Reviewer and Unlock FULL reviewer have matching grid widths at ' + width)
+      assert(Math.abs(cards[0].height - cards[1].height) < 2, 'Free Reviewer and Unlock FULL reviewer have matching grid heights at ' + width)
+      assert(cards[1].x > cards[0].x, 'Unlock FULL reviewer is immediately to the right at ' + width)
     }
   })
   await scenario('Direct mock URL denies unlicensed access before fetching questions', async ({ page, open }) => {
