@@ -2,6 +2,8 @@ export * from '../../src/lib/supabase'
 
 // Synthetic account responses for the isolated browser fixture; no production services.
 export const supabaseConfigured = true
+export const supabaseUrl = location.origin
+export const supabaseAnonKey = 'synthetic-anon-key'
 export const fixtureCalls: { action: string; data?: unknown }[] = []
 let user = {
   id: '11111111-1111-4111-8111-111111111111',

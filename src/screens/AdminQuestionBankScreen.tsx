@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import AdminNavigation from '../components/AdminNavigation'
 import QuestionBankCombobox from '../components/QuestionBankCombobox'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
 import { editBankQuestion, readEditableBank, type QuestionEdit } from '../lib/questionBankEditor'
 import { QUESTION_MEDIA_LIMIT, mediaTrackForBankPath } from '../lib/questionMedia'
-import { uploadQuestionImage } from '../lib/questionMediaUpload'
+import { uploadQuestionImage, type ImageUploadProgress } from '../lib/questionMediaUpload'
 
 type Asset = { path: string; label: string; track: string; competenceId: string; part: number | null; format: 'standard' | 'gmdss'; repositoryPath?: string }
 type QuestionPreview = { questionText: string; options: string[]; correctAnswerIndex: number; explanation?: string; isRetired?: boolean }
@@ -65,11 +66,18 @@ export default function AdminQuestionBankScreen() {
   const [editorOrdinal, setEditorOrdinal] = useState(0)
   const [editorDraft, setEditorDraft] = useState<QuestionEdit | null>(null)
   const [editorBusy, setEditorBusy] = useState(false)
+  const imageUploadAbort = useRef<AbortController | null>(null)
+  const [imageProgress, setImageProgress] = useState<ImageUploadProgress | null>(null)
   const [imageUploading, setImageUploading] = useState(false)
   const [imageAlt, setImageAlt] = useState('')
   const [imagePlacement, setImagePlacement] = useState<'question' | 'explanation'>('question')
   const selectedImageUpload = useRef({ path: '', ordinal: 0 })
   selectedImageUpload.current = { path: editorTarget, ordinal: editorOrdinal }
+  useEffect(() => {
+    setImageProgress(null)
+    return () => { imageUploadAbort.current?.abort() }
+  }, [editorTarget, editorOrdinal])
+  const editorImageTrack = mediaTrackForBankPath(editorTarget)
   const [editorError, setEditorError] = useState('')
   const [editorNotice, setEditorNotice] = useState<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null)
   const editorBank = useMemo(() => {
@@ -241,10 +249,17 @@ export default function AdminQuestionBankScreen() {
     const target = {path:editorTarget,ordinal:editorOrdinal}
     const alt = imageAlt.trim() || `${imagePlacement === 'question' ? 'Diagram' : 'Explanation diagram'} for question ${editorOrdinal}`
     const placement = imagePlacement
+    const controller = new AbortController()
+    imageUploadAbort.current = controller
     setImageUploading(true)
     setEditorError('')
     try {
-      const ref = await uploadQuestionImage(track, file, placement, alt)
+      const ref = await uploadQuestionImage(track, file, placement, alt, {
+        signal: controller.signal,
+        onProgress: progress => {
+          if (!controller.signal.aborted) setImageProgress(progress)
+        }
+      })
       if (selectedImageUpload.current.path !== target.path ||
           selectedImageUpload.current.ordinal !== target.ordinal) {
         setEditorNotice({kind:'info',text:'Image saved privately, but the selected question changed. Reopen it before attaching.'})
@@ -260,6 +275,8 @@ export default function AdminQuestionBankScreen() {
       setImageAlt('')
       setEditorNotice({kind:'success',text:'Image uploaded to private storage. Apply the question edit, then validate and publish its bank to link the image.'})
     } catch (error) {
+      if (controller.signal.aborted) return
+      setImageProgress(null)
       setEditorError(error instanceof Error ? error.message : 'Image upload failed.')
     } finally {setImageUploading(false)}
   }
@@ -495,7 +512,8 @@ export default function AdminQuestionBankScreen() {
             <div className="card" style={{padding:12,display:'grid',gap:8,border:'1px solid var(--border)'}}>
               <strong>Question images (up to four)</strong>
               <p style={secondaryText}>PNG, JPEG or WebP. Images are resized to WebP (512 KB maximum), stored privately, and linked to the unchanged question ID after you publish the edited bank.</p>
-              {(editorDraft.imageAttachments || []).map((image,index)=><div key={image.sha256+image.placement} style={{display:'flex',gap:8,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}>
+              {(editorDraft.imageAttachments || []).map((image,index)=><div key={image.sha256+image.placement} style={{display:'grid',gap:8,borderBottom:'1px solid var(--border)',paddingBottom:8}}>
+                {editorImageTrack && <QuestionImageGallery question={{ id: `admin:${editorTarget}:${editorOrdinal}`, track: editorImageTrack, imageAttachments: [image] }} placement={image.placement} />}
                 <span style={{fontSize:'.85rem',overflowWrap:'anywhere'}}>{image.placement==='question'?'Question':'Explanation'} · {image.alt}</span>
                 <button type="button" className="btn btn-outline" disabled={imageUploading} onClick={()=>updateEditorDraft({...editorDraft,imageAttachments:(editorDraft.imageAttachments||[]).filter((_,i)=>i!==index)})}>Remove</button>
               </div>)}
@@ -518,7 +536,10 @@ export default function AdminQuestionBankScreen() {
                 {imageUploading ? 'Uploading image…' : editorDraft.imageAttachments?.length ? 'Add another image' : 'Choose image'}
               </button>
               {!!editorDraft.imageAttachments?.length && <p role="status" style={secondaryText}>{editorDraft.imageAttachments.length} {editorDraft.imageAttachments.length === 1 ? 'image attached' : 'images attached'} to this question’s draft. Apply the question edit, then add the bank to the publish queue.</p>}
-              {imageUploading && <p role="status">Uploading and verifying private image…</p>}
+              {imageProgress && <div>
+                <progress aria-label="Image upload progress" max={100} value={imageProgress.stage === 'complete' ? 100 : imageProgress.stage === 'uploading' && imageProgress.total > 0 ? Math.round(imageProgress.loaded / imageProgress.total * 100) : undefined} style={{width:'100%',accentColor:'var(--accent)'}} />
+                <p role="status" style={secondaryText}>{imageProgress.stage === 'preparing' ? 'Preparing image…' : imageProgress.stage === 'verifying' ? 'Verifying uploaded image…' : imageProgress.stage === 'complete' ? 'Image uploaded and verified.' : imageProgress.total > 0 ? `Uploading image… ${Math.round(imageProgress.loaded / imageProgress.total * 100)}%` : 'Uploading image…'}</p>
+              </div>}
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={editorDraft.retired} disabled={selectedEditorQuestion.fixedLegacyRetirement} onChange={event => updateEditorDraft({ ...editorDraft, retired: event.target.checked })} />

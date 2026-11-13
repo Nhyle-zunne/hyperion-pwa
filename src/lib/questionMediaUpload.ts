@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { supabase, supabaseUrl, supabaseAnonKey } from './supabase'
 import { QUESTION_MEDIA_MAX_BYTES, type QuestionImageRef } from './questionMedia'
 import type { TrackId } from '../types/question'
 
@@ -40,26 +40,66 @@ async function toWebp(input: File): Promise<Blob> {
   }
 }
 
+export type ImageUploadProgress = { stage: 'preparing' | 'uploading' | 'verifying' | 'complete'; loaded: number; total: number }
+type UploadOptions = { onProgress?: (progress: ImageUploadProgress) => void; signal?: AbortSignal }
+
+function sendImage(body: string, token: string, options: UploadOptions): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    const abort = () => { request.abort(); finish(new DOMException('Image upload cancelled.', 'AbortError')) }
+    const finish = (error?: Error, data?: unknown) => {
+      options.signal?.removeEventListener('abort', abort)
+      if (error) reject(error); else resolve(data)
+    }
+    if (options.signal?.aborted) { reject(new DOMException('Image upload cancelled.', 'AbortError')); return }
+    request.open('POST', `${supabaseUrl}/functions/v1/question-media`)
+    request.timeout = 60000
+    request.setRequestHeader('Authorization', `Bearer ${token}`)
+    request.setRequestHeader('apikey', supabaseAnonKey!)
+    request.setRequestHeader('Content-Type', 'application/json')
+    request.upload.onprogress = event => options.onProgress?.({ stage: 'uploading', loaded: event.loaded, total: event.lengthComputable ? event.total : 0 })
+    request.upload.onload = () => options.onProgress?.({ stage: 'verifying', loaded: 0, total: 0 })
+    request.onerror = () => finish(new Error('Image upload failed. Check your connection and retry.'))
+    request.ontimeout = () => finish(new Error('Image upload timed out. Please retry.'))
+    request.onabort = () => finish(new DOMException('Image upload cancelled.', 'AbortError'))
+    request.onload = () => {
+      if (request.status < 200 || request.status >= 300) { finish(new Error('The protected image upload failed. Check admin sign-in and retry.')); return }
+      try { finish(undefined, JSON.parse(request.responseText)) }
+      catch { finish(new Error('The image upload returned an invalid response.')) }
+    }
+    options.signal?.addEventListener('abort', abort, { once: true })
+    options.onProgress?.({ stage: 'uploading', loaded: 0, total: new Blob([body]).size })
+    if (options.signal?.aborted) { abort(); return }
+    try { request.send(body) } catch { finish(new Error('Image upload could not start. Please retry.')) }
+  })
+}
+
 export async function uploadQuestionImage(
   track: TrackId,
   file: File,
   placement: QuestionImageRef['placement'],
-  alt: string
+  alt: string,
+  options: UploadOptions = {}
 ): Promise<QuestionImageRef> {
   if (alt.trim().length < 1 || alt.trim().length > 160 ||
       /[\x00-\x1F\x7F]/.test(alt)) throw Error('Enter an image description (1-160 characters).')
-  if (!supabase) throw Error('Hyperion administration is not configured.')
+  if (!supabase || !supabaseUrl || !supabaseAnonKey) throw Error('Hyperion administration is not configured.')
+  options.onProgress?.({ stage: 'preparing', loaded: 0, total: 0 })
   const blob = await toWebp(file)
   const bytes = new Uint8Array(await blob.arrayBuffer())
-  const {data,error} = await supabase.functions.invoke('question-media', {
-    body: {track,mime:'image/webp',base64:encodeBase64(bytes)}
-  })
-  if (error || data?.track!==track || data?.mime!=='image/webp' ||
-      !/^[a-f0-9]{64}$/.test(data?.sha256||'') || data.bytes!==bytes.length) {
+  const { data: { session }, error } = await supabase.auth.getSession()
+  if (error || !session) throw Error('Sign in as an administrator to upload an image.')
+  if (options.signal?.aborted) throw new DOMException('Image upload cancelled.', 'AbortError')
+  const result = await sendImage(JSON.stringify({track,mime:'image/webp',base64:encodeBase64(bytes)}), session.access_token, options)
+  const data = result as { track?: unknown; mime?: unknown; sha256?: unknown; bytes?: unknown } | null
+  if (data?.track!==track || data?.mime!=='image/webp' || typeof data?.sha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(data.sha256) || data.bytes!==bytes.length) {
     throw Error('The protected image upload did not verify. Check admin sign-in and retry.')
   }
   const hashed = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)))
     .map(part=>part.toString(16).padStart(2,'0')).join('')
+  if (options.signal?.aborted) throw new DOMException('Image upload cancelled.', 'AbortError')
   if (hashed!==data.sha256) throw Error('The server image fingerprint did not match the uploaded bytes.')
+  options.onProgress?.({ stage: 'complete', loaded: bytes.length, total: bytes.length })
   return {sha256:hashed,mime:'image/webp',placement,alt:alt.trim()}
 }

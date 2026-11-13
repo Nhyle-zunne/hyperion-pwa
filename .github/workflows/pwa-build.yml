@@ -59,6 +59,7 @@ jobs:
           node scripts/tests/production-auth-build-test.mjs
           node scripts/generate-worker-bank-codec.mjs --check
           node scripts/tests/github-release-source-test.mjs
+          node scripts/tests/question-image-upload-test.mjs
           node scripts/tests/image-prompt-fingerprint-test.mjs
           node scripts/tests/github-bank-publisher-test.mjs
           node scripts/tests/github-publisher-transaction-test.mjs
