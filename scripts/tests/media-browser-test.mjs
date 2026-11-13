@@ -37,7 +37,9 @@ try {
     const expectFree = async freeName => {
       await page.waitForFunction(expected => document.querySelectorAll('.hub-mode-card').length === 2 &&
         document.querySelector('.hub-mode-card h3')?.textContent === expected, freeName)
-      assert.deepEqual(await labels(), [freeName, 'Unlock FULL reviewer'])
+      assert.deepEqual(await labels(), [freeName, 'UNLOCK FULL REVIEWER'])
+      await page.waitForFunction(() => document.querySelector('.hub-mode-free .hub-mode-count')?.textContent === '1' && document.querySelector('.hub-mode-unlock .hub-mode-count')?.textContent === '1,234')
+      assert.equal(await page.locator('.hub-mode-metric').count(), 2, 'Free and full cards each show their own question count')
       assert.equal(await page.getByRole('button', { name: /PRACTICE ALL QUESTIONS/ }).count(), 0)
       assert.equal(await page.getByRole('button', { name: /QUICK SCAN MODE/ }).count(), 0)
       assert.equal(await page.getByRole('button', { name: /VIEW SUBSCRIPTION OPTIONS/ }).count(), 0)
@@ -46,9 +48,11 @@ try {
     const expectFull = async () => {
       await page.waitForFunction(() => document.querySelectorAll('.hub-mode-card').length === 7)
       const all = await labels()
+      assert.equal(await page.locator('.hub-mode-metric').count(), 7, 'Every licensed mode makes use of its card with a relevant metric')
+      assert.equal(await page.locator('.hub-mode-free').count(), 0, 'Licensed users do not see a sample-pool count')
       assert(all.includes('PRACTICE ALL QUESTIONS') && all.includes('QUICK SCAN MODE') && all.includes('TIMED MOCK EXAM'), 'Premium practice, Quick Scan and mock remain available')
       assert(all.includes('FLASHCARD REVISION') && all.includes('MISTAKES NOTEBOOK') && all.includes('SESSION LOG') && all.includes('SEARCH QUESTION BANK'), 'All existing licensed tools remain')
-      assert(!all.includes('Unlock FULL reviewer') && !all.some(title => title.includes('FREE REVIEWER')), 'No redundant free or upgrade cards for licensed track')
+      assert(!all.includes('UNLOCK FULL REVIEWER') && !all.some(title => title.includes('FREE REVIEWER')), 'No redundant free or upgrade cards for licensed track')
     }
     await switchTracks([])
     await expectFree('OIC-NW FREE REVIEWER')
@@ -57,7 +61,7 @@ try {
     await selectTrack('oic_nw')
     assert.equal(await page.getByRole('button', { name: 'TIMED MOCK EXAM' }).count(), 0, 'No mock exam action for a free track')
     await selectTrack('oic_nw')
-    await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+    await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER' }).click()
     const deckPopup = page.getByRole('dialog', { name: 'Deck OIC-NW' })
     await deckPopup.waitFor()
     assert.match(await deckPopup.innerText(), /₱499/, 'Existing matching store card is opened with new pricing')
@@ -65,7 +69,7 @@ try {
 
     await selectTrack('engine_mgt')
     await expectFree('ENGINE MGT FREE REVIEWER')
-    await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+    await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER' }).click()
     const enginePopup = page.getByRole('dialog', { name: 'Engine Management' })
     await enginePopup.waitFor()
     assert.match(await enginePopup.innerText(), /₱999/, 'Different track opens its own matching purchase card')
@@ -96,11 +100,38 @@ try {
         return { x, y, width: cardWidth, height }
       }))
       assert.equal(cards.length, 2, 'Only the two free-mode cards show at ' + width)
-      assert(Math.abs(cards[0].y - cards[1].y) < 2, 'Free Reviewer and Unlock FULL reviewer share the original card row at ' + width)
-      assert(Math.abs(cards[0].width - cards[1].width) < 2, 'Free Reviewer and Unlock FULL reviewer have matching grid widths at ' + width)
-      assert(Math.abs(cards[0].height - cards[1].height) < 2, 'Free Reviewer and Unlock FULL reviewer have matching grid heights at ' + width)
-      assert(cards[1].x > cards[0].x, 'Unlock FULL reviewer is immediately to the right at ' + width)
+      assert(Math.abs(cards[0].y - cards[1].y) < 2, 'Free Reviewer and UNLOCK FULL REVIEWER share the original card row at ' + width)
+      assert(Math.abs(cards[0].width - cards[1].width) < 2, 'Free Reviewer and UNLOCK FULL REVIEWER have matching grid widths at ' + width)
+      assert(Math.abs(cards[0].height - cards[1].height) < 2, 'Free Reviewer and UNLOCK FULL REVIEWER have matching grid heights at ' + width)
+      assert(cards[1].x > cards[0].x, 'UNLOCK FULL REVIEWER is immediately to the right at ' + width)
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(theme => { document.documentElement.dataset.theme = theme }, theme)
+        const metrics = await page.locator('.hub-mode-count').evaluateAll(els => els.map(el => ({ color: getComputedStyle(el).color, size: parseFloat(getComputedStyle(el).fontSize) })))
+        assert(metrics.every(metric => metric.color === (theme === 'light' ? 'rgb(21, 128, 61)' : 'rgb(34, 197, 94)') && metric.size >= 28), 'Question counts use dashboard-style green emphasis at ' + width)
+        assert.equal(await page.locator('.hub-mode-card').evaluateAll(cards => cards.every(card => card.scrollWidth <= card.clientWidth + 1)), true, 'Descriptions and counts fit their card width')
+        await page.locator('.hub-mode-grid').screenshot({ path: `/tmp/hub-free-${theme}-${width}.png`, animations: 'disabled' })
+      }
+
     }
+    await selectTrack('oic_nw')
+    await switchTracks(['DECK_OIC_NW'])
+    await expectFull()
+    await page.waitForFunction(() => document.querySelector('.hub-mode-count')?.textContent === '1,234')
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 840 })
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Licensed cards fit ' + width)
+      for (const card of await page.locator('.hub-mode-card').all()) {
+        const action = card.locator('.hub-mode-action')
+        await action.scrollIntoViewIfNeeded()
+        const bounds = await action.boundingBox()
+        assert(bounds && bounds.y >= 0 && bounds.y + bounds.height <= 841, 'Each licensed tool action is reachable by scrolling at ' + width)
+        assert(await card.evaluate(el => el.scrollHeight <= el.clientHeight + 1), 'Licensed card descriptions and counts fit vertically')
+      }
+
+      await page.locator('.hub-mode-grid').screenshot({ path: `/tmp/hub-licensed-${width}.png`, animations: 'disabled' })
+    }
+    await page.getByRole('button', { name: 'SEARCH QUESTION BANK', exact: true }).click()
+    assert.equal(await page.getByTestId('hub-destination').innerText(), '/search?track=oic_nw', 'The final licensed tool remains actionable')
   })
   await scenario('Direct mock URL denies unlicensed access before fetching questions', async ({ page, open }) => {
     await open('hub')
@@ -108,13 +139,13 @@ try {
     await page.evaluate(() => window.hubFixture.goMock('oic_nw'))
     await page.getByText('An active license for OIC-NW OPERATIONAL TRACK is required.', { exact: false }).waitFor()
     assert.equal(await page.getByRole('button', { name: 'START OFFICIAL TIMED MOCK EXAM' }).count(), 0, 'Free direct link cannot start timed mock')
-    assert.equal(await page.getByRole('button', { name: 'Unlock FULL reviewer' }).count(), 1)
-    await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+    assert.equal(await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER' }).count(), 1)
+    await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER' }).click()
     await page.getByRole('dialog', { name: 'Deck OIC-NW' }).waitFor()
     await page.getByRole('button', { name: 'Close purchase dialog' }).click()
     await page.evaluate(() => window.hubFixture.setLicenses(['DECK_OIC_NW']))
     await page.waitForFunction(() => document.body.textContent.includes('EXAMINATION PROTOCOL'))
-    assert.equal(await page.getByRole('button', { name: 'Unlock FULL reviewer' }).count(), 0, 'Active track license unlocks direct mock screen')
+    assert.equal(await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER' }).count(), 0, 'Active track license unlocks direct mock screen')
     await page.evaluate(() => window.hubFixture.setLicenses([]))
     await page.getByText('An active license for OIC-NW OPERATIONAL TRACK is required.', { exact: false }).waitFor()
     assert.equal(await page.getByRole('button', { name: 'START OFFICIAL TIMED MOCK EXAM' }).count(), 0, 'Revocation immediately gates the mock screen')
@@ -141,7 +172,7 @@ try {
         }
         return document.querySelector('.hub-hero h1')?.textContent === trackTitles[key]
       }, code)
-      await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+      await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER' }).click()
       const dialog = page.getByRole('dialog', { name: label })
       await dialog.waitFor()
       assert.equal(await dialog.locator('.product-art .store-banner-symbol').count(), symbols, label + ' reuses the original cropped Bond Store artwork')
@@ -168,7 +199,7 @@ try {
     await page.getByRole('heading', { name: 'OIC-NW OPERATIONAL REVIEWER' }).waitFor()
     for (const [width, height] of [[320, 640], [390, 844], [768, 900], [1280, 800]]) {
       await page.setViewportSize({ width, height })
-      await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+      await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER' }).click()
       const dialog = page.getByRole('dialog', { name: 'Deck OIC-NW' })
       const rect = await dialog.evaluate(el => {
         const r = el.getBoundingClientRect()
@@ -233,7 +264,7 @@ try {
       await dialog.getByRole('button', { name: 'Close purchase dialog' }).click()
     }
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+    await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER' }).click()
     const dialog = page.getByRole('dialog', { name: 'Deck OIC-NW' })
     await dialog.getByRole('button', { name: 'Deck OIC-NW Monthly ₱79' }).click()
     await dialog.getByRole('button', { name: 'BUY NOW' }).click()

@@ -61,6 +61,7 @@ interface Mode {
   audience?: 'free' | 'licensed'
   actionLabel?: string
   desc: string
+  metric?: { value: number | null; label: string }
   badge: string
   icon: MaterialIconName
   locked: boolean
@@ -339,9 +340,8 @@ export default function TrackHubScreen() {
     {
       title: info.freeTitle,
       audience: 'free',
-      desc: freeQuestionCount === null
-        ? 'Loading verified free-question count…'
-        : `${freeQuestionCount.toLocaleString()} valid questions in the free pool`,
+      metric: { value: freeQuestionCount, label: 'FREE QUESTIONS AVAILABLE' },
+      desc: 'Practise online with this track’s free question pool. Choose a competence, answer questions and review your results.',
       badge: 'FREE ACCESS',
       icon: 'school',
       locked: false,
@@ -351,7 +351,8 @@ export default function TrackHubScreen() {
     {
       title: 'PRACTICE ALL QUESTIONS',
       audience: 'licensed',
-      desc: 'Full question bank, by competence or mixed.',
+      metric: { value: totalQuestionCount, label: 'QUESTIONS AVAILABLE' },
+      desc: 'Practise with the full track question bank. Choose a competence or mix topics, set your question range and review your answers.',
       badge: unlocked ? 'CUSTOMIZABLE' : 'LOCKED',
       icon: 'tune',
       locked: !unlocked,
@@ -360,7 +361,8 @@ export default function TrackHubScreen() {
     {
       title: 'QUICK SCAN MODE',
       audience: 'licensed',
-      desc: 'Browse questions sequentially with correct answers highlighted. Select a competence to begin.',
+      metric: { value: totalQuestionCount, label: 'QUESTIONS AVAILABLE' },
+      desc: 'Read through the full bank with correct answers highlighted. Choose a competence and study at your own pace.',
       badge: unlocked ? 'READ-ONLY REVIEW' : 'LOCKED',
       icon: 'menuBook',
       locked: !unlocked,
@@ -369,7 +371,8 @@ export default function TrackHubScreen() {
     {
       title: 'TIMED MOCK EXAM',
       audience: 'licensed',
-      desc: '70% cutoff · timed · MARINA format.',
+      metric: { value: totalQuestionCount, label: 'QUESTIONS IN BANK' },
+      desc: 'Prepare with timed, competence-based mock exams in MARINA format. Aim for the 70% cutoff and review your score after submission.',
       badge: 'LICENSED ACCESS',
       icon: 'timer',
       locked: !unlocked,
@@ -378,7 +381,8 @@ export default function TrackHubScreen() {
     {
       title: 'FLASHCARD REVISION',
       audience: 'licensed',
-      desc: 'Active recall · tap to flip cards.',
+      metric: { value: totalQuestionCount, label: 'QUESTIONS AVAILABLE' },
+      desc: 'Test your recall before revealing the correct answer. Choose a competence and tap to flip each flashcard.',
       badge: unlocked ? 'ACTIVE RECALL' : 'LOCKED',
       icon: 'style',
       locked: !unlocked,
@@ -387,7 +391,8 @@ export default function TrackHubScreen() {
     {
       title: 'MISTAKES NOTEBOOK',
       audience: 'licensed',
-      desc: `${trackMistakes.length} questions to review. Track your wrong answers.`,
+      metric: { value: trackMistakes.length, label: 'SAVED MISTAKES' },
+      desc: 'Revisit questions you answered incorrectly. Review the correct answers and focus your next session on these topics.',
       badge: !unlocked ? 'LICENSE REQUIRED' : trackMistakes.length ? `${trackMistakes.length} SAVED` : 'EMPTY',
       icon: 'autoFixHigh',
       locked: !unlocked,
@@ -396,7 +401,8 @@ export default function TrackHubScreen() {
     {
       title: 'SESSION LOG',
       audience: 'licensed',
-      desc: 'Past practice sessions, mock attempts and scores.',
+      metric: { value: trackHistory.length, label: 'RECORDED SESSIONS' },
+      desc: 'Review past practice sessions, mock attempts and scores for this track. Open a saved session to inspect your answers.',
       badge: `${trackHistory.length} LOGS`,
       icon: 'analytics',
       locked: false,
@@ -405,16 +411,18 @@ export default function TrackHubScreen() {
     {
       title: 'SEARCH QUESTION BANK',
       audience: 'licensed',
-      desc: 'Search by keyword, item code, or competence.',
+      metric: { value: totalQuestionCount, label: 'SEARCHABLE QUESTIONS' },
+      desc: 'Find questions across the full track bank by keyword, item code or competence, then open a result to review it.',
       badge: unlocked ? 'DATABASE' : 'LOCKED',
       icon: 'search',
       locked: !unlocked,
       onClick: gated('Search', `/search?track=${key}`)
     },
     {
-      title: 'Unlock FULL reviewer',
+      title: 'UNLOCK FULL REVIEWER',
       audience: 'free',
-      desc: 'Unlock Practice All, Quick Scan, Flashcards, Mistakes, Search, and licensed offline study for this track.',
+      metric: { value: totalQuestionCount, label: 'QUESTIONS IN FULL REVIEWER' },
+      desc: 'Unlock the complete track: unlimited practice, timed mock exams, Quick Scan, flashcards, search and licensed offline study.',
       badge: 'FULL ACCESS',
       icon: 'lock',
       locked: false,
@@ -554,6 +562,7 @@ export default function TrackHubScreen() {
               type="button"
               className={`hub-mode-card ${mode.className ?? ''} ${mode.locked ? 'is-locked' : ''}`}
               onClick={mode.onClick}
+              aria-describedby={`hub-mode-${key}-${mode.icon}-details`}
               aria-label={`${mode.title}${mode.locked ? ', locked' : ''}`}
             >
               <div className="hub-mode-top">
@@ -563,7 +572,13 @@ export default function TrackHubScreen() {
                 </span>
               </div>
               <h3>{mode.title}</h3>
-              <p>{mode.desc}</p>
+              <div className="hub-mode-body" id={`hub-mode-${key}-${mode.icon}-details`}>
+                {mode.metric && <div className="hub-mode-metric" aria-live="polite">
+                  <strong className="hub-mode-count">{mode.metric.value === null ? '—' : mode.metric.value.toLocaleString()}</strong>
+                  <span className="hub-mode-count-label">{mode.metric.label}</span>
+                </div>}
+                <p>{mode.desc}</p>
+              </div>
               <span className="hub-mode-action">
                 {mode.actionLabel || 'SELECT MODE'} <span aria-hidden="true">→</span>
               </span>

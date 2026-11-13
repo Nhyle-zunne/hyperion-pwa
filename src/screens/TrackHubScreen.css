@@ -508,3 +508,26 @@
   .hub-offline-progress-fill { transition: none; }
 }
 
+
+/* Equal percentage columns; each card grows with useful content rather than
+   reserving a fixed empty area between the description and its action. */
+.track-hub-screen .hub-mode-grid {
+  grid-template-columns: repeat(2, minmax(0, 49%));
+  column-gap: 2%;
+  row-gap: clamp(.65rem, 1.2vw, 1rem);
+  align-items: stretch;
+}
+.track-hub-screen .hub-mode-card {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: clamp(.6rem, 1.25vw, 1.1rem);
+}
+.track-hub-screen .hub-mode-top { min-height: 0; margin-bottom: .65rem; }
+.track-hub-screen .hub-mode-card h3 { font-size: clamp(.82rem, 1.2vw, 1.05rem); }
+.hub-mode-body { display: grid; align-content: start; gap: .65rem; flex: 1; min-width: 0; }
+.hub-mode-metric { display: grid; gap: .2rem; min-width: 0; }
+.hub-mode-count { color: var(--accent); font-size: clamp(1.75rem, 3.1vw, 2.5rem); line-height: 1.1; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hub-mode-count-label { color: var(--text-muted); font-size: clamp(.62rem, 1vw, .72rem); line-height: 1.3; font-weight: 700; }
+.track-hub-screen .hub-mode-body p { font-size: clamp(.75rem, 1.05vw, .88rem); line-height: 1.5; font-weight: 400; }
+.track-hub-screen .hub-mode-action { padding-top: .85rem; }
