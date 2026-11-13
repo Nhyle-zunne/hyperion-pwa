@@ -288,7 +288,7 @@ try {
     await dialog.waitFor({ state: 'hidden' })
     assert(await thumbnail.evaluate(el => el === document.activeElement), 'Escape returns focus to image trigger')
   })
-  await scenario('Responsive centered thumbnails and bounded, accessible percentage zoom', async ({ page, open }) => {
+  await scenario('Question images open a centered, full-fit, scroll-free and draggable viewer on desktop and mobile', async ({ page, open }) => {
     await open('gallery')
     for (const viewport of [{ width: 360, height: 700 }, { width: 768, height: 1024 }, { width: 1280, height: 800 }]) {
       await page.setViewportSize(viewport)
@@ -300,36 +300,95 @@ try {
         const img = el.querySelector('img').getBoundingClientRect()
         return { width: rect.width, height: img.height, centeredBy: Math.abs(rect.left + rect.width / 2 - (parent.left + parent.width / 2)) }
       })
-      assert(size.width <= Math.min(520, viewport.width * .75) + 5, 'Thumbnail is relative to its container and bounded on ' + viewport.width)
-      assert(size.height <= Math.min(360, viewport.height * .38) + 1, 'Thumbnail height is viewport-bounded on ' + viewport.width)
-      assert(size.centeredBy < 2, 'Thumbnail is horizontally centered on ' + viewport.width)
+      assert(size.width <= Math.min(520, viewport.width * .75) + 5, 'Thumbnail is bounded at ' + viewport.width)
+      assert(size.height <= Math.min(360, viewport.height * .38) + 1, 'Thumbnail height is viewport-bounded at ' + viewport.width)
+      assert(size.centeredBy < 2, 'Thumbnail is centered at ' + viewport.width)
+      assert.equal(await thumb.innerText(), '', 'No redundant Zoom label below a clickable diagram')
+      assert.equal(await page.locator('figure figcaption').count(), 0, 'Do not display diagram metadata below thumbnail')
+      await thumb.click()
+      const dialog = page.getByRole('dialog', { name: 'Enlarged question diagram' })
+      await dialog.waitFor()
+      assert(await dialog.evaluate(el => el.parentElement === document.body), 'Lightbox uses the body-level portal')
+      const view = dialog.getByLabel('Zoomable diagram viewport')
+      const layout = await dialog.evaluate(el => {
+        const rect = el.getBoundingClientRect()
+        const stage = el.querySelector('[aria-label="Zoomable diagram viewport"]')
+        const img = stage.querySelector('img')
+        const styles = getComputedStyle(stage)
+        return {
+          cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2,
+          dialogWidth: rect.width, dialogHeight: rect.height,
+          stageWidth: stage.clientWidth, stageHeight: stage.clientHeight,
+          overflowX: styles.overflowX, overflowY: styles.overflowY,
+          touchAction: styles.touchAction, fit: getComputedStyle(img).objectFit,
+          animation: getComputedStyle(el).animationName,
+          scale: getComputedStyle(img).transform,
+        }
+      })
+      assert(Math.abs(layout.cx - viewport.width / 2) < 3 && Math.abs(layout.cy - viewport.height / 2) < 3,
+        'Viewer must center in the screen at ' + viewport.width)
+      assert(layout.dialogWidth <= viewport.width && layout.dialogHeight <= viewport.height,
+        'Viewer must fit screen at ' + viewport.width)
+      assert(layout.stageWidth > viewport.width * .7 && layout.stageHeight > viewport.height * .5,
+        'Image uses available viewport space at ' + viewport.width)
+      assert.equal(layout.fit, 'contain', 'Whole diagram fits without cropping when opened')
+      assert.equal(layout.overflowX, 'hidden', 'No horizontal image scrollbars')
+      assert.equal(layout.overflowY, 'hidden', 'No vertical image scrollbars')
+      assert.equal(layout.touchAction, 'none', 'Touch pan and pinch do not scroll the page')
+      assert.notEqual(layout.animation, 'none', 'Image opens with smooth animation')
+      assert.equal(await dialog.locator('figcaption, p').count(), 0, 'No diagram metadata repeated inside lightbox')
+      const close = dialog.getByRole('button', { name: 'Close image' })
+      assert(await close.evaluate(el => {
+        const c = getComputedStyle(el).backgroundColor.match(/\d+/g)?.map(Number) || []
+        return c[0] > 140 && c[1] < 130 && c[2] < 150
+      }), 'Close image button is red')
+      assert(await page.evaluate(() => getComputedStyle(document.body).overflow === 'hidden'), 'Background page cannot scroll with viewer open')
+      const minus = dialog.getByRole('button', { name: 'Zoom out' })
+      const plus = dialog.getByRole('button', { name: 'Zoom in' })
+      const reset = dialog.getByRole('button', { name: 'Reset zoom' })
+      assert(await minus.isDisabled(), 'Fit-to-screen starts at 100%')
+      assert.equal(await dialog.getByLabel('Image zoom percentage').innerText(), '100%')
+      for (let i = 0; i < 6; i++) await plus.click()
+      assert.equal(await dialog.getByLabel('Image zoom percentage').innerText(), '250%')
+      assert(await plus.isDisabled(), 'Zoom is bounded to 250%')
+      const image = view.locator('img')
+      const before = await image.evaluate(el => getComputedStyle(el).transform)
+      const box = await view.boundingBox()
+      assert(box, 'The diagram viewport exists')
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(box.x + box.width / 2 + 55, box.y + box.height / 2 + 45, { steps: 5 })
+      await page.mouse.up()
+      const after = await image.evaluate(el => getComputedStyle(el).transform)
+      assert.notEqual(after, before, 'Dragging an enlarged diagram pans it without scrollbars')
+      assert.equal(await view.evaluate(el => getComputedStyle(el).overflow), 'hidden')
+      await reset.click()
+      assert.equal(await dialog.getByLabel('Image zoom percentage').innerText(), '100%')
+      assert(await minus.isDisabled())
+      if (viewport.width === 360) {
+        await view.evaluate(el => {
+          const r = el.getBoundingClientRect()
+          const x = r.left + r.width / 2, y = r.top + r.height / 2
+          const send = (type, id, dx) => el.dispatchEvent(new PointerEvent(type, {
+            bubbles: true, pointerId: id, pointerType: 'touch', clientX: x + dx, clientY: y
+          }))
+          send('pointerdown', 71, -30)
+          send('pointerdown', 72, 30)
+          send('pointermove', 71, -65)
+          send('pointermove', 72, 65)
+          send('pointerup', 71, -65)
+          send('pointerup', 72, 65)
+        })
+        await page.waitForFunction(() => Number(document.querySelector('.question-diagram-percentage')?.textContent?.replace('%', '')) > 100)
+        assert(Number((await dialog.getByLabel('Image zoom percentage').innerText()).replace('%', '')) > 100,
+          'Two touch pointers pinch to enlarge on a narrow screen')
+        await reset.click()
+      }
+      await close.click()
+      await dialog.waitFor({ state: 'hidden' })
+      assert.equal(await page.evaluate(() => document.body.style.overflow), '', 'Background scrolling is restored')
+      assert(await thumb.evaluate(el => el === document.activeElement), 'Closing image returns focus to thumbnail')
     }
-    await page.setViewportSize({ width: 390, height: 844 })
-    await page.getByTitle('Tap to enlarge diagram').click({ position: { x: 8, y: 8 } })
-    const dialog = page.getByRole('dialog', { name: 'Enlarged question diagram' })
-    await dialog.waitFor()
-    const minus = dialog.getByRole('button', { name: 'Zoom out' })
-    const plus = dialog.getByRole('button', { name: 'Zoom in' })
-    const reset = dialog.getByRole('button', { name: 'Reset zoom' })
-    assert(await minus.isDisabled(), 'Zoom cannot shrink below 100%')
-    assert.equal(await dialog.getByLabel('Image zoom percentage').innerText(), '100%')
-    for (let i = 0; i < 6; i++) await plus.click()
-    assert.equal(await dialog.getByLabel('Image zoom percentage').innerText(), '250%')
-    assert(await plus.isDisabled(), 'Zoom cannot exceed 250%')
-    assert(await dialog.getByLabel('Zoomable diagram viewport').evaluate(el => el.scrollWidth > el.clientWidth && el.scrollHeight > el.clientHeight), 'Zoomed content remains scrollable inside the bounded viewer')
-    const dimensions = await dialog.getByLabel('Zoomable diagram viewport').evaluate(el => {
-      const r = el.getBoundingClientRect()
-      return { width: r.width, height: r.height, x: r.x, y: r.y }
-    })
-    assert(dimensions.width < 390 && dimensions.height < 844 && dimensions.x >= 0 && dimensions.y >= 0, 'Zoom viewer stays within the mobile viewport')
-    await reset.click()
-    assert.equal(await dialog.getByLabel('Image zoom percentage').innerText(), '100%')
-    assert(await minus.isDisabled())
-    await plus.click()
-    await minus.click()
-    assert.equal(await dialog.getByLabel('Image zoom percentage').innerText(), '100%')
-    await page.keyboard.press('Escape')
-    await dialog.waitFor({ state: 'hidden' })
   })
   await scenario('Cached read rechecks license after asynchronous digest', async ({ page, open }) => {
     await open('gallery'); await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()

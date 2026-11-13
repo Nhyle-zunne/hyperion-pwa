@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import './QuestionImageGallery.css'
 import { createPortal } from 'react-dom'
 import type { Question, TrackId } from '../types/question'
 import type { QuestionImageRef } from '../lib/questionMedia'
@@ -55,12 +56,10 @@ function ImageSession({ track, images }: { track: TrackId; images: QuestionImage
           <img src={image.url} alt={ref.alt}
             style={{ display: 'block', width: '100%', maxHeight: 'min(38dvh, 360px)', objectFit: 'contain', objectPosition: 'center' }}
             onError={() => { setZoom(null); setLoaded(old => ({ ...old, [ref.sha256]: { url: '', error: 'This diagram could not be displayed.' } })) }} />
-          <span aria-hidden="true" style={{ display: 'block', padding: '5px 0 2px', fontSize: '.78rem', fontWeight: 650, color: 'var(--text-muted)' }}>🔍 Zoom</span>
         </button> : <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 8 }}>
           <p role={image?.error ? 'alert' : 'status'}>{image?.error || 'Loading diagram from protected storage…'}</p>
           {image?.error && <button type="button" className="btn btn-outline" onClick={() => setAttempt(value => value + 1)}>Retry image</button>}
         </div>}
-        <figcaption style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 5, textAlign: 'center' }}>{ref.alt}</figcaption>
       </figure>
     })}
     {zoom && <ImageZoom image={zoom} close={() => setZoom(null)} />}
@@ -69,31 +68,137 @@ function ImageSession({ track, images }: { track: TrackId; images: QuestionImage
 
 function ImageZoom({ image, close }: { image: { url: string; alt: string }; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
+  const viewport = useRef<HTMLDivElement>(null)
+  const imageElement = useRef<HTMLImageElement>(null)
+  const activePointers = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{ distance: number; percent: number } | null>(null)
+  const percentRef = useRef(100)
   const [zoomPercent, setZoomPercent] = useState(100)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
+
+  const boundPan = (offset: { x: number; y: number }, percent: number) => {
+    const area = viewport.current
+    const img = imageElement.current
+    if (!area || !img?.naturalWidth || !img.naturalHeight || percent <= 100) return { x: 0, y: 0 }
+    const width = area.clientWidth
+    const height = area.clientHeight
+    if (!width || !height) return { x: 0, y: 0 }
+    const fittedWidth = Math.min(width, height * img.naturalWidth / img.naturalHeight)
+    const fittedHeight = fittedWidth * img.naturalHeight / img.naturalWidth
+    const maxX = Math.max(0, (fittedWidth * percent / 100 - width) / 2)
+    const maxY = Math.max(0, (fittedHeight * percent / 100 - height) / 2)
+    return {
+      x: Math.max(-maxX, Math.min(maxX, offset.x)),
+      y: Math.max(-maxY, Math.min(maxY, offset.y))
+    }
+  }
+  const setMagnification = (percent: number) => {
+    const next = Math.max(100, Math.min(250, Math.round(percent)))
+    percentRef.current = next
+    setZoomPercent(next)
+    setPan(current => boundPan(current, next))
+  }
+  const adjust = (step: number) => setMagnification(percentRef.current + step)
+  const reset = () => { setMagnification(100); setPan({ x: 0, y: 0 }) }
+  const distance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    Math.hypot(a.x - b.x, a.y - b.y)
+
+  const pointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    activePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
+    if (activePointers.current.size === 2) {
+      const [a, b] = [...activePointers.current.values()]
+      pinch.current = { distance: Math.max(1, distance(a, b)), percent: percentRef.current }
+    }
+    setDragging(percentRef.current > 100 && activePointers.current.size === 1)
+  }
+  const pointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const previous = activePointers.current.get(event.pointerId)
+    if (!previous) return
+    activePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (activePointers.current.size >= 2) {
+      if (!pinch.current) return
+      const [a, b] = [...activePointers.current.values()]
+      setMagnification(pinch.current.percent * distance(a, b) / pinch.current.distance)
+    } else if (percentRef.current > 100) {
+      setPan(current => boundPan({
+        x: current.x + event.clientX - previous.x,
+        y: current.y + event.clientY - previous.y
+      }, percentRef.current))
+    }
+  }
+  const pointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    activePointers.current.delete(event.pointerId)
+    if (activePointers.current.size < 2) pinch.current = null
+    setDragging(false)
+  }
+  const panWithKeys = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (percentRef.current <= 100) return
+    const delta = ({
+      ArrowLeft: { x: 36, y: 0 }, ArrowRight: { x: -36, y: 0 },
+      ArrowUp: { x: 0, y: 36 }, ArrowDown: { x: 0, y: -36 }
+    } as Record<string, { x: number; y: number }>)[event.key]
+    if (!delta) return
+    event.preventDefault()
+    setPan(current => boundPan({ x: current.x + delta.x, y: current.y + delta.y }, percentRef.current))
+  }
+
   useEffect(() => {
     const element = dialog.current!
     const trigger = document.activeElement
+    const priorBodyOverflow = document.body.style.overflow
+    const priorRootOverflow = document.documentElement.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
     element.showModal()
-    return () => { element.close(); if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus() }
+    const resize = () => setPan(current => boundPan(current, percentRef.current))
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault()
+      if (event.deltaY) setMagnification(percentRef.current + (event.deltaY < 0 ? 25 : -25))
+    }
+    const area = viewport.current
+    area?.addEventListener('wheel', wheel, { passive: false })
+    window.addEventListener('resize', resize)
+    return () => {
+      area?.removeEventListener('wheel', wheel)
+      window.removeEventListener('resize', resize)
+      activePointers.current.clear()
+      element.close()
+      document.body.style.overflow = priorBodyOverflow
+      document.documentElement.style.overflow = priorRootOverflow
+      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus()
+    }
+    // Refs and setState are stable; install viewer listeners only while it is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  const adjust = (step: number) => setZoomPercent(current => Math.min(250, Math.max(100, current + step)))
-  return createPortal(<dialog ref={dialog} aria-label="Enlarged question diagram" className="question-diagram-zoom"
-    onCancel={event => { event.preventDefault(); close() }} onClick={event => { if (event.target === event.currentTarget) close() }}
-    style={{ padding: 12, border: 0, borderRadius: 10, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 24px)', background: 'var(--bg-card)', color: 'var(--text)' }}>
-    <div style={{ display: 'grid', gap: 10, width: 'min(86vw, 960px)', maxWidth: '100%' }}>
-      <div role="toolbar" aria-label="Diagram zoom controls" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className="btn btn-outline" aria-label="Zoom out" disabled={zoomPercent <= 100} onClick={() => adjust(-25)}>−</button>
-        <output aria-label="Image zoom percentage" style={{ minWidth: 56, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{zoomPercent}%</output>
-        <button type="button" className="btn btn-outline" aria-label="Zoom in" disabled={zoomPercent >= 250} onClick={() => adjust(25)}>+</button>
-        <button type="button" className="btn btn-outline" aria-label="Reset zoom" disabled={zoomPercent === 100} onClick={() => setZoomPercent(100)}>Reset</button>
-        <button type="button" className="btn btn-outline" onClick={close}>Close image ✕</button>
+
+  return createPortal(<dialog ref={dialog} aria-label="Enlarged question diagram"
+    className="question-diagram-zoom"
+    onCancel={event => { event.preventDefault(); close() }}
+    onClick={event => { if (event.target === event.currentTarget) close() }}>
+    <div className="question-diagram-zoom-content">
+      <div role="toolbar" aria-label="Diagram zoom controls" className="question-diagram-toolbar">
+        <button type="button" className="btn btn-outline" aria-label="Zoom out"
+          disabled={zoomPercent <= 100} onClick={() => adjust(-25)}>−</button>
+        <output aria-label="Image zoom percentage" className="question-diagram-percentage">{zoomPercent}%</output>
+        <button type="button" className="btn btn-outline" aria-label="Zoom in"
+          disabled={zoomPercent >= 250} onClick={() => adjust(25)}>+</button>
+        <button type="button" className="btn btn-outline" aria-label="Reset zoom"
+          disabled={zoomPercent === 100} onClick={reset}>Reset</button>
+        <button type="button" className="btn question-diagram-close" aria-label="Close image"
+          onClick={close}>Close image ✕</button>
       </div>
-      <div aria-label="Zoomable diagram viewport" style={{ width: '100%', height: 'min(62dvh, 620px)', overflow: 'auto', borderRadius: 8, background: 'var(--bg)', overscrollBehavior: 'contain' }}>
-        <div style={{ width: zoomPercent + '%', height: zoomPercent + '%', minWidth: '100%', minHeight: '100%', display: 'grid', placeItems: 'center' }}>
-          <img src={image.url} alt={image.alt} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
-        </div>
+      <div ref={viewport} role="group" tabIndex={0} aria-label="Zoomable diagram viewport"
+        className="question-diagram-viewport"
+        style={{ cursor: zoomPercent > 100 ? dragging ? 'grabbing' : 'grab' : 'default' }}
+        onPointerDown={pointerDown} onPointerMove={pointerMove}
+        onPointerUp={pointerUp} onPointerCancel={pointerUp}
+        onLostPointerCapture={pointerUp} onKeyDown={panWithKeys}>
+        <img ref={imageElement} src={image.url} alt={image.alt} draggable={false}
+          onLoad={() => setPan(current => boundPan(current, percentRef.current))}
+          style={{ transform: 'translate3d(' + pan.x + 'px, ' + pan.y + 'px, 0) scale(' + (zoomPercent / 100) + ')' }} />
       </div>
-      <p style={{ margin: 0, textAlign: 'center' }}>{image.alt}</p>
     </div>
   </dialog>, document.body)
 }
