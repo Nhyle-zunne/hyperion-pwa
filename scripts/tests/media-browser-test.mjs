@@ -83,6 +83,23 @@ try {
     await expectFree('ENGINE OIC-EW FREE REVIEWER')
     await switchTracks(['ALL'])
     await expectFull()
+    // The mock exam card describes the complete track exam plan, not bank size.
+    for (const [track, title, expected] of [
+      ['oic_nw', 'OIC-NW OPERATIONAL REVIEWER', 200],
+      ['deck_mgt', 'DECK MANAGEMENT REVIEWER', 200],
+      ['engine_mgt', 'ENGINE MANAGEMENT REVIEWER', 200],
+      ['gmdss', 'GMDSS GOC REVIEWER', 100],
+      ['engine_ew', 'ENGINE OIC-EW REVIEWER', 200],
+    ]) {
+      await selectTrack(track)
+      await page.getByRole('heading', { name: title }).waitFor()
+      const mockCard = page.getByRole('button', { name: 'TIMED MOCK EXAM' })
+      assert.equal(await mockCard.locator('.hub-mode-count').innerText(), String(expected),
+        track + ' shows its official total mock-exam questions instead of the full bank')
+      assert.equal(await mockCard.locator('.hub-mode-count-label').innerText(), 'MOCK EXAM QUESTIONS')
+      assert.equal(await page.getByRole('button', { name: 'PRACTICE ALL QUESTIONS' }).locator('.hub-mode-count').innerText(), '1,234',
+        'Practice All retains the full bank count')
+    }
     await switchTracks([])
     await expectFree('ENGINE OIC-EW FREE REVIEWER')
     await switchTracks(['GMDSS_GOC'])

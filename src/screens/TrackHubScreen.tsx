@@ -7,6 +7,7 @@ import { useHistoryStore } from '../stores/historyStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useVaultStore } from '../stores/vaultStore'
 import type { TrackId } from '../types/question'
+import { totalMockExamQuestionCount } from '../lib/mockExamCounts'
 import { checkOfflineQuestionPackUpdates, downloadOfflinePack, getQuestionCountsByTrack, getPublicQuestionCountByTrack } from '../lib/questionBank'
 import { getCachedOfflineEntitlementSnapshot, getOfflinePackStatus } from '../lib/offlineQuestionCache'
 import { supabase } from '../lib/supabase'
@@ -371,7 +372,7 @@ export default function TrackHubScreen() {
     {
       title: 'TIMED MOCK EXAM',
       audience: 'licensed',
-      metric: { value: totalQuestionCount, label: 'QUESTIONS IN BANK' },
+      metric: { value: totalMockExamQuestionCount(info.trackId), label: 'MOCK EXAM QUESTIONS' },
       desc: 'Prepare with timed, competence-based mock exams in MARINA format. Aim for the 70% cutoff and review your score after submission.',
       badge: 'LICENSED ACCESS',
       icon: 'timer',
