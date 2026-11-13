@@ -1,3 +1,4 @@
+import { assertSquareCorners } from './square-corners-browser-helper.mjs'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
@@ -23,7 +24,7 @@ async function scenario(name, run) {
     return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) ? route.continue() : route.abort()
   })
   const open = async (screen, imageOnly = false) => { await page.goto(`${base}?screen=${screen}${imageOnly ? '&imageOnly=1' : ''}`); await page.waitForFunction(() => !!window.mediaFixture) }
-  try { await run({ page, context, open, transient: () => { failFirst = true }, downloads: () => downloads }); assert.deepEqual(errors, [], 'No runtime errors'); console.log(`PASS ${name}`) }
+  try { await run({ page, context, open, transient: () => { failFirst = true }, downloads: () => downloads }); await assertSquareCorners(page); assert.deepEqual(errors, [], 'No runtime errors'); console.log(`PASS ${name}`) }
   catch (error) { failures.push(`${name}: ${error.message}`); console.error(`FAIL ${name}: ${error.message}\nPAGE: ${await page.locator('body').innerText()}`) }
   finally { await context.close() }
 }
@@ -178,6 +179,7 @@ try {
       assert(await buy.isVisible(), 'Buy Now is visible at ' + width)
       await page.mouse.move(0, 0)
       await page.waitForFunction(() => getComputedStyle(document.querySelector('.track-purchase-buy')).backgroundColor === 'rgb(20, 125, 67)')
+      await assertSquareCorners(page)
       const purchaseStyle = await dialog.evaluate(el => {
         const action = el.querySelector('.track-purchase-buy')
         return { radius: getComputedStyle(el).borderRadius, innerBorder: getComputedStyle(el.querySelector('.track-purchase-card')).borderTopWidth, actionBg: getComputedStyle(action).backgroundColor, actionText: getComputedStyle(action).color }
@@ -223,6 +225,7 @@ try {
       if (width === 390 || width === 1280) {
         await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
         assert.equal(await buy.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(20, 125, 67)', 'Dark mode retains the same high-contrast purchase action')
+        await assertSquareCorners(page)
         await dialog.screenshot({ path: `/tmp/hyperion-purchase-dark-${width}.png`, animations: 'disabled' })
         await page.evaluate(() => { document.documentElement.dataset.theme = 'light' })
       }
