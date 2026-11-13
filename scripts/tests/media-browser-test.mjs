@@ -28,6 +28,70 @@ async function scenario(name, run) {
   finally { await context.close() }
 }
 try {
+  await scenario('Track hub renders free-only modes, track-scoped upgrade popup, licensed modes and expiry changes', async ({ page, open }) => {
+    await open('hub')
+    const switchTracks = async (ids, verified = true) => page.evaluate(({ ids, verified }) => window.hubFixture.setLicenses(ids, verified), { ids, verified })
+    const selectTrack = async key => page.evaluate(key => window.hubFixture.goTrack(key), key)
+    const labels = () => page.locator('.hub-mode-card h3').allTextContents()
+    const expectFree = async freeName => {
+      await page.waitForFunction(() => document.querySelectorAll('.hub-mode-card').length === 3)
+      assert.deepEqual(await labels(), [freeName, 'TIMED MOCK EXAM', 'Unlock FULL reviewer'])
+      assert.equal(await page.getByRole('button', { name: /PRACTICE ALL QUESTIONS/ }).count(), 0)
+      assert.equal(await page.getByRole('button', { name: /QUICK SCAN MODE/ }).count(), 0)
+      assert.equal(await page.getByRole('button', { name: /VIEW SUBSCRIPTION OPTIONS/ }).count(), 0)
+      assert.equal(await page.locator('.hub-mode-card.is-locked').count(), 0, 'Hidden premium modes do not linger as locked cards')
+    }
+    const expectFull = async () => {
+      await page.waitForFunction(() => document.querySelectorAll('.hub-mode-card').length === 7)
+      const all = await labels()
+      assert(all.includes('PRACTICE ALL QUESTIONS') && all.includes('QUICK SCAN MODE') && all.includes('TIMED MOCK EXAM'), 'Premium practice, Quick Scan and mock remain available')
+      assert(all.includes('FLASHCARD REVISION') && all.includes('MISTAKES NOTEBOOK') && all.includes('SESSION LOG') && all.includes('SEARCH QUESTION BANK'), 'All existing licensed tools remain')
+      assert(!all.includes('Unlock FULL reviewer') && !all.some(title => title.includes('FREE REVIEWER')), 'No redundant free or upgrade cards for licensed track')
+    }
+    await switchTracks([])
+    await expectFree('OIC-NW FREE REVIEWER')
+    await page.getByRole('button', { name: 'OIC-NW FREE REVIEWER' }).click()
+    assert.match(await page.getByTestId('hub-destination').innerText(), /^\\/practice\\/competences\\?track=oic_nw&free=1$/)
+    await selectTrack('oic_nw')
+    await page.getByRole('button', { name: 'TIMED MOCK EXAM' }).click()
+    assert.match(await page.getByTestId('hub-destination').innerText(), /^\\/mock\\?track=oic_nw$/)
+    await selectTrack('oic_nw')
+    await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+    const deckPopup = page.getByRole('dialog', { name: 'Deck OIC-NW' })
+    await deckPopup.waitFor()
+    assert.match(await deckPopup.innerText(), /₱499/, 'Existing matching store card is opened with new pricing')
+    await deckPopup.getByRole('button', { name: 'Close purchase dialog' }).click()
+
+    await selectTrack('engine_mgt')
+    await expectFree('ENGINE MGT FREE REVIEWER')
+    await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+    const enginePopup = page.getByRole('dialog', { name: 'Engine Management' })
+    await enginePopup.waitFor()
+    assert.match(await enginePopup.innerText(), /₱999/, 'Different track opens its own matching purchase card')
+    await enginePopup.getByRole('button', { name: 'Close purchase dialog' }).click()
+
+    await switchTracks(['DECK_OIC_NW'])
+    await expectFree('ENGINE MGT FREE REVIEWER')
+    await selectTrack('oic_nw')
+    await expectFull()
+    await selectTrack('engine_ew')
+    await expectFree('ENGINE OIC-EW FREE REVIEWER')
+    await switchTracks(['ALL'])
+    await expectFull()
+    await switchTracks([])
+    await expectFree('ENGINE OIC-EW FREE REVIEWER')
+    await switchTracks(['GMDSS_GOC'])
+    await selectTrack('gmdss')
+    await expectFull()
+    await selectTrack('deck_mgt')
+    await expectFree('DECK MGT FREE REVIEWER')
+    await switchTracks([], false)
+    await expectFree('DECK MGT FREE REVIEWER')
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 840 })
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Free-mode cards do not overflow ' + width)
+    }
+  })
   await scenario('Transient download has Retry, accessible portal zoom and Escape focus return', async ({ page, open, transient }) => {
     transient(); await open('gallery')
     await page.getByRole('alert').waitFor()
