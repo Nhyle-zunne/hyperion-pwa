@@ -956,6 +956,14 @@ assert.ok(
   'Buy Now keeps the selected track and term before Google OAuth and opens only that track in Checkout'
 );
 assert.ok(
+  trackHubScreen.includes("title: 'TIMED MOCK EXAM',\n      audience: 'licensed'") &&
+  mockExam.includes("Timed Mock Exam requires an active license") &&
+  mockExam.includes("if (!accessChecked || !hasMockAccess)") &&
+  practiceStore.includes("if (!licensed && !isFreeReviewerSession)") &&
+  practiceStore.includes("snapshot.mode === 'MOCK' && !licensedForMock"),
+  'Timed Mock Exam is hidden from free tracks and denied on direct URLs, new sessions and resumed attempts'
+);
+assert.ok(
   pendingBuyNow.includes("PENDING_BUY_NOW_KEY = 'hyperion-pending-buy-now-v1'") &&
   pendingBuyNow.includes('MAX_PENDING_AGE_MS = 10 * 60 * 1000') &&
   pendingBuyNow.includes("PAID_PRODUCTS.some(product => product.code === pending.code)") &&
