@@ -483,7 +483,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     }
   }
 
-  const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', marginBottom: '1rem', borderRadius: 10 }
+  const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', marginBottom: '1rem', borderRadius: 0 }
   const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', minHeight: 40, padding: '.45rem .55rem', marginTop: '.25rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, font: 'inherit', fontSize: '.85rem' }
   const profileField = (editable: boolean): React.CSSProperties => ({ ...field, background: editable ? 'var(--bg-elevated)' : 'var(--bg)', color: editable ? 'var(--text)' : 'var(--text-muted)', border: editable ? '1px solid var(--border)' : '1px solid #cbd5e1', boxShadow: 'none', outline: 'none', cursor: editable ? 'text' : 'default', userSelect: editable ? 'text' : 'none', WebkitUserSelect: editable ? 'text' : 'none', pointerEvents: editable ? 'auto' : 'none', caretColor: editable ? 'auto' : 'transparent' })
   const label: React.CSSProperties = { display: 'block', marginTop: '.5rem', fontSize: '.8rem', lineHeight: 1.35 }
@@ -609,7 +609,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-main > .screen{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
       @media(max-width:1180px){.account-page .basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.account-page .basket-page .basket-summary{position:static}}
       .account-page .account-section-tabs{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;min-width:0}
-      .account-page .account-section-tabs button{min-height:48px;padding:.7rem 1rem;font-weight:850;font-size:.9rem;border-radius:9px;white-space:nowrap}
+      .account-page .account-section-tabs button{min-height:48px;padding:.7rem 1rem;font-weight:850;font-size:.9rem;border-radius:var(--store-control-radius);white-space:nowrap}
       .account-page .account-section-tabs button[aria-selected="true"]{background:#147d43;border-color:#147d43;color:#fff}
       .account-page .account-toolbar-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
       .account-page .account-toolbar-actions button{min-height:42px}
@@ -643,7 +643,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       @media(prefers-reduced-motion:reduce){.account-page .profile-mobile-toggle svg{transition:none}}
       .account-page .account-profile-content{display:block}
       .account-page .account-section-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
-      .account-page .account-section-tabs button{min-height:48px;padding:.75rem 1rem;font-weight:850;border-radius:9px}
+      .account-page .account-section-tabs button{min-height:48px;padding:.75rem 1rem;font-weight:850;border-radius:var(--store-control-radius)}
       .account-page .profile-side-links{font-size:.76rem;color:var(--text-muted);line-height:1.4}
       .account-cart-fab{position:fixed;right:max(1.25rem,env(safe-area-inset-right));bottom:max(1.25rem,env(safe-area-inset-bottom));z-index:160;display:grid;place-items:center;width:56px;height:56px;padding:0;border:2px solid #e2e8f0;border-radius:50%;background:#fff;color:#147d43;line-height:1;box-shadow:0 8px 24px rgba(4,35,83,.24);cursor:pointer;touch-action:manipulation;transition:box-shadow .2s ease}
       [data-theme='dark'] .account-cart-fab{background:#147d43;border-color:#147d43;color:#fff}

@@ -446,7 +446,7 @@ try {
     }))
     assert.equal(boxes.length, 5, 'All five track cards render')
     const storeStyles = await page.locator('.account-product-card').first().evaluate(el => ({ radius: getComputedStyle(el).borderRadius, actionBg: getComputedStyle(el.querySelector('button.btn-primary')).backgroundColor }))
-    assert.equal(storeStyles.radius, '10px', 'Store cards share modest corners with the purchase popup')
+    assert.equal(storeStyles.radius, '0px', 'Store cards share square corners with the purchase popup')
     assert.equal(storeStyles.actionBg, 'rgb(20, 125, 67)', 'Store and popup use the same purchase action color')
 
     assert.equal(boxes.filter(box => Math.abs(box.y - boxes[0].y) < 2).length, expectedColumns, `Responsive store has ${expectedColumns} columns at ${width}px`)
