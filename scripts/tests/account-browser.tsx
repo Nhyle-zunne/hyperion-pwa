@@ -1,3 +1,4 @@
+import { useLicenseStore } from '../../src/stores/licenseStore'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -15,6 +16,7 @@ import '../../src/index.css'
 Object.assign(window, { releaseFixtureEntitlements, switchFixtureAccount, accountFixtureCalls: fixtureCalls, beginFixtureLoading: beginPageLoading })
 document.documentElement.dataset.theme = 'light'
 const section = new URLSearchParams(location.search).get('section')
+if (section === 'question-editor') useLicenseStore.setState({ entitlementUserId: '11111111-1111-4111-8111-111111111111', isAllAccessUnlocked: true, entitlementsVerified: true })
 const initialPath = section === 'account' ? '/account?tab=payments' : section === 'admin' ? '/admin/licenses' : section === 'question-editor' ? '/admin/questions' : section === 'basket' ? '/BASKET' : section === 'orders' ? '/orders' : section === 'payment' ? '/checkout?payment=success&order_id=fixture-order' : '/checkout?buy_product=gmdss&buy_term=month'
 createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={[initialPath]}>
   <TopLoadingIndicator />

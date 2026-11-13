@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { chromium } from 'playwright'
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
@@ -8,6 +9,8 @@ try {
   const editorPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
   const editorErrors = []
   const editorApiCalls = []
+  const existingImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64')
+  const existingRef = { sha256: createHash('sha256').update(existingImage).digest('hex'), mime: 'image/png', placement: 'question', alt: 'Saved question image' }
   let editorValidatedFiles = []
   editorPage.on('pageerror', error => editorErrors.push(error.message))
   await editorPage.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
@@ -17,9 +20,9 @@ try {
     if (body.action === 'validate') editorValidatedFiles = body.files
     const path = 'engine_mgt/em_c10.csv.enc'
     const csvText = [
-      'No.,Question,A,B,C,D,Correct Answer,Explanation',
-      '1,Why is water treated?,Prevent corrosion,Improve color,Reduce speed,Increase noise,A,Prevent scale',
-      '2,What does cooling do?,Remove heat,Increase wear,Stop flow,Raise friction,A,Temperature control'
+      'No.,Question,A,B,C,D,Correct Answer,Explanation,HYPERION_MEDIA',
+      '1,Why is water treated?,Prevent corrosion,Improve color,Reduce speed,Increase noise,A,Prevent scale,',
+      '2,What does cooling do?,Remove heat,Increase wear,Stop flow,Raise friction,A,Temperature control,'+'\"'+JSON.stringify([existingRef]).replaceAll('\"','\"\"')+'\"'
     ].join('\r\n')
     const reply = body.action === 'inventory'
       ? { configured: true, assets: [
@@ -35,6 +38,21 @@ try {
           ? { preview: { requestId: body.requestId, baseHead: 'a'.repeat(40), validationId: 'fixture-validation', files: [{ path, questionCount: 2, previousCount: 2, changed: 1, appended: 0, corrections: [] }] } }
           : { error: 'Synthetic fixture does not publish to GitHub.' }
     await route.fulfill({ status: body.action === 'publish' ? 400 : 200, contentType: 'application/json', body: JSON.stringify(reply) })
+  })
+  let uploadedImage
+  let releaseUpload
+  const uploadHeld = new Promise(resolve => { releaseUpload = resolve })
+  await editorPage.route('**/functions/v1/question-media*', async route => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON()
+      assert.equal(route.request().headers().authorization, 'Bearer fixture-token')
+      uploadedImage = Buffer.from(body.base64, 'base64')
+      await uploadHeld
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ track: body.track, mime: body.mime, bytes: uploadedImage.length, sha256: createHash('sha256').update(uploadedImage).digest('hex') }) })
+    }
+    if (new URL(route.request().url()).searchParams.get('sha256') === existingRef.sha256) return route.fulfill({ contentType: 'image/png', headers: { 'X-Hyperion-Media-SHA256': existingRef.sha256 }, body: existingImage })
+    assert(uploadedImage)
+    return route.fulfill({ contentType: 'image/webp', headers: { 'X-Hyperion-Media-SHA256': createHash('sha256').update(uploadedImage).digest('hex') }, body: uploadedImage })
   })
   await editorPage.goto(process.env.HYPERION_RECOVERY_TEST_URL + '?section=question-editor')
   await editorPage.getByRole('heading', { name: 'Edit, retire or restore questions' }).waitFor()
@@ -109,7 +127,19 @@ try {
   assert.equal(await editorPage.getByRole('button', { name: 'Choose image', exact: true }).isEnabled(), true, 'Upload failure remains visible and retryable')
   const png = Buffer.from(await editorPage.evaluate(() => { const canvas = document.createElement('canvas'); canvas.width = 20; canvas.height = 20; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#167b40'; ctx.fillRect(0, 0, 20, 20); return canvas.toDataURL('image/png').split(',')[1] }), 'base64')
   await imagePicker.setInputFiles({ name: 'engine-diagram.png', mimeType: 'image/png', buffer: png })
+  const imageProgress = editorPage.getByRole('progressbar', { name: 'Image upload progress' })
+  await imageProgress.waitFor()
+  await editorPage.waitForFunction(() => !!document.querySelector('progress[aria-label="Image upload progress"]'))
+  assert.equal(await editorPage.getByRole('button', { name: 'Uploading image…', exact: true }).isDisabled(), true)
+  assert.equal(await editorPage.getByText('1 image attached to this question’s draft.', { exact: false }).count(), 0, 'Sending bytes is not yet a verified attachment')
+  releaseUpload()
   await editorPage.getByText('1 image attached to this question’s draft.', { exact: false }).waitFor({ timeout: 5000 }).catch(async error => { console.error(await editorPage.locator('body').innerText()); throw error })
+  const previewImage = editorPage.getByAltText('Diagram for question 1', { exact: true })
+  await previewImage.waitFor()
+  await editorPage.waitForFunction(() => [...document.querySelectorAll('img')].some(img => img.alt === 'Diagram for question 1' && img.complete && img.naturalWidth > 0))
+  await editorPage.getByTitle('Tap to enlarge diagram').click()
+  await editorPage.getByRole('dialog', { name: 'Enlarged question diagram' }).waitFor()
+  await editorPage.keyboard.press('Escape')
   assert.equal(await imagePicker.isVisible(), false, 'Native reset text cannot falsely say No file chosen after upload')
   assert.equal(await editorPage.getByRole('button', { name: 'Add another image', exact: true }).count(), 1)
   assert.equal(await editorPage.getByText('Question · Diagram for question 1', { exact: false }).count(), 1, 'Blank description gets a valid default label')
@@ -152,6 +182,11 @@ try {
     assert(await editorPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Admin editor fits available viewport width')
   }
   assert.deepEqual(editorErrors, [], 'No runtime errors in admin editor workflow')
+  await editorPage.getByRole('button', { name: /#2.*What does cooling do/ }).click()
+  await editorPage.getByAltText('Saved question image', { exact: true }).waitFor()
+  await editorPage.waitForFunction(() => [...document.querySelectorAll('img')].some(img => img.alt === 'Saved question image' && img.complete && img.naturalWidth > 0))
+  assert.equal(await editorPage.getByAltText('Cooling diagram', { exact: true }).count(), 0, 'Changing questions clears the previous image')
+  assert.equal(await imageProgress.count(), 0, 'Progress does not leak into the next question')
   console.log('PASS: admin image upload, optional descriptions, removal, apply/queue metadata and responsive editor workflow')
   await editorPage.close()
 
