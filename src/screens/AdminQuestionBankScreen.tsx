@@ -366,7 +366,7 @@ export default function AdminQuestionBankScreen() {
 
   const queueEditorChanges = () => {
     const feedback = (text: string) => { setEditorError(''); setEditorNotice({ kind: 'error', text }) }
-    if (busy || editorBusy || imageUploading) return
+    if (busy || editorBusy || imageUploading || (!editorFormDirty && editorDraftQueued)) return
     if (!editorBank || !editorDraft || !selectedEditorQuestion || !editorTarget || !editorBaseHead) {
       feedback('Open a question bank before adding changes to the queue.')
       return
@@ -532,6 +532,7 @@ export default function AdminQuestionBankScreen() {
       {(editorBank || allScope) && <>
         {editorBank && <p style={secondaryText}>{editorBank.questions.length.toLocaleString()} historical questions · {editorBank.questions.filter(q => q.retired).length} retired · {editorFormDirty ? 'Unsaved form changes' : editorHasAppliedEdits ? 'Draft edits saved' : 'No edits yet'}{editorDraftQueued ? ' · In publish queue' : ''}</p>}
         <div className="admin-qb-editor-layout" ref={editorLayoutRef}>
+          <div className="admin-qb-editor-sidebar">
           <aside className="admin-qb-question-list" aria-label="Question search results">
             {allScope ? <form className="admin-qb-search-form" onSubmit={event => { event.preventDefault(); void searchAcrossBanks() }}>
               <label htmlFor="admin-global-question-search">{questionBankScopeTrack(pickerValue) ? 'All competences' : 'All tracks · All competences'}</label>
@@ -551,6 +552,23 @@ export default function AdminQuestionBankScreen() {
               {!allScope && editorBank && editorBank.questions.length > 150 && <p style={secondaryText}>Showing up to 150 matches. Search to find a specific question.</p>}
             </div>
           </aside>
+        {editorBank && <div className="admin-qb-editor-actions" aria-label="Question editing actions">
+          <button type="button" className="btn btn-primary" disabled={busy || editorBusy || imageUploading || (!editorFormDirty && (editorDraftQueued || !editorHasAppliedEdits))} onClick={queueEditorChanges}>{!editorFormDirty && editorDraftQueued ? 'Saved to queue' : !editorFormDirty && !editorHasAppliedEdits ? 'No changes' : 'Add edited files to publish queue'}</button>
+          {editorFormDirty && selectedEditorQuestion && <button type="button" className="btn btn-outline admin-qb-discard" disabled={busy || editorBusy || imageUploading}
+            onClick={() => {
+              setEditorDraft({ questionText: selectedEditorQuestion.questionText, options: selectedEditorQuestion.options.slice(), correctAnswerIndex: selectedEditorQuestion.correctAnswerIndex, explanation: selectedEditorQuestion.explanation, retired: selectedEditorQuestion.retired, imageAttachments: selectedEditorQuestion.imageAttachments })
+              setEditorError('')
+              setEditorNotice({ kind: 'info', text: 'Form changes discarded. Previously queued draft edits are preserved locally; add them to the queue again when ready.' })
+            }}>Discard changes</button>}
+          {editorHasAppliedEdits && !editorDraftQueued && !editorFormDirty && <button type="button" className="btn btn-outline admin-qb-remove" disabled={busy || editorBusy || imageUploading} onClick={() => {
+            setEditorText(''); setEditorOriginalText(''); setEditorBaseHead(''); setEditorRevision(''); setEditorDraft(null); setEditorOrdinal(0); setEditorError(''); setPreview(null)
+            setMessage('Bank draft discarded. Reopen the bank or select a search result to load its current version.')
+          }}>Discard bank draft</button>}
+          {editorNotice && <div role={editorNotice.kind === 'error' ? 'alert' : 'status'} aria-live="polite"
+            className={`admin-qb-editor-status is-${editorNotice.kind}`}>{editorNotice.text}</div>}
+          {editorDraftQueued && <a className="admin-qb-editor-queue-link" href="#admin-qb-upload-queue">Review publish queue ↓</a>}
+        </div>}
+          </div>
           {selectedEditorQuestion && editorDraft && <fieldset ref={editorFormRef} disabled={busy || editorBusy} className="admin-qb-question-form">
             <strong>Question #{selectedEditorQuestion.ordinal}</strong>
             <label>Question text<EditorTextarea aria-label="Question text" value={editorDraft.questionText} onChange={event => updateEditorDraft({ ...editorDraft, questionText: event.target.value })} /></label>
@@ -569,11 +587,13 @@ export default function AdminQuestionBankScreen() {
             <div className="card admin-qb-images" style={{padding:10,display:'grid',gap:8,border:'1px solid var(--border)'}}>
               <strong>Question images (up to four)</strong>
               <p style={secondaryText}>PNG, JPEG or WebP · Up to four private images.</p>
+              <div className="admin-qb-image-workspace">
               <div className="admin-qb-image-list">{(editorDraft.imageAttachments || []).map((image,index)=><div key={image.sha256+image.placement} style={{display:'grid',gap:8,borderBottom:'1px solid var(--border)',paddingBottom:8}}>
                 {editorImageTrack && <QuestionImageGallery question={{ id: `admin:${editorTarget}:${editorOrdinal}`, track: editorImageTrack, imageAttachments: [image] }} placement={image.placement} />}
                 <span style={{fontSize:'.85rem',overflowWrap:'anywhere'}}>{image.placement==='question'?'Question':'Explanation'} · {image.alt}</span>
                 <button type="button" className="btn btn-outline admin-qb-remove" disabled={imageUploading} onClick={()=>updateEditorDraft({...editorDraft,imageAttachments:(editorDraft.imageAttachments||[]).filter((_,i)=>i!==index)})}>Remove</button>
               </div>)}</div>
+              <div className="admin-qb-image-controls">
               <div className="admin-qb-image-options"><label>Image description (optional)
                 <input type="text" maxLength={160} value={imageAlt} placeholder="e.g., Radar plotting diagram" onChange={event=>setImageAlt(event.target.value)} style={{width:'100%',marginTop:4}}/>
               </label>
@@ -596,6 +616,8 @@ export default function AdminQuestionBankScreen() {
                 <progress aria-label="Image upload progress" max={100} value={imageProgress.stage === 'complete' ? 100 : imageProgress.stage === 'uploading' && imageProgress.total > 0 ? Math.round(imageProgress.loaded / imageProgress.total * 100) : undefined} style={{width:'100%',accentColor:'var(--accent)'}} />
                 <p role="status" style={secondaryText}>{imageProgress.stage === 'preparing' ? 'Preparing image…' : imageProgress.stage === 'verifying' ? 'Verifying uploaded image…' : imageProgress.stage === 'complete' ? 'Image uploaded and verified.' : imageProgress.total > 0 ? `Uploading image… ${Math.round(imageProgress.loaded / imageProgress.total * 100)}%` : 'Uploading image…'}</p>
               </div>}
+              </div>
+              </div>
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={editorDraft.retired} disabled={selectedEditorQuestion.fixedLegacyRetirement} onChange={event => updateEditorDraft({ ...editorDraft, retired: event.target.checked })} />
@@ -606,24 +628,9 @@ export default function AdminQuestionBankScreen() {
           </fieldset>}
           {!editorBank && allScope && <div className="admin-qb-empty-editor">Search by question number or text, then select a result to edit its original bank.</div>}
         </div>
-        {editorBank && <div className="admin-qb-editor-actions" aria-label="Question editing actions">
-          <button type="button" className="btn btn-primary" disabled={busy || editorBusy || imageUploading} onClick={queueEditorChanges}>Add edited files to publish queue</button>
-          {editorFormDirty && selectedEditorQuestion && <button type="button" className="btn btn-outline admin-qb-discard" disabled={busy || editorBusy || imageUploading}
-            onClick={() => {
-              setEditorDraft({ questionText: selectedEditorQuestion.questionText, options: selectedEditorQuestion.options.slice(), correctAnswerIndex: selectedEditorQuestion.correctAnswerIndex, explanation: selectedEditorQuestion.explanation, retired: selectedEditorQuestion.retired, imageAttachments: selectedEditorQuestion.imageAttachments })
-              setEditorError('')
-              setEditorNotice({ kind: 'info', text: 'Form changes discarded. Previously queued draft edits are preserved locally; add them to the queue again when ready.' })
-            }}>Discard changes</button>}
-          {editorHasAppliedEdits && !editorDraftQueued && !editorFormDirty && <button type="button" className="btn btn-outline admin-qb-remove" disabled={busy || editorBusy || imageUploading} onClick={() => {
-            setEditorText(''); setEditorOriginalText(''); setEditorBaseHead(''); setEditorRevision(''); setEditorDraft(null); setEditorOrdinal(0); setEditorError(''); setPreview(null)
-            setMessage('Bank draft discarded. Reopen the bank or select a search result to load its current version.')
-          }}>Discard bank draft</button>}
-          {editorNotice && <div role={editorNotice.kind === 'error' ? 'alert' : 'status'} aria-live="polite"
-            className={`admin-qb-editor-status is-${editorNotice.kind}`}>{editorNotice.text}</div>}
-          {editorDraftQueued && <a className="admin-qb-editor-queue-link" href="#admin-qb-upload-queue">Review publish queue ↓</a>}
-        </div>}
+
       </>}
-      <details className="admin-qb-help"><summary>Website and Android updates</summary><p style={secondaryText}>Android installations still require a new app release to receive edited packaged bank content. The website receives the next verified bank revision automatically.</p></details>
+
     </section>
     <section style={card}>
       <div className={'admin-qb-drop' + (dragging ? ' is-dragging' : '')}
