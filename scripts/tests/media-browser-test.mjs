@@ -105,8 +105,16 @@ try {
     ]
     for (const [code, label, caption, prices, symbols] of tracks) {
       await page.evaluate(key => window.hubFixture.goTrack(key), code)
-      await page.waitForFunction(() => document.querySelector('.hub-mode-card h3')?.textContent === 'Unlock FULL reviewer' ||
-        document.querySelectorAll('.hub-mode-card').length === 3)
+      await page.waitForFunction(key => {
+        const trackTitles = {
+          oic_nw: 'OIC-NW OPERATIONAL REVIEWER',
+          gmdss: 'GMDSS GOC REVIEWER',
+          engine_ew: 'ENGINE OIC-EW REVIEWER',
+          deck_mgt: 'DECK MANAGEMENT REVIEWER',
+          engine_mgt: 'ENGINE MANAGEMENT REVIEWER',
+        }
+        return document.querySelector('.hub-hero h1')?.textContent === trackTitles[key]
+      }, code)
       await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
       const dialog = page.getByRole('dialog', { name: label })
       await dialog.waitFor()
@@ -131,6 +139,7 @@ try {
       await dialog.waitFor({ state: 'hidden' })
     }
     await page.evaluate(key => window.hubFixture.goTrack(key), 'oic_nw')
+    await page.getByRole('heading', { name: 'OIC-NW OPERATIONAL REVIEWER' }).waitFor()
     for (const [width, height] of [[320, 640], [390, 844], [768, 900], [1280, 800]]) {
       await page.setViewportSize({ width, height })
       await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
