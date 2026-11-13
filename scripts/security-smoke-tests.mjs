@@ -80,6 +80,8 @@ const [
 ]);
 
 const trackPurchaseDialog = await read('../src/components/TrackPurchaseDialog.tsx');
+const bondStoreCardContent = await read('../src/components/BondStoreCardContent.tsx');
+const bondStoreCardStyles = await read('../src/components/BondStoreCardContent.css');
 const desktopAccountMenu = await read('../src/components/DesktopAccountMenu.tsx');
 const bottomNav = await read('../src/components/BottomNav.tsx');
 const pendingBuyNow = await read('../src/lib/pendingBuyNow.ts');
@@ -937,8 +939,14 @@ assert.ok(
   'Track purchase dialog is mounted globally so it survives the OAuth callback return to practice'
 );
 assert.ok(
-  trackPurchaseDialog.includes('LICENSE_TERMS') &&
-  trackPurchaseDialog.includes('priceForTerm(product, term)') &&
+  // Pricing, artwork and plan selectors are now a single shared source
+  // rendered by both the Bond Store and the purchase popup.
+  bondStoreCardContent.includes('LICENSE_TERMS') &&
+  bondStoreCardContent.includes('priceForTerm(product, term)') &&
+  bondStoreCardContent.includes('BOND_STORE_FEATURES.map') &&
+  bondStoreCardStyles.includes('/store-art/hyperion-banner-sprite.png') &&
+  accountScreen.includes('<BondStoreCardContent') &&
+  trackPurchaseDialog.includes('<BondStoreCardContent') &&
   trackPurchaseDialog.includes("provider: 'google'") &&
   trackPurchaseDialog.includes("set('purchase_product', product.code)") &&
   trackPurchaseDialog.includes('rememberPendingBuyNow(product.code, term)') &&
