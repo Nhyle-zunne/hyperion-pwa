@@ -224,28 +224,30 @@ export default function TrackPurchaseDialog() {
         </div>
 
         <article className={`track-purchase-card bond-store-card${expandedBenefits ? ' perks-expanded' : ''}`}>
-          <BondStoreCardContent
-            product={product}
-            term={term}
-            headingLevel="h2"
-            headingId="track-purchase-title"
-            benefitsId={`store-benefits-popup-${product.code}`}
-            disabled={busy}
-            expanded={expandedBenefits}
-            onToggleBenefits={() => setExpandedBenefits(current => !current)}
-            onTermChange={nextTerm => {
-              setTerm(nextTerm)
-              setParams(current => {
-                const next = new URLSearchParams(current)
-                next.set('purchase', '1')
-                next.set('purchase_product', product.code)
-                next.set('purchase_term', nextTerm)
-                return next
-              }, { replace: true })
-            }}
-          />
-
+          <div className="track-purchase-details-scroll" role="region" aria-label="Plan details and premium features" tabIndex={0}>
+            <BondStoreCardContent
+              product={product}
+              term={term}
+              headingLevel="h2"
+              headingId="track-purchase-title"
+              benefitsId={`store-benefits-popup-${product.code}`}
+              disabled={busy}
+              expanded={expandedBenefits}
+              onToggleBenefits={() => setExpandedBenefits(current => !current)}
+              onTermChange={nextTerm => {
+                setTerm(nextTerm)
+                setParams(current => {
+                  const next = new URLSearchParams(current)
+                  next.set('purchase', '1')
+                  next.set('purchase_product', product.code)
+                  next.set('purchase_term', nextTerm)
+                  return next
+                }, { replace: true })
+              }}
+            />
+          </div>
           <div className="track-purchase-actions">
+            {expandedBenefits && <span className="track-purchase-scroll-hint">Scroll the details above to read all 9 benefits.</span>}
             <span className={`product-status${isInBasket ? ' is-in-basket' : ''}`} aria-live="polite">
               {isInBasket ? '✓ IN YOUR BASKET' : 'AVAILABLE'}
             </span>
