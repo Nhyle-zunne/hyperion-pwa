@@ -34,7 +34,8 @@ try {
     const selectTrack = async key => page.evaluate(key => window.hubFixture.goTrack(key), key)
     const labels = () => page.locator('.hub-mode-card h3').allTextContents()
     const expectFree = async freeName => {
-      await page.waitForFunction(() => document.querySelectorAll('.hub-mode-card').length === 3)
+      await page.waitForFunction(expected => document.querySelectorAll('.hub-mode-card').length === 3 &&
+        document.querySelector('.hub-mode-card h3')?.textContent === expected, freeName)
       assert.deepEqual(await labels(), [freeName, 'TIMED MOCK EXAM', 'Unlock FULL reviewer'])
       assert.equal(await page.getByRole('button', { name: /PRACTICE ALL QUESTIONS/ }).count(), 0)
       assert.equal(await page.getByRole('button', { name: /QUICK SCAN MODE/ }).count(), 0)
