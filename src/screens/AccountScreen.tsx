@@ -617,15 +617,15 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-product-slot{min-width:0;position:relative;z-index:0}
       .account-page .account-product-slot.is-hovered,.account-page .account-product-slot.is-expanded{z-index:8}
       .account-page .account-product-slot[data-store-lift="settling"]{z-index:1;pointer-events:none}
-      .account-page .account-product-card{position:relative;z-index:0;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:13px;background:var(--bg-card);transition:left .26s cubic-bezier(.2,.8,.2,1),right .26s cubic-bezier(.2,.8,.2,1),transform .26s cubic-bezier(.2,.8,.2,1),border-color .26s ease,box-shadow .26s ease;transform-origin:50% 100%;will-change:transform;box-sizing:border-box}
-      .account-page .account-product-card:focus-within{z-index:5;border-color:#d9ad36;box-shadow:0 14px 30px rgba(4,35,83,.13)}
+      .account-page .account-product-card{position:relative;z-index:0;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:var(--store-card-radius);background:var(--bg-card);transition:left .26s cubic-bezier(.2,.8,.2,1),right .26s cubic-bezier(.2,.8,.2,1),transform .26s cubic-bezier(.2,.8,.2,1),border-color .26s ease,box-shadow .26s ease;transform-origin:50% 100%;will-change:transform;box-sizing:border-box}
+      .account-page .account-product-card:focus-within{z-index:5;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
       @media (hover:hover) and (pointer:fine){
         .account-page .account-product-slot[data-store-lift="entering"] .account-product-card,
         .account-page .account-product-slot.is-hovered .account-product-card,
         .account-page .account-product-slot.is-expanded .account-product-card,
         .account-page .account-product-slot[data-store-lift="settling"] .account-product-card{position:absolute;bottom:0;left:0;right:0}
         .account-page .account-product-slot.is-hovered:not([data-store-lift="settling"]) .account-product-card,
-        .account-page .account-product-slot.is-expanded:not([data-store-lift="settling"]) .account-product-card{left:calc(-1 * var(--store-hover-left,0px));right:calc(-1 * var(--store-hover-right,0px));z-index:9;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-3px) scale(1.035);transform-origin:50% 100%;background:var(--bg-card)}
+        .account-page .account-product-slot.is-expanded:not([data-store-lift="settling"]) .account-product-card{left:calc(-1 * var(--store-hover-left,0px));right:calc(-1 * var(--store-hover-right,0px));z-index:9;border-color:#e7bc41;box-shadow:0 8px 20px rgba(4,35,83,.16);transform:translateY(-3px) scale(1.035);transform-origin:50% 100%;background:var(--bg-card)}
       }
       @media(prefers-reduced-motion:reduce){
         .account-page .account-product-card,.account-page .store-benefits-list{transition:none}
@@ -916,7 +916,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                         }}
                       />
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
-                    <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)} style={{ width: '100%', marginTop: '.5rem', minHeight: 44, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff', padding: '.5rem .25rem', fontSize: '.78rem' }}>
+                    <button type="button" className="btn btn-primary store-buy-button" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)}>
                       {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'BUY NOW'}
                     </button>
 

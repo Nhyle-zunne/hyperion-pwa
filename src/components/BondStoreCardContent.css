@@ -1,32 +1,36 @@
+.account-page,.track-purchase-modal{--store-card-radius:10px;--store-control-radius:6px;--store-action:#147d43;--store-action-text:#fff}
 /* Shared Bond Store design: the storefront and purchase popup use the same
    supplied artwork, colors, pricing selectors and premium-feature layout. */
-.bond-store-card .product-art{min-height:58px;display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border-radius:9px;background:radial-gradient(circle at 95% 0%,#17497d 0,transparent 45%),linear-gradient(125deg,#042353,#061a3b);color:#f6c84a;margin-bottom:.6rem;position:relative;overflow:hidden;border:1px solid rgba(241,195,70,.5)}
-.bond-store-card .product-art:before{content:"";position:absolute;inset:0;border-top:2px solid #f3c452;pointer-events:none}
-.bond-store-card .product-art:after{content:"";position:absolute;width:96px;height:96px;border:1px solid rgba(244,191,51,.25);border-radius:50%;right:-37px;top:-51px;pointer-events:none}
+.bond-store-card .product-art{min-height:58px;display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border-radius:var(--store-control-radius);background:#082850;color:#f6c84a;margin-bottom:.6rem;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.12)}
 .bond-store-card .store-banner-symbol{position:relative;z-index:1;display:block;flex:0 0 42px;width:42px;height:42px;background-image:url('/store-art/hyperion-banner-sprite.png');background-repeat:no-repeat;background-size:252px 42px}
 .bond-store-card .store-banner-symbol--small{flex-basis:24px;width:24px;height:24px;background-size:144px 24px}
 .bond-store-card .store-banner-text{position:relative;z-index:1;min-width:0;flex:1;display:grid;gap:.15rem}
-.bond-store-card .store-banner-text strong{display:block;color:#ffcf55;font-size:.73rem;line-height:1.1;font-weight:950;letter-spacing:.045em}
-.bond-store-card .store-banner-text small{color:#f8e6a7;font-size:.52rem;font-weight:800;letter-spacing:.02em;line-height:1.2}
+.bond-store-card .store-banner-text strong{display:block;color:#ffcf55;font-size:.73rem;line-height:1.1;font-weight:750;letter-spacing:.045em}
+.bond-store-card .store-banner-text small{color:#f8e6a7;font-size:.52rem;font-weight:650;letter-spacing:.02em;line-height:1.2}
 .bond-store-card .store-banner-track{position:relative;z-index:1;display:flex;align-items:center;gap:0;flex-shrink:0}
-.bond-store-card .store-plan-title{margin:0;font-size:.94rem;min-height:2.3em;line-height:1.2;font-weight:850;overflow-wrap:anywhere}
-.bond-store-card .product-price{font-size:clamp(1.2rem,1.4vw,1.48rem);font-weight:950;line-height:1.1;color:var(--text);margin:.4rem 0 .55rem;font-variant-numeric:tabular-nums}
+.bond-store-card .store-plan-title{margin:0;font-size:.94rem;min-height:2.3em;line-height:1.2;font-weight:650;overflow-wrap:anywhere}
+.bond-store-card .product-price{font-size:clamp(1.2rem,1.4vw,1.48rem);font-weight:750;line-height:1.1;color:var(--text);margin:.4rem 0 .55rem;font-variant-numeric:tabular-nums}
 .bond-store-card .product-price span{font-size:.68rem;color:var(--text-muted);font-weight:650}
-.bond-store-card .store-duration-label{color:var(--text-muted);font-size:.61rem;font-weight:900;letter-spacing:.04em}
+.bond-store-card .store-duration-label{color:var(--text-muted);font-size:.61rem;font-weight:700;letter-spacing:.04em}
 .bond-store-card .store-duration-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.25rem;margin:.35rem 0 .65rem}
-.bond-store-card .store-duration-option{min-width:0;min-height:40px;border:1px solid var(--border);border-radius:7px;padding:.3rem .1rem;background:transparent;color:var(--text);font-size:.66rem;line-height:1.15;font-weight:800;cursor:pointer}
+.bond-store-card .store-duration-option{min-width:0;min-height:40px;border:1px solid var(--border);border-radius:var(--store-control-radius);padding:.3rem .1rem;background:transparent;color:var(--text);font-size:.66rem;line-height:1.15;font-weight:650;cursor:pointer}
 .bond-store-card .store-duration-option span{display:block}
 .bond-store-card .store-duration-option span+span{margin-top:.12rem}
-.bond-store-card .store-duration-option[aria-pressed="true"]{border-color:var(--accent);background:var(--bg-elevated)}
+.bond-store-card .store-duration-option[aria-pressed="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--bg-card));box-shadow:inset 0 -2px 0 var(--accent)}
 .bond-store-card .store-duration-option:disabled{cursor:not-allowed;opacity:.7}
 .bond-store-card .store-duration-option:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.bond-store-card .store-feature-highlight{font-size:.7rem;font-weight:850;letter-spacing:.02em;color:#b4871b;margin:.15rem 0 .2rem}
+.bond-store-card .store-feature-highlight{font-size:.7rem;font-weight:650;letter-spacing:.02em;color:var(--text);margin:.15rem 0 .2rem}
 .bond-store-card .store-benefits-list{display:grid;gap:.14rem;list-style:none;padding:0;margin:.3rem 0 .1rem;max-height:3.55rem;overflow:hidden;transition:max-height .3s cubic-bezier(.2,.8,.2,1)}
 .bond-store-card .store-benefits-list li{display:flex;gap:.3rem;align-items:flex-start;line-height:1.25;font-size:.66rem;color:var(--text-muted);overflow-wrap:anywhere}
-.bond-store-card .store-benefits-list li:before{content:"✓";color:#b68714;font-weight:900;flex-shrink:0}
+.bond-store-card .store-benefits-list li:before{content:"✓";color:var(--accent);font-weight:700;flex-shrink:0}
 .bond-store-card.perks-expanded .store-benefits-list{max-height:18rem}
-.bond-store-card .store-benefits-toggle{margin:.15rem 0 .5rem;padding:.15rem 0;border:0;text-align:left;background:none;color:var(--accent);font:inherit;font-size:.67rem;font-weight:850;line-height:1.3;cursor:pointer;align-self:flex-start}
+.bond-store-card .store-benefits-toggle{margin:.15rem 0 .5rem;padding:.15rem 0;border:0;text-align:left;background:none;color:var(--accent);font:inherit;font-size:.67rem;font-weight:650;line-height:1.3;cursor:pointer;align-self:flex-start}
 .bond-store-card .store-benefits-toggle:hover{text-decoration:underline}
 .bond-store-card .store-benefits-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
-.bond-store-card .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:850;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
+.bond-store-card .product-status{display:inline-flex;align-self:flex-start;border-radius:var(--store-control-radius);background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:650;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
 @media(prefers-reduced-motion:reduce){.bond-store-card .store-benefits-list{transition:none}}
+
+.bond-store-card .store-buy-button{width:100%;min-height:44px;margin-top:.5rem;border-radius:var(--store-control-radius);background:var(--store-action);border:1px solid var(--store-action);color:var(--store-action-text);padding:.5rem .25rem;font-size:.78rem;font-weight:700;letter-spacing:0;box-shadow:none}
+.bond-store-card .store-buy-button:not(:disabled):hover{background:#106536;border-color:#106536}
+.bond-store-card .store-buy-button:focus-visible{outline:2px solid var(--text);outline-offset:3px}
+.bond-store-card .store-buy-button:disabled{cursor:not-allowed;opacity:.6}

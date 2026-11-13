@@ -176,6 +176,17 @@ try {
       assert(rect.x >= -1 && rect.x + rect.width <= width + 1 && rect.y >= -1 && rect.y + rect.height <= height + 1, 'Modal fits ' + width + '×' + height)
       const buy = dialog.getByRole('button', { name: 'BUY NOW' })
       assert(await buy.isVisible(), 'Buy Now is visible at ' + width)
+      await page.mouse.move(0, 0)
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('.track-purchase-buy')).backgroundColor === 'rgb(20, 125, 67)')
+      const purchaseStyle = await dialog.evaluate(el => {
+        const action = el.querySelector('.track-purchase-buy')
+        return { radius: getComputedStyle(el).borderRadius, innerBorder: getComputedStyle(el.querySelector('.track-purchase-card')).borderTopWidth, actionBg: getComputedStyle(action).backgroundColor, actionText: getComputedStyle(action).color }
+      })
+      assert.equal(purchaseStyle.radius, '10px', 'Purchase popup uses the shared modest card corners')
+      assert.equal(purchaseStyle.innerBorder, '0px', 'Popup does not nest another outlined card')
+      assert.equal(purchaseStyle.actionBg, 'rgb(20, 125, 67)', 'Purchase action uses Hyperion green')
+      assert.equal(purchaseStyle.actionText, 'rgb(255, 255, 255)', 'Purchase action retains high contrast')
+
       const bounds = await buy.boundingBox()
       assert(bounds && bounds.y >= 0 && bounds.y + bounds.height <= height + 1, 'Buy Now is within viewport at ' + width)
       assert(await buy.isVisible(), 'CTA remains available with all nine visible by default at ' + width)
@@ -207,6 +218,14 @@ try {
       const visibleBuy = await buy.boundingBox()
       assert(visibleBuy && visibleBuy.y >= 0 && visibleBuy.y + visibleBuy.height <= height + 1,
         'Buy Now stays on screen after checking all nine features at ' + width)
+      await dialog.screenshot({ path: `/tmp/hyperion-purchase-${width}.png`, animations: 'disabled' })
+      if (width === 390 || width === 1280) {
+        await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
+        assert.equal(await buy.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(20, 125, 67)', 'Dark mode retains the same high-contrast purchase action')
+        await dialog.screenshot({ path: `/tmp/hyperion-purchase-dark-${width}.png`, animations: 'disabled' })
+        await page.evaluate(() => { document.documentElement.dataset.theme = 'light' })
+      }
+
       await dialog.getByRole('button', { name: 'Close purchase dialog' }).click()
     }
     await page.setViewportSize({ width: 390, height: 844 })

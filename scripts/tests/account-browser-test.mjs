@@ -445,6 +445,10 @@ try {
       return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, bottom: rect.bottom, buyButtonBottom: button?.bottom }
     }))
     assert.equal(boxes.length, 5, 'All five track cards render')
+    const storeStyles = await page.locator('.account-product-card').first().evaluate(el => ({ radius: getComputedStyle(el).borderRadius, actionBg: getComputedStyle(el.querySelector('button.btn-primary')).backgroundColor }))
+    assert.equal(storeStyles.radius, '10px', 'Store cards share modest corners with the purchase popup')
+    assert.equal(storeStyles.actionBg, 'rgb(20, 125, 67)', 'Store and popup use the same purchase action color')
+
     assert.equal(boxes.filter(box => Math.abs(box.y - boxes[0].y) < 2).length, expectedColumns, `Responsive store has ${expectedColumns} columns at ${width}px`)
     assert(boxes.every(box => box.width >= 140 && box.x >= 0 && box.x + box.width <= width + 1), `Store cards have usable widths and no horizontal overflow at ${width}px`)
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Bond Store has no horizontal scroll at ${width}px`)
