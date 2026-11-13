@@ -50,15 +50,17 @@ function ImageSession({ track, images }: { track: TrackId; images: QuestionImage
       const image = loaded[ref.sha256]
       return <figure key={ref.sha256} style={{ margin: 0 }}>
         {image?.url ? <button type="button" title="Tap to enlarge diagram" aria-label={'Enlarge diagram: ' + ref.alt}
-          style={{ display: 'block', padding: 4, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'zoom-in', maxWidth: '100%' }}
+          style={{ display: 'block', width: 'min(72%, 520px)', maxWidth: '100%', marginInline: 'auto', padding: 4, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'zoom-in' }}
           onClick={() => setZoom({ url: image.url, alt: ref.alt })}>
-          <img src={image.url} alt={ref.alt} style={{ maxWidth: '100%', maxHeight: 420, objectFit: 'contain', display: 'block' }}
+          <img src={image.url} alt={ref.alt}
+            style={{ display: 'block', width: '100%', maxHeight: 'min(38dvh, 360px)', objectFit: 'contain', objectPosition: 'center' }}
             onError={() => { setZoom(null); setLoaded(old => ({ ...old, [ref.sha256]: { url: '', error: 'This diagram could not be displayed.' } })) }} />
+          <span aria-hidden="true" style={{ display: 'block', padding: '5px 0 2px', fontSize: '.78rem', fontWeight: 650, color: 'var(--text-muted)' }}>🔍 Zoom</span>
         </button> : <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 8 }}>
           <p role={image?.error ? 'alert' : 'status'}>{image?.error || 'Loading diagram from protected storage…'}</p>
           {image?.error && <button type="button" className="btn btn-outline" onClick={() => setAttempt(value => value + 1)}>Retry image</button>}
         </div>}
-        <figcaption style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 5 }}>{ref.alt}</figcaption>
+        <figcaption style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 5, textAlign: 'center' }}>{ref.alt}</figcaption>
       </figure>
     })}
     {zoom && <ImageZoom image={zoom} close={() => setZoom(null)} />}
@@ -67,19 +69,31 @@ function ImageSession({ track, images }: { track: TrackId; images: QuestionImage
 
 function ImageZoom({ image, close }: { image: { url: string; alt: string }; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
+  const [zoomPercent, setZoomPercent] = useState(100)
   useEffect(() => {
     const element = dialog.current!
     const trigger = document.activeElement
     element.showModal()
     return () => { element.close(); if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus() }
   }, [])
+  const adjust = (step: number) => setZoomPercent(current => Math.min(250, Math.max(100, current + step)))
   return createPortal(<dialog ref={dialog} aria-label="Enlarged question diagram" className="question-diagram-zoom"
     onCancel={event => { event.preventDefault(); close() }} onClick={event => { if (event.target === event.currentTarget) close() }}
     style={{ padding: 12, border: 0, borderRadius: 10, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 24px)', background: 'var(--bg-card)', color: 'var(--text)' }}>
-    <div style={{ display: 'grid', gap: 10 }}>
-      <button type="button" className="btn btn-outline" onClick={close} style={{ justifySelf: 'end' }}>Close image ✕</button>
-      <img src={image.url} alt={image.alt} style={{ maxWidth: 'min(92vw, 1200px)', maxHeight: '80dvh', objectFit: 'contain' }} />
-      <p style={{ margin: 0 }}>{image.alt}</p>
+    <div style={{ display: 'grid', gap: 10, width: 'min(86vw, 960px)', maxWidth: '100%' }}>
+      <div role="toolbar" aria-label="Diagram zoom controls" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-outline" aria-label="Zoom out" disabled={zoomPercent <= 100} onClick={() => adjust(-25)}>−</button>
+        <output aria-label="Image zoom percentage" style={{ minWidth: 56, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{zoomPercent}%</output>
+        <button type="button" className="btn btn-outline" aria-label="Zoom in" disabled={zoomPercent >= 250} onClick={() => adjust(25)}>+</button>
+        <button type="button" className="btn btn-outline" aria-label="Reset zoom" disabled={zoomPercent === 100} onClick={() => setZoomPercent(100)}>Reset</button>
+        <button type="button" className="btn btn-outline" onClick={close}>Close image ✕</button>
+      </div>
+      <div aria-label="Zoomable diagram viewport" style={{ width: '100%', height: 'min(62dvh, 620px)', overflow: 'auto', borderRadius: 8, background: 'var(--bg)', overscrollBehavior: 'contain' }}>
+        <div style={{ width: zoomPercent + '%', height: zoomPercent + '%', minWidth: '100%', minHeight: '100%', display: 'grid', placeItems: 'center' }}>
+          <img src={image.url} alt={image.alt} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
+        </div>
+      </div>
+      <p style={{ margin: 0, textAlign: 'center' }}>{image.alt}</p>
     </div>
   </dialog>, document.body)
 }
