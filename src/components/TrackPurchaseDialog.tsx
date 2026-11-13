@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
-import { LICENSE_TERMS, PAID_PRODUCTS, paidProductCodeForTrackId, priceForTerm, supabase, supabaseConfigured } from '../lib/supabase'
+import { PAID_PRODUCTS, paidProductCodeForTrackId, supabase, supabaseConfigured } from '../lib/supabase'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 import { buyNowCheckoutPath, clearPendingBuyNow, rememberPendingBuyNow } from '../lib/pendingBuyNow'
+import BondStoreCardContent from './BondStoreCardContent'
 import './TrackPurchaseDialog.css'
 
 function isPaidTrack(value: string | null): value is PaidTrack {
@@ -13,16 +14,6 @@ function isPaidTrack(value: string | null): value is PaidTrack {
 
 function validTerm(value: string | null): LicenseTerm {
   return value === 'week' || value === 'month' || value === 'year' ? value : 'year'
-}
-
-function productDescription(code: PaidTrack) {
-  switch (code) {
-    case 'oic_nw': return 'Deck officer examination preparation and reviewer access.'
-    case 'gmdss': return 'GMDSS GOC examination preparation and reviewer access.'
-    case 'engine_ew': return 'Engine OIC-EW examination preparation and reviewer access.'
-    case 'deck_mgt': return 'Deck management examination preparation and reviewer access.'
-    case 'engine_mgt': return 'Engine management examination preparation and reviewer access.'
-  }
 }
 
 function savedBasket(): { code: PaidTrack; term: LicenseTerm }[] {
@@ -51,6 +42,7 @@ export default function TrackPurchaseDialog() {
   const [term, setTerm] = useState<LicenseTerm>(() => validTerm(params.get('purchase_term')))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [expandedBenefits, setExpandedBenefits] = useState(false)
   const [basketItems, setBasketItems] = useState(() => savedBasket())
   const autoCheckoutRef = useRef<string | null>(null)
 
@@ -61,11 +53,11 @@ export default function TrackPurchaseDialog() {
     : paidProductCodeForTrackId(params.get('track') || 'oic_nw')
   const product = useMemo(() => PAID_PRODUCTS.find(item => item.code === productCode), [productCode])
   const isOpen = Boolean(product && params.get('purchase') === '1')
-  const selectedPrice = product ? priceForTerm(product, term) : 0
 
   useEffect(() => {
     if (isOpen) setBasketItems(savedBasket())
-  }, [isOpen])
+    setExpandedBenefits(false)
+  }, [isOpen, productCode])
 
   useEffect(() => {
     const syncBasket = () => setBasketItems(savedBasket())
@@ -121,6 +113,7 @@ export default function TrackPurchaseDialog() {
       return next
     }, { replace: true })
     setMessage('')
+    setExpandedBenefits(false)
     autoCheckoutRef.current = null
   }, [setParams])
 
@@ -207,9 +200,7 @@ export default function TrackPurchaseDialog() {
 
   if (!isOpen || !product) return null
 
-  const description = productDescription(product.code)
   const isInBasket = basketItems.some(item => item.code === product.code)
-  const selectedTermDetails = LICENSE_TERMS.find(option => option.code === term)
   const handleBuyNow = () => {
     if (!session?.user) {
       void signIn()
@@ -232,60 +223,41 @@ export default function TrackPurchaseDialog() {
           <button type="button" className="track-purchase-close" aria-label="Close purchase dialog" disabled={busy} onClick={close}>×</button>
         </div>
 
-        <article className="track-purchase-card">
-          <div className="track-purchase-art">
-            <div aria-hidden="true">{product.code === 'gmdss' ? '📡' : product.code === 'engine_ew' || product.code === 'engine_mgt' ? '⚙️' : '⚓'}</div>
-            <span className="track-purchase-art-label">HYPERION REVIEWER</span>
+        <article className={`track-purchase-card bond-store-card${expandedBenefits ? ' perks-expanded' : ''}`}>
+          <BondStoreCardContent
+            product={product}
+            term={term}
+            headingLevel="h2"
+            headingId="track-purchase-title"
+            benefitsId={`store-benefits-popup-${product.code}`}
+            disabled={busy}
+            expanded={expandedBenefits}
+            onToggleBenefits={() => setExpandedBenefits(current => !current)}
+            onTermChange={nextTerm => {
+              setTerm(nextTerm)
+              setParams(current => {
+                const next = new URLSearchParams(current)
+                next.set('purchase', '1')
+                next.set('purchase_product', product.code)
+                next.set('purchase_term', nextTerm)
+                return next
+              }, { replace: true })
+            }}
+          />
+
+          <div className="track-purchase-actions">
+            <span className={`product-status${isInBasket ? ' is-in-basket' : ''}`} aria-live="polite">
+              {isInBasket ? '✓ IN YOUR BASKET' : 'AVAILABLE'}
+            </span>
+            <button
+              type="button"
+              className="btn btn-primary track-purchase-buy"
+              disabled={!sessionChecked || !supabaseConfigured || busy}
+              onClick={handleBuyNow}
+            >
+              {!sessionChecked ? 'PLEASE WAIT…' : busy ? 'CHECKING LICENSE…' : isInBasket ? 'CONTINUE TO CHECKOUT' : 'BUY NOW'}
+            </button>
           </div>
-
-          <div className="track-purchase-label">CHOOSE ACCESS DURATION</div>
-          <h2 id="track-purchase-title" className="track-purchase-title">{product.label}</h2>
-          <div className="track-purchase-price">₱{selectedPrice}<small> / {term}</small></div>
-          <div className="track-purchase-term-note">{selectedTermDetails?.durationLabel ?? 'Full track'} of full track access</div>
-
-          <div className="track-purchase-plans" role="group" aria-label="Choose license duration">
-            {LICENSE_TERMS.map(option => {
-              const price = priceForTerm(product, option.code)
-              const selected = term === option.code
-              return (
-                <button
-                  key={option.code}
-                  type="button"
-                  className="track-purchase-plan"
-                  aria-pressed={selected}
-                  aria-label={option.label + ', ' + option.durationLabel + ', ₱' + price + (selected ? ', selected' : '')}
-                  disabled={busy}
-                  onClick={() => {
-                    setTerm(option.code)
-                    setParams(current => {
-                      const next = new URLSearchParams(current)
-                      next.set('purchase', '1')
-                      next.set('purchase_product', product.code)
-                      next.set('purchase_term', option.code)
-                      return next
-                    }, { replace: true })
-                  }}
-                >
-                  {selected && <span className="track-purchase-plan-check" aria-hidden="true">✓</span>}
-                  <span>{option.label}</span>
-                  <span className="track-purchase-plan-price">₱{price}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="track-purchase-description">{description}</div>
-          <span className={'track-purchase-status' + (isInBasket ? ' is-in-basket' : '')} aria-live="polite">
-            {isInBasket ? '✓ IN YOUR BASKET' : 'AVAILABLE'}
-          </span>
-          <button
-            type="button"
-            className="btn btn-primary track-purchase-buy"
-            disabled={!sessionChecked || !supabaseConfigured || busy}
-            onClick={handleBuyNow}
-          >
-            {!sessionChecked ? 'PLEASE WAIT…' : busy ? 'CHECKING LICENSE…' : isInBasket ? 'CONTINUE TO CHECKOUT' : 'BUY NOW'}
-          </button>
         </article>
 
         {message && <div className="track-purchase-message" role="status" aria-live="polite">{message}</div>}
