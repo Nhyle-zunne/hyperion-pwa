@@ -300,7 +300,7 @@ export default function MockExamScreen() {
         {accessChecked
           ? <>
             <p>An active license for {TRACK_LABELS[trackId]} is required. Free Reviewer is available from your track page.</p>
-            <button type="button" className="btn btn-primary" onClick={() => openPaywall('Timed Mock Exam · Full reviewer access')}>Unlock FULL reviewer</button>
+            <button type="button" className="btn btn-primary" onClick={() => openPaywall('Timed Mock Exam · Full reviewer access')}>UNLOCK FULL REVIEWER</button>
           </>
           : <p>Checking your track license…</p>}
       </section>

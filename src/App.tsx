@@ -530,7 +530,7 @@ export default function App() {
     useUIStore.getState().openPaywall(
       setupMode === 'drill' || location.pathname === '/drill'
         ? 'Drill requires an active license for this track.'
-        : 'This feature requires an active license for this track. Free Reviewer remains available without a purchase. Unlock FULL reviewer to access Timed Mock Exam.'
+        : 'This feature requires an active license for this track. Free Reviewer remains available without a purchase. UNLOCK FULL REVIEWER to access Timed Mock Exam.'
     )
   }, [localOwnerReady, entitlementsChecked, setupNeedsLicense, hasActiveSetupLicense, setupTrackKey, setupMode, location.pathname, navigate])
 
