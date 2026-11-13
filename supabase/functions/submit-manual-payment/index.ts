@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { termPrices } from '../_shared/paymentPrices.mjs'
 
 const products = {
   oic_nw: { track: 'DECK_OIC_NW' },
@@ -8,13 +9,7 @@ const products = {
   engine_mgt: { track: 'ENGINE_MGT' },
 } as const
 type LicenseTerm = 'week' | 'month' | 'year'
-const prices: Record<keyof typeof products, Record<LicenseTerm, number>> = {
-  oic_nw: { week: 20, month: 50, year: 350 },
-  gmdss: { week: 15, month: 40, year: 250 },
-  engine_ew: { week: 20, month: 50, year: 350 },
-  deck_mgt: { week: 40, month: 100, year: 700 },
-  engine_mgt: { week: 40, month: 100, year: 700 },
-}
+const prices = termPrices
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 
 function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {

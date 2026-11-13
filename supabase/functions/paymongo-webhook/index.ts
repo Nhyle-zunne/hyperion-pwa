@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { isAcceptedStoredPrice } from '../_shared/paymentPrices.mjs'
 
 type LicenseTerm = 'week' | 'month' | 'year'
 const productTracks: Record<string, string> = {
@@ -8,13 +9,7 @@ const productTracks: Record<string, string> = {
   deck_mgt: 'DECK_MGT',
   engine_mgt: 'ENGINE_MGT'
 }
-const termPrices: Record<string, Record<LicenseTerm, number>> = {
-  oic_nw: { week: 20, month: 50, year: 350 },
-  gmdss: { week: 15, month: 40, year: 250 },
-  engine_ew: { week: 20, month: 50, year: 350 },
-  deck_mgt: { week: 40, month: 100, year: 700 },
-  engine_mgt: { week: 40, month: 100, year: 700 }
-}
+
 function expiryForTerm(base: Date, term: LicenseTerm) {
   const result = new Date(base)
   if (term === 'week') {
@@ -248,7 +243,7 @@ Deno.serve(async (req) => {
         childCodes.some((code: string, index: number) => code !== expectedCodes[index]) ||
         childOrders.some((order: any) => productTracks[order.product_code] !== order.track_id || order.currency !== 'PHP' ||
           order.license_term !== termsByCode[order.product_code] ||
-          Number(order.amount_php) !== termPrices[order.product_code]?.[termsByCode[order.product_code]]) ||
+          !isAcceptedStoredPrice(order.product_code, termsByCode[order.product_code], Number(order.amount_php))) ||
         childTotal !== Number(batch.amount_php)) {
       return new Response('Basket item list or total mismatch', { status: 400 })
     }
@@ -300,7 +295,7 @@ Deno.serve(async (req) => {
 
   const paymentAttrs = payment.attributes
   const singleTerm: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' ? order.license_term : 'year'
-  if (Number(order.amount_php) !== termPrices[order.product_code]?.[singleTerm] ||
+  if (!isAcceptedStoredPrice(order.product_code, singleTerm, Number(order.amount_php)) ||
       paymentAttrs?.currency !== 'PHP' || Number(paymentAttrs?.amount) !== order.amount_php * 100) {
     return new Response('Payment amount mismatch', { status: 400 })
   }

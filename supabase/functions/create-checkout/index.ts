@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { termPrices } from '../_shared/paymentPrices.mjs'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -9,13 +10,7 @@ const cors = {
 const productOrder = ['oic_nw', 'gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt'] as const
 const termOrder = ['week', 'month', 'year'] as const
 type LicenseTerm = typeof termOrder[number]
-const termPrices: Record<typeof productOrder[number], Record<LicenseTerm, number>> = {
-  oic_nw: { week: 20, month: 50, year: 350 },
-  gmdss: { week: 15, month: 40, year: 250 },
-  engine_ew: { week: 20, month: 50, year: 350 },
-  deck_mgt: { week: 40, month: 100, year: 700 },
-  engine_mgt: { week: 40, month: 100, year: 700 }
-}
+
 const products = {
   oic_nw: { env: 'PRICE_DECK_OIC_NW_PHP', name: 'Hyperion Deck OIC-NW', track: 'DECK_OIC_NW' },
   gmdss: { env: 'PRICE_GMDSS_PHP', name: 'Hyperion GMDSS GOC', track: 'GMDSS_GOC' },

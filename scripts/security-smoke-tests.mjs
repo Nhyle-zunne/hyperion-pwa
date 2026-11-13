@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { termPrices, legacyTermPrices, isAcceptedStoredPrice } from '../supabase/functions/_shared/paymentPrices.mjs';
 import { readFile } from 'node:fs/promises';
 import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
 import { encryptJsonPayload, decryptJsonPayload } from '../src/lib/jsonPayloadCrypto.mjs';
@@ -143,23 +144,42 @@ assert.ok(singleWebhookValidation.includes("(typeof sessionAttrs?.livemode === '
 assert.ok(webhook.includes("Math.abs(Date.now() / 1000 - Number(timestamp)) > 300"), 'Webhook rejects stale signed requests');
 
 const terms = [
-  ['oic_nw', 20, 50, 350],
-  ['gmdss', 15, 40, 250],
-  ['engine_ew', 20, 50, 350],
-  ['deck_mgt', 40, 100, 700],
-  ['engine_mgt', 40, 100, 700]
+  ['oic_nw', 29, 79, 499, 20, 50, 350],
+  ['gmdss', 25, 59, 399, 15, 40, 250],
+  ['engine_ew', 29, 79, 499, 20, 50, 350],
+  ['deck_mgt', 59, 149, 999, 40, 100, 700],
+  ['engine_mgt', 59, 149, 999, 40, 100, 700]
 ];
-for (const [code, weekly, monthly, yearly] of terms) {
+for (const [code, weekly, monthly, yearly, oldWeekly, oldMonthly, oldYearly] of terms) {
   assert.ok(
     pricing.includes(`code: '${code}'`) &&
     pricing.includes(`weeklyPrice: ${weekly}, monthlyPrice: ${monthly}, annualPrice: ${yearly}`),
     `Frontend catalogue has the canonical price for ${code}`
   );
-  const serverMap = `${code}: { week: ${weekly}, month: ${monthly}, year: ${yearly} }`;
-  assert.ok(checkout.includes(serverMap), `Checkout server price for ${code}`);
-  assert.ok(verify.includes(serverMap), `Verification server price for ${code}`);
-  assert.ok(webhook.includes(serverMap), `Webhook server price for ${code}`);
+  assert.deepEqual(termPrices[code], { week: weekly, month: monthly, year: yearly }, `Checkout server price for ${code}`);
+  assert.deepEqual(legacyTermPrices[code], { week: oldWeekly, month: oldMonthly, year: oldYearly }, `Legacy prices preserved for ${code}`);
+  for (const [term, current, previous] of [['week', weekly, oldWeekly], ['month', monthly, oldMonthly], ['year', yearly, oldYearly]]) {
+    assert.ok(isAcceptedStoredPrice(code, term, current), `New paid order accepted: ${code}/${term}`);
+    assert.ok(isAcceptedStoredPrice(code, term, previous), `Old paid order accepted: ${code}/${term}`);
+    assert.equal(isAcceptedStoredPrice(code, term, current + 1), false, `Altered price rejected: ${code}/${term}`);
+  }
   assert.ok(finalizerMigration.includes(`when '${code}' then case v_order.license_term`), `Database finalizer covers ${code}`);
+}
+for (const source of [checkout, verify, webhook, submitManualPaymentFunction]) {
+  assert.ok(source.includes("from '../_shared/paymentPrices.mjs'"), 'All payment entrypoints use the shared price schedule');
+}
+assert.ok(checkout.includes('termPrices[code][termsByCode[code]]'), 'New PayMongo orders use the updated prices');
+assert.ok(submitManualPaymentFunction.includes('const prices = termPrices'), 'New manual orders use the updated prices');
+assert.ok(verify.includes('isAcceptedStoredPrice(') && webhook.includes('isAcceptedStoredPrice('), 'Payment verifiers accept historical recorded prices');
+assert.equal(isAcceptedStoredPrice('made_up', 'week', 29), false, 'Unknown product price rejected');
+assert.equal(isAcceptedStoredPrice('oic_nw', 'century', 29), false, 'Unknown duration rejected');
+assert.equal(isAcceptedStoredPrice('oic_nw', 'week', NaN), false, 'NaN price rejected');
+assert.equal(isAcceptedStoredPrice('oic_nw', 'week', 0), false, 'Free-price tampering rejected');
+const priceMigration = await read('../supabase/migrations/20261113193000_accept_updated_paymongo_prices.sql');
+assert.ok(priceMigration.includes('IF v_occurrences <> 2'), 'SQL migration refuses an unknown finalizer');
+assert.ok(priceMigration.includes('EXECUTE replace(v_function, v_old_guard, v_new_guard)'), 'Migration updates both single and basket finalizer price checks');
+for (const [code, weekly, monthly, yearly] of terms) {
+  assert.ok(priceMigration.includes(`when '${code}' then case v_order.license_term when 'week' then ${weekly} when 'month' then ${monthly} when 'year' then ${yearly}`), `Database finalizer accepts updated ${code} prices`);
 }
 
 assert.match(questionBankMigration, /values\s*\('question-banks',\s*'question-banks',\s*false/i, 'Question bank bucket is private');
