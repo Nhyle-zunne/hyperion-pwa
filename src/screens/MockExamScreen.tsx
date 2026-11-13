@@ -136,7 +136,6 @@ export default function MockExamScreen() {
     return 'confirm'
   })
   const [questionCounts, setQuestionCounts] = useState<QuestionBankCount[]>([])
-  const [usingFreePool, setUsingFreePool] = useState(true)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [startError, setStartError] = useState('')
@@ -173,7 +172,6 @@ export default function MockExamScreen() {
       }
       const counts = await getQuestionCountsByTrack(trackId, false)
       if (cancelled) return
-      setUsingFreePool(false)
       setQuestionCounts(counts)
       setAccessChecked(true)
       setLoading(false)
@@ -322,7 +320,7 @@ export default function MockExamScreen() {
           <h2 style={{ marginTop: 0 }}>EXAMINATION PROTOCOL</h2>
           <p style={{ color: 'var(--text-muted)' }}>Choose the functions to include, then select a competence to begin. The timer runs only while answering that competence.</p>
           <p>{loading ? 'Checking question access and loading counts…' : loadError ? loadError : questionCounts.reduce((sum, item) => sum + item.count, 0).toLocaleString() + ' eligible questions across ' + competences.length + ' competences.'}</p>
-          {!loading && !loadError && <p style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>{usingFreePool ? 'Using the eligible free question sample for this track.' : 'Using the full question bank for your active track license.'}</p>}
+          {!loading && !loadError && <p style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>Using the full question bank for your active track license.</p>}
           {!!loadError && <button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Retry</button>}
           <button type="button" className="btn btn-primary" disabled={loading || !!loadError} onClick={() => setStage('confirm')} style={{ width: '100%' }}>START OFFICIAL TIMED MOCK EXAM</button>
         </div>
