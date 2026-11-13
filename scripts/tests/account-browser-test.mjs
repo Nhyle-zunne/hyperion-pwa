@@ -194,6 +194,8 @@ try {
     const frame = await editorPage.getByTitle('Tap to enlarge diagram').boundingBox()
     const controls = await editorPage.locator('.admin-qb-image-controls').boundingBox()
     assert(frame && controls && Math.abs(frame.height - 220) < 2, 'Image previews use a consistent frame height')
+    const previewColumn = await editorPage.locator('.admin-qb-image-list').boundingBox()
+    assert(frame.width > previewColumn.width * .9, 'Remove controls cannot create a phantom preview column on phones')
     assert(width >= 600 ? controls.x > frame.x + frame.width : controls.y > frame.y + frame.height, 'Image controls sit beside desktop previews and below phone previews')
     const listBounds = await editorPage.locator('.admin-qb-question-list').boundingBox()
     const sidebarActions = await actions.boundingBox()

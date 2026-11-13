@@ -17,7 +17,7 @@
 .admin-qb-page .admin-qb-images { gap: .4rem !important; margin-bottom: 0 !important; }
 .admin-qb-images [aria-label="Question diagrams"] { margin: .25rem 0 !important; }
 .admin-qb-images img { max-height: 180px !important; }
-.admin-qb-page .admin-qb-remove { width: auto; justify-self: end; color: var(--danger, #dc2626); border-color: var(--danger, #dc2626); background: transparent; }
+.admin-qb-page .admin-qb-remove { grid-column: auto; grid-row: auto; width: auto; justify-self: end; color: var(--danger, #dc2626); border-color: var(--danger, #dc2626); background: transparent; }
 .admin-qb-page .admin-qb-remove:hover { background: color-mix(in srgb, var(--danger, #dc2626) 10%, transparent); }
 .admin-qb-page .admin-qb-editor-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-top: .65rem; padding: .6rem 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
 .admin-qb-page .admin-qb-editor-status { margin: 0; border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; flex-basis: 100%; padding: .45rem .6rem; font-size: .77rem; }
