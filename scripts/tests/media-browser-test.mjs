@@ -161,6 +161,31 @@ try {
       assert(await buy.isVisible(), 'CTA remains available with all perks expanded on ' + width)
       const grownBounds = await buy.boundingBox()
       assert(grownBounds && grownBounds.y + grownBounds.height <= height + 1, 'Expanded perks cannot push Buy Now off-screen at ' + width)
+      // Verify ALL nine features can be read, not merely present in the DOM.
+      const details = dialog.locator('.track-purchase-details-scroll')
+      const features = dialog.locator('.store-benefits-list')
+      assert.equal(await details.count(), 1, 'Feature content has its own scroll viewport at ' + width)
+      const expandedList = await features.evaluate(el => {
+        const css = getComputedStyle(el)
+        return { overflow: css.overflowY, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }
+      })
+      assert.equal(expandedList.overflow, 'visible', 'Expanded feature list never hides overflowing text at ' + width)
+      assert(expandedList.scrollHeight <= expandedList.clientHeight + 2, 'All nine features fit their own list at ' + width)
+      const lastFeature = features.locator('li').last()
+      assert.equal(await lastFeature.innerText(), 'Study history and cross-device progress sync')
+      await lastFeature.scrollIntoViewIfNeeded()
+      const view = await details.boundingBox()
+      const last = await lastFeature.boundingBox()
+      const action = await dialog.locator('.track-purchase-actions').boundingBox()
+      assert(view && last && action && last.y >= view.y - 2 && last.y + last.height <= view.y + view.height + 2,
+        'The ninth feature is readable after scrolling within the modal at ' + width)
+      assert(last.y + last.height <= action.y + 2, 'Sticky Buy Now never covers the ninth feature at ' + width)
+      const toggle = dialog.getByRole('button', { name: 'Show fewer features ↑' })
+      await toggle.scrollIntoViewIfNeeded()
+      assert(await toggle.isVisible(), 'Collapse button stays reachable below all nine features at ' + width)
+      const visibleBuy = await buy.boundingBox()
+      assert(visibleBuy && visibleBuy.y >= 0 && visibleBuy.y + visibleBuy.height <= height + 1,
+        'Buy Now stays on screen after scrolling through all nine features at ' + width)
       await dialog.getByRole('button', { name: 'Close purchase dialog' }).click()
     }
     await page.setViewportSize({ width: 390, height: 844 })
