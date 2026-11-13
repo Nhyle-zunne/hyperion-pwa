@@ -1,3 +1,4 @@
+import { assertSquareCorners } from './square-corners-browser-helper.mjs'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
@@ -24,6 +25,7 @@ try {
     assert.equal(await page.evaluate(() => window.resultsFixture.history().length), 1, 'Repeated finish creates one history entry')
     assert.equal(await page.evaluate(async () => (await window.resultsFixture.snapshot()).finished), true, 'Results retain a completed durable audit')
     assert((await results.boundingBox()).width <= 560, 'Results use competence selection width')
+    await assertSquareCorners(page)
     await page.screenshot({ path: `results-${mode.toLowerCase()}-desktop.png`, fullPage: true })
     await page.getByRole('button', { name: 'Review C1 questions', exact: true }).click()
     assert.equal(await page.evaluate(() => document.activeElement.id), 'results-review-tab', 'Competence review keeps keyboard focus on its destination tab')
@@ -42,6 +44,7 @@ try {
     await results.getByText('Synthetic question 2?', { exact: true }).waitFor()
     await page.setViewportSize({ width: 390, height: 844 })
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Review fits mobile without horizontal scrolling')
+    await assertSquareCorners(page)
     await page.screenshot({ path: `results-${mode.toLowerCase()}-mobile.png`, fullPage: true })
     assert.deepEqual(errors, [])
     await page.close()

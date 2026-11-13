@@ -1,3 +1,4 @@
+import { assertSquareCorners } from './square-corners-browser-helper.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { chromium } from 'playwright'
@@ -119,6 +120,24 @@ try {
   await results.first().click()
   await editorPage.getByRole('button', { name: 'OPEN QUESTION BANK' }).click()
   await editorPage.getByText('Question #1', { exact: true }).waitFor()
+  await editorPage.addStyleTag({ content: '#square-policy-probe { border-radius: 50% !important } #square-policy-probe::before { content: "probe"; border-radius: 99px !important }' })
+  await editorPage.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.id = 'square-policy-probe'
+    probe.style.borderRadius = '80px'
+    document.body.append(probe)
+  })
+  await assertSquareCorners(editorPage)
+  await editorPage.locator('#square-policy-probe').evaluate(el => el.remove())
+  const retirementCheckbox = editorPage.getByRole('checkbox', { name: 'Retired (exclude from new study sessions)' })
+  await retirementCheckbox.focus()
+  await editorPage.keyboard.press('Space')
+  assert.equal(await retirementCheckbox.isChecked(), true, 'Square checkbox keeps native keyboard selection')
+  await editorPage.emulateMedia({ forcedColors: 'active' })
+  assert.equal(await retirementCheckbox.evaluate(el => getComputedStyle(el, '::before').transform), 'matrix(1, 0, 0, 1, 0, 0)', 'Checked marker remains visible in forced colors')
+  await editorPage.emulateMedia({ forcedColors: 'none' })
+  await editorPage.keyboard.press('Space')
+  assert.equal(await retirementCheckbox.isChecked(), false, 'Square checkbox can be unchecked with the keyboard')
   const actions = editorPage.locator('.admin-qb-editor-actions')
   assert.equal(await actions.count(), 1, 'Both edit actions share a single, organized workflow bar')
   const queueButton = actions.locator('button.btn-primary')
@@ -293,6 +312,7 @@ try {
   await editorPage.getByText('Question #2', { exact: true }).waitFor()
   await editorPage.locator('.admin-qb-editor-layout').screenshot({ path: '/tmp/admin-all-tracks-mobile.png', animations: 'disabled' })
   assert.deepEqual(editorErrors, [], 'No runtime errors after cross-bank searching and revision changes')
+  await assertSquareCorners(editorPage)
   console.log('PASS: admin image upload, optional descriptions, removal, apply/queue metadata and responsive editor workflow')
   await editorPage.close()
 
@@ -444,6 +464,7 @@ try {
       const button = card.querySelector('button.btn-primary')?.getBoundingClientRect()
       return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, bottom: rect.bottom, buyButtonBottom: button?.bottom }
     }))
+    await assertSquareCorners(page)
     assert.equal(boxes.length, 5, 'All five track cards render')
     const storeStyles = await page.locator('.account-product-card').first().evaluate(el => ({ radius: getComputedStyle(el).borderRadius, actionBg: getComputedStyle(el.querySelector('button.btn-primary')).backgroundColor }))
     assert.equal(storeStyles.radius, '0px', 'Store cards share square corners with the purchase popup')
@@ -820,9 +841,25 @@ try {
       if (previousHeight !== null) assert(Math.abs(previousHeight - boxes[0].height) < .5, `Changing admin sections preserves navigation height at ${width}px ${label}: ${previousHeight} vs ${boxes[0].height}`)
       previousHeight = boxes[0].height
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Admin navigation fits at ${width}px`)
+      await assertSquareCorners(navigation)
       if (width === 390) await navigation.screenshot({ path: `admin-nav-${label.split(' ')[0].toLowerCase()}-390.png` })
     }
   }
+  await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=study-time`)
+  await page.getByRole('img', { name: /Study time breakdown by track/ }).waitFor()
+  for (const width of [320, 390, 1531]) {
+    await page.setViewportSize({ width, height: 900 })
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(theme => { document.documentElement.dataset.theme = theme }, theme)
+      await assertSquareCorners(page)
+      const proportions = await page.locator('.st-track-bar').evaluate(el => [...el.children].map(child => child.getBoundingClientRect().width / el.getBoundingClientRect().width))
+      assert.equal(proportions.length, 2)
+      assert(Math.abs(proportions[0] - .9) < .01 && Math.abs(proportions[1] - .1) < .01, 'Square study chart accurately represents 90% and 10% shares')
+      assert.deepEqual(await page.locator('.st-legend-row strong').allTextContents(), ['90%', '10%'])
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Square study chart fits the viewport')
+    }
+  }
+  await page.screenshot({ path: '/tmp/hyperion-square-study-time.png', fullPage: true })
   assert.deepEqual(errors, [])
   console.log('PASS: checkout/orders shared profile, profile edit/cancel, responsive placement, cart preservation, and isolated commerce effects')
 } finally {
