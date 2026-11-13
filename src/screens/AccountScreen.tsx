@@ -8,7 +8,6 @@ import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import BondStoreCardContent from '../components/BondStoreCardContent'
 import { withPageLoading } from '../lib/pageLoading'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
-import { LICENSE_TERMS, priceForTerm } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Order = {
@@ -880,7 +879,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   const basketItem = basket.find(entry => entry.code === item.code)
                   const inBasket = Boolean(basketItem)
                   const selectedTerm = selectedTerms[item.code]
-                  const selectedPrice = priceForTerm(item, selectedTerm)
                   const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
                   const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
                   return <div className={`account-product-slot${hoveredStore === item.code ? ' is-hovered' : ''}${expandedStorePerks === item.code ? ' is-expanded' : ''}`} key={item.code}
