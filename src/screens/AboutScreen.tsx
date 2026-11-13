@@ -41,11 +41,12 @@ export default function AboutScreen() {
           <ul style={{ ...listStyle, marginBottom: 0 }}>
             <li>Practice sessions and competency-focused drills.</li>
             <li>Quick Scan and question-bank search for targeted revision.</li>
-            <li>Timed mock examinations and performance review.</li>
+            <li>Timed mock examinations and performance review for active licensed tracks.</li>
             <li>Bookmarks, mistakes notebook, and saved/resumable sessions.</li>
             <li>Study history, session logs, study-time summaries, and streak tracking.</li>
-            <li>Offline-capable Android study features and an installable PWA with supported offline caching.</li>
+            <li>Offline-capable Android study tools and an installable PWA with licensed, encrypted offline question-bank downloads.</li>
           </ul>
+          <p style={{ ...paragraphStyle, marginBottom: 0 }}><strong>Free vs full reviewer:</strong> Without an active license for the selected track, the examination-mode menu offers Free Reviewer and Unlock FULL reviewer only. Timed Mock Exam, Practice All, Quick Scan, Flashcards, Mistakes Notebook, search, and licensed offline question-bank access are premium modes. The website Free Reviewer requires an internet connection.</p>
         </div>
       </section>
 
@@ -53,7 +54,7 @@ export default function AboutScreen() {
         <h2 style={headingStyle}>Android and website accounts</h2>
         <div className="card" style={{ lineHeight: 1.7 }}>
           <p style={paragraphStyle}><strong>Android sign-in is optional.</strong> You can use local study features and make Google Play purchases without signing in to a Hyperion account. Signing in with Google allows the app to connect to your Hyperion account.</p>
-          <p style={paragraphStyle}><strong>Website/PWA accounts.</strong> Sign-in is used for website account features, checkout, license management, and supported cloud learning-progress synchronization.</p>
+          <p style={paragraphStyle}><strong>Website/PWA accounts.</strong> Sign-in is used for website account features, checkout, license management, and supported cloud learning-progress synchronization. Signing in does not itself activate a paid track license.</p>
           <p style={paragraphStyle}><strong>License and study-progress synchronization.</strong> When you sign in using the same Hyperion account and synchronization succeeds, eligible website licenses and Google Play entitlements can be recognized across platforms. Supported study records also synchronize through the shared account, including bookmarks, mistakes/review records, per-question attempt history, study-time segments, and completed session history. Website/PWA saved sessions, answers, mock-exam progress, and daily check-in/streak data are supported in its own browser-to-browser/cloud progress service. Android active or resumable sessions, Android-only preferences, and some device-specific records are not transferred to the website; not every local record or offline cache is shared. License synchronization and study-progress synchronization are separate services. See the Privacy Policy and Terms of Use for details.</p>
           <p style={{ ...paragraphStyle, marginBottom: 0 }}>Using the same email address alone does not link purchases. You must sign in to the same Hyperion account. This does not mean a purchase can be transferred or combined automatically. Google Play continues to bill and manage its subscriptions, while website purchases continue to be handled through website checkout and PayMongo. Their billing, cancellations, and refund processes remain separate.</p>
         </div>
