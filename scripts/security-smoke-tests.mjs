@@ -169,6 +169,10 @@ for (const source of [checkout, verify, webhook, submitManualPaymentFunction]) {
   assert.ok(source.includes("from '../_shared/paymentPrices.mjs'"), 'All payment entrypoints use the shared price schedule');
 }
 assert.ok(checkout.includes('termPrices[code][termsByCode[code]]'), 'New PayMongo orders use the updated prices');
+assert.ok(checkout.includes('body.expectedTotalPhp !== totalPrice'), 'Stale PWA price quote cannot create an unexpected new charge');
+assert.ok(basketScreen.includes('expectedTotalPhp }'), 'PWA basket transmits the exact displayed quote to checkout');
+assert.ok(submitManualPaymentFunction.includes('body.expectedAmountPhp !== prices[code][term]'), 'Manual endpoint rejects a stale quote before recording a transfer');
+assert.ok(manualPayment.includes('expectedAmountPhp: licensePrice'), 'Manual payment submits the displayed amount for matching');
 assert.ok(submitManualPaymentFunction.includes('const prices = termPrices'), 'New manual orders use the updated prices');
 assert.ok(verify.includes('isAcceptedStoredPrice(') && webhook.includes('isAcceptedStoredPrice('), 'Payment verifiers accept historical recorded prices');
 assert.equal(isAcceptedStoredPrice('made_up', 'week', 29), false, 'Unknown product price rejected');

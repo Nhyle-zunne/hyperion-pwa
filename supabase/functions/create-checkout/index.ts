@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userError } = await authClient.auth.getUser()
   if (userError || !user) return json({ error: 'Your session is invalid. Please sign in again.' }, 401)
 
-  let body: { action?: string; productCode?: string; productCodes?: unknown; items?: unknown; returnTo?: unknown }
+  let body: { action?: string; productCode?: string; productCodes?: unknown; items?: unknown; returnTo?: unknown; expectedTotalPhp?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid request body.' }, 400) }
 
   const modeIsValid = expectedLiveMode === 'true' || expectedLiveMode === 'false'
@@ -227,6 +227,12 @@ Deno.serve(async (req) => {
     } catch {
       return json({ error: 'Could not safely check your previous basket checkout. Please retry.' }, 502)
     }
+  }
+
+  // A cached pre-increase PWA must not create a checkout above its displayed price.
+  // Keep this after pending-checkout reuse so existing PayMongo quotes still work.
+  if (body.expectedTotalPhp !== totalPrice) {
+    return json({ error: 'Subscription prices have changed. Refresh Hyperion before paying; no new checkout was created.' }, 409)
   }
 
   for (const code of codes) {

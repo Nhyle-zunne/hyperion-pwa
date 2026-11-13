@@ -461,7 +461,8 @@ export default function BasketScreen() {
     setCheckoutUrlFallback(null)
     setMessage('Preparing secure checkout…')
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { items: items.map(item => ({ productCode: item.code, term: item.term })) } })
+      const expectedTotalPhp = items.reduce((sum, item) => sum + priceForTerm(PAID_PRODUCTS.find(product => product.code === item.code)!, item.term), 0)
+      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { items: items.map(item => ({ productCode: item.code, term: item.term })), expectedTotalPhp } })
       if (error) throw new Error(await edgeError(error))
       if (data?.error) throw new Error(data.error)
       if (data?.alreadyProcessing === true && typeof data.orderId === 'string') {
