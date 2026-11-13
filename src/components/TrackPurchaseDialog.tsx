@@ -248,7 +248,7 @@ export default function TrackPurchaseDialog() {
             </span>
             <button
               type="button"
-              className="btn btn-primary track-purchase-buy"
+              className="btn btn-primary store-buy-button track-purchase-buy"
               disabled={!sessionChecked || !supabaseConfigured || busy}
               onClick={handleBuyNow}
             >
