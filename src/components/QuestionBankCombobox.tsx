@@ -1,7 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   filterQuestionBankAssets,
+  isAllQuestionBankScope,
   questionBankPickerLabel,
+  questionBankScopeTrack,
+  showAllQuestionBankOption,
+  sortQuestionBankAssets,
   type QuestionBankPickerAsset
 } from '../lib/questionBankPicker'
 import './QuestionBankCombobox.css'
@@ -11,7 +15,7 @@ type Props = {
   tracks: ReadonlyArray<readonly [string, string]>
   value: string
   disabled?: boolean
-  onChange: (path: string) => void
+  onChange: (value: string) => void
 }
 
 export default function QuestionBankCombobox({ assets, tracks, value, disabled = false, onChange }: Props) {
@@ -21,14 +25,28 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
-  const [trackFilter, setTrackFilter] = useState<string | null>(null)
+  const [trackFilter, setTrackFilter] = useState<string | null>(() => questionBankScopeTrack(value))
 
   const selected = assets.find(asset => asset.path === value)
   const matches = useMemo(() => filterQuestionBankAssets(assets, trackFilter, query), [assets, trackFilter, query])
-  const groups = useMemo(() => tracks.map(([track, label]) => ({
-    track, label, items: matches.filter(asset => asset.track === track)
-  })).filter(group => group.items.length > 0), [matches, tracks])
+  const groups = useMemo(() => {
+    const sorted = sortQuestionBankAssets(matches, tracks)
+    return [...new Set(sorted.map(asset => asset.track))].map(track => ({
+      track, label: tracks.find(([id]) => id === track)?.[1] || track,
+      items: sorted.filter(asset => asset.track === track)
+    }))
+  }, [matches, tracks])
   const visible = useMemo(() => groups.flatMap(group => group.items), [groups])
+  const showAllOption = showAllQuestionBankOption(query)
+  const assetOptionOffset = showAllOption ? 1 : 0
+  const optionCount = visible.length + assetOptionOffset
+  const allCompetencesValue = trackFilter ? '@all:' + trackFilter : '@all'
+  const scopeTrack = questionBankScopeTrack(value)
+  const scopeLabel = (scopeTrack ? tracks.find(([track]) => track === scopeTrack)?.[1] || scopeTrack : 'All tracks') + ' · All competences'
+
+  useEffect(() => {
+    if (isAllQuestionBankScope(value)) setTrackFilter(questionBankScopeTrack(value))
+  }, [value])
 
   useEffect(() => {
     if (!open) return
@@ -69,8 +87,8 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
     // or open/close the list: preserve whichever state the user left it in.
   }
 
-  function choose(asset: QuestionBankPickerAsset) {
-    onChange(asset.path)
+  function choose(nextValue: string) {
+    onChange(nextValue)
     setOpen(false)
     setQuery('')
     setActiveIndex(0)
@@ -89,14 +107,15 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
       event.preventDefault()
       if (!open) {
         openSearch()
-      } else if (visible.length) {
-        setActiveIndex(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + visible.length) % visible.length)
+      } else if (optionCount) {
+        setActiveIndex(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + optionCount) % optionCount)
       }
       return
     }
     if (event.key === 'Enter' && open) {
       event.preventDefault()
-      if (visible[activeIndex]) choose(visible[activeIndex])
+      if (showAllOption && activeIndex === 0) choose(allCompetencesValue)
+      else if (visible[activeIndex - assetOptionOffset]) choose(visible[activeIndex - assetOptionOffset].path)
     }
     if (event.key === 'Tab' && open) {
       setOpen(false)
@@ -109,6 +128,13 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
       <strong>CHOOSE A TRACK</strong>
     </div>
     <div className="admin-bank-picker__presets" role="group" aria-label="Choose examination track">
+      <button type="button" disabled={disabled}
+        className={'admin-bank-picker__preset' + (value === '@all' ? ' is-selected' : '')}
+        aria-label="Search all tracks and competences" aria-pressed={value === '@all'}
+        onClick={() => { setTrackFilter(null); choose('@all') }}>
+        <span>All tracks</span>
+        <span className="admin-bank-picker__preset-count" aria-hidden="true">{assets.length}</span>
+      </button>
       {tracks.map(([track, label]) => <button key={track} type="button" disabled={disabled}
         className={'admin-bank-picker__preset' + (trackFilter === track ? ' is-selected' : '')}
         aria-label={`Filter ${label} question banks`} aria-pressed={trackFilter === track}
@@ -132,12 +158,12 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
         aria-autocomplete="list"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
-        aria-activedescendant={open && visible[activeIndex] ? listId + '-option-' + activeIndex : undefined}
+        aria-activedescendant={open && activeIndex < optionCount ? listId + '-option-' + activeIndex : undefined}
         autoComplete="off"
         spellCheck={false}
         disabled={disabled}
         placeholder={trackFilter ? 'Search competence or part (e.g. C10 or Part 2)' : 'Search a track or competence (e.g. Engine C10)'}
-        value={open ? query : selected ? questionBankPickerLabel(selected) : ''}
+        value={open ? query : isAllQuestionBankScope(value) ? scopeLabel : selected ? questionBankPickerLabel(selected) : ''}
         onFocus={() => { if (!open) openSearch() }}
         onClick={() => { if (!open) openSearch() }}
         onChange={event => {
@@ -172,16 +198,26 @@ export default function QuestionBankCombobox({ assets, tracks, value, disabled =
     </div>
     {open && !disabled && <div className="admin-bank-picker__list" id={listId} role="listbox" aria-label="Available question banks">
       <div className="admin-bank-picker__hint">{trackFilter ? 'SELECT COMPETENCE / PART' : 'SELECT TRACK & COMPETENCE'} <span>{visible.length} result{visible.length === 1 ? '' : 's'}</span></div>
+      {showAllOption && <button type="button" role="option" tabIndex={-1}
+        id={listId + '-option-0'} aria-selected={value === allCompetencesValue}
+        className={'admin-bank-picker__option admin-bank-picker__option--all' + (activeIndex === 0 ? ' is-active' : '')}
+        onMouseEnter={() => setActiveIndex(0)} onClick={() => choose(allCompetencesValue)}>
+        <span className="admin-bank-picker__option-name">All competences</span>
+        <span className="admin-bank-picker__option-description">{trackFilter
+          ? tracks.find(([track]) => track === trackFilter)?.[1] || trackFilter
+          : 'All tracks'}</span>
+        {value === allCompetencesValue && <span className="admin-bank-picker__chosen" aria-label="Selected">✓</span>}
+      </button>}
       {groups.map(group => <div key={group.track} role="group" aria-label={group.label}>
         <div className="admin-bank-picker__group-title" role="presentation">{group.label} <span>{group.items.length}</span></div>
         {group.items.map(asset => {
-          const index = visible.indexOf(asset)
-          return <button key={asset.path} type="button" role="option"
+          const index = visible.indexOf(asset) + assetOptionOffset
+          return <button key={asset.path} type="button" role="option" tabIndex={-1}
             id={listId + '-option-' + index}
             aria-selected={value === asset.path}
             className={'admin-bank-picker__option' + (index === activeIndex ? ' is-active' : '')}
             onMouseEnter={() => setActiveIndex(index)}
-            onClick={() => choose(asset)}>
+            onClick={() => choose(asset.path)}>
             <span className="admin-bank-picker__option-name">{asset.competenceId}{asset.part != null ? ' · Part ' + asset.part : ''}</span>
             <span className="admin-bank-picker__option-description">{asset.label}</span>
             {value === asset.path && <span className="admin-bank-picker__chosen" aria-label="Selected">✓</span>}
