@@ -92,6 +92,23 @@ try {
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Free-mode cards do not overflow ' + width)
     }
   })
+  await scenario('Direct mock URL denies unlicensed access before fetching questions', async ({ page, open }) => {
+    await open('hub')
+    await page.evaluate(() => window.hubFixture.setLicenses([]))
+    await page.evaluate(() => window.hubFixture.goMock('oic_nw'))
+    await page.getByText('An active license for OIC-NW OPERATIONAL TRACK is required.', { exact: false }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'START OFFICIAL TIMED MOCK EXAM' }).count(), 0, 'Free direct link cannot start timed mock')
+    assert.equal(await page.getByRole('button', { name: 'Unlock FULL reviewer' }).count(), 1)
+    await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+    await page.getByRole('dialog', { name: 'Deck OIC-NW' }).waitFor()
+    await page.getByRole('button', { name: 'Close purchase dialog' }).click()
+    await page.evaluate(() => window.hubFixture.setLicenses(['DECK_OIC_NW']))
+    await page.waitForFunction(() => document.body.textContent.includes('EXAMINATION PROTOCOL'))
+    assert.equal(await page.getByRole('button', { name: 'Unlock FULL reviewer' }).count(), 0, 'Active track license unlocks direct mock screen')
+    await page.evaluate(() => window.hubFixture.setLicenses([]))
+    await page.getByText('An active license for OIC-NW OPERATIONAL TRACK is required.', { exact: false }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'START OFFICIAL TIMED MOCK EXAM' }).count(), 0, 'Revocation immediately gates the mock screen')
+  })
   await scenario('Bond Store popup shares exact banner artwork, nine benefits and plan controls across tracks', async ({ page, open }) => {
     await open('hub')
     await page.evaluate(() => window.hubFixture.setLicenses([]))
