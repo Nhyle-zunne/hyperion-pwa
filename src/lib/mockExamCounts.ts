@@ -1,5 +1,7 @@
 import type { TrackId } from '../types/question'
 
+// Official mock-exam item distribution mirrored from HYPERION-REVIEWER's
+// MaritimeCompetenceRegistry / NewTrackCompetences permit distributions.
 // Shared by the mock-exam runner and the track-page question count.
 const MOCK_EXAM_ITEMS: Record<TrackId, Record<string, number>> = {
   DECK_OIC_NW: { C1: 35, C2: 20, C3: 15, C4: 10, C5: 10, C7: 20, C9: 15, C10: 15, C11: 15, C12: 15, C13: 15, C17: 15 },
