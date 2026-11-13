@@ -29,6 +29,7 @@ async function main() {
     { sha256: sha, mime: 'image/png', placement: 'question', alt: 'Synthetic question diagram' },
     { sha256: sha, mime: 'image/png', placement: 'explanation', alt: 'Synthetic explanation diagram' },
   ]
+  if (new URLSearchParams(location.search).has('promptOnly')) mediaQuestion.questionText = ''
   if (new URLSearchParams(location.search).has('imageOnly')) mediaQuestion.explanation = ''
   function license(enabled = true, owner: string | null = mediaOwner) {
     useLicenseStore.setState({ entitlementsVerified: true, entitlementUserId: owner, isAllAccessUnlocked: enabled, cloudTrackIds: enabled ? ['DECK_OIC_NW'] : [] })

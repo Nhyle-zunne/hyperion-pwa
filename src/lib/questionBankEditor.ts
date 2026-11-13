@@ -1,5 +1,5 @@
 import { parseCsvText } from './csvParser'
-import { parseQuestionImageRefsFromCsv, serializeQuestionImageRefs, QUESTION_MEDIA_COLUMN, type QuestionImageRef } from './questionMedia'
+import { hasQuestionPrompt, parseQuestionImageRefsFromCsv, serializeQuestionImageRefs, QUESTION_MEDIA_COLUMN, type QuestionImageRef } from './questionMedia'
 
 /**
  * Editing changes the original CSV cell in-place. Never delete, sort, or
@@ -60,9 +60,9 @@ export function readEditableBank(path: string, csvText: string): EditableBank {
   if (new TextEncoder().encode(csvText).byteLength > 700000) throw Error('The question bank is too large for direct editing.')
   const rows = parseCsvText(csvText)
   const format = isGmdss(path) ? 'gmdss' : 'standard'
-  if (format === 'gmdss' && rows.length <= 3) throw Error('This small GMDSS part uses an unsupported legacy parser layout. Use CSV upload until it is normalized.')
   const headerIndex = findHeader(rows, format === 'gmdss')
   const header = rows[headerIndex] || []
+  if (format === 'gmdss' && rows.length <= 3 && !header.some(cell => cell.trim().toLowerCase() === 'option1')) throw Error('This small GMDSS part uses an unsupported legacy parser layout. Use CSV upload until it is normalized.')
   const statusIndex = header.findIndex(value => value.trim().toUpperCase() === RETIREMENT_COLUMN)
   const questions: EditableQuestion[] = []
   const seen = new Set<number>()
@@ -71,6 +71,7 @@ export function readEditableBank(path: string, csvText: string): EditableBank {
   const strict = path.startsWith('deck_mgt/') || path.startsWith('engine_mgt/') || path.startsWith('engine_ew/')
   for (let rowIndex = headerIndex + 1; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex]
+    const imageAttachments = parseQuestionImageRefsFromCsv(header, row)
     let questionText = '', options: string[] = [], numberLabel = '', answer = '', explanation = ''
     if (format === 'standard') {
       const numbered = (row[0] || '').trim()
@@ -80,8 +81,8 @@ export function readEditableBank(path: string, csvText: string): EditableBank {
       questionText = (row[1] || '').trim()
       const all = row.slice(2, 6).map(cell => (cell || '').trim())
       options = all.filter(Boolean)
-      if (!questionText || questionText.toLowerCase() === 'question' || options.length < 2 ||
-        (options.length === 4 && options.every((text, i) => text === 'ABCD'[i]))) continue
+      if (!hasQuestionPrompt(questionText, imageAttachments) || questionText.toLowerCase() === 'question' || options.length < 2 ||
+        (!!questionText && options.length === 4 && options.every((text, i) => text === 'ABCD'[i]))) continue
       if (strict) {
         const key = (row[6] || '').trim().toUpperCase()
         const k = 'ABCD'.indexOf(key)
@@ -96,7 +97,7 @@ export function readEditableBank(path: string, csvText: string): EditableBank {
       if (row.length < 10) continue
       questionText = (row[0] || '').trim()
       options = row.slice(2, 8).map(v => (v || '').trim()).filter(Boolean)
-      if (!questionText || questionText.toLowerCase() === 'question' || options.length < 2) continue
+      if (!hasQuestionPrompt(questionText, imageAttachments) || questionText.toLowerCase() === 'question' || options.length < 2) continue
       numberLabel = String(questions.length + 1)
       answer = row[9] || ''
       explanation = row[8] || ''
@@ -107,7 +108,7 @@ export function readEditableBank(path: string, csvText: string): EditableBank {
     questions.push({
       ordinal, rowIndex, numberLabel, questionText, options,
       correctAnswerIndex: keyedAnswer(answer, options.length),
-      explanation, imageAttachments: parseQuestionImageRefsFromCsv(header, row), retired: status === 'RETIRED' || legacy,
+      explanation, imageAttachments, retired: status === 'RETIRED' || legacy,
       fixedLegacyRetirement: legacy
     })
   }
@@ -128,12 +129,13 @@ export function editBankQuestion(bank: EditableBank, ordinal: number, edit: Ques
   const source = bank.questions.find(question => question.ordinal === ordinal)
   if (!source) throw Error('That question is no longer present in this question bank.')
   if (source.fixedLegacyRetirement && !edit.retired) throw Error('The three original C10 retirement IDs are protected by the Android/PWA legacy policy. They cannot be restored from this editor.')
+  const images = edit.imageAttachments ?? source.imageAttachments
   const maxOptions = bank.format === 'gmdss' ? 6 : 4
   if (edit.options.length < 2 || edit.options.length > maxOptions ||
       edit.options.some(option => !option.trim()) ||
       !Number.isInteger(edit.correctAnswerIndex) ||
       edit.correctAnswerIndex < 0 || edit.correctAnswerIndex >= edit.options.length ||
-      !edit.questionText.trim() || (edit.options.length === 4 && edit.options.every((option, index) => option === 'ABCD'[index]))) throw Error('Provide a real question and valid choices; placeholder A/B/C/D choices are not accepted.')
+      !hasQuestionPrompt(edit.questionText, images) || (!!edit.questionText.trim() && edit.options.length === 4 && edit.options.every((option, index) => option === 'ABCD'[index]))) throw Error('Provide question text or attach a question image, and valid choices; placeholder A/B/C/D choices are not accepted.')
   const rows = parseCsvText(bank.csvText).map(row => row.slice())
   const row = rows[source.rowIndex]
   if (!row) throw Error('The original question position changed.')

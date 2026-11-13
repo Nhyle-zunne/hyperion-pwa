@@ -93,7 +93,14 @@ export function validateQuestionChanges(path: string, before: string, after: str
   }
   if (!next.length) throw new PublisherError('The CSV does not contain valid questions.')
   if (next.length < previous.length) throw new PublisherError('Removing questions or publishing a shorter list would break saved references. Keep existing questions and append new ones.')
-  const identity = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options])
+  const identity = (q: Record<string, unknown>) => {
+    const prompt = [q.questionText, q.options]
+    if (typeof q.questionText === 'string' && !q.questionText.trim()) {
+      const images = Array.isArray(q.imageAttachments) ? q.imageAttachments : []
+      prompt.push(images.filter(ref => ref.placement === 'question').map(ref => [ref.sha256, ref.mime]).sort())
+    }
+    return JSON.stringify(prompt)
+  }
   const semantic = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options, q.correctAnswerIndex, q.explanation, q.isRetired === true, q.imageAttachments || []])
   const positions = new Map<string, Set<number>>()
   previous.forEach((q, i) => { const key = identity(q); const indexes = positions.get(key) || new Set<number>(); indexes.add(i); positions.set(key, indexes) })

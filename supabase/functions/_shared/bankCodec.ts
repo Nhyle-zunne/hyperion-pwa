@@ -63,15 +63,18 @@ function headerIndex(rows: string[][], format: "standard" | "gmdss") {
 function isStrictStandardTrack(path: string): boolean {
   return path.startsWith("engine_ew/") || path.startsWith("deck_mgt/") || path.startsWith("engine_mgt/");
 }
-function validStandard(row: string[], path: string): boolean {
+function hasProtectedPromptImage(row: string[], mediaColumn: number): boolean {
+  return mediaColumn >= 0 && parseProtectedImageRefs(row[mediaColumn] || "").some(ref => ref.placement === "question");
+}
+function validStandard(row: string[], path: string, mediaColumn = -1): boolean {
   if (row.length < 7) return false;
   const numberText = (row[0] || "").trim();
   if (!/^\d+$/.test(numberText) || Number(numberText) <= 0) return false;
   const question = (row[1] || "").trim();
   const rawOptions = row.slice(2, 6).map(value => (value || "").trim());
   const options = rawOptions.filter(Boolean);
-  if (!question || question.toLowerCase() === "question" ||
-      (options.length === 4 && options.every((value, index) => value === ["A","B","C","D"][index])) ||
+  if ((!question && !hasProtectedPromptImage(row, mediaColumn)) || question.toLowerCase() === "question" ||
+      (!!question && options.length === 4 && options.every((value, index) => value === ["A","B","C","D"][index])) ||
       options.length < 2) return false;
 
   // Match Android's newer-track parser: an answer must be present, valid,
@@ -87,6 +90,7 @@ function validStandard(row: string[], path: string): boolean {
 }
 function validStandardRows(rows: string[][], path: string): string[][] {
   const header = headerIndex(rows, "standard");
+  const mediaColumn = (rows[header] || []).findIndex(cell => cell.trim().toUpperCase() === "HYPERION_MEDIA");
   const seenNumbers = new Set<number>();
   const valid: string[][] = [];
   // Android's Deck F2/F3 loader stores each valid question by its numbered
@@ -99,7 +103,7 @@ function validStandardRows(rows: string[][], path: string): string[][] {
   const deckMatch = path.match(/^deck\/oic_nw_c(7|9|10|11|12|13|17)\.csv\.enc$/);
   const deckLimit = deckMatch ? numberedDeckLimits[deckMatch[1]] : undefined;
   for (const row of rows.slice(header + 1)) {
-    if (!validStandard(row, path)) continue;
+    if (!validStandard(row, path, mediaColumn)) continue;
     const number = Number((row[0] || "").trim());
     if (deckLimit !== undefined && number > deckLimit) continue;
     // Android stores C7/C9 and F2/F3 questions in numbered slots, so duplicate
@@ -112,13 +116,13 @@ function validStandardRows(rows: string[][], path: string): string[][] {
   }
   return valid;
 }
-function validGmdss(row: string[]) {
+function validGmdss(row: string[], mediaColumn = -1) {
   // Android's GMDSS row parser requires question + six option slots,
   // explanation and answer columns before it can create a Question object.
   if (row.length < 10) return false;
   const q = (row[0] || "").trim();
   const opts = row.slice(2, 8).map(v => (v || "").trim()).filter(Boolean);
-  return !!q && q.toLowerCase() !== "question" && opts.length >= 2;
+  return (!!q || hasProtectedPromptImage(row, mediaColumn)) && q.toLowerCase() !== "question" && opts.length >= 2;
 }
 class JavaRandom {
   private seed: bigint;
@@ -145,7 +149,8 @@ function sampleFreeCsv(path: string, text: string) {
   const rows = parseCsv(text);
   if (format === "gmdss") {
     const hi = headerIndex(rows, "gmdss");
-    let valid = rows.slice(hi + 1).filter(validGmdss);
+    const mediaColumn = (rows[hi] || []).findIndex(cell => cell.trim().toUpperCase() === "HYPERION_MEDIA");
+    let valid = rows.slice(hi + 1).filter(row => validGmdss(row, mediaColumn));
     let outputHeader = rows.slice(0, hi + 1);
     if (!valid.length && rows.length) {
       const flat = rows.length === 1 ? rows[0] : rows.flat();
@@ -227,7 +232,8 @@ function sourceInfo(path: string): SourceInfo | null {
 function validGmdssRows(text: string): string[][] {
   const rows = parseCsv(text);
   const hi = headerIndex(rows, "gmdss");
-  const normal = rows.length > 3 ? rows.slice(hi + 1).filter(validGmdss) : [];
+  const mediaColumn = (rows[hi] || []).findIndex(cell => cell.trim().toUpperCase() === "HYPERION_MEDIA");
+  const normal = (rows.length > 3 || (rows[hi] || []).some(cell => cell.trim().toLowerCase() === "option1")) ? rows.slice(hi + 1).filter(row => validGmdss(row, mediaColumn)) : [];
   if (normal.length) return normal;
   const flat = rows.length === 1 ? rows[0] : rows.flat();
   const chunks: string[][] = [];
@@ -240,7 +246,7 @@ function validGmdssRows(text: string): string[][] {
   }
   return chunks;
 }
-const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v6-retirement";
+const QUESTION_COUNT_ALGORITHM_VERSION = "valid-questions-v7-image-prompts";
 function validQuestionCount(path: string, text: string, freeOnly: boolean): number {
   const info = sourceInfo(path);
   if (!info) return 0;
