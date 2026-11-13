@@ -179,7 +179,7 @@ assert.equal(isAcceptedStoredPrice('made_up', 'week', 29), false, 'Unknown produ
 assert.equal(isAcceptedStoredPrice('oic_nw', 'century', 29), false, 'Unknown duration rejected');
 assert.equal(isAcceptedStoredPrice('oic_nw', 'week', NaN), false, 'NaN price rejected');
 assert.equal(isAcceptedStoredPrice('oic_nw', 'week', 0), false, 'Free-price tampering rejected');
-const priceMigration = await read('../supabase/migrations/20261113193000_accept_updated_paymongo_prices.sql');
+const priceMigration = await read('../supabase/migrations/20261113115708_accept_updated_paymongo_prices.sql');
 assert.ok(priceMigration.includes('IF v_occurrences <> 2'), 'SQL migration refuses an unknown finalizer');
 assert.ok(priceMigration.includes('EXECUTE replace(v_function, v_old_guard, v_new_guard)'), 'Migration updates both single and basket finalizer price checks');
 for (const [code, weekly, monthly, yearly] of terms) {
