@@ -132,6 +132,10 @@ try {
       }
       await dialog.getByRole('button', { name: 'See all 9 premium features' }).click()
       assert.equal(await dialog.getByRole('button', { name: 'Show fewer features ↑' }).getAttribute('aria-expanded'), 'true')
+      await page.waitForFunction(() => {
+        const list = document.querySelector('.track-purchase-card .store-benefits-list')
+        return list && list.getBoundingClientRect().height > 100
+      })
       const benefitsHeight = await dialog.locator('.store-benefits-list').evaluate(el => el.getBoundingClientRect().height)
       assert(benefitsHeight > 100, 'Expanded benefits are not clipped inside ' + label)
       await dialog.getByRole('button', { name: 'Show fewer features ↑' }).click()
