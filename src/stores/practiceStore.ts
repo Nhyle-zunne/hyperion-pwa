@@ -357,7 +357,7 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       const isFreeReviewerSession = mode === 'PRACTICE' && free === true;
       if (!isFreeReviewerSession) await useLicenseStore.getState().refreshCachedEntitlements();
       const lic = useLicenseStore.getState();
-      const licensed = lic.isAllAccessUnlocked || lic.cloudTrackIds.includes('ALL') || lic.isTrackUnlocked(track);
+      const licensed = lic.entitlementsVerified && (lic.isAllAccessUnlocked || lic.cloudTrackIds.includes('ALL') || lic.isTrackUnlocked(track));
       // Only the explicitly launched Free Reviewer may use a free pool in PRACTICE mode.
       // Drill and full Practice All Questions always require an active track entitlement.
       if (!licensed && !isFreeReviewerSession) {
