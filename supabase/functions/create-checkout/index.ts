@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { termPrices } from '../_shared/paymentPrices.mjs'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -9,13 +10,7 @@ const cors = {
 const productOrder = ['oic_nw', 'gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt'] as const
 const termOrder = ['week', 'month', 'year'] as const
 type LicenseTerm = typeof termOrder[number]
-const termPrices: Record<typeof productOrder[number], Record<LicenseTerm, number>> = {
-  oic_nw: { week: 20, month: 50, year: 350 },
-  gmdss: { week: 15, month: 40, year: 250 },
-  engine_ew: { week: 20, month: 50, year: 350 },
-  deck_mgt: { week: 40, month: 100, year: 700 },
-  engine_mgt: { week: 40, month: 100, year: 700 }
-}
+
 const products = {
   oic_nw: { env: 'PRICE_DECK_OIC_NW_PHP', name: 'Hyperion Deck OIC-NW', track: 'DECK_OIC_NW' },
   gmdss: { env: 'PRICE_GMDSS_PHP', name: 'Hyperion GMDSS GOC', track: 'GMDSS_GOC' },
@@ -81,7 +76,7 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userError } = await authClient.auth.getUser()
   if (userError || !user) return json({ error: 'Your session is invalid. Please sign in again.' }, 401)
 
-  let body: { action?: string; productCode?: string; productCodes?: unknown; items?: unknown; returnTo?: unknown }
+  let body: { action?: string; productCode?: string; productCodes?: unknown; items?: unknown; returnTo?: unknown; expectedTotalPhp?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid request body.' }, 400) }
 
   const modeIsValid = expectedLiveMode === 'true' || expectedLiveMode === 'false'
@@ -232,6 +227,12 @@ Deno.serve(async (req) => {
     } catch {
       return json({ error: 'Could not safely check your previous basket checkout. Please retry.' }, 502)
     }
+  }
+
+  // A cached pre-increase PWA must not create a checkout above its displayed price.
+  // Keep this after pending-checkout reuse so existing PayMongo quotes still work.
+  if (body.expectedTotalPhp !== totalPrice) {
+    return json({ error: 'Subscription prices have changed. Refresh Hyperion before paying; no new checkout was created.' }, 409)
   }
 
   for (const code of codes) {

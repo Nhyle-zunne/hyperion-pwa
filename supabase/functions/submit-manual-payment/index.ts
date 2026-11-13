@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { termPrices } from '../_shared/paymentPrices.mjs'
 
 const products = {
   oic_nw: { track: 'DECK_OIC_NW' },
@@ -8,13 +9,7 @@ const products = {
   engine_mgt: { track: 'ENGINE_MGT' },
 } as const
 type LicenseTerm = 'week' | 'month' | 'year'
-const prices: Record<keyof typeof products, Record<LicenseTerm, number>> = {
-  oic_nw: { week: 20, month: 50, year: 350 },
-  gmdss: { week: 15, month: 40, year: 250 },
-  engine_ew: { week: 20, month: 50, year: 350 },
-  deck_mgt: { week: 40, month: 100, year: 700 },
-  engine_mgt: { week: 40, month: 100, year: 700 },
-}
+const prices = termPrices
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 
 function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
@@ -35,13 +30,16 @@ Deno.serve(async req => {
   const client = createClient(url, anon, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } })
   const { data: { user }, error: authError } = await client.auth.getUser()
   if (authError || !user) return json({ error: 'Please sign in again.' }, 401)
-  let body: { productCode?: string; licenseTerm?: string; paymentMethod?: string; paymentReference?: string; proofUrl?: string; customerNote?: string; customerProfile?: { fullName?: string; company?: string; school?: string } }
+  let body: { productCode?: string; licenseTerm?: string; expectedAmountPhp?: unknown; paymentMethod?: string; paymentReference?: string; proofUrl?: string; customerNote?: string; customerProfile?: { fullName?: string; company?: string; school?: string } }
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
   const code = body.productCode as keyof typeof products, product = products[code]
   if (!product) return json({ error: 'Unknown product.' }, 400)
   const requestedTerm = body.licenseTerm ?? 'year'
   if (requestedTerm !== 'week' && requestedTerm !== 'month' && requestedTerm !== 'year') return json({ error: 'Choose a valid access duration.' }, 400)
   const term: LicenseTerm = requestedTerm
+  if (body.expectedAmountPhp !== prices[code][term]) {
+    return json({ error: 'Subscription prices have changed. Refresh Hyperion before making a manual transfer. If you already sent money, contact support with your receipt.' }, 409)
+  }
   const paymentMethod = String(body.paymentMethod || '').trim().slice(0, 80)
   // This endpoint is only for manual QR transfer submissions. Never accept
   // PayMongo's internal method marker from a client-provided request.

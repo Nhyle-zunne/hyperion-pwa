@@ -171,6 +171,7 @@ export default function ManualPaymentScreen() {
         body: {
           productCode: product.code,
           licenseTerm,
+          expectedAmountPhp: licensePrice,
           paymentMethod,
           paymentReference: reference,
           customerNote: note,

@@ -26,11 +26,11 @@ export function priceForTerm(product: { weeklyPrice: number; monthlyPrice: numbe
 }
 
 export const PAID_PRODUCTS: { code: PaidTrack; label: string; trackLabel: string; weeklyPrice: number; monthlyPrice: number; annualPrice: number }[] = [
-  { code: 'oic_nw', label: 'Deck OIC-NW', trackLabel: 'DECK_OIC_NW', weeklyPrice: 20, monthlyPrice: 50, annualPrice: 350 },
-  { code: 'gmdss', label: 'GMDSS GOC', trackLabel: 'GMDSS_GOC', weeklyPrice: 15, monthlyPrice: 40, annualPrice: 250 },
-  { code: 'engine_ew', label: 'Engine OIC-EW', trackLabel: 'ENGINE_OIC_EW', weeklyPrice: 20, monthlyPrice: 50, annualPrice: 350 },
-  { code: 'deck_mgt', label: 'Deck Management', trackLabel: 'DECK_MGT', weeklyPrice: 40, monthlyPrice: 100, annualPrice: 700 },
-  { code: 'engine_mgt', label: 'Engine Management', trackLabel: 'ENGINE_MGT', weeklyPrice: 40, monthlyPrice: 100, annualPrice: 700 },
+  { code: 'oic_nw', label: 'Deck OIC-NW', trackLabel: 'DECK_OIC_NW', weeklyPrice: 29, monthlyPrice: 79, annualPrice: 499 },
+  { code: 'gmdss', label: 'GMDSS GOC', trackLabel: 'GMDSS_GOC', weeklyPrice: 25, monthlyPrice: 59, annualPrice: 399 },
+  { code: 'engine_ew', label: 'Engine OIC-EW', trackLabel: 'ENGINE_OIC_EW', weeklyPrice: 29, monthlyPrice: 79, annualPrice: 499 },
+  { code: 'deck_mgt', label: 'Deck Management', trackLabel: 'DECK_MGT', weeklyPrice: 59, monthlyPrice: 149, annualPrice: 999 },
+  { code: 'engine_mgt', label: 'Engine Management', trackLabel: 'ENGINE_MGT', weeklyPrice: 59, monthlyPrice: 149, annualPrice: 999 },
 ]
 
 export function paidProductCodeForTrackId(trackId: string): PaidTrack | null {
