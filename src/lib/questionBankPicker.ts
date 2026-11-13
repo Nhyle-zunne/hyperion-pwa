@@ -1,6 +1,7 @@
 /**
  * Only presentation/search logic for the admin question-bank selector.
- * The selected value remains the immutable publisher asset path.
+ * Individual selections remain immutable publisher asset paths; aggregate
+ * scopes use a synthetic value that must never be sent as a bank path.
  */
 export type QuestionBankPickerAsset = {
   path: string
@@ -16,6 +17,32 @@ export const QUESTION_BANK_TRACK_NAMES: Record<string, string> = {
   DECK_MGT: 'Deck Management',
   ENGINE_MGT: 'Engine Management',
   GMDSS_GOC: 'GMDSS GOC'
+}
+
+export function isAllQuestionBankScope(value: string): boolean {
+  return value === '@all' || /^@all:[A-Z0-9_]+$/.test(value)
+}
+
+export function questionBankScopeTrack(value: string): string | null {
+  return isAllQuestionBankScope(value) && value !== '@all' ? value.slice(5) : null
+}
+
+export function showAllQuestionBankOption(query: string): boolean {
+  return !query.trim() || /\ball\b/i.test(query)
+}
+
+export function sortQuestionBankAssets<T extends QuestionBankPickerAsset>(
+  assets: T[], tracks: ReadonlyArray<readonly [string, string]>
+): T[] {
+  const trackOrder = new Map(tracks.map(([track], index) => [track, index]))
+  for (const asset of assets) {
+    if (!trackOrder.has(asset.track)) trackOrder.set(asset.track, trackOrder.size)
+  }
+  return [...assets].sort((a, b) =>
+    trackOrder.get(a.track)! - trackOrder.get(b.track)!
+    || a.competenceId.localeCompare(b.competenceId, 'en', { numeric: true })
+    || (a.part ?? 0) - (b.part ?? 0)
+  )
 }
 
 export function questionBankPickerLabel(asset: QuestionBankPickerAsset): string {

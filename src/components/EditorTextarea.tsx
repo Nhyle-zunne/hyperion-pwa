@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type TextareaHTMLAttributes } from 'react'
 
-type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'value'> & { value: string }
+type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'value'> & { value: string; autoGrow?: boolean }
 
 /** Fit short editor fields to their content without hiding longer questions. */
-export default function EditorTextarea({ value, ...props }: Props) {
+export default function EditorTextarea({ value, autoGrow = true, ...props }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fit = useCallback(() => {
     const input = ref.current
@@ -13,8 +13,9 @@ export default function EditorTextarea({ value, ...props }: Props) {
     input.style.height = `${Math.min(maximum, input.scrollHeight + 2)}px`
     input.style.overflowY = input.scrollHeight + 2 > maximum ? 'auto' : 'hidden'
   }, [])
-  useLayoutEffect(fit, [value, fit])
+  useLayoutEffect(() => { if (autoGrow) fit() }, [value, fit, autoGrow])
   useEffect(() => {
+    if (!autoGrow) return
     const parent = ref.current?.parentElement
     if (!parent) return
     let width = parent.getBoundingClientRect().width
@@ -24,6 +25,6 @@ export default function EditorTextarea({ value, ...props }: Props) {
     })
     observer.observe(parent)
     return () => observer.disconnect()
-  }, [fit])
+  }, [fit, autoGrow])
   return <textarea {...props} value={value} ref={ref} rows={1} className="admin-qb-textarea" />
 }

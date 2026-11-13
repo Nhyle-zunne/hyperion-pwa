@@ -9,6 +9,8 @@ try {
   const editorPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
   const editorErrors = []
   const editorApiCalls = []
+  const editorSearchRequests = []
+  let fixtureBankRevision = 'a'.repeat(40)
   const existingImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64')
   const existingRef = { sha256: createHash('sha256').update(existingImage).digest('hex'), mime: 'image/png', placement: 'question', alt: 'Saved question image' }
   let editorValidatedFiles = []
@@ -18,12 +20,20 @@ try {
     const body = route.request().postDataJSON()
     editorApiCalls.push(body.action)
     if (body.action === 'validate') editorValidatedFiles = body.files
-    const path = 'engine_mgt/em_c10.csv.enc'
+    const path = body.action === 'editor-load' ? body.path : 'engine_mgt/em_c10.csv.enc'
     const csvText = [
       'No.,Question,A,B,C,D,Correct Answer,Explanation,HYPERION_MEDIA',
-      '1,Why is water treated?,Prevent corrosion,Improve color,Reduce speed,Increase noise,A,Prevent scale,',
-      '2,What does cooling do?,Remove heat,Increase wear,Stop flow,Raise friction,A,Temperature control,'+'\"'+JSON.stringify([existingRef]).replaceAll('\"','\"\"')+'\"'
+      '1,Why is water treated?,Prevent corrosion,A deliberately long choice that still starts at one line and remains scrollable without manual shrinking. A deliberately long choice that still starts at one line.,Reduce speed,Increase noise,A,Prevent scale,',
+      '2,What does cooling do?,Remove heat,Increase wear,Stop flow,Raise friction,A,Temperature control,'+'\"'+JSON.stringify([existingRef]).replaceAll('\"','\"\"')+'\"',
+      ...Array.from({ length: 38 }, (_, index) => `${index+3},Extra synthetic question ${index+3}?,One,Two,Three,Four,A,,`)
     ].join('\r\n')
+    if (body.action === 'editor-search') {
+      editorSearchRequests.push(body)
+      assert.equal(body.query, 'cooling')
+      const engine = { path: 'engine_mgt/em_c10.csv.enc', ordinal: 2, questionText: 'What does cooling do?', track: 'ENGINE_MGT', competenceId: 'C10', part: null }
+      const deck = { path: 'deck/oic_nw_c1.csv.enc', ordinal: 1, questionText: 'Cooling question in another track', track: 'DECK_OIC_NW', competenceId: 'C1', part: null }
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ results: body.track ? [engine] : body.cursor ? [deck] : [engine], nextCursor: !body.track && !body.cursor ? 2 : null, truncated: false, bankRevision: fixtureBankRevision }) })
+    }
     const reply = body.action === 'inventory'
       ? { configured: true, assets: [
           { path: 'deck/oic_nw_c1.csv.enc', label: 'Deck OIC-NW · C1', track: 'DECK_OIC_NW', competenceId: 'C1', part: null, format: 'standard' },
@@ -33,7 +43,7 @@ try {
           { path, label: 'Engine Management · C10', track: 'ENGINE_MGT', competenceId: 'C10', part: null, format: 'standard' }
         ] }
       : body.action === 'editor-load'
-        ? { path, csvText, baseHead: 'a'.repeat(40) }
+        ? { path, csvText, baseHead: 'a'.repeat(40), bankRevision: fixtureBankRevision }
         : body.action === 'validate'
           ? { preview: { requestId: body.requestId, baseHead: 'a'.repeat(40), validationId: 'fixture-validation', files: [{ path, questionCount: 2, previousCount: 2, changed: 1, appended: 0, corrections: [] }] } }
           : { error: 'Synthetic fixture does not publish to GitHub.' }
@@ -57,12 +67,12 @@ try {
   await editorPage.goto(process.env.HYPERION_RECOVERY_TEST_URL + '?section=question-editor')
   await editorPage.getByRole('heading', { name: 'Edit, retire or restore questions' }).waitFor()
   const presets = editorPage.getByRole('group', { name: 'Choose examination track' })
-  assert.equal(await presets.locator('button[aria-pressed]').count(), 5, 'All five examination track presets are always available')
+  assert.equal(await presets.locator('button[aria-pressed]').count(), 6, 'All five examination track presets are always available')
   const combobox = editorPage.getByRole('combobox', { name: 'Search track, competence or question bank' })
   const gmdssPreset = presets.getByRole('button', { name: 'Filter GMDSS GOC question banks' })
   const deckPreset = presets.getByRole('button', { name: 'Filter Deck Management question banks' })
   const enginePreset = presets.getByRole('button', { name: 'Filter Engine Management question banks' })
-  const results = editorPage.locator('.admin-bank-picker__option')
+  const results = editorPage.locator('.admin-bank-picker__option:not(.admin-bank-picker__option--all)')
 
   // Clicking a track must never open the search box that the user left closed.
   assert.equal(await combobox.getAttribute('aria-expanded'), 'false', 'Search starts closed')
@@ -96,7 +106,7 @@ try {
 
   await combobox.fill('Engine C10')
   assert.equal(await results.count(), 1, 'Global text search still works')
-  await results.first().click()
+  await combobox.press('Enter')
   assert.equal(await editorPage.getByRole('button', { name: 'OPEN QUESTION BANK' }).isEnabled(), true, 'Selecting a competence enables Open')
   assert.equal(await combobox.getAttribute('aria-expanded'), 'false', 'Selecting a question bank closes the search')
   await deckPreset.click()
@@ -171,10 +181,17 @@ try {
     const actionBounds = await queueButton.boundingBox()
     assert(actionBounds && actionBounds.height <= 44 && actionBounds.width < width, 'Queue action stays compact')
     if (width > 1000) assert(await editorPage.locator('.admin-qb-page').evaluate(el => el.clientWidth > 1000), 'Desktop editor uses the wide percentage layout')
+    if (width > 1000) {
+      const localSearch = editorPage.getByLabel('Find question by number or text', { exact: true })
+      await localSearch.fill('What does cooling')
+      assert((await editorPage.locator('.admin-qb-question-list').boundingBox()).height < 160, 'Filtered question lists shrink instead of leaving an empty box')
+      await localSearch.fill('')
+    }
     const choiceA = editorPage.getByLabel('Choice A', { exact: true })
     const choiceB = editorPage.getByLabel('Choice B', { exact: true })
     const a = await choiceA.boundingBox(), b = await choiceB.boundingBox()
-    assert(a && b && a.height <= 60, 'Short choices do not occupy oversized boxes')
+    assert(a && b && a.height <= 38 && b.height <= 38, 'Both short and long choices start at a compact one-line height')
+    if (width > 1000) await editorPage.waitForFunction(() => { const form = document.querySelector('.admin-qb-question-form'), list = document.querySelector('.admin-qb-question-list'); return form && list && Math.abs(form.getBoundingClientRect().top - list.getBoundingClientRect().top) < 2 && list.getBoundingClientRect().height <= form.getBoundingClientRect().height + 2 })
     assert(width >= 600 ? Math.abs(a.y - b.y) < 5 : b.y > a.y, 'Choices pair on wider screens and stack on phones')
     const remove = editorPage.getByRole('button', { name: 'Remove', exact: true }).first()
     assert.equal(await remove.evaluate(el => getComputedStyle(el).color), 'rgb(220, 38, 38)', 'Remove has red text')
@@ -209,6 +226,60 @@ try {
   await editorPage.setViewportSize({ width: 1531, height: 1000 })
   await editorPage.evaluate(() => { document.documentElement.dataset.theme = 'light' })
   await editorPage.locator('.admin-qb-editor-layout').screenshot({ path: '/tmp/compact-editor-desktop.png', animations: 'disabled' })
+  await presets.getByRole('button', { name: 'Search all tracks and competences', exact: true }).click()
+  const globalQuery = editorPage.getByRole('textbox', { name: 'Search questions across selected banks', exact: true })
+  await globalQuery.fill('cooling')
+  const searchesBefore = editorApiCalls.filter(action => action === 'editor-search').length
+  assert.equal(searchesBefore, 0, 'Typing does not scan banks or call Supabase')
+  await editorPage.getByRole('button', { name: 'Search questions', exact: true }).click()
+  await editorPage.getByRole('button', { name: /Cooling question in another track/ }).waitFor()
+  assert.equal(editorApiCalls.filter(action => action === 'editor-search').length, 2, 'All-track search follows bounded immutable pages')
+  await editorPage.getByRole('button', { name: /Cooling question in another track/ }).click()
+  await editorPage.getByText('Question #1', { exact: true }).waitFor()
+  assert.equal(await editorPage.getByLabel('Question text', { exact: true }).inputValue(), 'Why is water treated?', 'Search result opens its exact bank and ordinal')
+  await editorPage.getByLabel('Choice A', { exact: true }).fill('Unqueued change')
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  assert.equal(await editorPage.getByLabel('Choice A', { exact: true }).inputValue(), 'Unqueued change', 'Opening another result cannot discard current edits')
+  await actions.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await enginePreset.click()
+  await combobox.click()
+  await editorPage.getByRole('option', { name: /All competences/ }).click()
+  await globalQuery.fill('cooling')
+  await editorPage.getByRole('button', { name: 'Search questions', exact: true }).click()
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).waitFor()
+  assert.equal(editorSearchRequests.at(-1).track, 'ENGINE_MGT', 'All competences searches only the selected track')
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  await editorPage.getByText('Question #2', { exact: true }).waitFor()
+  assert.equal(await editorPage.getByLabel('Explanation', { exact: true }).inputValue(), 'Second question update', 'Returning to a staged bank preserves its queued edits')
+  fixtureBankRevision = 'b'.repeat(40)
+  await editorPage.getByRole('button', { name: 'Search questions', exact: true }).click()
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).waitFor()
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  await editorPage.getByRole('alert').filter({ hasText: /bank changed since your draft/i }).waitFor()
+  assert.equal(await editorPage.getByLabel('Explanation', { exact: true }).inputValue(), 'Second question update', 'A newer search revision cannot silently replace a queued draft')
+  await editorPage.getByRole('button', { name: 'Clear queue', exact: true }).click()
+  await actions.getByRole('button', { name: 'Discard bank draft', exact: true }).click()
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  await editorPage.getByText('Question #2', { exact: true }).waitFor()
+  assert.equal(await editorPage.getByLabel('Explanation', { exact: true }).inputValue(), 'Temperature control', 'Explicitly discarded drafts reopen from the current bank revision')
+  const loadedBeforeRevisionChange = editorApiCalls.filter(action => action === 'editor-load').length
+  fixtureBankRevision = 'c'.repeat(40)
+  await editorPage.getByRole('button', { name: 'Search questions', exact: true }).click()
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).waitFor()
+  const refreshedBank = editorPage.waitForResponse(response => response.url().endsWith('/api/question-bank/admin') && response.request().postDataJSON()?.action === 'editor-load')
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  await refreshedBank
+  assert.equal(editorApiCalls.filter(action => action === 'editor-load').length, loadedBeforeRevisionChange + 1, 'A clean same-bank editor reloads when search sees a newer revision')
+  await editorPage.setViewportSize({ width: 390, height: 900 })
+  await presets.getByRole('button', { name: 'Search all tracks and competences', exact: true }).click()
+  await globalQuery.fill('cooling')
+  await editorPage.getByRole('button', { name: 'Search questions', exact: true }).click()
+  await editorPage.getByRole('button', { name: /Cooling question in another track/ }).waitFor()
+  assert(await editorPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'All-track search fits a phone screen')
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  await editorPage.getByText('Question #2', { exact: true }).waitFor()
+  await editorPage.locator('.admin-qb-editor-layout').screenshot({ path: '/tmp/admin-all-tracks-mobile.png', animations: 'disabled' })
+  assert.deepEqual(editorErrors, [], 'No runtime errors after cross-bank searching and revision changes')
   console.log('PASS: admin image upload, optional descriptions, removal, apply/queue metadata and responsive editor workflow')
   await editorPage.close()
 

@@ -1,3 +1,4 @@
+import { createAdminQuestionSearch, validAdminSearchInput } from './adminQuestionSearch.ts'
 import { PublisherError, publisherState, validateGithubBatch, publishGithubBatch, type PublishInput } from './githubBankPublisher.ts'
 import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, githubAssetPath, githubBankRequest, sha256, readBounded } from '../supabase/functions/_shared/githubBankSource.ts'
 import { SOURCE_ASSETS, sourceInfo, toSearchQuestions, sampleFreeCsv, validQuestionCount, QUESTION_COUNT_ALGORITHM_VERSION } from '../supabase/functions/_shared/bankCodec.ts'
@@ -9,12 +10,13 @@ const reply = (value: unknown, status = 200) => new Response(JSON.stringify(valu
 export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
   let source: ReturnType<typeof createGithubBankSource> | undefined
   let sourceToken: string | undefined
+  let searchQuestions = createAdminQuestionSearch()
   type Counts = { competenceId: string; part: number | null; fullCount: number; freeCount: number; rawCount: number; retiredPositions: number[]; freeRetiredPositions: number[]; rawFreeCount: number }[]
   const completedCounts = new Map<string, Counts>()
   return async (request: Request, env: Env): Promise<Response> => {
     const url = new URL(request.url)
     const readToken = env.GITHUB_BANK_READ_TOKEN
-    if (!source || sourceToken !== readToken) { sourceToken = readToken; source = createGithubBankSource(fetcher, cache, readToken); completedCounts.clear() }
+    if (!source || sourceToken !== readToken) { sourceToken = readToken; source = createGithubBankSource(fetcher, cache, readToken); completedCounts.clear(); searchQuestions = createAdminQuestionSearch() }
     if (url.pathname === '/api/question-bank/source' && request.method === 'GET') {
       try { const release = await source.release(); return reply({ source: 'github', repository: GITHUB_BANK_REPOSITORY, root: GITHUB_BANK_ROOT, revision: release.revision, publishedAt: release.publishedAt, files: release.files.length }) }
       catch { return reply({ error: 'The GitHub release is temporarily unavailable.' }, 503) }
@@ -90,7 +92,7 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         const grant = await grantResponse.json() as { allowed?: boolean; access?: string }
         if (grant.allowed !== true || grant.access !== 'admin') return reply({ error: 'Administrator access is required.' }, 403)
         if (Number(request.headers.get('Content-Length')) > 12 * 1024 * 1024) return reply({ error: 'Publication request exceeds 12 MiB.' }, 413)
-        let body: PublishInput & { action?: string }
+        let body: PublishInput & { action?: string; query?: unknown; track?: unknown; limit?: unknown; cursor?: unknown; bankRevision?: unknown }
         try { body = JSON.parse(new TextDecoder().decode(await readBounded(request.body, 12 * 1024 * 1024))) } catch { return reply({ error: 'Invalid or oversized publication request.' }, 400) }
         if (!body || typeof body !== 'object' || Array.isArray(body)) return reply({ error: 'Invalid administration request.' }, 400)
         const assets = SOURCE_ASSETS.map(path => ({ path, ...sourceInfo(path), repositoryPath: GITHUB_BANK_ROOT + '/' + githubAssetPath(path) }))
@@ -98,6 +100,12 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         if (body.action === 'inventory') {
           const state = token ? await publisherState(fetcher, token) : null
           return reply({ assets, configured: !!token, source: 'github', repository: GITHUB_BANK_REPOSITORY, root: GITHUB_BANK_ROOT, head: state?.head, bankRevision: state?.release.revision, deliveryRevision: (await source.release()).revision })
+        }
+        if (body.action === 'editor-search') {
+          if (!validAdminSearchInput(body)) return reply({ error: 'Invalid question search. Use a query up to 160 characters, a supported track, and a limit from 1 to 100.' }, 400)
+          const release = await source.release()
+          if (body.bankRevision && body.bankRevision !== release.revision) return reply({ error: 'The question bank changed. Run the search again.' }, 409)
+          return reply(await searchQuestions(source, release, body))
         }
         if (!token) return reply({ error: 'GitHub publishing is not configured. Add GITHUB_BANK_WRITE_TOKEN as a Cloudflare Worker secret.' }, 503)
         if (body.action === 'editor-load') {
