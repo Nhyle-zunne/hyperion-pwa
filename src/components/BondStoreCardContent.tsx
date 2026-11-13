@@ -15,6 +15,7 @@ export const BOND_STORE_FEATURES = [
   'Full-text question search',
   'Offline review after downloading',
   'Study history and cross-device progress sync',
+  'Use your license across multiple devices, including the official Hyperion Android app.',
 ] as const
 
 const STORE_TRACK_CAPTIONS: Record<PaidTrack, string> = {
@@ -106,6 +107,6 @@ export default function BondStoreCardContent({
     {!showAllBenefits && onToggleBenefits && <button
       type="button" className="store-benefits-toggle" aria-controls={benefitsId}
       aria-expanded={expanded} onClick={onToggleBenefits}
-    >{expanded ? 'Show fewer features ↑' : 'See all 9 premium features ↓'}</button>}
+    >{expanded ? 'Show fewer features ↑' : 'See all 10 premium features ↓'}</button>}
   </>
 }
