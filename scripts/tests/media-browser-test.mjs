@@ -182,7 +182,8 @@ try {
         const action = el.querySelector('.track-purchase-buy')
         return { radius: getComputedStyle(el).borderRadius, innerBorder: getComputedStyle(el.querySelector('.track-purchase-card')).borderTopWidth, actionBg: getComputedStyle(action).backgroundColor, actionText: getComputedStyle(action).color }
       })
-      assert.equal(purchaseStyle.radius, '10px', 'Purchase popup uses the shared modest card corners')
+      assert.equal(purchaseStyle.radius, '0px', 'Purchase popup uses the shared square card corners')
+      assert.equal(await dialog.locator('.product-art, .store-duration-option, .track-purchase-buy, .track-purchase-close').evaluateAll(els => els.every(el => getComputedStyle(el).borderRadius === '0px')), true, 'Purchase artwork and controls have square corners')
       assert.equal(purchaseStyle.innerBorder, '0px', 'Popup does not nest another outlined card')
       assert.equal(purchaseStyle.actionBg, 'rgb(20, 125, 67)', 'Purchase action uses Hyperion green')
       assert.equal(purchaseStyle.actionText, 'rgb(255, 255, 255)', 'Purchase action retains high contrast')
