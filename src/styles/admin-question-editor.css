@@ -56,7 +56,8 @@
 .admin-qb-image-controls { display: grid; gap: .45rem; min-width: 0; }
 .admin-qb-image-workspace .admin-qb-image-list, .admin-qb-image-controls .admin-qb-image-options { grid-template-columns: minmax(0, 1fr); }
 .admin-qb-image-workspace:not(:has(.admin-qb-image-list > div)) { grid-template-columns: minmax(0, 1fr); }
-.admin-qb-images button[title="Tap to enlarge diagram"] { width: 100%; height: 220px; display: flex; align-items: center; justify-content: center; }
+.admin-qb-images button[title="Tap to enlarge diagram"] { width: 100% !important; height: 220px; display: flex; align-items: center; justify-content: center; }
+.admin-qb-images button[title="Tap to enlarge diagram"] span { display: none !important; }
 .admin-qb-images button[title="Tap to enlarge diagram"] img { width: 100%; height: 100%; max-height: 100% !important; object-fit: contain; }
 .admin-qb-editor-actions button:disabled { cursor: default; opacity: .6; }
 @media (max-width: 599px) {
