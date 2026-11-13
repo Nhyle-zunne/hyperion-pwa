@@ -507,3 +507,9 @@
   }
   .hub-offline-progress-fill { transition: none; }
 }
+
+/* The free tier has two study choices and one clear, full-width upgrade option. */
+.track-hub-screen .hub-mode-card.hub-mode-unlock {
+  grid-column: 1 / -1;
+  min-height: 165px;
+}

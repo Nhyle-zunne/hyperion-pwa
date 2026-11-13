@@ -1,7 +1,10 @@
 import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import SessionResults from '../../src/components/SessionResults'
+import TrackHubScreen from '../../src/screens/TrackHubScreen'
+import PaywallDialog from '../../src/components/PaywallDialog'
+import TrackPurchaseDialog from '../../src/components/TrackPurchaseDialog'
 import QuestionImageGallery from '../../src/components/QuestionImageGallery'
 import { MockExamRunner } from '../../src/screens/MockExamScreen'
 import FlashcardsScreen from '../../src/screens/FlashcardsScreen'
@@ -92,9 +95,32 @@ async function main() {
     changeRef = () => setQuestion({ ...mediaQuestion, imageAttachments: [] })
     return <div style={{ transform: 'translateZ(0)', height: 180, overflow: 'hidden' }}><QuestionImageGallery question={question} placement="question" /></div>
   }
+  function HubFixture() {
+    const navigate = useNavigate()
+    const location = useLocation()
+    Object.assign(window, { hubFixture: {
+      setLicenses(trackIds: string[], verified = true) {
+        useLicenseStore.setState({
+          cloudTrackIds: trackIds,
+          isAllAccessUnlocked: trackIds.includes('ALL'),
+          entitlementsVerified: verified,
+          entitlementUserId: verified ? mediaOwner : null,
+        })
+      },
+      goTrack(key: string) { navigate('/track?track=' + encodeURIComponent(key)) },
+    } })
+    return <>
+      <Routes>
+        <Route path="/track" element={<TrackHubScreen />} />
+        <Route path="*" element={<div data-testid="hub-destination">{location.pathname}{location.search}</div>} />
+      </Routes>
+      <PaywallDialog />
+      <TrackPurchaseDialog />
+    </>
+  }
   const mode = new URLSearchParams(location.search).get('screen') || 'gallery'
   const screens: Record<string, React.ReactNode> = { results: <SessionResults onTryAgain={() => {}} onHistory={() => {}} />, gallery: <Gallery />, mock: <MockExamRunner />, flashcards: <FlashcardsScreen />, bookmarks: <BookmarksScreen />, vault: <VaultScreen />, history: <HistoryScreen />, search: <SearchScreen /> }
-  createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={['/?track=oic_nw']} >{screens[mode]}</MemoryRouter>)
+  createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={[mode === 'hub' ? '/track?track=oic_nw' : '/?track=oic_nw']} >{mode === 'hub' ? <HubFixture /> : screens[mode]}</MemoryRouter>)
 
 }
 void main()

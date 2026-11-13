@@ -58,6 +58,8 @@ const TRACKS: Record<string, TrackInfo> = {
 
 interface Mode {
   title: string
+  audience?: 'free' | 'licensed'
+  actionLabel?: string
   desc: string
   badge: string
   icon: MaterialIconName
@@ -104,6 +106,8 @@ export default function TrackHubScreen() {
   const [offlineLicenseChecked, setOfflineLicenseChecked] = useState(false)
   const [offlineRefreshKey, setOfflineRefreshKey] = useState(0)
 
+  const unlocked = useLicenseStore((s) => s.entitlementsVerified && (s.isTrackUnlocked(info.trackId) || s.isAllAccessUnlocked))
+
   useEffect(() => {
     let active = true
     setTotalQuestionCount(null)
@@ -116,6 +120,8 @@ export default function TrackHubScreen() {
   useEffect(() => {
     let active = true
     setFreeQuestionCount(null)
+    // The paid reviewer does not display the sample pool; avoid fetching its count.
+    if (unlocked) return
     void getQuestionCountsByTrack(info.trackId, true)
       .then(counts => {
         if (active) setFreeQuestionCount(counts.reduce((total, item) => total + item.count, 0))
@@ -125,9 +131,7 @@ export default function TrackHubScreen() {
       })
 
     return () => { active = false }
-  }, [key, info.trackId])
-
-  const unlocked = useLicenseStore((s) => s.entitlementsVerified && (s.isTrackUnlocked(info.trackId) || s.isAllAccessUnlocked))
+  }, [key, info.trackId, unlocked])
   const remaining = useLicenseStore((s) => s.getRemainingLabel)
   const openPaywall = useUIStore((s) => s.openPaywall)
   const history = useHistoryStore((s) => s.entries)
@@ -334,6 +338,7 @@ export default function TrackHubScreen() {
   const modes: Mode[] = [
     {
       title: info.freeTitle,
+      audience: 'free',
       desc: freeQuestionCount === null
         ? 'Loading verified free-question count…'
         : `${freeQuestionCount.toLocaleString()} valid questions in the free pool`,
@@ -345,6 +350,7 @@ export default function TrackHubScreen() {
     },
     {
       title: 'PRACTICE ALL QUESTIONS',
+      audience: 'licensed',
       desc: 'Full question bank, by competence or mixed.',
       badge: unlocked ? 'CUSTOMIZABLE' : 'LOCKED',
       icon: 'tune',
@@ -353,6 +359,7 @@ export default function TrackHubScreen() {
     },
     {
       title: 'QUICK SCAN MODE',
+      audience: 'licensed',
       desc: 'Browse questions sequentially with correct answers highlighted. Select a competence to begin.',
       badge: unlocked ? 'READ-ONLY REVIEW' : 'LOCKED',
       icon: 'menuBook',
@@ -369,6 +376,7 @@ export default function TrackHubScreen() {
     },
     {
       title: 'FLASHCARD REVISION',
+      audience: 'licensed',
       desc: 'Active recall · tap to flip cards.',
       badge: unlocked ? 'ACTIVE RECALL' : 'LOCKED',
       icon: 'style',
@@ -377,6 +385,7 @@ export default function TrackHubScreen() {
     },
     {
       title: 'MISTAKES NOTEBOOK',
+      audience: 'licensed',
       desc: `${trackMistakes.length} questions to review. Track your wrong answers.`,
       badge: !unlocked ? 'LICENSE REQUIRED' : trackMistakes.length ? `${trackMistakes.length} SAVED` : 'EMPTY',
       icon: 'autoFixHigh',
@@ -385,6 +394,7 @@ export default function TrackHubScreen() {
     },
     {
       title: 'SESSION LOG',
+      audience: 'licensed',
       desc: 'Past practice sessions, mock attempts and scores.',
       badge: `${trackHistory.length} LOGS`,
       icon: 'analytics',
@@ -393,11 +403,23 @@ export default function TrackHubScreen() {
     },
     {
       title: 'SEARCH QUESTION BANK',
+      audience: 'licensed',
       desc: 'Search by keyword, item code, or competence.',
       badge: unlocked ? 'DATABASE' : 'LOCKED',
       icon: 'search',
       locked: !unlocked,
       onClick: gated('Search', `/search?track=${key}`)
+    },
+    {
+      title: 'Unlock FULL reviewer',
+      audience: 'free',
+      desc: 'Unlock Practice All, Quick Scan, Flashcards, Mistakes, Search, and licensed offline study for this track.',
+      badge: 'FULL ACCESS',
+      icon: 'lock',
+      locked: false,
+      className: 'hub-mode-unlock',
+      actionLabel: 'VIEW ACCESS PLANS',
+      onClick: () => openPaywall(`${info.title} · Full reviewer`)
     }
   ]
 
@@ -525,7 +547,7 @@ export default function TrackHubScreen() {
       <section className="hub-modes" aria-labelledby="hub-modes-title">
         <h2 id="hub-modes-title" className="hub-section-title">EXAMINATION MODES</h2>
         <div className="hub-mode-grid">
-          {modes.map((mode) => (
+          {modes.filter(mode => !mode.audience || mode.audience === (unlocked ? 'licensed' : 'free')).map((mode) => (
             <button
               key={mode.title}
               type="button"
@@ -542,18 +564,13 @@ export default function TrackHubScreen() {
               <h3>{mode.title}</h3>
               <p>{mode.desc}</p>
               <span className="hub-mode-action">
-                SELECT MODE <span aria-hidden="true">→</span>
+                {mode.actionLabel || 'SELECT MODE'} <span aria-hidden="true">→</span>
               </span>
             </button>
           ))}
         </div>
       </section>
 
-      {!unlocked && (
-        <button className="btn btn-primary hub-activate" onClick={() => openPaywall(`${info.title} · Track subscription`)}>
-          VIEW SUBSCRIPTION OPTIONS
-        </button>
-      )}
     </div>
   )
 }

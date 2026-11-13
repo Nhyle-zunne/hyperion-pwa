@@ -11,3 +11,7 @@ export async function getQuestionCountsByTrack() { return [{ competenceId: 'C1',
 export async function getQuestionsByCompetence() { return [mediaQuestion] }
 export async function getFlashcardQuestions() { return [mediaQuestion] }
 export async function searchQuestions() { return [mediaQuestion] }
+
+export async function getPublicQuestionCountByTrack() { return 1234 }
+export async function checkOfflineQuestionPackUpdates() { return { status: 'current' } }
+export async function downloadOfflinePack() { return null }
