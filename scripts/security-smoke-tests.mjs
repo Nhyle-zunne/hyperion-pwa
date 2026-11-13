@@ -354,7 +354,7 @@ for (const route of [
 assert.ok(practiceStore.includes('useHistoryStore.getState().saveSession'), 'Practice session saves History metadata');
 assert.ok(practiceStore.includes('await saveSessionSnapshot(snapshot.sessionId, snapshot)'), 'Practice session snapshot is persisted');
 assert.ok(practiceStore.includes('authorizeQuestionSetAccess(snapshot.track, snapshot.questions)'), 'Restoring saved questions rechecks authorization');
-assert.ok(mockExam.includes("getQuestionCountsByTrack(trackId, freeOnly)") && mockExam.includes("refreshCachedEntitlements"), 'Mock exam validates cached signed access and asks the protected inventory endpoint for the correct access tier');
+assert.ok(mockExam.includes("getQuestionCountsByTrack(trackId, false)") && mockExam.includes("refreshCachedEntitlements") && mockExam.includes("if (!licensed)"), 'Mock exam requires a signed active track license before loading protected inventory');
 assert.ok(!mockExam.includes("getQuestionsByTrack(trackId, true)"), 'Mock exam selection never preloads the free question text for all users');
 assert.ok(mockExam.includes("free: false") && mockExam.includes("limit: examItemCount") && mockExam.includes("timeLimitSec: examItemCount * 60"), 'Mock exam requests the configured competence count without forcing the free pool or shrinking the timer');
 assert.ok(mockExam.includes("MOCK_COMPETENCES_BY_FUNCTION") && mockExam.includes("functionForCompetence(trackId, competence.id)"), 'Mock exam maps function and competence selection independently of loaded question text');
@@ -364,15 +364,15 @@ assert.ok(['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'
 assert.ok(practiceStore.includes("mode === 'MOCK' && qs.length < finalLimit") && practiceStore.includes('The exam was not shortened'), 'Practice store rejects any mock sample shorter than the required item count');
 assert.ok(questionBank.includes("if (randomSample) {") && questionBank.includes("Math.floor(Math.random() * (i + 1))") && questionBank.includes("allQuestions.slice(0, limit)"), 'Protected question-bank endpoint randomly shuffles the authorized competence pool before sampling without replacement');
 assert.ok(questionBank.includes('if (!freeOnly)') && questionBank.includes('authorizeTrack(admin, user, isAdmin, track)'), 'Full-bank question requests remain server-authorized by an active track license or admin access');
-assert.ok(questionBank.includes('if (freeOnly) text = sampleFreeCsv(assetPath, text)'), 'Free mock exam sampling remains restricted to the designated free sample');
+assert.ok(questionBank.includes('if (freeOnly) text = sampleFreeCsv(assetPath, text)'), 'Free Reviewer sampling remains restricted to the designated public free sample');
 assert.ok(mockExam.includes('SUBMIT EXAM'), 'Mock exam requires explicit submission');
 assert.ok(mockExam.includes("window.addEventListener('beforeunload', blockExit)"), 'Mock exam guards accidental exit');
 assert.ok(licenseStore.includes('await applyCachedOfflineEntitlements(userId)'), 'Failed signed-lease refresh restores only the cached lease for the current account');
 assert.ok(app.includes("location.pathname === '/practice/competences' || location.pathname === '/practice'") && app.includes('setupNeedsLicense'), 'Direct Practice All Questions and practice-config URLs are guarded by track entitlement');
-assert.ok(app.includes("setupParams.get('free') === '1' && setupMode !== 'drill'") && app.includes('Free Reviewer and Timed Mock Exam remain available without a purchase.'), 'Only the explicit Free Reviewer route bypasses practice setup licensing');
-assert.ok(app.includes("isMockRunner && currentMode === 'MOCK'") && app.includes("isPracticeQuiz && currentMode === 'PRACTICE'") && !app.includes("isPracticeQuiz && (currentMode === 'PRACTICE' || currentMode === 'DRILL')") && app.includes('const isPermittedFreeRunner = isFreeSession') && practiceStore.includes('authorizeQuestionSetAccess(track, activeQuestions)') && practiceStore.includes("isFreeSession: access === 'free-sample'"), 'Question-runner permits free-sample Free Reviewer and Mock sessions but never free-sample mistake drills');
-assert.ok(practiceStore.includes("mode !== 'MOCK' && !licensed && !isFreeReviewerSession") && practiceStore.includes("mode === 'PRACTICE' && free === true"), 'Practice store blocks unlicensed Practice All Questions and Drill sessions except explicit Free Reviewer');
-assert.ok(practiceStore.includes("mode === 'MOCK' ? !licensed : isFreeReviewerSession"), 'Mock Exam remains usable as a free feature and uses the full pool only for licensed users');
+assert.ok(app.includes("setupParams.get('free') === '1' && setupMode !== 'drill'") && app.includes('Free Reviewer remains available without a purchase. Unlock FULL reviewer to access Timed Mock Exam.'), 'Only the explicit Free Reviewer route bypasses practice setup licensing');
+assert.ok(app.includes("isPracticeQuiz && currentMode === 'PRACTICE'") && !app.includes("isPracticeQuiz && (currentMode === 'PRACTICE' || currentMode === 'DRILL')") && app.includes("const isPermittedFreeRunner = isFreeSession && isPracticeQuiz && currentMode === 'PRACTICE'") && practiceStore.includes('authorizeQuestionSetAccess(track, activeQuestions)') && practiceStore.includes("isFreeSession: access === 'free-sample'"), 'Question runner permits only explicit free-reviewer practice and never free mocks or mistake drills');
+assert.ok(practiceStore.includes("if (!licensed && !isFreeReviewerSession)") && practiceStore.includes("mode === 'PRACTICE' && free === true"), 'Practice store blocks unlicensed Practice All Questions, Drill and Timed Mock Exam except explicit Free Reviewer');
+assert.ok(practiceStore.includes('const isFreeSession = isFreeReviewerSession;') && practiceStore.includes("if (!licensed && !isFreeReviewerSession)"), 'Mock exams require active track access; only explicit Free Reviewer creates a free session');
 assert.ok(practiceConfigScreen.includes('await refreshCachedEntitlements()') && practiceConfigScreen.includes('if (!freeMode && !hasLicense)') && practiceConfigScreen.includes('shuffleChoices, free: freeMode'), 'Practice configuration enforces signed local expiry without repeated network license refresh');
 assert.ok(practiceCompetenceScreen.includes("if (!freeMode && !unlocked)") && practiceCompetenceScreen.includes("openPaywall('Practice')"), 'Practice competence links without the explicit free reviewer flag require a license');
 assert.ok(trackHubScreen.includes("title: 'PRACTICE ALL QUESTIONS'") && trackHubScreen.includes("title: 'QUICK SCAN MODE'") && trackHubScreen.includes("title: 'FLASHCARD REVISION'") && trackHubScreen.includes('locked: !unlocked'), 'Track hub keeps paid practice, Quick Scan and Flashcards locked without the track license');
@@ -954,6 +954,14 @@ assert.ok(
   trackPurchaseDialog.includes('const selection = [{ code: product.code, term }]') &&
   trackPurchaseDialog.includes('navigate(buyNowCheckoutPath(product.code, term))'),
   'Buy Now keeps the selected track and term before Google OAuth and opens only that track in Checkout'
+);
+assert.ok(
+  trackHubScreen.includes("title: 'TIMED MOCK EXAM',\n      audience: 'licensed'") &&
+  mockExam.includes("Timed Mock Exam requires an active license") &&
+  mockExam.includes("if (!accessChecked || !hasMockAccess)") &&
+  practiceStore.includes("if (!licensed && !isFreeReviewerSession)") &&
+  practiceStore.includes("snapshot.mode === 'MOCK' && !licensedForMock"),
+  'Timed Mock Exam is hidden from free tracks and denied on direct URLs, new sessions and resumed attempts'
 );
 assert.ok(
   pendingBuyNow.includes("PENDING_BUY_NOW_KEY = 'hyperion-pending-buy-now-v1'") &&

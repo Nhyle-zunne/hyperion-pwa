@@ -11,6 +11,7 @@ import { usePracticeStore } from '../stores/practiceStore'
 import { getQuestionCountsByTrack, listAvailableCompetences } from '../lib/questionBank'
 import type { QuestionBankCount } from '../lib/questionBank'
 import { useLicenseStore } from '../stores/licenseStore'
+import { useUIStore } from '../stores/uiStore'
 import type { Question, TrackId } from '../types/question'
 
 const TRACK_MAP: Record<string, TrackId> = { oic_nw: 'DECK_OIC_NW', gmdss: 'GMDSS_GOC', engine_ew: 'ENGINE_OIC_EW', deck_mgt: 'DECK_MGT', engine_mgt: 'ENGINE_MGT' }
@@ -124,6 +125,9 @@ export default function MockExamScreen() {
   const trackId = TRACK_MAP[trackParam] || 'DECK_OIC_NW'
   const startSession = usePracticeStore((s) => s.startSession)
   const refreshCachedEntitlements = useLicenseStore((s) => s.refreshCachedEntitlements)
+  const hasMockAccess = useLicenseStore(s => s.entitlementsVerified && (s.isAllAccessUnlocked || s.isTrackUnlocked(trackId)))
+  const openPaywall = useUIStore(s => s.openPaywall)
+  const [accessChecked, setAccessChecked] = useState(false)
   const [stage, setStage] = useState<Stage>(() => {
     const requestedStage = params.get('stage')
     const saved = readMockExamPlan(trackId)
@@ -132,7 +136,6 @@ export default function MockExamScreen() {
     return 'confirm'
   })
   const [questionCounts, setQuestionCounts] = useState<QuestionBankCount[]>([])
-  const [usingFreePool, setUsingFreePool] = useState(true)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [startError, setStartError] = useState('')
@@ -149,6 +152,7 @@ export default function MockExamScreen() {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setAccessChecked(false)
     setQuestionCounts([])
     setLoadError('')
     setStartError('')
@@ -158,21 +162,28 @@ export default function MockExamScreen() {
       // endpoint independently enforces server-side access where required.
       await refreshCachedEntitlements()
       const licenseState = useLicenseStore.getState()
-      const hasTrackAccess = licenseState.isAllAccessUnlocked || licenseState.isTrackUnlocked(trackId)
-      const freeOnly = !hasTrackAccess
-      const counts = await getQuestionCountsByTrack(trackId, freeOnly)
+      const licensed = licenseState.entitlementsVerified && (licenseState.isAllAccessUnlocked || licenseState.isTrackUnlocked(trackId))
+      if (!licensed) {
+        if (cancelled) return
+        setLoadError('Timed Mock Exam requires an active license for this track.')
+        setAccessChecked(true)
+        setLoading(false)
+        return
+      }
+      const counts = await getQuestionCountsByTrack(trackId, false)
       if (cancelled) return
-      setUsingFreePool(freeOnly)
       setQuestionCounts(counts)
+      setAccessChecked(true)
       setLoading(false)
     })().catch((error: unknown) => {
       if (cancelled) return
       setLoadError(error instanceof Error ? error.message : 'Could not load the question-bank inventory. Please retry.')
+      setAccessChecked(true)
       setLoading(false)
     })
 
     return () => { cancelled = true }
-  }, [trackId, refreshCachedEntitlements])
+  }, [trackId, refreshCachedEntitlements, hasMockAccess])
 
   const competences = listAvailableCompetences(trackId)
   const competenceCounts = useMemo(() => {
@@ -215,7 +226,7 @@ export default function MockExamScreen() {
     current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
 
   const proceedToCompetences = () => {
-    if (!selectedFunctions.length) return
+    if (!hasMockAccess || !selectedFunctions.length) return
     const plan: MockExamPlan = {
       trackId,
       trackParam,
@@ -240,6 +251,10 @@ export default function MockExamScreen() {
     navigate('/mock?track=' + encodeURIComponent(trackParam) + '&stage=results', { replace: true })
   }
   const start = async (competenceId: string) => {
+    if (!hasMockAccess) {
+      setStartError('Timed Mock Exam requires an active license for this track.')
+      return
+    }
     const availableCount = competenceCounts.get(competenceId) || 0
     const examItemCount = mockExamItemCount(trackId, competenceId)
     setStartError('')
@@ -277,6 +292,21 @@ export default function MockExamScreen() {
   const secondaryButton: React.CSSProperties = { minHeight: 48, padding: '0.7rem 1rem', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontWeight: 800, cursor: 'pointer' }
   const primaryButton: React.CSSProperties = { ...secondaryButton, borderColor: 'var(--accent)', background: 'var(--accent)', color: 'var(--bg)' }
 
+  if (!accessChecked || !hasMockAccess) {
+    return <div className="screen mock-exam-screen" style={{ padding: '2rem 1rem', maxWidth: 680, margin: '0 auto' }}>
+      <button type="button" className="btn btn-outline" onClick={() => navigate('/track?track=' + encodeURIComponent(trackParam))}>← Back to Track</button>
+      <section className="card" role="status" style={{ marginTop: 16, textAlign: 'center' }}>
+        <h1>Timed Mock Exam</h1>
+        {accessChecked
+          ? <>
+            <p>An active license for {TRACK_LABELS[trackId]} is required. Free Reviewer is available from your track page.</p>
+            <button type="button" className="btn btn-primary" onClick={() => openPaywall('Timed Mock Exam · Full reviewer access')}>Unlock FULL reviewer</button>
+          </>
+          : <p>Checking your track license…</p>}
+      </section>
+    </div>
+  }
+
   return (
     <div className="screen mock-exam-screen" style={{ paddingBottom: '2rem', minHeight: 'calc(100dvh - 64px)', background: 'var(--bg)', color: 'var(--text)' }}>
       <button type="button" onClick={() => navigate('/track?track=' + trackParam)} style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>← Back to Track</button>
@@ -290,7 +320,7 @@ export default function MockExamScreen() {
           <h2 style={{ marginTop: 0 }}>EXAMINATION PROTOCOL</h2>
           <p style={{ color: 'var(--text-muted)' }}>Choose the functions to include, then select a competence to begin. The timer runs only while answering that competence.</p>
           <p>{loading ? 'Checking question access and loading counts…' : loadError ? loadError : questionCounts.reduce((sum, item) => sum + item.count, 0).toLocaleString() + ' eligible questions across ' + competences.length + ' competences.'}</p>
-          {!loading && !loadError && <p style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>{usingFreePool ? 'Using the eligible free question sample for this track.' : 'Using the full question bank for your active track license.'}</p>}
+          {!loading && !loadError && <p style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>Using the full question bank for your active track license.</p>}
           {!!loadError && <button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Retry</button>}
           <button type="button" className="btn btn-primary" disabled={loading || !!loadError} onClick={() => setStage('confirm')} style={{ width: '100%' }}>START OFFICIAL TIMED MOCK EXAM</button>
         </div>
@@ -439,6 +469,7 @@ export function MockExamRunner() {
   const sessionError = usePracticeStore(s => s.error)
   const restoreSavedProgress = usePracticeStore(s => s.restoreSavedProgress)
   const { questions, answers, finished, timeLeftSec, selectMockAnswer, finish, tick, score, reset, track, competenceId, mode, isFreeSession } = usePracticeStore()
+  const entitledForMockSession = useLicenseStore(s => s.entitlementsVerified && (s.isAllAccessUnlocked || (track != null && s.isTrackUnlocked(track))))
 
   useEffect(() => {
     // Mock exams, like normal practice, must restore their own saved session.
@@ -454,10 +485,10 @@ export function MockExamRunner() {
   const completionSavedRef = useRef(false)
 
   useEffect(() => {
-    if (finished) return
+    if (finished || !entitledForMockSession) return
     const timer = window.setInterval(() => tick(), 1000)
     return () => window.clearInterval(timer)
-  }, [finished, tick])
+  }, [finished, tick, entitledForMockSession])
 
   useEffect(() => {
     const handleTextScale = (event: Event) => {
@@ -534,6 +565,12 @@ export function MockExamRunner() {
     navigate('/mock?track=' + encodeURIComponent(plan.trackParam) + '&stage=competences', { replace: true })
   }, [finished, mode, track, competenceId, questions, answers, score, navigate])
 
+  if (track && !entitledForMockSession) {
+    return <div className="screen mock-exam-runner" role="alert">
+      <p>Timed Mock Exam requires an active license for this track. Your saved session remains available if you renew.</p>
+      <button type="button" className="btn btn-outline" onClick={() => navigate('/track')}>Back to Tracks</button>
+    </div>
+  }
   if (requestedSessionId && activeSessionId === requestedSessionId && questions.length > 0 && mode !== 'MOCK') {
     return <div className="screen mock-exam-runner" role="alert">
       <p>This saved session is not a mock exam. Open History to resume it in the correct practice view.</p>

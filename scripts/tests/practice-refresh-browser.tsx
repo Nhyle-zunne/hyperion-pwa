@@ -20,7 +20,10 @@ useLicenseStore.setState({
   entitlementsVerified: true,
   isAllAccessUnlocked: true,
   cloudTrackIds: ['ALL'],
-  refreshCloudEntitlements: async () => {}
+  refreshCloudEntitlements: async () => {},
+  // This fixture models an already verified All Access account. Do not
+  // replace its synthetic entitlement with an unrelated real offline cache.
+  refreshCachedEntitlements: async () => {}
 })
 function makeQuestion(track: TrackId, id: string, text: string, competenceId = 'C1'): Question {
   return {
