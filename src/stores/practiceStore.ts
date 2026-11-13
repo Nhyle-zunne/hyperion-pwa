@@ -300,8 +300,8 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       set({ loading: false, error: 'These saved questions are no longer available for this account. Renew the track license or use the free reviewer sample.' });
       return false;
     }
-    if ((mode === 'DRILL' || mode === 'MOCK') && access === 'free-sample') {
-      set({ loading: false, error: 'Drill and Timed Mock Exam require an active track license. Your saved questions are preserved.' });
+    if (mode === 'DRILL' && access === 'free-sample') {
+      set({ loading: false, error: 'Drill requires an active track license. Your saved questions are preserved.' });
       return false;
     }
     let selected = randomizeOrder ? shuffle(activeQuestions) : [...activeQuestions];
