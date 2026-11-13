@@ -486,10 +486,9 @@ export default function App() {
     if (isQuestionRunner && (sessionLoading || sessionQuestionCount === 0)) return
     const allowed = entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
     if (allowed) return
-    const isPermittedFreeRunner = isFreeSession && (
-      (isMockRunner && currentMode === 'MOCK') ||
-      (isPracticeQuiz && currentMode === 'PRACTICE')
-    )
+    // Only Free Reviewer practice sessions may continue without a paid track.
+    // Mock Exam is never a free runner, including old saved free-mock sessions.
+    const isPermittedFreeRunner = isFreeSession && isPracticeQuiz && currentMode === 'PRACTICE'
     if (isQuestionRunner && isPermittedFreeRunner) return
     const trackParam: Record<string, string> = {
       DECK_OIC_NW: 'oic_nw', GMDSS_GOC: 'gmdss', ENGINE_OIC_EW: 'engine_ew',
