@@ -300,8 +300,8 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       set({ loading: false, error: 'These saved questions are no longer available for this account. Renew the track license or use the free reviewer sample.' });
       return false;
     }
-    if (mode === 'DRILL' && access === 'free-sample') {
-      set({ loading: false, error: 'Drill requires an active track license. Your saved questions are preserved.' });
+    if ((mode === 'DRILL' || mode === 'MOCK') && access === 'free-sample') {
+      set({ loading: false, error: 'Drill and Timed Mock Exam require an active track license. Your saved questions are preserved.' });
       return false;
     }
     let selected = randomizeOrder ? shuffle(activeQuestions) : [...activeQuestions];
@@ -360,17 +360,17 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       const licensed = lic.isAllAccessUnlocked || lic.cloudTrackIds.includes('ALL') || lic.isTrackUnlocked(track);
       // Only the explicitly launched Free Reviewer may use a free pool in PRACTICE mode.
       // Drill and full Practice All Questions always require an active track entitlement.
-      if (mode !== 'MOCK' && !licensed && !isFreeReviewerSession) {
+      if (!licensed && !isFreeReviewerSession) {
         set({
           loading: false,
           sessionId: null,
           questions: [],
           isFreeSession: false,
-          error: 'An active license is required for Practice All Questions and Drill. Use Free Reviewer or Timed Mock Exam for free access.'
+          error: 'An active license is required for Practice All Questions, Drill and Timed Mock Exam. Use Free Reviewer or unlock this track.'
         });
         return;
       }
-      const isFreeSession = mode === 'MOCK' ? !licensed : isFreeReviewerSession;
+      const isFreeSession = isFreeReviewerSession;
       if (!competenceId) {
         set({ loading: false, sessionId: null, questions: [], error: 'Select a competence before starting practice.' });
         return;
@@ -653,8 +653,11 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
         // service; offline resumes require a valid signed owner-bound lease.
         await useLicenseStore.getState().refreshCachedEntitlements();
         const access = await authorizeQuestionSetAccess(snapshot.track, snapshot.questions);
-        if (!access) {
-          set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample.' });
+        const licenseState = useLicenseStore.getState();
+        const licensedForMock = licenseState.entitlementsVerified &&
+          (licenseState.isAllAccessUnlocked || licenseState.isTrackUnlocked(snapshot.track));
+        if (!access || (snapshot.mode === 'MOCK' && !licensedForMock)) {
+          set({ questions: [], answers: {}, currentIndex: 0, track: null, competenceId: null, part: null, isFreeSession: false, sessionId: null, loading: false, error: 'These saved questions require an active license unless they are part of the free reviewer sample. Timed Mock Exam always requires an active license.' });
           return false;
         }
         set({
