@@ -93,6 +93,73 @@ try {
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Free-mode cards do not overflow ' + width)
     }
   })
+  await scenario('Bond Store popup shares exact banner artwork, nine benefits and plan controls across tracks', async ({ page, open }) => {
+    await open('hub')
+    await page.evaluate(() => window.hubFixture.setLicenses([]))
+    const tracks = [
+      ['oic_nw', 'Deck OIC-NW', 'DECK · OPERATIONAL', [29, 79, 499], 3],
+      ['gmdss', 'GMDSS GOC', 'GMDSS · RADIO', [25, 59, 399], 2],
+      ['engine_ew', 'Engine OIC-EW', 'ENGINE · OPERATIONAL', [29, 79, 499], 3],
+      ['deck_mgt', 'Deck Management', 'DECK · MANAGEMENT', [59, 149, 999], 3],
+      ['engine_mgt', 'Engine Management', 'ENGINE · MANAGEMENT', [59, 149, 999], 3],
+    ]
+    for (const [code, label, caption, prices, symbols] of tracks) {
+      await page.evaluate(key => window.hubFixture.goTrack(key), code)
+      await page.waitForFunction(() => document.querySelector('.hub-mode-card h3')?.textContent === 'Unlock FULL reviewer' ||
+        document.querySelectorAll('.hub-mode-card').length === 3)
+      await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+      const dialog = page.getByRole('dialog', { name: label })
+      await dialog.waitFor()
+      assert.equal(await dialog.locator('.product-art .store-banner-symbol').count(), symbols, label + ' reuses the original cropped Bond Store artwork')
+      const logoStyle = await dialog.locator('.store-banner-symbol').first().evaluate(el => getComputedStyle(el).backgroundImage)
+      assert(logoStyle.includes('/store-art/hyperion-banner-sprite.png'), label + ' points to the identical Bond Store sprite asset')
+      assert((await dialog.locator('.product-art').innerText()).includes(caption), label + ' uses the matching category caption')
+      assert.equal(await dialog.locator('.store-benefits-list li').count(), 9, label + ' contains all nine Bond Store premium benefits')
+      assert.equal(await dialog.getByRole('button', { name: 'See all 9 premium features' }).count(), 1, label + ' offers the same reveal control')
+      for (const [i, duration] of ['Weekly', 'Monthly', 'Yearly'].entries()) {
+        const option = dialog.getByRole('button', { name: label + ' ' + duration + ' ₱' + prices[i] })
+        await option.click()
+        assert.equal(await option.getAttribute('aria-pressed'), 'true', duration + ' selection tracks on ' + label)
+        assert((await dialog.locator('.product-price').innerText()).includes('₱' + prices[i]), duration + ' price matches Bond Store on ' + label)
+      }
+      await dialog.getByRole('button', { name: 'See all 9 premium features' }).click()
+      assert.equal(await dialog.getByRole('button', { name: 'Show fewer features ↑' }).getAttribute('aria-expanded'), 'true')
+      const benefitsHeight = await dialog.locator('.store-benefits-list').evaluate(el => el.getBoundingClientRect().height)
+      assert(benefitsHeight > 100, 'Expanded benefits are not clipped inside ' + label)
+      await dialog.getByRole('button', { name: 'Show fewer features ↑' }).click()
+      await dialog.getByRole('button', { name: 'Close purchase dialog' }).click()
+      await dialog.waitFor({ state: 'hidden' })
+    }
+    await page.evaluate(key => window.hubFixture.goTrack(key), 'oic_nw')
+    for (const [width, height] of [[320, 640], [390, 844], [768, 900], [1280, 800]]) {
+      await page.setViewportSize({ width, height })
+      await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+      const dialog = page.getByRole('dialog', { name: 'Deck OIC-NW' })
+      const rect = await dialog.evaluate(el => {
+        const r = el.getBoundingClientRect()
+        return { x: r.x, y: r.y, width: r.width, height: r.height }
+      })
+      assert(rect.x >= -1 && rect.x + rect.width <= width + 1 && rect.y >= -1 && rect.y + rect.height <= height + 1, 'Modal fits ' + width + '×' + height)
+      const buy = dialog.getByRole('button', { name: 'BUY NOW' })
+      assert(await buy.isVisible(), 'Buy Now is visible at ' + width)
+      const bounds = await buy.boundingBox()
+      assert(bounds && bounds.y >= 0 && bounds.y + bounds.height <= height + 1, 'Buy Now is within viewport at ' + width)
+      await dialog.getByRole('button', { name: 'See all 9 premium features' }).click()
+      assert(await buy.isVisible(), 'CTA remains available with all perks expanded on ' + width)
+      const grownBounds = await buy.boundingBox()
+      assert(grownBounds && grownBounds.y + grownBounds.height <= height + 1, 'Expanded perks cannot push Buy Now off-screen at ' + width)
+      await dialog.getByRole('button', { name: 'Close purchase dialog' }).click()
+    }
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.getByRole('button', { name: 'Unlock FULL reviewer' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Deck OIC-NW' })
+    await dialog.getByRole('button', { name: 'Deck OIC-NW Monthly ₱79' }).click()
+    await dialog.getByRole('button', { name: 'BUY NOW' }).click()
+    await page.getByTestId('hub-destination').waitFor()
+    assert.equal(await page.getByTestId('hub-destination').innerText(), '/checkout?buy_product=oic_nw&buy_term=month')
+    const basket = await page.evaluate(() => JSON.parse(localStorage.getItem('hyperion-account-basket-v1') || '[]'))
+    assert.deepEqual(basket, [{ code: 'oic_nw', term: 'month' }], 'Popup checkout retains selected product and price term')
+  })
   await scenario('Transient download has Retry, accessible portal zoom and Escape focus return', async ({ page, open, transient }) => {
     transient(); await open('gallery')
     await page.getByRole('alert').waitFor()
