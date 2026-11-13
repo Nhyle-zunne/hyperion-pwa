@@ -84,6 +84,16 @@ try {
     assert.equal(await page.getByAltText('Synthetic explanation diagram', { exact: true }).count(), 0)
   })
 
+  await scenario('Image-only prompt survives saved reload and renders in mock without a text stem', async ({ page }) => {
+    await page.goto(`${base}?screen=mock&promptOnly=1`)
+    await page.waitForFunction(() => !!window.mediaFixture)
+    await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()
+    assert.equal(await page.getByAltText('Synthetic explanation diagram', { exact: true }).count(), 0)
+    const refs = await page.evaluate(() => window.mediaFixture.savedRefs())
+    assert.equal(refs.bookmarks?.length, 2)
+    assert.equal(refs.vault?.length, 2)
+    assert.equal(await page.getByText('Synthetic vessel diagram question?', { exact: true }).count(), 0)
+  })
   await scenario('Flashcard diagrams respect prompt/reveal and image tap does not flip', async ({ page, open }) => {
     await open('flashcards', true); await page.getByRole('button', { name: /All questions/ }).click()
     await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()

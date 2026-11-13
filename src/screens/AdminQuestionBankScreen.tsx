@@ -478,8 +478,9 @@ export default function AdminQuestionBankScreen() {
           </div>
           {selectedEditorQuestion && editorDraft && <div style={{ display: 'grid', gap: 9, minWidth: 0 }}>
             <strong>Question #{selectedEditorQuestion.ordinal}</strong>
-            <label>Question text<textarea value={editorDraft.questionText} rows={3} onChange={event => updateEditorDraft({ ...editorDraft, questionText: event.target.value })}
+            <label>Question text<textarea aria-label="Question text" value={editorDraft.questionText} rows={3} onChange={event => updateEditorDraft({ ...editorDraft, questionText: event.target.value })}
               style={{ width: '100%', marginTop: 4, color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} /></label>
+            <p style={secondaryText}>Question text can be left blank when an image is attached below the question.</p>
             {editorDraft.options.map((option, index) => <label key={index} style={{ display: 'grid' }}>Choice {String.fromCharCode(65 + index)}
               <textarea rows={2} value={option} onChange={event => updateEditorDraft({ ...editorDraft, options: editorDraft.options.map((value, i) => i === index ? event.target.value : value) })}
                 style={{ color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} />

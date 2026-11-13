@@ -16,7 +16,7 @@ import {
 import { fingerprintQuestion } from './questionFingerprint.mjs';
 import { planSmartBankReuse } from './smartBankDownloadPlan.mjs';
 import { parseCsvText } from './csvParser';
-import { parseQuestionImageRefsFromCsv } from './questionMedia';
+import { hasQuestionPrompt, parseQuestionImageRefsFromCsv } from './questionMedia';
 import type { Question, TrackId, Difficulty } from '../types/question';
 import { activeToPublishedC10Position, requiresC10ActivePositionMapping, selectActiveQuestions, visibleCompetenceCount } from './retiredQuestions';
 
@@ -398,13 +398,14 @@ function parseStandardRows(
     const optD = row[5].trim();
     const ansStr = row[6].trim();
 
+    const imageAttachments = parseQuestionImageRefsFromCsv(rows[headerIdx] || [], row);
     const qNoInt = parseInt(qNo, 10);
-    const isHeader = qText.toLowerCase() === 'question' || !qText;
+    const isHeader = qText.toLowerCase() === 'question';
     const isDummy = optA === 'A' && optB === 'B' && optC === 'C' && optD === 'D';
-    if (!qNoInt || qNoInt <= 0 || isHeader || isDummy) continue;
+    if (!qNoInt || qNoInt <= 0 || isHeader || (isDummy && !!qText)) continue;
 
     const options = [optA, optB, optC, optD].filter((o) => o.length > 0);
-    if (!qText || options.length < 2) continue;
+    if (!hasQuestionPrompt(qText, imageAttachments) || options.length < 2) continue;
 
     const ansIdx = Math.min(mapAnswer(ansStr), options.length - 1);
     const topic =
@@ -412,7 +413,6 @@ function parseStandardRows(
         ? src.topics[(validIndex - 1) % src.topics.length]
         : src.title;
     const explanation = row.length > 7 ? row[7].trim() : '';
-    const imageAttachments = parseQuestionImageRefsFromCsv(rows[headerIdx] || [], row);
 
     list.push({
       id: `${src.idPrefix}-${String(validIndex).padStart(3, '0')}`,
@@ -443,7 +443,7 @@ function pushGmdssQuestion(
   isRetired = false,
   imageAttachments = [] as Question['imageAttachments']
 ) {
-  if (!qText || qText.toLowerCase() === 'question' || options.length < 2) return;
+  if (!hasQuestionPrompt(qText, imageAttachments) || qText.toLowerCase() === 'question' || options.length < 2) return;
   let ansIdx = mapAnswer(ansStr);
   if (ansIdx >= options.length) ansIdx = 0;
   const validIndex = list.length + 1;
@@ -473,7 +473,7 @@ function parseGmdssRows(
   const statusIndex = (rows[headerIdx] || []).findIndex(cell => cell.trim().toUpperCase() === 'HYPERION_STATUS');
 
   // Multi-line files: one question per row after header
-  if (rows.length > 3) {
+  if (rows.length > 3 || (rows[headerIdx] || []).some(cell => cell.trim().toLowerCase() === 'option1')) {
     for (let i = headerIdx + 1; i < rows.length; i++) {
       const row = rows[i];
       if (row.length < 10) continue;

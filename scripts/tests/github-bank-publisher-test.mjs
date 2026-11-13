@@ -100,3 +100,13 @@ assert.equal(toSearchQuestions(c1,reconcileC1Explanations(oldC1,changedOptions).
 assert.equal(reconcileC1Explanations(oldC1,oldC1).preserved,0,'explicit unchanged explanations stay untouched')
 
 console.log('PASS: question positions and C1 explanations are preserved; accidental image removal and malformed media are rejected; explicit image removal and legacy banks remain supported.')
+
+// Blank stems with answer labels still identify distinct scans by their prompt media.
+const scannedCsv=(refs)=>'No,Question,A,B,C,D,Ans,Explanation,HYPERION_MEDIA\n'+refs.map((ref,index)=>`${index+1},,A,B,C,D,A,,${encodeCell(JSON.stringify([ref]))}`).join('\n')
+const otherScan={...imageRef,sha256:'b'.repeat(64)}
+const scans=scannedCsv([imageRef,otherScan])
+assert.equal(validateQuestionChanges(path,scans,scans).changed,0)
+assert.throws(()=>validateQuestionChanges(path,scans,scannedCsv([otherScan,imageRef])),/reorder|position/i,
+  'different image-only questions must not be silently swapped')
+assert.equal(validateQuestionChanges(path,scans,scannedCsv([{...imageRef,sha256:'c'.repeat(64)},otherScan])).changed,1,
+  'correcting a single diagram in place remains supported')

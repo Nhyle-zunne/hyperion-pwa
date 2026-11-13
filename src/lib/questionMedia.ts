@@ -31,6 +31,11 @@ export function validQuestionImageRef(value: unknown): value is QuestionImageRef
     row.alt.length <= 160 && !/[\x00-\x1F\x7F]/.test(row.alt)
 }
 
+/** A prompt can be text, or a valid image displayed with the question. */
+export function hasQuestionPrompt(text: string, refs: QuestionImageRef[] = []): boolean {
+  return !!text.trim() || (refs.every(validQuestionImageRef) && refs.some(ref => ref.placement === 'question'))
+}
+
 export function parseQuestionImageRefs(raw: unknown): QuestionImageRef[] {
   if (typeof raw !== 'string' || raw.length > 2048 || raw.trim() === '') return []
   let value: unknown

@@ -118,6 +118,7 @@ try {
   await imageDescription.fill('Cooling diagram')
   await imagePicker.setInputFiles({ name: 'engine-diagram.png', mimeType: 'image/png', buffer: png })
   await editorPage.getByText('Question · Cooling diagram', { exact: false }).waitFor()
+  await editorPage.getByLabel('Question text', { exact: true }).fill('')
   await editorPage.getByLabel('Explanation').fill('Better cooling explanation')
   await queueButton.click()
   assert.match(await actionFeedback.innerText(), /apply.*(first|edit)/i, 'Unsaved form inputs cannot silently publish stale edited text')
@@ -137,6 +138,7 @@ try {
   await editorPage.getByRole('heading', { name: 'Review before publishing' }).waitFor()
   assert.deepEqual(editorApiCalls.filter(a => a === 'validate'), ['validate'], 'Validation is a distinct deliberate step')
   assert.match(editorValidatedFiles[0].content, /HYPERION_MEDIA/, 'Queued CSV includes attachment column')
+  assert.match(editorValidatedFiles[0].content, /1,,Prevent corrosion/, 'Question stem remains genuinely empty in the queued CSV')
   assert.match(editorValidatedFiles[0].content, /Cooling diagram/, 'Uploaded image metadata survives apply, queue and validation')
   assert.equal(editorApiCalls.includes('publish'), false)
   for (const width of [1531, 390]) {
