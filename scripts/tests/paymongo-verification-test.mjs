@@ -4,17 +4,21 @@ import { createRequire } from 'node:module'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { createHmac, webcrypto } from 'node:crypto'
+import { isAcceptedStoredPrice } from '../../supabase/functions/_shared/paymentPrices.mjs'
 const require = createRequire(import.meta.url)
 const owner='11111111-1111-4111-8111-111111111111', other='22222222-2222-4222-8222-222222222222'
 const reference='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const compile=name=>ts.transpileModule(readFileSync(new URL('../../supabase/functions/'+name+'/index.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText
 const originalFetch=globalThis.fetch
 const flush=async()=>{for(let i=0;i<40;i++)await Promise.resolve()}
-function fixture(batch=false) {
+function fixture(batch=false, priceSchedule='legacy') {
   const state={batch,owner,authFails:false,status:'pending',providerPaid:false,providerStatus:200,providerError:false,hold:false,timeout:false,wrongMode:false,wrongAmount:false,wrongSession:false,rpcFail:false,time:0,providerReads:0,authReads:0,dbReads:0,rpcCalls:0,grants:0,release:undefined,timeoutMs:undefined}
-  const order={id:reference,user_id:owner,product_code:'oic_nw',track_id:'DECK_OIC_NW',currency:'PHP',license_term:'year',amount_php:350,payment_method:'PayMongo Checkout',paymongo_checkout_session_id:'cs_fixture',customer_name:null,customer_company:null,customer_school:null}
-  const basket={id:reference,user_id:owner,product_codes:['oic_nw','gmdss'],license_terms:['year','month'],amount_php:390,payment_method:'PayMongo Checkout',paymongo_checkout_session_id:'cs_fixture'}
-  const session=()=>({id:state.wrongSession?'cs_other':'cs_fixture',attributes:{livemode:state.wrongMode,reference_number:reference,metadata:batch?{batch_id:reference,order_id:reference,user_id:owner,product_codes:'oic_nw,gmdss',product_terms:'oic_nw:year,gmdss:month'}:{order_id:reference,user_id:owner,product_code:'oic_nw',license_term:'year'},payments:state.providerPaid?[{id:'pay_fixture',attributes:{status:'paid',currency:'PHP',amount:state.wrongAmount?1:(batch?39000:35000),source:{type:'gcash'}}}]:[]}})
+  const amountOic=priceSchedule==='current'?499:350
+  const amountGmdss=priceSchedule==='current'?59:40
+  const basketTotal=amountOic+amountGmdss
+  const order={id:reference,user_id:owner,product_code:'oic_nw',track_id:'DECK_OIC_NW',currency:'PHP',license_term:'year',amount_php:amountOic,payment_method:'PayMongo Checkout',paymongo_checkout_session_id:'cs_fixture',customer_name:null,customer_company:null,customer_school:null}
+  const basket={id:reference,user_id:owner,product_codes:['oic_nw','gmdss'],license_terms:['year','month'],amount_php:basketTotal,payment_method:'PayMongo Checkout',paymongo_checkout_session_id:'cs_fixture'}
+  const session=()=>({id:state.wrongSession?'cs_other':'cs_fixture',attributes:{livemode:state.wrongMode,reference_number:reference,metadata:batch?{batch_id:reference,order_id:reference,user_id:owner,product_codes:'oic_nw,gmdss',product_terms:'oic_nw:year,gmdss:month'}:{order_id:reference,user_id:owner,product_code:'oic_nw',license_term:'year'},payments:state.providerPaid?[{id:'pay_fixture',attributes:{status:'paid',currency:'PHP',amount:state.wrongAmount?1:(batch?basketTotal:amountOic)*100,source:{type:'gcash'}}}]:[]}})
   const releases=[]
   const fetchMock=async(input,init)=>{
     const req=new Request(input,init),url=new URL(req.url)
@@ -32,7 +36,7 @@ function fixture(batch=false) {
     state.dbReads++
     if(url.pathname.endsWith('/checkout_batches'))return json(batch&&url.searchParams.get('id')==='eq.'+reference&&(!url.searchParams.has('user_id')||url.searchParams.get('user_id')==='eq.'+owner)?{...basket,status:state.status}:null)
     if(url.pathname.endsWith('/orders')) {
-      if(url.searchParams.has('checkout_batch_id'))return json([{...order,checkout_batch_id:reference},{...order,id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',product_code:'gmdss',track_id:'GMDSS_GOC',license_term:'month',amount_php:40,checkout_batch_id:reference}])
+      if(url.searchParams.has('checkout_batch_id'))return json([{...order,checkout_batch_id:reference},{...order,id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',product_code:'gmdss',track_id:'GMDSS_GOC',license_term:'month',amount_php:amountGmdss,checkout_batch_id:reference}])
       return json(!batch&&url.searchParams.get('id')==='eq.'+reference&&(!url.searchParams.has('user_id')||url.searchParams.get('user_id')==='eq.'+owner)?{...order,status:state.status}:null)
     }
     if(url.pathname.endsWith('/rpc/finalize_paymongo_checkout')) {
@@ -48,7 +52,7 @@ function fixture(batch=false) {
   const env={SUPABASE_URL:'http://fixture.invalid',SUPABASE_ANON_KEY:'fixture-anon',SUPABASE_SERVICE_ROLE_KEY:'fixture-service',PAYMONGO_SECRET_KEY:'sk_test_fixture',PAYMONGO_EXPECT_LIVEMODE:'false',PAYMONGO_TEST_WEBHOOK_SECRET:'whsec_fixture'}
   const handlers={}
   for(const name of ['verify-checkout','paymongo-webhook']) {
-    const context={require:name=>require(name.replace('npm:','').replace('@2','')),exports:{},Deno:{env:{get:key=>env[key]},serve:fn=>{handlers[name]=fn}},fetch:fetchMock,Request,Response,Headers,TextEncoder,TextDecoder,Blob,URL,crypto:webcrypto,btoa,console:{info(){},warn(){},error(){}},performance:{now:()=>state.time},AbortSignal:{timeout:ms=>{state.timeoutMs=ms;if(!state.timeout)return AbortSignal.timeout(ms);const controller=new AbortController();setTimeout(()=>controller.abort(Error('Synthetic timeout')),0);return controller.signal}},setTimeout,clearTimeout}
+    const context={require:name=>name==='../_shared/paymentPrices.mjs'?{isAcceptedStoredPrice}:require(name.replace('npm:','').replace('@2','')),exports:{},Deno:{env:{get:key=>env[key]},serve:fn=>{handlers[name]=fn}},fetch:fetchMock,Request,Response,Headers,TextEncoder,TextDecoder,Blob,URL,crypto:webcrypto,btoa,console:{info(){},warn(){},error(){}},performance:{now:()=>state.time},AbortSignal:{timeout:ms=>{state.timeoutMs=ms;if(!state.timeout)return AbortSignal.timeout(ms);const controller=new AbortController();setTimeout(()=>controller.abort(Error('Synthetic timeout')),0);return controller.signal}},setTimeout,clearTimeout}
     vm.runInNewContext(compile(name),context)
   }
   const verify=()=>handlers['verify-checkout'](new Request('http://fixture.invalid/verify-checkout',{method:'POST',headers:{Authorization:'Bearer fixture','Content-Type':'application/json'},body:JSON.stringify({orderId:reference})}))
@@ -104,6 +108,14 @@ try {
   f=fixture(true);f.state.providerPaid=true
   assert.equal((await f.verify()).status,200);assert.equal((await f.webhook()).status,200);assert.equal((await f.webhook()).status,200)
   assert.equal(f.state.grants,1,'Basket replay remains idempotent')
+  for (const priceSchedule of ['legacy', 'current']) {
+    f=fixture(false, priceSchedule);f.state.providerPaid=true
+    assert.equal((await f.verify()).status,200, `${priceSchedule} single-track paid order verifies`)
+    assert.equal((await f.webhook()).status,200, `${priceSchedule} single-track paid order webhook replays safely`)
+    f=fixture(true, priceSchedule);f.state.providerPaid=true
+    assert.equal((await f.verify()).status,200, `${priceSchedule} basket paid order verifies`)
+    assert.equal((await f.webhook()).status,200, `${priceSchedule} basket webhook replays safely`)
+  }
   f=fixture();f.state.providerPaid=true
   assert.equal((await f.webhook({invalid:true})).status,401)
   assert.equal((await f.webhook({stale:true})).status,401)
