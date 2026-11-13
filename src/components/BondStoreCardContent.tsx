@@ -56,15 +56,16 @@ interface Props {
   term: LicenseTerm
   onTermChange: (term: LicenseTerm) => void
   disabled?: boolean
-  expanded: boolean
-  onToggleBenefits: (event: MouseEvent<HTMLButtonElement>) => void
+  expanded?: boolean
+  onToggleBenefits?: (event: MouseEvent<HTMLButtonElement>) => void
+  showAllBenefits?: boolean
   benefitsId: string
   headingId?: string
   headingLevel?: 'h2' | 'h3'
 }
 
 export default function BondStoreCardContent({
-  product, term, onTermChange, disabled = false, expanded, onToggleBenefits, benefitsId,
+  product, term, onTermChange, disabled = false, expanded = false, onToggleBenefits, showAllBenefits = false, benefitsId,
   headingId, headingLevel = 'h3',
 }: Props) {
   const title = headingLevel === 'h2'
@@ -102,9 +103,9 @@ export default function BondStoreCardContent({
     <ul className="store-benefits-list" id={benefitsId} aria-label={`Premium features for ${product.label}`}>
       {BOND_STORE_FEATURES.map(feature => <li key={feature}>{feature}</li>)}
     </ul>
-    <button
+    {!showAllBenefits && onToggleBenefits && <button
       type="button" className="store-benefits-toggle" aria-controls={benefitsId}
       aria-expanded={expanded} onClick={onToggleBenefits}
-    >{expanded ? 'Show fewer features ↑' : 'See all 9 premium features ↓'}</button>
+    >{expanded ? 'Show fewer features ↑' : 'See all 9 premium features ↓'}</button>}
   </>
 }

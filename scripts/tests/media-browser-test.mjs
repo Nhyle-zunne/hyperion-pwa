@@ -148,22 +148,18 @@ try {
       assert(logoStyle.includes('/store-art/hyperion-banner-sprite.png'), label + ' points to the identical Bond Store sprite asset')
       assert((await dialog.locator('.product-art').innerText()).includes(caption), label + ' uses the matching category caption')
       assert.equal(await dialog.locator('.store-benefits-list li').count(), 9, label + ' contains all nine Bond Store premium benefits')
-      assert.equal(await dialog.getByRole('button', { name: 'See all 9 premium features' }).count(), 1, label + ' offers the same reveal control')
+      assert.equal(await dialog.locator('.store-benefits-toggle').count(), 0, label + ' popup shows all nine premium features without an expand button')
+      const listState = await dialog.locator('.store-benefits-list').evaluate(el => ({ overflow: getComputedStyle(el).overflowY, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }))
+      assert.equal(listState.overflow, 'visible', label + ' list is not clipped by the default collapsed height')
+      assert(listState.scrollHeight <= listState.clientHeight + 2, label + ' all nine benefit rows occupy their full height')
       for (const [i, duration] of ['Weekly', 'Monthly', 'Yearly'].entries()) {
         const option = dialog.getByRole('button', { name: label + ' ' + duration + ' ₱' + prices[i] })
         await option.click()
         assert.equal(await option.getAttribute('aria-pressed'), 'true', duration + ' selection tracks on ' + label)
         assert((await dialog.locator('.product-price').innerText()).includes('₱' + prices[i]), duration + ' price matches Bond Store on ' + label)
       }
-      await dialog.getByRole('button', { name: 'See all 9 premium features' }).click()
-      assert.equal(await dialog.getByRole('button', { name: 'Show fewer features ↑' }).getAttribute('aria-expanded'), 'true')
-      await page.waitForFunction(() => {
-        const list = document.querySelector('.track-purchase-card .store-benefits-list')
-        return list && list.getBoundingClientRect().height > 100
-      })
       const benefitsHeight = await dialog.locator('.store-benefits-list').evaluate(el => el.getBoundingClientRect().height)
-      assert(benefitsHeight > 100, 'Expanded benefits are not clipped inside ' + label)
-      await dialog.getByRole('button', { name: 'Show fewer features ↑' }).click()
+      assert(benefitsHeight > 100, 'All nine benefits are visible by default inside ' + label)
       await dialog.getByRole('button', { name: 'Close purchase dialog' }).click()
       await dialog.waitFor({ state: 'hidden' })
     }
@@ -182,10 +178,7 @@ try {
       assert(await buy.isVisible(), 'Buy Now is visible at ' + width)
       const bounds = await buy.boundingBox()
       assert(bounds && bounds.y >= 0 && bounds.y + bounds.height <= height + 1, 'Buy Now is within viewport at ' + width)
-      await dialog.getByRole('button', { name: 'See all 9 premium features' }).click()
-      assert(await buy.isVisible(), 'CTA remains available with all perks expanded on ' + width)
-      const grownBounds = await buy.boundingBox()
-      assert(grownBounds && grownBounds.y + grownBounds.height <= height + 1, 'Expanded perks cannot push Buy Now off-screen at ' + width)
+      assert(await buy.isVisible(), 'CTA remains available with all nine visible by default at ' + width)
       // Verify ALL nine features can be read, not merely present in the DOM.
       const details = dialog.locator('.track-purchase-details-scroll')
       const features = dialog.locator('.store-benefits-list')
@@ -194,8 +187,8 @@ try {
         const css = getComputedStyle(el)
         return { overflow: css.overflowY, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }
       })
-      assert.equal(expandedList.overflow, 'visible', 'Expanded feature list never hides overflowing text at ' + width)
-      assert(expandedList.scrollHeight <= expandedList.clientHeight + 2, 'All nine features fit their own list at ' + width)
+      assert.equal(expandedList.overflow, 'visible', 'Default nine-feature list never hides overflowing text at ' + width)
+      assert(expandedList.scrollHeight <= expandedList.clientHeight + 2, 'All nine features fit their own list without expanding at ' + width)
       const lastFeature = features.locator('li').last()
       assert.equal(await lastFeature.innerText(), 'Study history and cross-device progress sync')
       await lastFeature.scrollIntoViewIfNeeded()
@@ -205,12 +198,15 @@ try {
       assert(view && last && action && last.y >= view.y - 2 && last.y + last.height <= view.y + view.height + 2,
         'The ninth feature is readable after scrolling within the modal at ' + width)
       assert(last.y + last.height <= action.y + 2, 'Sticky Buy Now never covers the ninth feature at ' + width)
-      const toggle = dialog.getByRole('button', { name: 'Show fewer features ↑' })
-      await toggle.scrollIntoViewIfNeeded()
-      assert(await toggle.isVisible(), 'Collapse button stays reachable below all nine features at ' + width)
+      assert.equal(await dialog.locator('.store-benefits-toggle').count(), 0, 'No show-more interaction is required at ' + width)
+      if (height >= 800) {
+        const detailsState = await details.evaluate(el => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }))
+        assert(detailsState.scrollHeight <= detailsState.clientHeight + 2,
+          'All plan details and nine features should fit without scrolling at ' + width + '×' + height)
+      }
       const visibleBuy = await buy.boundingBox()
       assert(visibleBuy && visibleBuy.y >= 0 && visibleBuy.y + visibleBuy.height <= height + 1,
-        'Buy Now stays on screen after scrolling through all nine features at ' + width)
+        'Buy Now stays on screen after checking all nine features at ' + width)
       await dialog.getByRole('button', { name: 'Close purchase dialog' }).click()
     }
     await page.setViewportSize({ width: 390, height: 844 })

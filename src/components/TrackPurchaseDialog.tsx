@@ -42,7 +42,6 @@ export default function TrackPurchaseDialog() {
   const [term, setTerm] = useState<LicenseTerm>(() => validTerm(params.get('purchase_term')))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-  const [expandedBenefits, setExpandedBenefits] = useState(false)
   const [basketItems, setBasketItems] = useState(() => savedBasket())
   const autoCheckoutRef = useRef<string | null>(null)
 
@@ -56,7 +55,6 @@ export default function TrackPurchaseDialog() {
 
   useEffect(() => {
     if (isOpen) setBasketItems(savedBasket())
-    setExpandedBenefits(false)
   }, [isOpen, productCode])
 
   useEffect(() => {
@@ -113,7 +111,6 @@ export default function TrackPurchaseDialog() {
       return next
     }, { replace: true })
     setMessage('')
-    setExpandedBenefits(false)
     autoCheckoutRef.current = null
   }, [setParams])
 
@@ -223,7 +220,7 @@ export default function TrackPurchaseDialog() {
           <button type="button" className="track-purchase-close" aria-label="Close purchase dialog" disabled={busy} onClick={close}>×</button>
         </div>
 
-        <article className={`track-purchase-card bond-store-card${expandedBenefits ? ' perks-expanded' : ''}`}>
+        <article className="track-purchase-card bond-store-card">
           <div className="track-purchase-details-scroll" role="region" aria-label="Plan details and premium features" tabIndex={0}>
             <BondStoreCardContent
               product={product}
@@ -232,8 +229,7 @@ export default function TrackPurchaseDialog() {
               headingId="track-purchase-title"
               benefitsId={`store-benefits-popup-${product.code}`}
               disabled={busy}
-              expanded={expandedBenefits}
-              onToggleBenefits={() => setExpandedBenefits(current => !current)}
+              showAllBenefits
               onTermChange={nextTerm => {
                 setTerm(nextTerm)
                 setParams(current => {
@@ -247,7 +243,6 @@ export default function TrackPurchaseDialog() {
             />
           </div>
           <div className="track-purchase-actions">
-            {expandedBenefits && <span className="track-purchase-scroll-hint">Scroll the details above to read all 9 benefits.</span>}
             <span className={`product-status${isInBasket ? ' is-in-basket' : ''}`} aria-live="polite">
               {isInBasket ? '✓ IN YOUR BASKET' : 'AVAILABLE'}
             </span>
@@ -263,8 +258,11 @@ export default function TrackPurchaseDialog() {
         </article>
 
         {message && <div className="track-purchase-message" role="status" aria-live="polite">{message}</div>}
-        {!session?.user && <p className="track-purchase-footnote">Sign in with Google when you press BUY NOW. Your selected track and duration will be kept, then you will go directly to Checkout.</p>}
-        <p className="track-purchase-footnote">Secure payment is completed in Hyperion Checkout. Your license activates only after payment is verified.</p>
+        <p className="track-purchase-footnote">
+          {!session?.user
+            ? 'BUY NOW signs you in with Google and keeps your selected plan for Checkout. Access activates after verified payment.'
+            : 'Secure Hyperion Checkout · Access activates after verified payment.'}
+        </p>
       </section>
     </div>
   )
