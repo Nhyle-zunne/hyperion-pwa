@@ -1,4 +1,4 @@
-/* Same Bond Store card, compacted for the popup: show all nine benefits
+/* Same Bond Store card, compacted for the popup: show all ten benefits
    immediately while keeping Buy Now available on short mobile screens. */
 .track-purchase-modal{position:fixed;inset:0;z-index:12000;display:grid;place-items:center;padding:clamp(10px,3vw,18px);box-sizing:border-box;background:rgba(2,8,23,.76);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);overflow-y:auto;animation:track-purchase-fade-in .2s ease-out both}
 .track-purchase-panel{width:min(100%,490px);max-height:min(96vh,730px);max-height:min(96dvh,730px);min-height:0;overflow:hidden;box-sizing:border-box;padding:14px;border:1px solid var(--border);border-radius:var(--store-card-radius);background:var(--bg-card);color:var(--text);box-shadow:0 12px 40px rgba(0,0,0,.28);display:flex;flex-direction:column;animation:track-purchase-card-in .28s cubic-bezier(.18,.89,.32,1.12) both}
@@ -20,7 +20,7 @@
 .track-purchase-card .store-feature-highlight{margin:.04rem 0 .10rem}
 .track-purchase-card .store-benefits-list{max-height:none;overflow:visible;transition:none;gap:.10rem;margin:.16rem 0 .12rem;flex-shrink:0}
 .track-purchase-card .store-benefits-list li{font-size:.70rem;line-height:1.24}
-/* All nine features are readable immediately; the main Bond Store cards
+/* All ten features are readable immediately; the main Bond Store cards
    still use their independent show-more controls. */
 .track-purchase-actions{position:relative;flex:0 0 auto;z-index:2;display:flex;flex-direction:column;gap:0;margin-top:5px;padding:7px 0 0;background:var(--bg-card);border-top:1px solid var(--border)}
 .track-purchase-card .product-status{margin-top:0}
