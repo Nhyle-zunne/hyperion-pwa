@@ -55,6 +55,7 @@ function ImageSession({ track, images }: { track: TrackId; images: QuestionImage
           <img src={image.url} alt={ref.alt}
             style={{ display: 'block', width: '100%', maxHeight: 'min(38dvh, 360px)', objectFit: 'contain', objectPosition: 'center' }}
             onError={() => { setZoom(null); setLoaded(old => ({ ...old, [ref.sha256]: { url: '', error: 'This diagram could not be displayed.' } })) }} />
+          <span aria-hidden="true" style={{ display: 'block', padding: '5px 0 2px', fontSize: '.78rem', fontWeight: 650, color: 'var(--text-muted)' }}>🔍 Zoom</span>
         </button> : <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 8 }}>
           <p role={image?.error ? 'alert' : 'status'}>{image?.error || 'Loading diagram from protected storage…'}</p>
           {image?.error && <button type="button" className="btn btn-outline" onClick={() => setAttempt(value => value + 1)}>Retry image</button>}
