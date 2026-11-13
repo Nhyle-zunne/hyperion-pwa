@@ -5,9 +5,9 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
+import BondStoreCardContent from '../components/BondStoreCardContent'
 import { withPageLoading } from '../lib/pageLoading'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
-import { LICENSE_TERMS, priceForTerm } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Order = {
@@ -93,39 +93,6 @@ function settleStoreCardLift(slot: HTMLElement, force = false) {
     releaseStoreCardLift(slot)
   }, 320)
   storeCardSettleTimers.set(slot, timer)
-}
-
-const STORE_FEATURES = [
-  'Unlimited practice sessions',
-  'Unlimited timed mock exams',
-  'Full question bank for your licensed track',
-  'Custom drills and question ranges',
-  'Quick Scan Mode',
-  'Mistakes Notebook and bookmarks',
-  'Full-text question search',
-  'Offline review after downloading',
-  'Study history and cross-device progress sync'
-] as const
-
-const STORE_TRACK_CAPTIONS: Record<PaidTrack, string> = {
-  oic_nw: 'DECK · OPERATIONAL',
-  engine_ew: 'ENGINE · OPERATIONAL',
-  gmdss: 'GMDSS · RADIO',
-  deck_mgt: 'DECK · MANAGEMENT',
-  engine_mgt: 'ENGINE · MANAGEMENT'
-}
-
-const STORE_CATEGORY_ICON: Record<PaidTrack, number> = {
-  oic_nw: 1, engine_ew: 2, gmdss: 3, deck_mgt: 1, engine_mgt: 2
-}
-const STORE_LEVEL_ICON: Partial<Record<PaidTrack, number>> = {
-  oic_nw: 4, engine_ew: 4, deck_mgt: 5, engine_mgt: 5
-}
-// Exact supplied Hyperion banner artwork, cropped into one local image sprite.
-// Cells: anchor, deck helm, engine, GMDSS, operational shield, management cap.
-function StoreBannerSymbol({ index, small = false }: { index: number; small?: boolean }) {
-  const size = small ? 24 : 42
-  return <span aria-hidden="true" className={`store-banner-symbol${small ? ' store-banner-symbol--small' : ''}`} style={{ backgroundPosition: `-${size * index}px 0px` }} />
 }
 
 function safeAccountError(error: unknown, fallback: string) {
@@ -652,25 +619,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-product-slot[data-store-lift="settling"]{z-index:1;pointer-events:none}
       .account-page .account-product-card{position:relative;z-index:0;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:13px;background:var(--bg-card);transition:left .26s cubic-bezier(.2,.8,.2,1),right .26s cubic-bezier(.2,.8,.2,1),transform .26s cubic-bezier(.2,.8,.2,1),border-color .26s ease,box-shadow .26s ease;transform-origin:50% 100%;will-change:transform;box-sizing:border-box}
       .account-page .account-product-card:focus-within{z-index:5;border-color:#d9ad36;box-shadow:0 14px 30px rgba(4,35,83,.13)}
-      .account-page .account-product-card .product-art{min-height:58px;display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border-radius:9px;background:radial-gradient(circle at 95% 0%,#17497d 0,transparent 45%),linear-gradient(125deg,#042353,#061a3b);color:#f6c84a;margin-bottom:.6rem;position:relative;overflow:hidden;border:1px solid rgba(241,195,70,.5)}
-      .account-page .account-product-card .product-art:before{content:"";position:absolute;inset:0;border-top:2px solid #f3c452;pointer-events:none}
-      .account-page .account-product-card .product-art:after{content:"";position:absolute;width:96px;height:96px;border:1px solid rgba(244,191,51,.25);border-radius:50%;right:-37px;top:-51px;pointer-events:none}
-      .account-page .store-banner-symbol{position:relative;z-index:1;display:block;flex:0 0 42px;width:42px;height:42px;background-image:url('/store-art/hyperion-banner-sprite.png');background-repeat:no-repeat;background-size:252px 42px}
-      .account-page .store-banner-symbol--small{flex-basis:24px;width:24px;height:24px;background-size:144px 24px}
-      .account-page .store-banner-text{position:relative;z-index:1;min-width:0;flex:1;display:grid;gap:.15rem}
-      .account-page .store-banner-text strong{display:block;color:#ffcf55;font-size:.73rem;line-height:1.1;font-weight:950;letter-spacing:.045em}
-      .account-page .store-banner-text small{color:#f8e6a7;font-size:.52rem;font-weight:800;letter-spacing:.02em;line-height:1.2}
-      .account-page .store-banner-track{position:relative;z-index:1;display:flex;align-items:center;gap:0;flex-shrink:0}
-      .account-page .product-price{font-size:clamp(1.2rem,1.4vw,1.48rem);font-weight:950;line-height:1.1;color:var(--text);margin:.4rem 0 .55rem}
-      .account-page .store-feature-highlight{font-size:.7rem;font-weight:850;letter-spacing:.02em;color:#b4871b;margin:.15rem 0 .2rem}
-      .account-page .store-benefits-list{display:grid;gap:.14rem;list-style:none;padding:0;margin:.3rem 0 .1rem;max-height:3.55rem;overflow:hidden;transition:max-height .3s cubic-bezier(.2,.8,.2,1)}
-      .account-page .store-benefits-list li{display:flex;gap:.3rem;align-items:flex-start;line-height:1.25;font-size:.66rem;color:var(--text-muted);overflow-wrap:anywhere}
-      .account-page .store-benefits-list li:before{content:"✓";color:#b68714;font-weight:900;flex-shrink:0}
-      .account-page .account-product-card.perks-expanded .store-benefits-list{max-height:18rem}
-      .account-page .store-benefits-toggle{margin:.15rem 0 .5rem;padding:.15rem 0;border:0;text-align:left;background:none;color:var(--accent);font:inherit;font-size:.67rem;font-weight:850;line-height:1.3;cursor:pointer;align-self:flex-start}
-      .account-page .store-benefits-toggle:hover{text-decoration:underline}
-      .account-page .store-benefits-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
-      .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:850;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
       @media (hover:hover) and (pointer:fine){
         .account-page .account-product-slot[data-store-lift="entering"] .account-product-card,
         .account-page .account-product-slot.is-hovered .account-product-card,
@@ -931,7 +879,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   const basketItem = basket.find(entry => entry.code === item.code)
                   const inBasket = Boolean(basketItem)
                   const selectedTerm = selectedTerms[item.code]
-                  const selectedPrice = priceForTerm(item, selectedTerm)
                   const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
                   const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
                   return <div className={`account-product-slot${hoveredStore === item.code ? ' is-hovered' : ''}${expandedStorePerks === item.code ? ' is-expanded' : ''}`} key={item.code}
@@ -951,39 +898,23 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                       // is-expanded class skips settling and freezes the slot.
                       settleStoreCardLift(event.currentTarget, true)
                     }}>
-                    <article className={`account-product-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} aria-label={`${item.label} reviewer plan`}>
-                      <div className="product-art">
-                        <StoreBannerSymbol index={0} />
-                        <div className="store-banner-text"><strong>HYPERION</strong><small>{STORE_TRACK_CAPTIONS[item.code]}</small></div>
-                        <span className="store-banner-track">
-                          <StoreBannerSymbol index={STORE_CATEGORY_ICON[item.code]} />
-                          {STORE_LEVEL_ICON[item.code] != null && <StoreBannerSymbol index={STORE_LEVEL_ICON[item.code]!} small />}
-                        </span>
-                      </div>
-                    <h3 style={{ margin: 0, fontSize: '.94rem', minHeight: '2.3em', lineHeight: 1.2 }}>{item.label}</h3>
-                    <div className="product-price">₱{selectedPrice}<span style={{ fontSize: '.68rem', color: 'var(--text-muted)', fontWeight: 650 }}> / {selectedTerm}</span></div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '.61rem', fontWeight: 900, letterSpacing: '.04em' }}>CHOOSE DURATION</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '.25rem', margin: '.35rem 0 .65rem' }}>
-                      {LICENSE_TERMS.map(option => {
-                        const optionPrice = priceForTerm(item, option.code)
-                        const isSelected = selectedTerm === option.code
-                        return <button key={option.code} type="button" aria-label={`${item.label} ${option.label} ₱${optionPrice}`} aria-pressed={isSelected} disabled={busy || isOwned || manualPending} onClick={() => setSelectedTerms(old => ({ ...old, [item.code]: option.code }))} style={{ minWidth: 0, minHeight: 40, border: '1px solid ' + (isSelected ? 'var(--accent)' : 'var(--border)'), borderRadius: 7, padding: '.3rem .1rem', background: isSelected ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)', fontSize: '.66rem', lineHeight: 1.15, fontWeight: 800, cursor: busy || isOwned || manualPending ? 'not-allowed' : 'pointer' }}><span style={{ display: 'block' }}>{option.label}</span><span style={{ display: 'block', marginTop: '.12rem' }}>₱{optionPrice}</span></button>
-                      })}
-                    </div>
-                    <div className="store-feature-highlight">✦ Full reviewer access</div>
-                    <ul className="store-benefits-list" id={`store-benefits-${item.code}`} aria-label={`Premium features for ${item.label}`}>
-                      {STORE_FEATURES.map(feature => <li key={feature}>{feature}</li>)}
-                    </ul>
-                    <button type="button" className="store-benefits-toggle" aria-controls={`store-benefits-${item.code}`} aria-expanded={expandedStorePerks === item.code} onClick={event => {
-                      const slot = event.currentTarget.closest<HTMLElement>('.account-product-slot')
-                      if (slot && window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
-                        if (expandedStorePerks !== item.code) beginStoreCardLift(slot)
-                        else if (!slot.matches(':hover')) settleStoreCardLift(slot, true)
-                      }
-                      setExpandedStorePerks(current => current === item.code ? null : item.code)
-                    }}>
-                      {expandedStorePerks === item.code ? 'Show fewer features ↑' : 'See all 9 premium features ↓'}
-                    </button>
+                    <article className={`account-product-card bond-store-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} aria-label={`${item.label} reviewer plan`}>
+                      <BondStoreCardContent
+                        product={item}
+                        term={selectedTerm}
+                        disabled={busy || isOwned || manualPending}
+                        onTermChange={newTerm => setSelectedTerms(old => ({ ...old, [item.code]: newTerm }))}
+                        expanded={expandedStorePerks === item.code}
+                        benefitsId={`store-benefits-${item.code}`}
+                        onToggleBenefits={event => {
+                          const slot = event.currentTarget.closest<HTMLElement>('.account-product-slot')
+                          if (slot && window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
+                            if (expandedStorePerks !== item.code) beginStoreCardLift(slot)
+                            else if (!slot.matches(':hover')) settleStoreCardLift(slot, true)
+                          }
+                          setExpandedStorePerks(current => current === item.code ? null : item.code)
+                        }}
+                      />
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
                     <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)} style={{ width: '100%', marginTop: '.5rem', minHeight: 44, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff', padding: '.5rem .25rem', fontSize: '.78rem' }}>
                       {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'BUY NOW'}
