@@ -185,7 +185,7 @@ export default function MockExamScreen() {
     })
 
     return () => { cancelled = true }
-  }, [trackId, refreshCachedEntitlements])
+  }, [trackId, refreshCachedEntitlements, hasMockAccess])
 
   const competences = listAvailableCompetences(trackId)
   const competenceCounts = useMemo(() => {
