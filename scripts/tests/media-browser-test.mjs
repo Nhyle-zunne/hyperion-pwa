@@ -365,6 +365,25 @@ try {
       await reset.click()
       assert.equal(await dialog.getByLabel('Image zoom percentage').innerText(), '100%')
       assert(await minus.isDisabled())
+      if (viewport.width === 360) {
+        await view.evaluate(el => {
+          const r = el.getBoundingClientRect()
+          const x = r.left + r.width / 2, y = r.top + r.height / 2
+          const send = (type, id, dx) => el.dispatchEvent(new PointerEvent(type, {
+            bubbles: true, pointerId: id, pointerType: 'touch', clientX: x + dx, clientY: y
+          }))
+          send('pointerdown', 71, -30)
+          send('pointerdown', 72, 30)
+          send('pointermove', 71, -65)
+          send('pointermove', 72, 65)
+          send('pointerup', 71, -65)
+          send('pointerup', 72, 65)
+        })
+        await page.waitForFunction(() => Number(document.querySelector('.question-diagram-percentage')?.textContent?.replace('%', '')) > 100)
+        assert(Number((await dialog.getByLabel('Image zoom percentage').innerText()).replace('%', '')) > 100,
+          'Two touch pointers pinch to enlarge on a narrow screen')
+        await reset.click()
+      }
       await close.click()
       await dialog.waitFor({ state: 'hidden' })
       assert.equal(await page.evaluate(() => document.body.style.overflow), '', 'Background scrolling is restored')
