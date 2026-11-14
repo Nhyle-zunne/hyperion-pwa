@@ -220,7 +220,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const clearBasketItems = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
 
   useEffect(() => {
-    if (!supabase) return
+    const client = supabase
+    if (!client) return
     let mounted = true
     let authEventRevision = 0
     let pending: Promise<void> | null = null
@@ -228,7 +229,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     // Auth events are authoritative for the UI. A slower getSession() (for
     // example after an iOS PWA wakes from sleep) must never overwrite a later
     // SIGNED_IN/TOKEN_REFRESHED with an older null session.
-    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    const { data: listener } = client.auth.onAuthStateChange((event, nextSession) => {
       if (!mounted) return
       authEventRevision++
       if (event === 'SIGNED_OUT') accountOverviewCache.clear()
@@ -240,7 +241,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     const checkSavedSession = () => {
       if (pending) return pending
       const lookupRevision = authEventRevision
-      const task = supabase.auth.getSession().then(({ data, error }) => {
+      const task = client.auth.getSession().then(({ data, error }) => {
         if (!mounted || authEventRevision !== lookupRevision || error) return
         if (data.session || !keepSuccessBackdropRef.current) setSession(data.session)
       }).catch(() => {
