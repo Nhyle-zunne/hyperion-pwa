@@ -413,29 +413,34 @@ assert.ok(questionBank.includes('fullQuestionFingerprints') && questionBank.incl
 assert.ok(questionBank.includes('const canonicalOptions') && learningProgressFunction.includes('const canonicalOptions'), 'Question access and cloud-progress filtering use stable option-order-independent fingerprints');
 assert.ok(questionBankClient.includes("saveOfflineEntitlements") && questionBankClient.includes("body: { action: 'offline-license' }") && questionBankClient.includes('await hasValidOfflineTrackLease(track, userId)'), 'Paid offline-pack downloads save and verify a signed, track-specific offline entitlement lease');
 assert.ok(
-  questionBankClient.includes('return hasValidOfflineTrackLease(track)') &&
-  questionBankClient.includes('if (offline) {\n    // Free users must reconnect to review.') &&
-  questionBankClient.includes('Free reviewing is online-only. Open a Free Reviewer competence') &&
-  !questionBankClient.includes("if (await matchesCachedPack(true)) return 'free-sample'"),
-  'Free users cannot access saved free packs offline or trigger bulk fallback downloads; paid tracks require signed offline leases'
+  questionBankClient.includes('return freeOnly || hasValidOfflineTrackLease(track)') &&
+  questionBankClient.includes('if (offline) return await matchesSavedFreeQuestionSet') &&
+  questionBankClient.includes('async function downloadFreeOfflinePack') &&
+  questionBankClient.includes("data.access !== 'free-sample'") &&
+  questionBankClient.includes('publicBankRevision: revision') &&
+  questionBankClient.includes('await preloadQuestionImages(track, all, true, canContinue)'),
+  'Free offline packs use public-only verified pages without Supabase Auth; full tracks still require signed leases'
 );
 assert.ok(
-  trackHubScreen.includes('if (!isCurrent() || !unlocked || !online || !accountUserId) return') &&
-  trackHubScreen.includes('if (!unlocked) return') &&
-  trackHubScreen.includes('canContinue: () => {') &&
-  !trackHubScreen.includes('if (!unlocked && !online) await ensureOfflineFreeSamplePack(track)'),
-  'Unlicensed track hubs do not prepare/download offline banks, and active transfers stop if their license is revoked'
+  trackHubScreen.includes('await downloadOfflinePack(track, freeOnly,') &&
+  trackHubScreen.includes('(freeOnly || (access.entitlementsVerified &&') &&
+  trackHubScreen.includes('offlineQuestionImagesComplete') &&
+  trackHubScreen.includes('if (!isCurrent() || !online || (unlocked && !accountUserId)) return'),
+  'Track hubs download free pools anonymously, preserve paid gating, and verify all local images before READY'
 );
+
 assert.ok(
   questionBank.includes('Bulk question-file downloads require an active track license.') &&
   questionBank.includes('Question-file downloads require an active track license.'),
   'Backend rejects bulk and raw CSV file downloads for guests and unlicensed users'
 );
 assert.ok(
-  questionBankClient.includes("if (freeOnly) throw new Error('Offline downloads require an active license for this track.')") &&
-  questionBankClient.includes('assertDownloadAccount()\n  await saveOfflineQuestionPackSets(updates)'),
-  'Paid offline download requires license verification and rechecks account/access before encrypted save'
+  questionBankClient.includes('if (freeOnly) return downloadFreeOfflinePack(track, onProgress, canContinue)') &&
+  questionBankClient.includes('assertDownloadAccount()\n  await saveOfflineQuestionPackSets(updates)') &&
+  questionBankClient.includes('await preloadQuestionImages(track, allQuestions, false, assertDownloadAccountSafe)'),
+  'Paid offline packs check license and account after preloading all images; Free Reviewer is a separate public download'
 );
+
 assert.ok(
   questionBankClient.includes('QUESTION_BANK_VERSION_CHECK_COOLDOWN_MS = 5 * 60 * 1000') &&
   questionBankClient.includes('offlineQuestionVersionChecksInFlight') &&
@@ -791,9 +796,9 @@ assert.ok(sessionElapsedTimer.includes('inline = false') && sessionElapsedTimer.
 assert.ok(indexCss.includes('.quiz-heading-with-timer') && indexCss.includes('.quick-scan-progress-timer'), 'Question headings have responsive compact timer-aligned styling');
 const offlineHubScreen = await read('../src/screens/TrackHubScreen.tsx');
 const offlineHubStyles = await read('../src/screens/TrackHubScreen.css');
-assert.ok(offlineHubScreen.includes('await downloadOfflinePack(track, false, (downloaded, total) =>') && offlineHubScreen.includes('downloaded, total,') && offlineHubScreen.includes("phase: total > 0 && downloaded >= total ? 'saving' : 'downloading'"), 'Background licensed offline packs report real question counts and wait for verified save before completion');
+assert.ok(offlineHubScreen.includes('await downloadOfflinePack(track, freeOnly, (downloaded, total) =>') && offlineHubScreen.includes('downloaded, total,') && offlineHubScreen.includes("phase: total > 0 && downloaded >= total ? 'saving' : 'downloading'"), 'Background free and licensed offline packs report real question counts and wait for verified media save');
 assert.ok(offlineHubScreen.includes("const downloadPercent = hasMeasuredProgress") && offlineHubScreen.includes('Math.min(99,') && offlineHubScreen.includes('offlineStatus?.questionCount.toLocaleString()'), 'Offline progress never claims 100% before the complete encrypted pack is saved and then shows real saved counts');
-assert.ok(offlineHubScreen.includes('currentOfflineTransfer') && offlineHubScreen.includes('hyperion:offline-transfer') && offlineHubScreen.includes('accountUserId && transfer.trackId === info.trackId && transfer.userId === accountUserId'), 'Offline progress survives a track page remount and is scoped to the current track and signed-in account');
+assert.ok(offlineHubScreen.includes('currentOfflineTransfer') && offlineHubScreen.includes('hyperion:offline-transfer') && offlineHubScreen.includes('accountUserId !== undefined && transfer.trackId === info.trackId && transfer.userId === accountUserId'), 'Offline progress survives remounts and scopes paid users or anonymous free transfers to the correct track');
 assert.ok(offlineHubScreen.includes('role="progressbar"') && offlineHubScreen.includes('aria-valuenow=') && offlineHubScreen.includes('hub-offline-spinner'), 'Offline readiness exposes accessible progress and a spinner while checking or downloading');
 assert.ok(offlineHubStyles.includes('.hub-offline-progress-track') && offlineHubStyles.includes('hyperion-offline-indeterminate') && offlineHubStyles.includes('hyperion-offline-spin'), 'Offline track UI styles include determinate and indeterminate progress animations');
 
@@ -922,14 +927,15 @@ const offlineDownloadVersionRequest = questionBankClient.indexOf('const versions
 const offlineDownloadCountsRequest = questionBankClient.indexOf('await fetchRevisionQuestionCounts(track, false, versionsBefore.bankRevision)', offlineDownloadStart);
 assert.ok(
   offlineDownloadStart >= 0 &&
-  questionBankClient.includes("if (freeOnly) throw new Error('Offline downloads require an active license for this track.')") &&
+  questionBankClient.includes('if (freeOnly) return downloadFreeOfflinePack(track, onProgress, canContinue)') &&
   offlineDownloadSessionGate > offlineDownloadStart &&
   offlineDownloadLicenseGate > offlineDownloadSessionGate &&
   questionBankClient.includes('!offlineLicense.trackIds.includes(track)') &&
   offlineDownloadVersionRequest > offlineDownloadLicenseGate &&
   offlineDownloadCountsRequest > offlineDownloadVersionRequest,
-  'Offline pack downloads reject free packs and verify a server-signed entitlement for the selected track before requesting bank metadata or question counts'
+  'Paid offline pack downloads verify a signed entitlement before requesting protected metadata'
 );
+
 assert.ok(
   practiceConfigScreen.includes("next.set('purchase', '1')") && practiceConfigScreen.includes("next.set('purchase_term'"),
   'Unlicensed Practice All Questions opens a track purchase dialog instead of navigating to the locked Account page'
@@ -1004,20 +1010,26 @@ assert.ok(
 
 assert.ok(
   !trackHubScreen.includes('DOWNLOAD FULL BANK FOR OFFLINE') &&
-  trackHubScreen.includes('!unlocked || !online || !accountUserId') &&
+  trackHubScreen.includes('(unlocked && !accountUserId)') &&
   trackHubScreen.includes("gated('Mistakes Notebook'") &&
   trackHubScreen.includes('background: true,') && trackHubScreen.includes('canContinue: () => {'),
-  'Manual bank downloads are removed and automatic encrypted preparation requires an online licensed account'
+  'Automatic offline preparation serves free packs publicly while paid download requires online licensed account'
 );
+
 assert.ok(questionBankClient.includes('export async function ensureOfflineFreeSamplePack') && questionBankClient.includes('const fullBank = await getOfflineQuestionsByTrack(track, false)') && questionBankClient.includes('freeSample(fullBank, track)'), 'An old Deck OIC offline free sample is repaired only from the complete cached bank and the current server-matched sampler');
 assert.ok(questionBankClient.includes('async function hasValidOfflineTrackLease(track: TrackId, expectedUserId?: string): Promise<boolean>') && questionBankClient.includes('snapshot.isAdmin') && questionBankClient.includes('snapshot.trackExpiries[track]'), 'Saved paid-session recovery accepts either an authenticated administrator role or the same track’s unexpired signed license');
 const accessQuestionSetStart = questionBankClient.indexOf('export async function authorizeQuestionSetAccess');
-const offlineAuthStart = questionBankClient.indexOf('if (offline) {', accessQuestionSetStart);
+const offlineAuthStart = questionBankClient.indexOf('if (offline) return await matchesSavedFreeQuestionSet(', accessQuestionSetStart);
 const offlineAuthEnd = questionBankClient.indexOf('\n\n  if (supabase)', offlineAuthStart);
 const offlineAuthBlock = questionBankClient.slice(offlineAuthStart, offlineAuthEnd);
-const paidLeaseFastPath = questionBankClient.indexOf('if (offline && await hasValidOfflineTrackLease(track)) return \'licensed\'', accessQuestionSetStart);
+const paidLeaseFastPath = questionBankClient.indexOf("if (offline && await hasValidOfflineTrackLease(track)) return 'licensed'", accessQuestionSetStart);
 const fingerprintWorkStart = questionBankClient.indexOf('const fingerprintResults = await Promise.all(questions.map(fingerprintQuestion))', accessQuestionSetStart);
-assert.ok(paidLeaseFastPath > accessQuestionSetStart && fingerprintWorkStart > paidLeaseFastPath && offlineAuthBlock.includes('return null') && !offlineAuthBlock.includes("return 'free-sample'"), 'Paid offline sessions check a signed lease before hashing; unlicensed offline free samples cannot authorize saved sessions');
+assert.ok(paidLeaseFastPath > accessQuestionSetStart && fingerprintWorkStart > paidLeaseFastPath &&
+  offlineAuthBlock.includes('matchesSavedFreeQuestionSet(track, questions, fingerprints)') &&
+  questionBankClient.includes('const allowed = new Map(free.map(question => [question.id, question]))') &&
+  questionBankClient.includes('await fingerprintQuestion(published) !== fingerprints[i]'),
+  'Offline paid access verifies the signed lease first; free saved sessions match exact fingerprints in the public pack');
+
 assert.ok(offlineQuestionCache.includes("const DB_VERSION = 3") && offlineQuestionCache.includes('packMeta: { key: string; value: StoredOfflineQuestionPackMetadata }') && offlineQuestionCache.includes('MAX_DECRYPTED_PACK_CACHE'), 'Offline cache uses a lightweight metadata store and a bounded decrypted-pack cache');
 const localCompetenceStart = offlineQuestionCache.indexOf('export async function getOfflineQuestionsByCompetence(');
 const localCompetenceEnd = offlineQuestionCache.indexOf('export async function getOfflineQuestionsByTrack(', localCompetenceStart);

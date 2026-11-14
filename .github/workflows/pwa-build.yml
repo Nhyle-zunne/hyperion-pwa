@@ -66,11 +66,13 @@ jobs:
           node scripts/tests/github-publisher-transaction-test.mjs
           node scripts/tests/question-media-build.test.ts
           node scripts/tests/question-media-bundler.test.ts
+          node scripts/tests/question-media-delivery.test.ts
           node scripts/tests/github-bank-delivery-test.mjs
           node scripts/tests/github-bank-request-isolation-test.mjs
           node scripts/tests/smart-bank-download-plan-test.mjs
           bun test scripts/tests/github-offline-version.test.ts
           bun test scripts/tests/github-download-revision.test.ts
+          bun test scripts/tests/free-offline-download.test.ts
       - name: Saved-data database and offline-license regressions
         run: |
           bun run test:saved-data:sql

@@ -3,7 +3,7 @@ import './QuestionImageGallery.css'
 import { createPortal } from 'react-dom'
 import type { Question, TrackId } from '../types/question'
 import type { QuestionImageRef } from '../lib/questionMedia'
-import { loadLicensedQuestionImage } from '../lib/questionMediaCache'
+import { loadQuestionImage } from '../lib/questionMediaCache'
 import { useLicenseStore } from '../stores/licenseStore'
 
 type Loaded = { url: string; error?: string }
@@ -13,14 +13,15 @@ export default function QuestionImageGallery({ question, placement }: { question
   const owner = useLicenseStore(state => state.entitlementUserId)
   const unlocked = useLicenseStore(state => state.isTrackUnlocked(question.track))
   if (!images.length) return null
-  if (!unlocked) return <p style={{ fontSize: '.85rem', color: 'var(--text-muted)' }}>This question's diagram requires a licensed track.</p>
-  if (!owner) return <p role="status">Sign in to download this question's diagram.</p>
-  // Discard thumbnails and zoom synchronously when the account or question changes.
-  const scope = JSON.stringify([question.track, question.id, placement, images, owner])
-  return <ImageSession key={scope} track={question.track} images={images} />
+  if (unlocked && !owner) return <p role="status">Sign in to download this question's diagram.</p>
+  // A Free Reviewer image is served only if it belongs to the published free pool.
+  // Account changes must discard thumbnails from a previous licensed session.
+  const freeOnly = !unlocked
+  const scope = JSON.stringify([question.track, question.id, placement, images, freeOnly ? 'public-free' : owner])
+  return <ImageSession key={scope} track={question.track} images={images} freeOnly={freeOnly} />
 }
 
-function ImageSession({ track, images }: { track: TrackId; images: QuestionImageRef[] }) {
+function ImageSession({ track, images, freeOnly }: { track: TrackId; images: QuestionImageRef[]; freeOnly: boolean }) {
   const [loaded, setLoaded] = useState<Record<string, Loaded>>({})
   const [zoom, setZoom] = useState<{ url: string; alt: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -32,7 +33,7 @@ function ImageSession({ track, images }: { track: TrackId; images: QuestionImage
     setZoom(null)
     for (const ref of images) void (async () => {
       try {
-        const blob = await loadLicensedQuestionImage(track, ref, controller.signal)
+        const blob = await loadQuestionImage(track, ref, freeOnly, controller.signal)
         if (controller.signal.aborted) return
         const url = URL.createObjectURL(blob)
         urls.push(url)
@@ -45,7 +46,7 @@ function ImageSession({ track, images }: { track: TrackId; images: QuestionImage
     return () => { controller.abort(); for (const url of urls) URL.revokeObjectURL(url) }
     // The serialized refs retain stable identity across unrelated screen renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track, refs, attempt])
+  }, [track, refs, attempt, freeOnly])
   return <div style={{ display: 'grid', gap: 12, margin: '1rem 0' }} aria-label="Question diagrams">
     {images.map(ref => {
       const image = loaded[ref.sha256]
@@ -57,7 +58,7 @@ function ImageSession({ track, images }: { track: TrackId; images: QuestionImage
             style={{ display: 'block', width: '100%', maxHeight: 'min(38dvh, 360px)', objectFit: 'contain', objectPosition: 'center' }}
             onError={() => { setZoom(null); setLoaded(old => ({ ...old, [ref.sha256]: { url: '', error: 'This diagram could not be displayed.' } })) }} />
         </button> : <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 8 }}>
-          <p role={image?.error ? 'alert' : 'status'}>{image?.error || 'Loading diagram from protected storage…'}</p>
+          <p role={image?.error ? 'alert' : 'status'}>{image?.error || 'Loading diagram from saved or published media…'}</p>
           {image?.error && <button type="button" className="btn btn-outline" onClick={() => setAttempt(value => value + 1)}>Retry image</button>}
         </div>}
       </figure>

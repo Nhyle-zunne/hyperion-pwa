@@ -28,6 +28,8 @@ export interface OfflinePackManifest {
   savedAt: number
   complete: boolean
   sampleVersion?: number
+  /** Public release checked without Supabase; only official Free Reviewer pages may populate this pack. */
+  publicBankRevision?: string
   /** Version identifiers captured at download time, keyed by private source asset path. */
   sourceVersions?: Record<string, string>
   sourceVersionFormat?: 'content-sha256-v1' | 'storage-metadata-v1' | 'github-content-sha256-v1'
@@ -48,6 +50,7 @@ export interface OfflineQuestionPackSetUpdate {
   track: TrackId
   freeOnly: boolean
   groups: OfflineQuestionPackGroup[]
+  publicBankRevision?: string
   sourceVersions?: Record<string, string>
   sourceVersionFormat?: OfflinePackManifest['sourceVersionFormat']
 }
@@ -244,6 +247,7 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
       groupCount: update.groups.length,
       savedAt: Date.now(),
       complete: true,
+      ...(update.publicBankRevision ? { publicBankRevision: update.publicBankRevision, lastCheckedAt: Date.now(), lastKnownUpdateState: 'current' as const } : {}),
       ...((update.track === 'DECK_OIC_NW' || update.track === 'GMDSS_GOC') && update.freeOnly ? { sampleVersion: 2 } : {}),
       ...(update.sourceVersions ? {
         sourceVersions: update.sourceVersions,

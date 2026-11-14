@@ -9,7 +9,8 @@ import { useVaultStore } from '../stores/vaultStore'
 import type { TrackId } from '../types/question'
 import { totalMockExamQuestionCount } from '../lib/mockExamCounts'
 import { checkOfflineQuestionPackUpdates, downloadOfflinePack, getQuestionCountsByTrack, getPublicQuestionCountByTrack } from '../lib/questionBank'
-import { getCachedOfflineEntitlementSnapshot, getOfflinePackStatus } from '../lib/offlineQuestionCache'
+import { getCachedOfflineEntitlementSnapshot, getOfflinePackStatus, getOfflineQuestionPacks } from '../lib/offlineQuestionCache'
+import { offlineQuestionImagesComplete } from '../lib/questionMediaCache'
 import { supabase } from '../lib/supabase'
 import './TrackHubScreen.css'
 
@@ -77,7 +78,7 @@ let offlinePreparationInFlight: Promise<void> | null = null
 // Only a count and its account/track scope are shared. No question text is exposed.
 type OfflineTransfer = {
   trackId: TrackId
-  userId: string
+  userId: string | null
   downloaded: number
   total: number
   phase: 'starting' | 'downloading' | 'saving'
@@ -195,7 +196,7 @@ export default function TrackHubScreen() {
     const refresh = () => {
       const transfer = currentOfflineTransfer
       setOfflineTransfer(
-        transfer && accountUserId && transfer.trackId === info.trackId && transfer.userId === accountUserId
+        transfer && accountUserId !== undefined && transfer.trackId === info.trackId && transfer.userId === accountUserId
           ? transfer : null
       )
     }
@@ -228,19 +229,21 @@ export default function TrackHubScreen() {
       setOfflineLicenseExpiry(accountMatches ? snapshot?.trackExpiries[track] ?? null : null)
       setOfflineLicenseAdmin(accountMatches && snapshot?.isAdmin === true)
     }
+    const freeOnly = !unlocked
     const loadStatus = async () => {
-      const status = await getOfflinePackStatus(track, false)
-      if (isCurrent()) setOfflineStatus(status?.complete ? status : null)
-      return status?.complete ? status : null
+      const status = await getOfflinePackStatus(track, freeOnly)
+      const packs = status?.complete ? await getOfflineQuestionPacks(track, freeOnly) : null
+      const ready = !!packs?.length && await offlineQuestionImagesComplete(track, packs.flatMap(pack => pack.questions), freeOnly)
+      if (isCurrent()) setOfflineStatus(ready ? status : null)
+      return ready ? status : null
     }
     const prepareOffline = async () => {
       try {
-        // Guests, signed-out users and expired tracks never read/download
-        // offline packs. Free Reviewer is intentionally online-only.
-        if (!unlocked) return
+        // Everyone may save the official free pool. Only licensed users may
+        // save paid questions or their diagrams.
         await loadStatus()
-        await loadLicense()
-        if (!isCurrent() || !unlocked || !online || !accountUserId) return
+        if (unlocked) await loadLicense()
+        if (!isCurrent() || !online || (unlocked && !accountUserId)) return
 
         // A previous track/account may still be finishing. Wait without starting
         // another transfer; canceled effects never enqueue replacement work.
@@ -252,18 +255,18 @@ export default function TrackHubScreen() {
         const prepare = async () => {
           const status = await loadStatus()
           if (!isCurrent()) return
-          const check = status ? await checkOfflineQuestionPackUpdates(track, false) : null
+          const check = status ? await checkOfflineQuestionPackUpdates(track, freeOnly) : null
           if (!isCurrent() || navigator.onLine === false) return
           if (status && check?.status !== 'available') return
           setOfflinePreparing(true)
           // Backend reports real questions received. Do not claim completion before
           // encryption, version verification and the atomic local save finish.
           const transfer: OfflineTransfer = {
-            trackId: track, userId: accountUserId, downloaded: 0, total: 0, phase: 'starting'
+            trackId: track, userId: accountUserId ?? null, downloaded: 0, total: 0, phase: 'starting'
           }
           publishOfflineTransfer(transfer)
           try {
-            await downloadOfflinePack(track, false, (downloaded, total) => {
+            await downloadOfflinePack(track, freeOnly, (downloaded, total) => {
               publishOfflineTransfer({
                 ...transfer, downloaded, total,
                 phase: total > 0 && downloaded >= total ? 'saving' : 'downloading'
@@ -274,8 +277,8 @@ export default function TrackHubScreen() {
                 const access = useLicenseStore.getState()
                 return latestOfflineContext.current === offlineContext &&
                   accountGeneration.current === generation &&
-                  access.entitlementsVerified &&
-                  (access.isAllAccessUnlocked || access.isTrackUnlocked(track)) &&
+                  (freeOnly || (access.entitlementsVerified &&
+                    (access.isAllAccessUnlocked || access.isTrackUnlocked(track)))) &&
                   navigator.onLine !== false
               }
             })
@@ -311,8 +314,8 @@ export default function TrackHubScreen() {
     return () => { active = false }
   }, [info.trackId, unlocked, online, accountUserId, offlineRefreshKey, offlineContext])
 
-  const transferActive = Boolean(offlineTransfer && unlocked)
-  const checkingOffline = unlocked && online && accountUserId !== undefined && !offlineLicenseChecked && !transferActive && !offlinePreparing
+  const transferActive = Boolean(offlineTransfer)
+  const checkingOffline = online && (accountUserId !== undefined || !unlocked) && !offlineLicenseChecked && !transferActive && !offlinePreparing
   const offlineBusy = transferActive || offlinePreparing || checkingOffline
   const receivedCount = offlineTransfer?.downloaded ?? 0
   const expectedCount = offlineTransfer?.total ?? 0
@@ -471,21 +474,21 @@ export default function TrackHubScreen() {
         <p role="status" className="hub-offline-description">
           {transferActive
             ? offlineTransfer?.phase === 'saving'
-              ? 'All questions received. Verifying and securely saving the offline pack…'
+              ? 'All questions received. Saving and verifying diagrams for offline study…'
               : 'Downloading and encrypting questions for offline study…'
             : offlinePreparing || checkingOffline
-              ? 'Checking the question bank and preparing licensed offline access…'
+              ? 'Checking local questions and diagrams for offline study…'
               : offlineStatus
                 ? unlocked
-                  ? 'Questions are saved on this device for licensed offline study.'
-                  : 'Free reviewer questions are available on this device.'
+                  ? 'Questions and diagrams are saved on this device for licensed offline study.'
+                  : 'Free Reviewer questions and diagrams are saved on this device.'
                 : unlocked
                   ? online
                     ? 'Offline study prepares automatically while you are online and signed in.'
                     : 'Connect to prepare offline study automatically.'
                   : online
-                    ? 'Free Reviewer is online-only. Downloading questions for offline use requires an active license.'
-                    : 'Connect to the internet to use Free Reviewer. Offline downloads require an active license.'}
+                    ? 'Preparing the free question pool and diagrams for offline use. No subscription required.'
+                    : 'Reconnect once to save Free Reviewer questions and diagrams for offline use.'}
         </p>
         {(transferActive || checkingOffline || offlinePreparing || offlineStatus) && (
           <div className="hub-offline-progress">
@@ -494,7 +497,7 @@ export default function TrackHubScreen() {
                 {transferActive
                   ? expectedCount > 0
                     ? offlineTransfer?.phase === 'saving'
-                      ? 'Verifying and saving downloaded questions'
+                      ? 'Verifying questions and saving all diagrams'
                       : `${receivedCount.toLocaleString()} of ${expectedCount.toLocaleString()} questions downloaded`
                     : 'Connecting to question service…'
                   : offlinePreparing || checkingOffline

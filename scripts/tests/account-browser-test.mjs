@@ -65,6 +65,17 @@ try {
     assert(uploadedImage)
     return route.fulfill({ contentType: 'image/webp', headers: { 'X-Hyperion-Media-SHA256': createHash('sha256').update(uploadedImage).digest('hex') }, body: uploadedImage })
   })
+  // Admin uploads remain private. Display reads use the same public/paid Worker
+  // route as the reviewer, not the historical Supabase image GET endpoint.
+  await editorPage.route('**/api/question-bank/media?*', async route => {
+    const url = new URL(route.request().url())
+    const digest = url.searchParams.get('sha256')
+    const bytes = digest === existingRef.sha256 ? existingImage : uploadedImage
+    assert(bytes, 'Requested image was not uploaded in this fixture')
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), digest)
+    return route.fulfill({ contentType: url.searchParams.get('mime') || 'image/png',
+      headers: { 'X-Hyperion-Media-SHA256': digest }, body: bytes })
+  })
   await editorPage.goto(process.env.HYPERION_RECOVERY_TEST_URL + '?section=question-editor')
   await editorPage.getByRole('heading', { name: 'Edit, retire or restore questions' }).waitFor()
   const presets = editorPage.getByRole('group', { name: 'Choose examination track' })

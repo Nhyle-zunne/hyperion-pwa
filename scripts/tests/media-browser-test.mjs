@@ -1,10 +1,17 @@
 import { assertSquareCorners } from './square-corners-browser-helper.mjs'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { chromium } from 'playwright'
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
 const failures = []
 const base = process.env.HYPERION_MEDIA_TEST_URL || process.env.HYPERION_RECOVERY_TEST_URL
 assert(base, 'Set HYPERION_MEDIA_TEST_URL or run through run-recovery-browser.mjs')
+const defaultPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64')
+const syntheticImages = new Map()
+for (let i = 0; i < 105; i++) {
+  const bytes = Buffer.concat([defaultPng, Buffer.from([i & 255, (i >> 8) & 255])])
+  syntheticImages.set(createHash('sha256').update(bytes).digest('hex'), bytes)
+}
 async function scenario(name, run) {
   const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } })
   const page = await context.newPage()
@@ -14,12 +21,14 @@ async function scenario(name, run) {
   let downloads = 0, failFirst = false
   await page.route('**/*', async route => {
     const url = new URL(route.request().url())
-    if (url.hostname === 'media-fixture.invalid' && url.pathname === '/functions/v1/question-media') {
+    if (url.pathname === '/api/question-bank/media') {
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization,apikey' } })
       downloads++
       if (failFirst && downloads === 1) return route.fulfill({ status: 503, headers: { 'Access-Control-Allow-Origin': '*' }, body: 'Synthetic transient failure' })
-      const { png, sha } = await page.evaluate(() => ({ png: window.mediaFixture.png, sha: window.mediaFixture.sha }))
-      return route.fulfill({ status: 200, contentType: 'image/png', headers: { 'X-Hyperion-Media-SHA256': sha, 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-Hyperion-Media-SHA256' }, body: Buffer.from(png) })
+      const digest = url.searchParams.get('sha256')
+      const png = syntheticImages.get(digest) || defaultPng
+      const sha = createHash('sha256').update(png).digest('hex')
+      return route.fulfill({ status: 200, contentType: 'image/png', headers: { 'X-Hyperion-Media-SHA256': sha, 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-Hyperion-Media-SHA256' }, body: png })
     }
     return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) ? route.continue() : route.abort()
   })
@@ -408,6 +417,26 @@ try {
       assert.equal(await page.evaluate(() => document.body.style.overflow), '', 'Background scrolling is restored')
       assert(await thumb.evaluate(el => el === document.activeElement), 'Closing image returns focus to thumbnail')
     }
+  })
+  await scenario('Free Reviewer diagrams work without a subscription and remain locally cached', async ({ page, context, open, downloads }) => {
+    await open('gallery')
+    await page.evaluate(() => window.mediaFixture.license(false, null))
+    await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()
+    const count = downloads()
+    await context.setOffline(true)
+    await page.getByTitle('Tap to enlarge diagram').click()
+    await page.getByRole('dialog', { name: 'Enlarged question diagram' }).waitFor()
+    assert.equal(downloads(), count, 'Opening a free sample image offline requires no image request')
+  })
+  await scenario('All 105 separately referenced diagrams remain accessible offline without new image requests', async ({ page, context, open, downloads }) => {
+    await open('gallery')
+    const result = await page.evaluate(() => window.mediaFixture.prepareMany(105))
+    assert.equal(result.ready, true, 'All 105 diagrams are verified and persisted before offline readiness')
+    assert.equal(typeof result.last, 'string')
+    const before = downloads()
+    await context.setOffline(true)
+    assert((await page.evaluate(hash => window.mediaFixture.loadMulti(hash), result.last)) > 0)
+    assert.equal(downloads(), before, 'Previously unseen image 105 is read locally without network requests')
   })
   await scenario('Cached read rechecks license after asynchronous digest', async ({ page, open }) => {
     await open('gallery'); await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()
