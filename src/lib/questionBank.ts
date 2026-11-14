@@ -17,7 +17,7 @@ import { fingerprintQuestion } from './questionFingerprint.mjs';
 import { planSmartBankReuse } from './smartBankDownloadPlan.mjs';
 import { parseCsvText } from './csvParser';
 import { hasQuestionPrompt, parseQuestionImageRefsFromCsv } from './questionMedia';
-import { offlineQuestionImagesComplete, preloadQuestionImages } from './questionMediaCache';
+import { preloadQuestionImages } from './questionMediaCache';
 import type { Question, TrackId, Difficulty } from '../types/question';
 import { activeToPublishedC10Position, requiresC10ActivePositionMapping, selectActiveQuestions, visibleCompetenceCount } from './retiredQuestions';
 
