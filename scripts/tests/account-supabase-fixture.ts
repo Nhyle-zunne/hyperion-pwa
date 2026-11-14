@@ -60,7 +60,7 @@ export const supabase = {
       user = { ...user, user_metadata: data }
       return { data: { user }, error: null }
     },
-    signOut: async () => { fixtureCalls.push({ action: 'sign-out' }); return { error: null } },
+    signOut: async (options?: { scope?: string }) => { fixtureCalls.push({ action: 'sign-out', data: options }); return { error: null } },
   },
   from: (table: string) => {
     fixtureCalls.push({ action: `table:${table}` })
