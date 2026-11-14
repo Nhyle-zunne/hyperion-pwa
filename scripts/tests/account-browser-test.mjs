@@ -882,6 +882,15 @@ try {
   })
   await mobileAccountPage.getByText('Valid offline license on this device').waitFor()
   assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Valid offline license is not presented as a guest account')
+  for (const width of [390, 1280]) {
+    await mobileAccountPage.setViewportSize({ width, height: 844 })
+    assert.equal(await mobileAccountPage.getByRole('heading', { name: 'Saved Hyperion account' }).count(), 1,
+      'Verified account retains offline identity on mobile and desktop widths')
+  }
+  await mobileAccountPage.getByRole('button', { name: 'My licenses', exact: true }).click()
+  await mobileAccountPage.getByRole('heading', { name: 'My licenses · offline access' }).waitFor()
+  assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0,
+    'Offline licenses page is not replaced by the Bond Store guest view')
   assert.equal(await mobileAccountPage.getByText(/license and study progress have not been cleared/).count(), 1)
   assert.equal(await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).count(), 0, 'Account details remain protected without Auth')
   await mobileAccountPage.context().setOffline(true)
@@ -902,7 +911,53 @@ try {
   await mobileAccountPage.getByText('Guest visitor').waitFor()
   assert.equal(await mobileAccountPage.getByText('Valid offline license on this device').count(), 0, 'Cleared local license cannot masquerade as saved access')
   await mobileAccountPage.close()
-  console.log('PASS: mobile Account auth hydration race, offline license fallback, reconnect, and no false paid authentication')
+  console.log('PASS: account offline license across mobile/desktop widths, auth hydration, reconnect, and no false paid authentication')
+
+  const desktopOfflinePage = await browser.newPage({ viewport: { width: 1366, height: 850 } })
+  await desktopOfflinePage.route('**/*', route =>
+    ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  await desktopOfflinePage.addInitScript(() => {
+    localStorage.setItem('fixture-guest', 'yes')
+    localStorage.setItem('fixture-account-auth-failure', 'yes')
+  })
+  await desktopOfflinePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account-menu`)
+  await desktopOfflinePage.evaluate(() => window.setFixtureOfflineLicense(true))
+  const desktopMenu = desktopOfflinePage.locator('.desktop-account-popover')
+  await desktopOfflinePage.getByRole('button', { name: 'Account', exact: true }).hover()
+  await desktopMenu.getByText('Licensed account · Offline access').waitFor()
+  await desktopMenu.getByRole('link', { name: 'My Licenses' }).waitFor()
+  assert.equal(await desktopMenu.getByRole('link', { name: 'Orders' }).count(), 0,
+    'Offline lease never grants cloud order access')
+  assert.equal(await desktopMenu.getByRole('button', { name: 'Sign Out' }).count(), 0,
+    'Offline-only account is not falsely treated as a live Google session')
+  await desktopOfflinePage.evaluate(() => window.dispatchEvent(new Event('offline')))
+  const offlineReconnect = desktopMenu.getByRole('button', { name: 'Offline · Reconnect later' })
+  await offlineReconnect.waitFor()
+  assert.equal(await offlineReconnect.isDisabled(), true)
+  await desktopOfflinePage.evaluate(() => {
+    localStorage.removeItem('fixture-guest')
+    localStorage.removeItem('fixture-account-auth-failure')
+    window.emitFixtureAuth('SIGNED_IN')
+    window.dispatchEvent(new Event('online'))
+  })
+  await desktopMenu.getByRole('button', { name: 'Sign Out' }).waitFor()
+  await desktopMenu.getByRole('link', { name: 'Orders' }).waitFor()
+  await desktopOfflinePage.evaluate(() => {
+    localStorage.setItem('fixture-account-auth-failure', 'yes')
+    window.dispatchEvent(new Event('online'))
+  })
+  await desktopOfflinePage.waitForTimeout(80)
+  assert.equal(await desktopMenu.getByRole('button', { name: 'Sign Out' }).count(), 1,
+    'A failing token refresh cannot falsely sign out the desktop menu')
+  await desktopMenu.getByRole('button', { name: 'Sign Out' }).click()
+  const signOutCalls = await desktopOfflinePage.evaluate(() =>
+    window.accountFixtureCalls.filter(call => call.action === 'sign-out'))
+  assert.equal(signOutCalls.length, 1)
+  assert.deepEqual(signOutCalls[0].data, { scope: 'local' },
+    'User sign-out must not revoke Google sessions on other devices')
+  await desktopOfflinePage.getByText('Guest visitor').waitFor()
+  await desktopOfflinePage.close()
+  console.log('PASS: desktop menu offline licensed identity, token-refresh failure, owner isolation, and local-only sign-out')
 
   await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=study-time`)
   await page.getByRole('img', { name: /Study time breakdown by track/ }).waitFor()
