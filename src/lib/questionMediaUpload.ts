@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { QUESTION_MEDIA_MAX_BYTES, type QuestionImageRef } from './questionMedia'
+import { cacheUploadedQuestionImage } from './questionMediaCache'
 import type { TrackId } from '../types/question'
 
 function encodeBase64(bytes: Uint8Array): string {
@@ -99,6 +100,9 @@ export async function uploadQuestionImage(
     .map(part=>part.toString(16).padStart(2,'0')).join('')
   if (options.signal?.aborted) throw new DOMException('Image upload cancelled.', 'AbortError')
   if (hashed!==data.sha256) throw Error('The server image fingerprint did not match the uploaded bytes.')
+  const ref: QuestionImageRef = { sha256: hashed, mime: 'image/webp', placement, alt: alt.trim() }
+  // A successful GitHub upload must stay successful even if this browser denies IndexedDB storage.
+  await cacheUploadedQuestionImage(track, ref, blob).catch(() => undefined)
   options.onProgress?.({ stage: 'complete', loaded: bytes.length, total: bytes.length })
-  return {sha256:hashed,mime:'image/webp',placement,alt:alt.trim()}
+  return ref
 }
