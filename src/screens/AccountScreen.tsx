@@ -144,6 +144,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
   useEffect(() => { setAccountTab(params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments') }, [params])
   const [session, setSession] = useState<Session | null>(null)
+  const [sessionChecked, setSessionChecked] = useState(!supabase)
+  // License access and account authentication have different lifetimes. A
+  // verified device-bound offline pass must not be described as a guest login.
+  const licenseOwnerId = useLicenseStore(state => state.entitlementUserId)
+  const savedLicenseActive = useLicenseStore(state =>
+    state.entitlementsVerified && (state.isAllAccessUnlocked || state.cloudTrackIds.length > 0))
+  const hasSavedOfflineAccess = !session && sessionChecked && savedLicenseActive && Boolean(licenseOwnerId)
   const [basket, setBasket] = useState<BasketItem[]>(() => {
     try {
       const raw = localStorage.getItem('hyperion-account-basket-v1')
@@ -213,13 +220,53 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
 
   useEffect(() => {
     if (!supabase) return
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    let mounted = true
+    let authEventRevision = 0
+    let pending: Promise<void> | null = null
+
+    // Auth events are authoritative for the UI. A slower getSession() (for
+    // example after an iOS PWA wakes from sleep) must never overwrite a later
+    // SIGNED_IN/TOKEN_REFRESHED with an older null session.
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!mounted) return
+      authEventRevision++
       if (event === 'SIGNED_OUT') accountOverviewCache.clear()
-      // Keep the page the user acted on mounted behind the success dialog until Continue is pressed.
+      // Preserve the sign-out confirmation until the user dismisses it.
       if (nextSession || !keepSuccessBackdropRef.current) setSession(nextSession)
+      setSessionChecked(true)
     })
-    return () => listener.subscription.unsubscribe()
+
+    const checkSavedSession = () => {
+      if (pending) return pending
+      const lookupRevision = authEventRevision
+      const task = supabase.auth.getSession().then(({ data, error }) => {
+        if (!mounted || authEventRevision !== lookupRevision || error) return
+        if (data.session || !keepSuccessBackdropRef.current) setSession(data.session)
+      }).catch(() => {
+        // Offline or failed refresh is not a deliberate logout. The existing
+        // signed local license is shown independently, not erased.
+      }).finally(() => {
+        if (mounted) setSessionChecked(true)
+      })
+      pending = task
+      void task.finally(() => { if (pending === task) pending = null })
+      return task
+    }
+    void checkSavedSession()
+    // A guest account screen needn't poll Auth. When a disconnected device
+    // reconnects, ask the existing client once to restore its saved session.
+    const onReconnect = () => { void checkSavedSession() }
+    window.addEventListener('online', onReconnect)
+    const fallback = window.setTimeout(() => {
+      if (mounted) setSessionChecked(true)
+    }, 5000)
+
+    return () => {
+      mounted = false
+      window.clearTimeout(fallback)
+      window.removeEventListener('online', onReconnect)
+      listener.subscription.unsubscribe()
+    }
   }, [])
 
 
@@ -777,17 +824,21 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             <div style={{ display: 'flex', gap: '.8rem', alignItems: 'center', marginBottom: '.8rem' }}>
               <div className="profile-avatar">H</div>
               <div style={{ minWidth: 0 }}>
-                <h2 style={{ margin: 0, fontSize: '1rem' }}>Welcome to Hyperion</h2>
-                <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginTop: '.2rem' }}>Guest visitor</div>
+                <h2 style={{ margin: 0, fontSize: '1rem' }}>{!sessionChecked ? 'Restoring your account…' : hasSavedOfflineAccess ? 'Saved Hyperion account' : 'Welcome to Hyperion'}</h2>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginTop: '.2rem' }}>
+                  {!sessionChecked ? 'Checking your saved session' : hasSavedOfflineAccess ? 'Valid offline license on this device' : 'Guest visitor'}
+                </div>
               </div>
             </div>
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '.85rem' }}>
               <h3 style={{ margin: '0 0 .25rem', fontSize: '.98rem' }}>Your profile</h3>
-              <p className="profile-side-links" style={{ margin: '0 0 .8rem' }}>Sign in with Google to manage your Hyperion account, sync licenses, and complete purchases.</p>
-              <button type="button" className="btn btn-primary" disabled={!supabaseConfigured || busy} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>
-                {busy ? 'Opening Google…' : 'Sign in with Google'}
+              {hasSavedOfflineAccess
+                ? <p className="profile-side-links" role="status" style={{ margin: '0 0 .8rem' }}>Your saved track access remains available offline until its verified expiry. Google account details and purchases need an online sign-in; your license and study progress have not been cleared.</p>
+                : <p className="profile-side-links" style={{ margin: '0 0 .8rem' }}>{sessionChecked ? 'Sign in with Google to manage your Hyperion account, sync licenses, and complete purchases.' : 'Checking your saved Google session before offering sign-in.'}</p>}
+              <button type="button" className="btn btn-primary" disabled={!sessionChecked || !supabaseConfigured || busy || !navigator.onLine} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>
+                {!sessionChecked ? 'Checking session…' : !navigator.onLine ? 'Reconnect when online' : busy ? 'Opening Google…' : hasSavedOfflineAccess ? 'Reconnect Google account' : 'Sign in with Google'}
               </button>
-              <p className="profile-side-links" style={{ margin: '.7rem 0 0' }}>You can browse the Bond Store without signing in. Sign-in is required only when you proceed to checkout or manage your account.</p>
+              {!hasSavedOfflineAccess && sessionChecked && <p className="profile-side-links" style={{ margin: '.7rem 0 0' }}>You can browse the Bond Store without signing in. Sign-in is required only when you proceed to checkout or manage your account.</p>}
             </div>
           </section>}
         </aside>
