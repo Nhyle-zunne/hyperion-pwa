@@ -472,6 +472,30 @@ try {
     await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()
     assert.equal(downloads(), beforeNetwork, 'License restoration reads cached media offline')
   })
+  await scenario('Locked image notice opens the existing matching Bond Store popup for each track', async ({ page, open, downloads }) => {
+    await open('gallery')
+    await page.evaluate(() => window.mediaFixture.license(false, null))
+    const products = [
+      ['DECK_OIC_NW', 'oic_nw', 'Deck OIC-NW'],
+      ['GMDSS_GOC', 'gmdss', 'GMDSS GOC'],
+      ['ENGINE_OIC_EW', 'engine_ew', 'Engine OIC-EW'],
+      ['DECK_MGT', 'deck_mgt', 'Deck Management'],
+      ['ENGINE_MGT', 'engine_mgt', 'Engine Management'],
+    ]
+    for (const [track, code, name] of products) {
+      await page.evaluate(value => window.mediaFixture.changeTrack(value), track)
+      const upgrade = page.getByRole('button', { name: 'UNLOCK FULL REVIEWER TO VIEW IMAGES' })
+      await upgrade.waitFor()
+      assert.equal(await upgrade.getAttribute('aria-haspopup'), 'dialog', 'Locked diagram is an accessible purchase control')
+      await upgrade.click()
+      const popup = page.getByRole('dialog', { name })
+      await popup.waitFor()
+      assert.equal(new URL(page.url()).searchParams.get('purchase_product'), code, 'Popup selects the diagram’s track, not the current route')
+      await popup.getByRole('button', { name: 'Close purchase dialog' }).click()
+      await popup.waitFor({ state: 'hidden' })
+    }
+    assert.equal(downloads(), 0, 'Clicking the paywall never fetches protected image bytes')
+  })
   await scenario('All 105 separately referenced diagrams remain accessible offline without new image requests', async ({ page, context, open, downloads }) => {
     await open('gallery')
     const result = await page.evaluate(() => window.mediaFixture.prepareMany(105))
