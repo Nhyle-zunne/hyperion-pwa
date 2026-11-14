@@ -145,6 +145,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   useEffect(() => { setAccountTab(params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments') }, [params])
   const [session, setSession] = useState<Session | null>(null)
   const [sessionChecked, setSessionChecked] = useState(!supabase)
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
   // License access and account authentication have different lifetimes. A
   // verified device-bound offline pass must not be described as a guest login.
   const licenseOwnerId = useLicenseStore(state => state.entitlementUserId)
@@ -255,8 +256,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     void checkSavedSession()
     // A guest account screen needn't poll Auth. When a disconnected device
     // reconnects, ask the existing client once to restore its saved session.
-    const onReconnect = () => { void checkSavedSession() }
+    const onReconnect = () => { setOnline(true); void checkSavedSession() }
+    const onDisconnect = () => setOnline(false)
     window.addEventListener('online', onReconnect)
+    window.addEventListener('offline', onDisconnect)
     const fallback = window.setTimeout(() => {
       if (mounted) setSessionChecked(true)
     }, 5000)
@@ -265,6 +268,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       mounted = false
       window.clearTimeout(fallback)
       window.removeEventListener('online', onReconnect)
+      window.removeEventListener('offline', onDisconnect)
       listener.subscription.unsubscribe()
     }
   }, [])
@@ -835,8 +839,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
               {hasSavedOfflineAccess
                 ? <p className="profile-side-links" role="status" style={{ margin: '0 0 .8rem' }}>Your saved track access remains available offline until its verified expiry. Google account details and purchases need an online sign-in; your license and study progress have not been cleared.</p>
                 : <p className="profile-side-links" style={{ margin: '0 0 .8rem' }}>{sessionChecked ? 'Sign in with Google to manage your Hyperion account, sync licenses, and complete purchases.' : 'Checking your saved Google session before offering sign-in.'}</p>}
-              <button type="button" className="btn btn-primary" disabled={!sessionChecked || !supabaseConfigured || busy || !navigator.onLine} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>
-                {!sessionChecked ? 'Checking session…' : !navigator.onLine ? 'Reconnect when online' : busy ? 'Opening Google…' : hasSavedOfflineAccess ? 'Reconnect Google account' : 'Sign in with Google'}
+              <button type="button" className="btn btn-primary" disabled={!sessionChecked || !supabaseConfigured || busy || !online} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>
+                {!sessionChecked ? 'Checking session…' : !online ? 'Reconnect when online' : busy ? 'Opening Google…' : hasSavedOfflineAccess ? 'Reconnect Google account' : 'Sign in with Google'}
               </button>
               {!hasSavedOfflineAccess && sessionChecked && <p className="profile-side-links" style={{ margin: '.7rem 0 0' }}>You can browse the Bond Store without signing in. Sign-in is required only when you proceed to checkout or manage your account.</p>}
             </div>
