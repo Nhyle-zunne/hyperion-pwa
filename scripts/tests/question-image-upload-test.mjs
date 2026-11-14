@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { build } from 'esbuild'
 import { createHash } from 'node:crypto'
-const result = await build({ entryPoints: ['src/lib/questionMediaUpload.ts'], bundle: true, write: false, format: 'esm', platform: 'browser', plugins: [{ name: 'synthetic-admin-session', setup(build) { build.onResolve({ filter: /^\.\/supabase$/ }, () => ({ path: 'session', namespace: 'fixture' })); build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `export const supabaseUrl='https://synthetic.invalid'; export const supabaseAnonKey='synthetic-key'; export const supabase={auth:{getSession:async()=>({data:{session:{access_token:'synthetic-token',user:{id:'synthetic-owner'}}},error:null})}}` })) } }] })
+const result = await build({ entryPoints: ['src/lib/questionMediaUpload.ts'], bundle: true, write: false, format: 'esm', platform: 'browser', plugins: [{ name: 'synthetic-admin-session', setup(build) { build.onResolve({ filter: /^\.\/supabase$/ }, () => ({ path: 'session', namespace: 'fixture' })); build.onResolve({ filter: /^\.\/questionMediaCache$/ }, () => ({ path: 'cache', namespace: 'fixture' })); build.onLoad({ filter: /.*/, namespace: 'fixture' }, args => ({ contents: args.path === 'cache' ? 'export async function cacheUploadedQuestionImage() {}' : `export const supabaseUrl='https://synthetic.invalid'; export const supabaseAnonKey='synthetic-key'; export const supabase={auth:{getSession:async()=>({data:{session:{access_token:'synthetic-token',user:{id:'synthetic-owner'}}},error:null})}}` })) } }] })
 const { uploadQuestionImage } = await import('data:text/javascript;base64,' + Buffer.from(result.outputFiles[0].text).toString('base64'))
 const bytes = Buffer.from('RIFF00000000WEBPsynthetic-image')
 globalThis.createImageBitmap = async () => ({ width: 2, height: 2, close() {} })
@@ -10,12 +10,13 @@ let scenario = 'success', requests = 0, lastRequest
 class FakeXHR {
   upload = {}; headers = {}; status = 200
   constructor() { requests++; lastRequest = this }
-  open(method, url) { assert.equal(method, 'POST'); assert.equal(url, 'https://synthetic.invalid/functions/v1/question-media') }
+  open(method, url) { assert.equal(method, 'POST'); assert.equal(url, '/api/question-bank/admin') }
   setRequestHeader(key, value) { this.headers[key] = value }
   send(body) {
     assert.equal(this.headers.Authorization, 'Bearer synthetic-token')
-    assert.equal(this.headers.apikey, 'synthetic-key')
+    assert.equal(this.headers.apikey, undefined)
     const data = JSON.parse(body), decoded = Buffer.from(data.base64, 'base64')
+    assert.equal(data.action, 'media-upload')
     queueMicrotask(() => {
       if (scenario === 'network') { this.onerror(); return }
       if (scenario === 'timeout') { this.ontimeout(); return }

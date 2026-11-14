@@ -61,6 +61,7 @@ jobs:
           node scripts/tests/github-release-source-test.mjs
           node scripts/tests/admin-question-search-test.mjs
           node scripts/tests/question-image-upload-test.mjs
+          node scripts/tests/github-media-staging-test.mjs
           node scripts/tests/image-prompt-fingerprint-test.mjs
           node scripts/tests/github-bank-publisher-test.mjs
           node scripts/tests/github-publisher-transaction-test.mjs

@@ -124,7 +124,7 @@ async function encrypt(text: string): Promise<Uint8Array> {
   const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(text)))
   const bytes = new Uint8Array(12 + ciphertext.byteLength); bytes.set(iv); bytes.set(ciphertext, 12); return bytes
 }
-function apiClient(fetcher: typeof fetch, token: string) {
+export function apiClient(fetcher: typeof fetch, token: string) {
   return async (path: string, method = 'GET', body?: unknown, raw = false, missing = false) => {
     let response: Response
     try { response = await fetcher(`https://api.github.com/repos/${GITHUB_BANK_REPOSITORY}/${path}`, { method, headers: { Authorization: `Bearer ${token}`, Accept: raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json', 'Content-Type': 'application/json', 'User-Agent': 'Hyperion-Bank-Publisher', 'X-GitHub-Api-Version': '2022-11-28' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000) }) }

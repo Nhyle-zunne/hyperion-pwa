@@ -1,5 +1,4 @@
 import { sourceInfo, toSearchQuestions, deriveKeyBytes } from '../supabase/functions/_shared/bankCodec.ts'
-import { readBounded } from '../supabase/functions/_shared/githubBankSource.ts'
 import { mediaObjectPath, validTrack, MAX_IMAGE_BYTES, imageSignatureMatches, sha256 } from '../supabase/functions/question-media/policy.ts'
 import type { BuildImage, BuildAsset } from '../supabase/functions/question-media-build/build.ts'
 import { PublisherError } from './githubBankPublisher.ts'
@@ -22,9 +21,9 @@ export function collectBankImages(banks: { path: string; text: string }[]): Buil
   return [...refs.values()]
 }
 export function checkPublishBudget(bankCount: number, imageCount: number) {
-  // Includes config/admin checks, release integrity reads, blob writes, and ref update.
+  // Includes admin checks, release integrity reads, up to two GitHub media lookups plus one encrypted blob write per image, bank blob writes and ref update.
   // Reserve two subrequests below the Free plan limit for platform bookkeeping.
-  if (14 + 2 * bankCount + imageCount + Math.ceil(imageCount / 20) > 48) {
+  if (14 + 2 * bankCount + 3 * imageCount > 48) {
     throw new PublisherError('This batch exceeds the publishing request limit. Publish a smaller batch of banks with images.', 413)
   }
 }
@@ -51,31 +50,4 @@ export async function checkMediaAssets(images: BuildImage[], body: unknown): Pro
     } catch { throw new PublisherError('The image build failed encryption or integrity validation.', 502) }
   }
   return assets
-}
-export function createMediaBundler(fetcher: typeof fetch, supabaseUrl: string, apikey: string, authorization: string): MediaBundler {
-  return async images => {
-    const assets: BuildAsset[] = []
-    let total = 0
-    for (let i = 0; i < images.length; i += 20) {
-      const batch = images.slice(i, i + 20)
-      let response: Response
-      try {
-        response = await fetcher(supabaseUrl + '/functions/v1/question-media-build', {
-          method: 'POST', headers: { Authorization: authorization, apikey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ images: batch }), signal: AbortSignal.timeout(30000)
-        })
-      } catch { throw new PublisherError('Question images could not be bundled. Retry publication safely.', 503) }
-      if (!response.ok) throw new PublisherError('Question images could not be bundled. Verify administrator access and private image storage before publishing.', 503)
-      let body: unknown
-      try { body = JSON.parse(new TextDecoder().decode(await readBounded(response.body, 15 * 1024 * 1024))) }
-      catch { throw new PublisherError('The image build response is invalid or oversized.', 502) }
-      const built = await checkMediaAssets(batch, body)
-      for (const asset of built) {
-        total += atob(asset.ciphertext).length
-        if (total > MAX_MEDIA_BYTES) throw new PublisherError('Bundled images exceed the combined 10 MiB limit.', 413)
-        assets.push(asset)
-      }
-    }
-    return assets
-  }
 }
