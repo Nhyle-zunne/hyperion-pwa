@@ -19,12 +19,19 @@ async function scenario(name, run) {
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   let downloads = 0, failFirst = false
+  const batches = []
   await page.route('**/*', async route => {
     const url = new URL(route.request().url())
     if (url.pathname === '/api/question-bank/media') {
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization,apikey' } })
       downloads++
       if (failFirst && downloads === 1) return route.fulfill({ status: 503, headers: { 'Access-Control-Allow-Origin': '*' }, body: 'Synthetic transient failure' })
+      if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON()
+        batches.push({ ...body, authorization: route.request().headers().authorization || null })
+        const images = body.images.map(ref => ({ ...ref, data: (syntheticImages.get(ref.sha256) || defaultPng).toString('base64') }))
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ images }) })
+      }
       const digest = url.searchParams.get('sha256')
       const png = syntheticImages.get(digest) || defaultPng
       const sha = createHash('sha256').update(png).digest('hex')
@@ -33,11 +40,42 @@ async function scenario(name, run) {
     return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) ? route.continue() : route.abort()
   })
   const open = async (screen, imageOnly = false) => { await page.goto(`${base}?screen=${screen}${imageOnly ? '&imageOnly=1' : ''}`); await page.waitForFunction(() => !!window.mediaFixture) }
-  try { await run({ page, context, open, transient: () => { failFirst = true }, downloads: () => downloads }); await assertSquareCorners(page); assert.deepEqual(errors, [], 'No runtime errors'); console.log(`PASS ${name}`) }
+  try { await run({ page, context, open, transient: () => { failFirst = true }, downloads: () => downloads, batches }); await assertSquareCorners(page); assert.deepEqual(errors, [], 'No runtime errors'); console.log(`PASS ${name}`) }
   catch (error) { failures.push(`${name}: ${error.message}`); console.error(`FAIL ${name}: ${error.message}\nPAGE: ${await page.locator('body').innerText()}`) }
   finally { await context.close() }
 }
 try {
+  await scenario('Offline preparation batches verified paid images and reuses them without network or session', async ({ page, context, open, downloads, batches }) => {
+    await open('gallery')
+    await page.getByRole('img', { name: 'Synthetic question diagram' }).waitFor()
+    const beforeAuth = await page.evaluate(() => window.mediaFixture.authCount())
+    const result = await page.evaluate(() => window.mediaFixture.prepareMany(17))
+    assert.equal(result.ready, true)
+    assert.deepEqual(batches.map(batch => batch.images.length), [8, 8, 1])
+    assert(batches.every(batch => batch.freeOnly === false && batch.authorization === 'Bearer synthetic-token'))
+    assert.equal(await page.evaluate(() => window.mediaFixture.authCount()) - beforeAuth, 1, 'One session lookup for the full preparation')
+    const beforeNetwork = downloads(), beforeOfflineAuth = await page.evaluate(() => window.mediaFixture.authCount())
+    await context.setOffline(true)
+    assert((await page.evaluate(hash => window.mediaFixture.loadMulti(hash), result.last)) > 0)
+    assert.equal(downloads(), beforeNetwork)
+    assert.equal(await page.evaluate(() => window.mediaFixture.authCount()), beforeOfflineAuth)
+  })
+  await scenario('Free and paid batches stay separate and quota failure prevents readiness', async ({ page, open, batches }) => {
+    await open('gallery')
+    await page.getByRole('img', { name: 'Synthetic question diagram' }).waitFor()
+    const paid = await page.evaluate(() => window.mediaFixture.prepareMany(2))
+    assert.equal(paid.ready, true)
+    const beforeAuth = await page.evaluate(() => window.mediaFixture.authCount())
+    const free = await page.evaluate(() => window.mediaFixture.prepareMany(2, true))
+    assert.equal(free.ready, true)
+    assert.equal(batches.length, 2, 'Free preparation cannot reuse paid-account cache')
+    assert.equal(batches[1].freeOnly, true)
+    assert.equal(batches[1].authorization, null)
+    assert.equal(await page.evaluate(() => window.mediaFixture.authCount()), beforeAuth, 'Free preparation does not use account auth')
+    const quota = await page.evaluate(() => window.mediaFixture.prepareMany(3, true, true))
+    assert.equal(quota.rejected, true)
+    assert.equal(quota.ready, false)
+  })
   await scenario('Track hub renders free-only modes, track-scoped upgrade popup, licensed modes and expiry changes', async ({ page, open }) => {
     await open('hub')
     const switchTracks = async (ids, verified = true) => page.evaluate(({ ids, verified }) => window.hubFixture.setLicenses(ids, verified), { ids, verified })
@@ -455,10 +493,11 @@ try {
       await context.setOffline(false); await open('gallery')
       await page.getByTitle('Tap to enlarge diagram').click()
       await page.getByRole('dialog', { name: 'Enlarged question diagram' }).waitFor()
+      const previousUrl = await page.locator('button[title="Tap to enlarge diagram"] img').getAttribute('src')
       await page.evaluate(kind => kind === 'owner' ? window.mediaFixture.license(true, '22222222-2222-4222-8222-222222222222') : kind === 'license' ? window.mediaFixture.license(false) : window.mediaFixture.changeRef(), mutation)
-      await page.waitForFunction(() => !document.querySelector('[role=dialog],dialog[open]') && !document.querySelector('img'), undefined, { timeout: 1000 })
+      await page.waitForFunction(previous => !document.querySelector('[role=dialog],dialog[open]') && document.querySelector('img')?.getAttribute('src') !== previous, previousUrl, { timeout: 1000 })
       assert.equal(await page.getByRole('dialog').count(), 0, `${mutation} removes zoom`)
-      assert.equal(await page.locator('img').count(), 0, `${mutation} removes stale thumbnail`)
+      if (await page.locator('img').count()) assert.notEqual(await page.locator('img').getAttribute('src'), previousUrl, `${mutation} removes stale thumbnail`)
     }
   })
   await scenario('Saved question references survive encrypted persistence and question conversion', async ({ page, open }) => {
