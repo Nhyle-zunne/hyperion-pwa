@@ -58,6 +58,16 @@ async function store(owner: string, track: TrackId, ref: QuestionImageRef, blob:
     ownerId: owner, track, sha256: ref.sha256, mime: ref.mime, blob, storedAt: Date.now() })
 }
 
+/** Cache a verified admin upload locally so the draft preview works before
+ * the image is published. It is never stored in the public Free Reviewer tier. */
+export async function cacheUploadedQuestionImage(track: TrackId, ref: QuestionImageRef, blob: Blob): Promise<void> {
+  const owner = currentOwner(track)
+  if (!owner) return
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  if (!await verifyImage(bytes, ref)) throw new Error('Uploaded image failed local verification.')
+  await store(owner, track, ref, blob)
+}
+
 /**
  * Published Free Reviewer diagrams are available without an account; paid
  * diagrams still require the current user's license and identity. Cached bytes
