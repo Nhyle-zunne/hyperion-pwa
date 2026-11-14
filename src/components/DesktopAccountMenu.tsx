@@ -17,20 +17,57 @@ export default function DesktopAccountMenu() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [signedIn, setSignedIn] = useState(false)
+  const [authChecked, setAuthChecked] = useState(!supabase)
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  const hasVerifiedOfflineLicense = useLicenseStore(state =>
+    Boolean(state.entitlementUserId) && state.entitlementsVerified &&
+    (state.isAllAccessUnlocked || state.cloudTrackIds.length > 0))
+  const offlineAccount = !signedIn && hasVerifiedOfflineLicense
   const [signingOut, setSigningOut] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
-    if (!supabase) return
+    const client = supabase
+    if (!client) return
     let active = true
-    void supabase.auth.getSession()
-      .then(({ data }) => { if (active) setSignedIn(Boolean(data.session?.user)) })
-      .catch(() => { if (active) setSignedIn(false) })
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (active) setSignedIn(Boolean(session?.user))
+    let revision = 0
+    let pending: Promise<void> | null = null
+    const { data } = client.auth.onAuthStateChange((_event, session) => {
+      if (!active) return
+      revision++
+      setSignedIn(Boolean(session?.user))
+      setAuthChecked(true)
     })
-    return () => { active = false; data.subscription.unsubscribe() }
+    const checkSavedSession = () => {
+      if (pending) return
+      const lookupRevision = revision
+      const job = client.auth.getSession().then(({ data: response, error }) => {
+        // A slow offline lookup cannot override a newer auth event, or turn
+        // a previously confirmed account into a guest after a network error.
+        if (active && revision === lookupRevision && !error) {
+          setSignedIn(Boolean(response.session?.user))
+        }
+      }).catch(() => {
+        // Failed refresh is not an intentional sign-out. The owner-bound,
+        // verified offline lease remains usable across desktop and PWA tabs.
+      }).finally(() => {
+        if (active) setAuthChecked(true)
+      })
+      pending = job
+      void job.finally(() => { if (pending === job) pending = null })
+    }
+    void checkSavedSession()
+    const onReconnect = () => { setOnline(true); checkSavedSession() }
+    const onDisconnect = () => setOnline(false)
+    window.addEventListener('online', onReconnect)
+    window.addEventListener('offline', onDisconnect)
+    return () => {
+      active = false
+      data.subscription.unsubscribe()
+      window.removeEventListener('online', onReconnect)
+      window.removeEventListener('offline', onDisconnect)
+    }
   }, [])
 
   useEffect(() => {
@@ -103,7 +140,7 @@ export default function DesktopAccountMenu() {
     setErrorMessage('')
     try {
       await withPageLoading('Signing out', async () => {
-        const { error } = await client.auth.signOut()
+        const { error } = await client.auth.signOut({ scope: 'local' })
         if (error) throw error
         // Intentional sign-out clears cached account licenses just as AccountScreen does.
         useLicenseStore.getState().clearLicense()
@@ -150,7 +187,8 @@ export default function DesktopAccountMenu() {
         aria-label="Account options"
         hidden={!open}
       >
-        {accountLinks.filter(link => signedIn || link.to === '/account?tab=payments').map(link => (
+        {offlineAccount && <p className="desktop-account-option" role="status" style={{ margin: 0, fontSize: '.8rem', cursor: 'default' }}>✓ Licensed account · Offline access</p>}
+        {accountLinks.filter(link => signedIn || link.to === '/account?tab=payments' || (offlineAccount && link.to === '/account?tab=licenses')).map(link => (
           <Link
             key={link.to}
             to={link.to}
@@ -175,11 +213,11 @@ export default function DesktopAccountMenu() {
           <button
             type="button"
             className="desktop-account-option desktop-account-signout"
-            disabled={!supabase || signingIn}
+            disabled={!supabase || signingIn || !online || (!authChecked && !offlineAccount)}
             onClick={() => { void signInWithGoogle() }}
           >
             <span aria-hidden="true">↪</span>
-            {signingIn ? 'Opening Google…' : 'Sign In'}
+            {signingIn ? 'Opening Google…' : !online ? 'Offline · Reconnect later' : !authChecked && !offlineAccount ? 'Checking session…' : offlineAccount ? 'Reconnect Google account' : 'Sign In'}
           </button>
         )}
         {errorMessage && <p className="desktop-account-error" role="alert">{errorMessage}</p>}
