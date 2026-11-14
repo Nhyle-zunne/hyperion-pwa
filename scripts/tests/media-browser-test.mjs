@@ -18,7 +18,7 @@ async function scenario(name, run) {
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization,apikey' } })
       downloads++
       if (failFirst && downloads === 1) return route.fulfill({ status: 503, headers: { 'Access-Control-Allow-Origin': '*' }, body: 'Synthetic transient failure' })
-      const { png, sha } = await page.evaluate(() => ({ png: window.mediaFixture.png, sha: window.mediaFixture.sha }))
+      const { png, sha } = await page.evaluate(digest => window.mediaFixture.lookupImage(digest), url.searchParams.get('sha256'))
       return route.fulfill({ status: 200, contentType: 'image/png', headers: { 'X-Hyperion-Media-SHA256': sha, 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-Hyperion-Media-SHA256' }, body: Buffer.from(png) })
     }
     return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) ? route.continue() : route.abort()
@@ -418,6 +418,16 @@ try {
     await page.getByTitle('Tap to enlarge diagram').click()
     await page.getByRole('dialog', { name: 'Enlarged question diagram' }).waitFor()
     assert.equal(downloads(), count, 'Opening a free sample image offline requires no image request')
+  })
+  await scenario('All 105 separately referenced diagrams remain accessible offline without new image requests', async ({ page, context, open, downloads }) => {
+    await open('gallery')
+    const result = await page.evaluate(() => window.mediaFixture.prepareMany(105))
+    assert.equal(result.ready, true, 'All 105 diagrams are verified and persisted before offline readiness')
+    assert.equal(typeof result.last, 'string')
+    const before = downloads()
+    await context.setOffline(true)
+    assert((await page.evaluate(hash => window.mediaFixture.loadMulti(hash), result.last)) > 0)
+    assert.equal(downloads(), before, 'Previously unseen image 105 is read locally without network requests')
   })
   await scenario('Cached read rechecks license after asynchronous digest', async ({ page, open }) => {
     await open('gallery'); await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()
