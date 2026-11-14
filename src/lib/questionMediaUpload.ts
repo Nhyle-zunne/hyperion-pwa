@@ -1,4 +1,4 @@
-import { supabase, supabaseUrl, supabaseAnonKey } from './supabase'
+import { supabase } from './supabase'
 import { QUESTION_MEDIA_MAX_BYTES, type QuestionImageRef } from './questionMedia'
 import type { TrackId } from '../types/question'
 
@@ -52,10 +52,9 @@ function sendImage(body: string, token: string, options: UploadOptions): Promise
       if (error) reject(error); else resolve(data)
     }
     if (options.signal?.aborted) { reject(new DOMException('Image upload cancelled.', 'AbortError')); return }
-    request.open('POST', `${supabaseUrl}/functions/v1/question-media`)
+    request.open('POST', '/api/question-bank/admin')
     request.timeout = 60000
     request.setRequestHeader('Authorization', `Bearer ${token}`)
-    request.setRequestHeader('apikey', supabaseAnonKey!)
     request.setRequestHeader('Content-Type', 'application/json')
     request.upload.onprogress = event => options.onProgress?.({ stage: 'uploading', loaded: event.loaded, total: event.lengthComputable ? event.total : 0 })
     request.upload.onload = () => options.onProgress?.({ stage: 'verifying', loaded: 0, total: 0 })
@@ -83,14 +82,14 @@ export async function uploadQuestionImage(
 ): Promise<QuestionImageRef> {
   if (alt.trim().length < 1 || alt.trim().length > 160 ||
       /[\x00-\x1F\x7F]/.test(alt)) throw Error('Enter an image description (1-160 characters).')
-  if (!supabase || !supabaseUrl || !supabaseAnonKey) throw Error('Hyperion administration is not configured.')
+  if (!supabase) throw Error('Hyperion administration is not configured.')
   options.onProgress?.({ stage: 'preparing', loaded: 0, total: 0 })
   const blob = await toWebp(file)
   const bytes = new Uint8Array(await blob.arrayBuffer())
   const { data: { session }, error } = await supabase.auth.getSession()
   if (error || !session) throw Error('Sign in as an administrator to upload an image.')
   if (options.signal?.aborted) throw new DOMException('Image upload cancelled.', 'AbortError')
-  const result = await sendImage(JSON.stringify({track,mime:'image/webp',base64:encodeBase64(bytes)}), session.access_token, options)
+  const result = await sendImage(JSON.stringify({action:'media-upload',track,mime:'image/webp',base64:encodeBase64(bytes)}), session.access_token, options)
   const data = result as { track?: unknown; mime?: unknown; sha256?: unknown; bytes?: unknown } | null
   if (data?.track!==track || data?.mime!=='image/webp' || typeof data?.sha256 !== 'string' ||
       !/^[a-f0-9]{64}$/.test(data.sha256) || data.bytes!==bytes.length) {
