@@ -17,6 +17,7 @@ import { fingerprintQuestion } from './questionFingerprint.mjs';
 import { planSmartBankReuse } from './smartBankDownloadPlan.mjs';
 import { parseCsvText } from './csvParser';
 import { hasQuestionPrompt, parseQuestionImageRefsFromCsv } from './questionMedia';
+import { offlineQuestionImagesComplete, preloadQuestionImages } from './questionMediaCache';
 import type { Question, TrackId, Difficulty } from '../types/question';
 import { activeToPublishedC10Position, requiresC10ActivePositionMapping, selectActiveQuestions, visibleCompetenceCount } from './retiredQuestions';
 
@@ -293,10 +294,10 @@ async function hasValidOfflineTrackLease(track: TrackId, expectedUserId?: string
 /**
  * Starting new offline sessions still requires an integrity-checked downloaded pack.
  */
-async function mayUseOfflineTrack(track: TrackId, _freeOnly: boolean): Promise<boolean> {
-  // Free reviewer access is online-only. A signed and unexpired paid-track lease
-  // is mandatory even if a previous subscription left a free sample on this device.
-  return hasValidOfflineTrackLease(track)
+async function mayUseOfflineTrack(track: TrackId, freeOnly: boolean): Promise<boolean> {
+  // Free packs contain only the public server-selected sample; paid packs still
+  // require an unexpired signed offline lease for the exact track.
+  return freeOnly || hasValidOfflineTrackLease(track)
 }
 
 function canFallbackToOffline(error: unknown): boolean {
@@ -920,6 +921,17 @@ export type QuestionSetAccess = 'admin' | 'licensed' | 'free-sample';
  * The persisted isFreeSession flag is never trusted on its own; the access tier
  * is returned by the server or verified against the free sample.
  */
+async function matchesSavedFreeQuestionSet(track: TrackId, questions: Question[], fingerprints: string[]): Promise<boolean> {
+  const free = await getOfflineQuestionsByTrack(track, true)
+  if (!free?.length) return false
+  const allowed = new Map(free.map(question => [question.id, question]))
+  for (let i = 0; i < questions.length; i++) {
+    const published = allowed.get(questions[i].id)
+    if (!published || await fingerprintQuestion(published) !== fingerprints[i]) return false
+  }
+  return true
+}
+
 export async function authorizeQuestionSetAccess(track: TrackId, questions: Question[]): Promise<QuestionSetAccess | null> {
   if (!questions.length || questions.length > 3000 || questions.some(q => q.track !== track)) return null;
 
@@ -933,11 +945,9 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   const fingerprints = fingerprintResults as string[];
 
 
-  if (offline) {
-    // Free users must reconnect to review. Old locally saved free samples never
-    // authorize offline sessions after sign-out, revocation, or license expiry.
-    return null
-  }
+  if (offline) return await matchesSavedFreeQuestionSet(track, questions, fingerprints) ? 'free-sample' : null
+  // The local public pack also authorizes free sessions without a Supabase call.
+  if (await matchesSavedFreeQuestionSet(track, questions, fingerprints)) return 'free-sample'
 
   if (supabase) {
     const { data, error } = await invokeQuestionBank({
@@ -1191,6 +1201,22 @@ async function performOfflineQuestionPackUpdateCheck(
     return { status: 'not-downloaded', changedCompetences: [], checkedAt: null }
   }
 
+  if (freeOnly && typeof navigator !== 'undefined' && navigator.onLine !== false) {
+    try {
+      const publicRevision = (await fetchRevisionQuestionCounts(track, true)).bankRevision
+      const current = Boolean(publicRevision && publicRevision === manifest.publicBankRevision)
+      const checkedAt = Date.now()
+      await recordOfflinePackVersionCheck(track, true, {
+        checkedAt, state: current ? 'current' : 'available', availableSources: []
+      })
+      return { status: current ? 'current' : 'available', changedCompetences: current ? [] : ['Free Reviewer'],
+        checkedAt, lastKnownState: current ? 'current' : 'available', savedAt: manifest.savedAt }
+    } catch {
+      return { status: 'unavailable', changedCompetences: [], checkedAt: manifest.lastCheckedAt ?? null,
+        lastKnownState: manifest.lastKnownUpdateState, savedAt: manifest.savedAt }
+    }
+  }
+
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     const knownPaths = manifest.availableSources ?? []
     return {
@@ -1304,6 +1330,7 @@ async function hasFreshCurrentOfflinePack(track: TrackId, freeOnly: boolean): Pr
   if (!manifest?.complete) return false
 
   const checkedAt = Number(manifest.lastCheckedAt ?? 0)
+  if (freeOnly && !manifest.publicBankRevision) return false
   if (checkedAt > 0 && Date.now() - checkedAt < OFFLINE_PACK_VERSION_CHECK_TTL_MS) {
     return manifest.lastKnownUpdateState === 'current'
   }
@@ -1321,9 +1348,7 @@ async function getCurrentCachedCompetenceRange(
   limit: number | undefined,
   randomSample: boolean
 ): Promise<Question[] | null> {
-  // A free viewer without a signed local license must use the online service,
-  // not inspect previously encrypted offline packs or fetch their update metadata.
-  if (!(await hasValidOfflineTrackLease(track))) return null
+  if (!freeOnly && !(await hasValidOfflineTrackLease(track))) return null
   if (!(await hasFreshCurrentOfflinePack(track, freeOnly))) return null
   try {
     return await getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
@@ -1403,14 +1428,71 @@ async function requestPersistentStorageIfSupported(): Promise<void> {
   }
 }
 
+
+/** Download the public free pool, with no authentication or paid bank access. */
+async function downloadFreeOfflinePack(
+  track: TrackId,
+  onProgress?: (downloaded: number, total: number) => void,
+  canContinue: () => boolean = () => true
+): Promise<{ questionCount: number; groupCount: number }> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect to save the Free Reviewer for offline use.')
+  if (!canContinue()) throw new Error('Free Reviewer preparation was cancelled.')
+  await requestPersistentStorageIfSupported()
+  const snapshot = await fetchRevisionQuestionCounts(track, true)
+  const revision = snapshot.bankRevision
+  if (!revision || !/^[a-f0-9]{40}$/.test(revision)) throw new Error('The published Free Reviewer version is unavailable.')
+  const saved = await getOfflinePackManifest(track, true)
+  const existing = saved?.complete && saved.publicBankRevision === revision
+    ? await getOfflineQuestionPacks(track, true) : null
+  if (existing?.length && existing.length === saved?.groupCount &&
+      existing.reduce((sum, pack) => sum + pack.questions.length, 0) === saved?.questionCount) {
+    await preloadQuestionImages(track, existing.flatMap(pack => pack.questions), true, canContinue)
+    if (!canContinue()) throw new Error('Free Reviewer preparation was cancelled.')
+    onProgress?.(saved!.questionCount, saved!.questionCount)
+    return { questionCount: saved!.questionCount, groupCount: existing.length }
+  }
+  const total = snapshot.counts.reduce((sum, group) => sum + group.count, 0)
+  if (!total || !snapshot.counts.length) throw new Error('The free question pool is currently unavailable.')
+  let received = 0
+  const groups: { competenceId: string; part: number | null; questions: Question[] }[] = []
+  const all: Question[] = []
+  for (const group of snapshot.counts) {
+    if (group.count <= 0) continue
+    const questions: Question[] = []
+    for (let offset = 0; offset < group.count; offset += 200) {
+      if (!canContinue() || (typeof navigator !== 'undefined' && navigator.onLine === false)) throw new Error('Free Reviewer download was interrupted.')
+      const limit = Math.min(200, group.count - offset)
+      const { data, error } = await invokeQuestionBank({ body: {
+        action: 'questions', track, competenceId: group.competenceId, part: group.part,
+        freeOnly: true, offset, limit, bankRevision: revision, randomSample: false
+      } })
+      if (error || !Array.isArray(data?.questions) || data.access !== 'free-sample' ||
+          data.bankRevision !== revision || data.questions.length !== limit ||
+          data.questions.some((question: Question) => question.track !== track || question.competenceId !== group.competenceId)) {
+        throw new Error('The published Free Reviewer download was incomplete. Reconnect and retry.')
+      }
+      questions.push(...data.questions as Question[])
+      received += limit
+      onProgress?.(received, total)
+    }
+    groups.push({ competenceId: group.competenceId, part: group.part, questions })
+    all.push(...questions)
+  }
+  if (received !== total || !canContinue()) throw new Error('The free reviewer pool was not fully received.')
+  await fetchRevisionQuestionCounts(track, true, revision)
+  await preloadQuestionImages(track, all, true, canContinue)
+  if (!canContinue()) throw new Error('Free Reviewer preparation was cancelled.')
+  await saveOfflineQuestionPackSets([{ track, freeOnly: true, groups, publicBankRevision: revision }])
+  return { questionCount: received, groupCount: groups.length }
+}
+
 async function downloadOfflinePackInternal(
   track: TrackId,
   freeOnly: boolean,
   onProgress?: (downloaded: number, total: number) => void,
   canContinue: () => boolean = () => true
 ): Promise<{ questionCount: number; groupCount: number }> {
-  // Offline downloads are a licensed feature. Free users study the free sample online only.
-  if (freeOnly) throw new Error('Offline downloads require an active license for this track.')
+  if (freeOnly) return downloadFreeOfflinePack(track, onProgress, canContinue)
   if (!canContinue()) throw new Error('The track license is no longer active. Offline preparation was stopped.')
   if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect to the internet before downloading an offline pack.')
   if (!supabase) throw new Error('Protected question service is not configured.')
@@ -1431,6 +1513,10 @@ async function downloadOfflinePackInternal(
     if (!accountActive || !canContinue()) {
       throw new Error('The account or track license changed during offline preparation. Your existing saved pack is preserved.')
     }
+  }
+  const assertDownloadAccountSafe = () => {
+    assertDownloadAccount()
+    return true
   }
   try {
   const { data: offlineLicense, error: offlineLicenseError } = await invokeQuestionBank({
@@ -1477,6 +1563,7 @@ async function downloadOfflinePackInternal(
       previousPacks.length === previousManifest.groupCount &&
       previousPacks.reduce((sum, pack) => sum + pack.questions.length, 0) === previousManifest.questionCount) {
     assertDownloadAccount()
+    await preloadQuestionImages(track, previousPacks.flatMap(pack => pack.questions), false, assertDownloadAccountSafe)
     await recordOfflinePackVersionCheck(track, false, {
       checkedAt: Date.now(), state: 'current',
       sourceVersions: fullVersionsBefore,
@@ -1608,7 +1695,9 @@ async function downloadOfflinePackInternal(
     })
   }
 
+  // Do not mark questions saved until every attached image is cached and verified.
   assertDownloadAccount()
+  await preloadQuestionImages(track, allQuestions, false, assertDownloadAccountSafe)
   // A revoked/expired license cannot finish committing a pack if access changed
   // while its final pages were in flight. Existing saved packs are untouched.
   assertDownloadAccount()
