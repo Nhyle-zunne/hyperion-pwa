@@ -1,10 +1,17 @@
 import { assertSquareCorners } from './square-corners-browser-helper.mjs'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { chromium } from 'playwright'
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
 const failures = []
 const base = process.env.HYPERION_MEDIA_TEST_URL || process.env.HYPERION_RECOVERY_TEST_URL
 assert(base, 'Set HYPERION_MEDIA_TEST_URL or run through run-recovery-browser.mjs')
+const defaultPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64')
+const syntheticImages = new Map()
+for (let i = 0; i < 105; i++) {
+  const bytes = Buffer.concat([defaultPng, Buffer.from([i & 255, (i >> 8) & 255])])
+  syntheticImages.set(createHash('sha256').update(bytes).digest('hex'), bytes)
+}
 async function scenario(name, run) {
   const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } })
   const page = await context.newPage()
@@ -18,8 +25,10 @@ async function scenario(name, run) {
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization,apikey' } })
       downloads++
       if (failFirst && downloads === 1) return route.fulfill({ status: 503, headers: { 'Access-Control-Allow-Origin': '*' }, body: 'Synthetic transient failure' })
-      const { png, sha } = await page.evaluate(digest => window.mediaFixture.lookupImage(digest), url.searchParams.get('sha256'))
-      return route.fulfill({ status: 200, contentType: 'image/png', headers: { 'X-Hyperion-Media-SHA256': sha, 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-Hyperion-Media-SHA256' }, body: Buffer.from(png) })
+      const digest = url.searchParams.get('sha256')
+      const png = syntheticImages.get(digest) || defaultPng
+      const sha = createHash('sha256').update(png).digest('hex')
+      return route.fulfill({ status: 200, contentType: 'image/png', headers: { 'X-Hyperion-Media-SHA256': sha, 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-Hyperion-Media-SHA256' }, body: png })
     }
     return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) ? route.continue() : route.abort()
   })
