@@ -9,22 +9,22 @@ Example metadata in one CSV cell (CSV quotes/escaping required):
 ```
 
 - Maximum four references per question, supported placements `question` and `explanation`.
-- File bytes are uploaded by an administrator to the **private** Supabase Storage bucket `question-bank-media`, content-addressed by SHA-256 and capped at 512 KiB; images are converted to WebP before upload where supported.
-- Access to the media API is not granted by the hash itself. Every online download requires a verified user and a **current active paid track entitlement**, or verified admin status. There are no public Storage objects or signed permanent URLs.
+- Admin uploads go through the existing authenticated Cloudflare question-bank admin endpoint, which stages **encrypted image assets** in `Nhyle-zunne/hyperion-reviewer` on a separate `hyperion-media-staging` branch. Images are content-addressed by SHA-256, capped at 512 KiB, and converted to WebP by the PWA where supported. Uploading an image does not use Supabase Storage.
+- A hash is not an authorization token. Published free sample images are accessible only when referenced by the official Free Reviewer subset; paid images require the same server-side current paid track entitlement used for paid question delivery. There are no public plaintext image URLs or permanent signed URLs. Account and license authentication still uses Supabase, but media bytes never use Supabase Storage.
 - The PWA uses locally SHA-verified IndexedDB blobs, scoped by owner and track. Android uses its private, SHA-verified files directory. No progress-synchronization snapshots contain images.
-- To attach an image: open **Admin > Question Bank**, select the bank and question, upload, select placement/description, **Add edited files to publish queue**, **Validate & Publish**. Existing question IDs/retired rows are unchanged.
+- To attach an image: open **Admin > Question Bank**, select the bank and question, upload to encrypted GitHub staging, select placement/description, **Add edited files to publish queue**, **Validate & Publish**. The validated bank publication atomically promotes the referenced encrypted images into Android's `app/src/main/assets/question-media/` on `main`. Existing question IDs/retired rows are unchanged.
 - To replace an attachment, remove its reference and add another. The old immutable file need not be overwritten; cleanup of unreferenced private objects needs separate controlled administration.
-- **Do not add images to free sample questions that depend on a diagram**: the current media API intentionally requires a paid license and won't reveal premium image bytes to free users.
-- Android's bundled encrypted CSVs do not update just because the web admin publishes a bank. Publish a new signed Android release with updated banks, or separately enable/verify the existing authenticated smart-bank update feature (currently disabled by default) before expecting Android auto-sync.
-- The Android app must be released after both repositories' code passes CI. No question photos are bundled in source control by this feature; an admin has to upload actual images.
+- Free sample question images are supported: images must be present in the official published Free Reviewer subset and are checked against that published pool. Images referenced only by premium questions remain paid-only.
+- Android's encrypted question banks and images are local APK assets. Publishing new image and bank files to GitHub does not update an already installed APK. A new signed Android release (or a separately verified authorized update mechanism that includes corresponding images) is necessary before installed users see the new data.
+- Android ships the encrypted image files from its GitHub repository as local APK assets. No network image downloader is required. Rebuild/test and release the Android app after adding new questions or images.
 
 ## Deployment invariants
 
-1. Migration creates `question-bank-media` private bucket, no anon or authenticated storage policies.
-2. Deploy `question-media` Edge Function with `verify_jwt=false` **only because it manually validates each Authorization JWT** through Supabase Auth and enforces current entitlement server-side. Do not change its admin/license checks.
-3. The existing production `question-bank` function may have a different question parser from the repository. Patch only optional image metadata extraction into the live deployed parser; do not blindly overwrite its question count or retirement logic.
-4. Deploy PWA after media backend is live. Review signed-in paid user and unlicensed user behavior before adding diagrams to any production bank.
-5. Existing snapshots and history retain compatible optional image metadata and never store image bytes.
+1. The image uploader must have the Cloudflare Worker's existing `GITHUB_BANK_WRITE_TOKEN` permission to write `hyperion-reviewer`. It creates or updates `hyperion-media-staging` without moving `main`; no Supabase media bucket is required for new uploads.
+2. The existing Cloudflare `/api/question-bank/admin` administrator check remains mandatory for media uploads. The paid `/api/question-bank/media` endpoint retains its current paid-track authorization and published-bank membership checks.
+3. Existing paid question-bank authentication continues via Supabase. The old `question-media` and `question-media-build` Edge Functions and Storage bucket are **legacy only**; the new PWA uploader and GitHub publisher do not call them. Do not delete old stored images until all historical unpublished references are migrated and deletion is separately authorized.
+4. Deploy and verify the PWA Worker media staging path, then test authenticated upload, validation and atomic publishing, followed by signed-in paid, free and revoked user behavior.
+5. Existing snapshots and history retain compatible optional image metadata and never store image bytes. Old images that were uploaded to Supabase but never published to encrypted GitHub must be re-uploaded through the admin UI before they can be included in a new publication.
 
 ## Reader coverage and cache behavior
 
@@ -32,7 +32,7 @@ The PWA displays prompt diagrams in practice, mock exams, Quick Scan, flashcards
 
 Failed loads provide Retry. Enlargement clears when the question, references, account or access changes. The PWA enlargement uses a modal outside transformed cards, supports Escape and restores keyboard focus. Android supports pinch and explicit zoom controls. Both clients recheck ownership and access before returning cached/downloaded media.
 
-Offline reuse covers verified images already viewed on that device, while access remains valid. Images are fetched on demand, not bundled into a complete offline track download. The PWA keeps at most 100 cache entries; eviction, browser storage cleanup or an unviewed diagram can require another online download. Saved bookmarks and mistakes retain reference metadata, never image bytes; older saved records that already lost references cannot safely reconstruct them automatically.
+The PWA fetches uncached images through Cloudflare/GitHub and stores SHA-verified blobs in owner-scoped IndexedDB. **Prepare Offline** preloads all referenced images for the selected free or licensed bank before marking the pack complete. There is no fixed image eviction cap, although browser storage clearing or quota pressure can remove locally stored data. An offline pack is not complete if required diagrams could not be saved. Saved bookmarks and mistakes retain image reference metadata, not image bytes; older saved records that already lost references cannot safely reconstruct them automatically.
 
 When replacing an existing bank through CSV upload, retain the `HYPERION_MEDIA` column if that bank contains attachments. Uploads that omit it are rejected to prevent silent removal. To intentionally remove an attachment, keep the column and clear its cell. Malformed nonempty metadata is rejected. Image-only changes are included in the publish correction summary.
 
@@ -42,6 +42,10 @@ The attachment chooser confirms the number of images in the current draft, then 
 
 Leave Question text blank when a valid image is attached with **Below question** placement. The photo may contain the complete prompt and choices; A/B/C/D answer buttons are supported for these image-only scans. The normal answer key is still required. Explanation-only images cannot replace a missing prompt. The optional description receives a default accessibility label. Changing/removing the final question image requires restoring question text. Existing question positions, choices and saved IDs remain unchanged. Image-only saved identities include the protected prompt image hashes; text-question identities retain their previous format. Android requires an app release with the matching parser changes before receiving such edited banks.
 
-The admin uploader shows preparation, actual byte-transfer percentage and server verification in a progress bar. Completion appears only after the returned image hash and size verify. Each attachment displays a protected image preview with enlargement and Retry, including saved attachments when reopening a question. Switching questions clears the previous progress and cancels a pending upload; previews keep the same signed-in account and entitlement controls as the reader.
+The admin uploader shows preparation, actual byte-transfer percentage and GitHub staging verification in a progress bar. Completion appears only after the returned image hash and size verify. Each attachment displays a protected image preview with enlargement and Retry, including saved attachments when reopening a question. Switching questions clears the previous progress and cancels a pending upload; previews keep the same signed-in account and entitlement controls as the reader.
 
 The editor uses compact text fields, paired choices on wider screens and a stacked layout on phones. Choice boxes start at one line and can be scrolled or resized; prompts and explanations expand with their content. **Add edited files to publish queue** saves the current valid form and stages the updated bank in one action. Further edits clear the older queued snapshot and validation preview; add it again when ready. Discard restores the last staged draft locally. Validate/review and Publish remain separate explicit actions. Image and queued-file Remove controls are red.
+
+## Supabase usage boundary
+
+The image **upload, storage, encryption bundle, and download** path uses GitHub and Cloudflare only. Supabase remains responsible for the existing account identity, administrator approval, and live paid-track entitlement checks already required to protect the question banks. Removing these checks would allow unlicensed users to request paid diagrams independently of the question UI. No stored customer data or existing Supabase bucket has been deleted by this migration.
