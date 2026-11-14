@@ -10,12 +10,13 @@ let scenario = 'success', requests = 0, lastRequest
 class FakeXHR {
   upload = {}; headers = {}; status = 200
   constructor() { requests++; lastRequest = this }
-  open(method, url) { assert.equal(method, 'POST'); assert.equal(url, 'https://synthetic.invalid/functions/v1/question-media') }
+  open(method, url) { assert.equal(method, 'POST'); assert.equal(url, '/api/question-bank/admin') }
   setRequestHeader(key, value) { this.headers[key] = value }
   send(body) {
     assert.equal(this.headers.Authorization, 'Bearer synthetic-token')
-    assert.equal(this.headers.apikey, 'synthetic-key')
+    assert.equal(this.headers.apikey, undefined)
     const data = JSON.parse(body), decoded = Buffer.from(data.base64, 'base64')
+    assert.equal(data.action, 'media-upload')
     queueMicrotask(() => {
       if (scenario === 'network') { this.onerror(); return }
       if (scenario === 'timeout') { this.ontimeout(); return }
