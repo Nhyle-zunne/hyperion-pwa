@@ -12,7 +12,7 @@ import BookmarksScreen from '../../src/screens/BookmarksScreen'
 import VaultScreen from '../../src/screens/VaultScreen'
 import HistoryScreen from '../../src/screens/HistoryScreen'
 import SearchScreen from '../../src/screens/SearchScreen'
-import { loadLicensedQuestionImage } from '../../src/lib/questionMediaCache'
+import { loadLicensedQuestionImage, preloadQuestionImages, offlineQuestionImagesComplete } from '../../src/lib/questionMediaCache'
 import { useLicenseStore } from '../../src/stores/licenseStore'
 import { usePracticeStore } from '../../src/stores/practiceStore'
 import { useBookmarksStore } from '../../src/stores/bookmarksStore'
@@ -52,8 +52,28 @@ async function main() {
   useHistoryStore.setState({ entries: [{ id: snapshot.sessionId, mode: 'MOCK', track: mediaQuestion.track, competenceId: 'C1', total: 1, correct: 0, answered: 0, percent: 0, durationMs: 1000, startedAt: Date.now() - 1000, finishedAt: Date.now() }], savedSessions: [] })
   usePracticeStore.setState({ ...snapshot, finished: false, loading: false, error: null, finishing: false, completionError: null })
   let changeRef: (() => void) | undefined
+  const syntheticImages = new Map<string, number[]>()
   Object.assign(window, { mediaFixture: {
     sha, png: Array.from(png), license,
+    lookupImage: (digest: string) => ({ sha: digest, png: syntheticImages.get(digest) || Array.from(png) }),
+    prepareMany: async (count: number) => {
+      const questions = []
+      const hashes: string[] = []
+      for (let i = 0; i < count; i++) {
+        const bytes = Uint8Array.from([...png, i & 255, (i >> 8) & 255])
+        const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), x => x.toString(16).padStart(2, '0')).join('')
+        syntheticImages.set(digest, Array.from(bytes))
+        hashes.push(digest)
+        questions.push({ ...mediaQuestion, id: 'cached-diagram-' + i, imageAttachments: [{
+          sha256: digest, mime: 'image/png' as const, placement: 'question' as const, alt: 'Synthetic offline diagram'
+        }] })
+      }
+      await preloadQuestionImages('DECK_OIC_NW', questions, false)
+      return { ready: await offlineQuestionImagesComplete('DECK_OIC_NW', questions, false), last: hashes.at(-1) }
+    },
+    loadMulti: (digest: string) => loadLicensedQuestionImage('DECK_OIC_NW', {
+      sha256: digest, mime: 'image/png', placement: 'question', alt: 'Cached offline diagram'
+    }).then(blob => blob.size),
     savedRefs: async () => {
       await Promise.all([readEncryptedPersistedValue('hyperion-bookmarks'), readEncryptedPersistedValue('hyperion-vault')])
       await Promise.all([useBookmarksStore.persist.rehydrate(), useVaultStore.persist.rehydrate()])
