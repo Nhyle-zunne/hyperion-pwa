@@ -34,6 +34,13 @@ const wrongCount = planSmartBankReuse(previous, remote,
   [{...groups[0], count: 3}, ...groups.slice(1)], cached)
 assert.deepEqual(wrongCount.download.map(g => g.competenceId), ['C1'])
 
+const retiredSource = planSmartBankReuse(previous, remote,
+  [{ ...groups[0], forceDownload: true }, ...groups.slice(1)], cached)
+assert.deepEqual(retiredSource.download.map(group => group.competenceId), ['C1'],
+  'A source with retired physical rows must be fetched to derive its authoritative free sample')
+assert.deepEqual(retiredSource.reused.map(group => group.competenceId), ['C2', 'C3'],
+  'Unaffected groups remain reusable without additional download')
+
 const unavailableVersion = planSmartBankReuse(
   { ...previous, sourceVersions: { ...versions, [groups[0].path]: undefined } },
   remote, groups, cached
