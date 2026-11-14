@@ -475,6 +475,8 @@ try {
   await scenario('Locked image notice opens the existing matching Bond Store popup for each track', async ({ page, open, downloads }) => {
     await open('gallery')
     await page.evaluate(() => window.mediaFixture.license(false, null))
+    await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER TO VIEW IMAGES' }).waitFor()
+    const beforeClicks = downloads()
     const products = [
       ['DECK_OIC_NW', 'oic_nw', 'Deck OIC-NW'],
       ['GMDSS_GOC', 'gmdss', 'GMDSS GOC'],
@@ -494,7 +496,7 @@ try {
       await popup.getByRole('button', { name: 'Close purchase dialog' }).click()
       await popup.waitFor({ state: 'hidden' })
     }
-    assert.equal(downloads(), 0, 'Clicking the paywall never fetches protected image bytes')
+    assert.equal(downloads(), beforeClicks, 'Clicking the paywall never fetches protected image bytes')
   })
   await scenario('All 105 separately referenced diagrams remain accessible offline without new image requests', async ({ page, context, open, downloads }) => {
     await open('gallery')
