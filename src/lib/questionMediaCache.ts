@@ -133,10 +133,11 @@ export const loadLicensedQuestionImage = (track: TrackId, ref: QuestionImageRef,
   loadQuestionImage(track, ref, false, signal)
 
 export async function offlineQuestionImagesComplete(track: TrackId, questions: Question[], freeOnly: boolean): Promise<boolean> {
-  const owner = freeOnly ? 'public-free' : currentOwner(track)
-  if (!owner) return false
   const refs = new Map<string, QuestionImageRef>()
   for (const question of questions) for (const ref of question.imageAttachments || []) refs.set(ref.sha256, ref)
+  if (!refs.size) return true
+  const owner = freeOnly ? 'public-free' : currentOwner(track)
+  if (!owner) return false
   for (const ref of refs.values()) if (!await cached(owner, track, ref)) return false
   return freeOnly || currentOwner(track) === owner
 }
@@ -147,6 +148,7 @@ export async function preloadQuestionImages(
 ): Promise<void> {
   const refs = new Map<string, QuestionImageRef>()
   for (const question of questions) for (const ref of question.imageAttachments || []) refs.set(ref.sha256, ref)
+  if (!refs.size) return
   for (const ref of refs.values()) {
     if (!canContinue()) throw new Error('Offline diagram preparation was interrupted. Retry while connected.')
     await loadQuestionImage(track, ref, freeOnly)
