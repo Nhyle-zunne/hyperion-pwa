@@ -1,3 +1,4 @@
+import { collectBankImages, checkMediaAssets, checkPublishBudget, type MediaBundler } from './questionMediaBundler.ts'
 import { decryptToText, deriveKeyBytes, toSearchQuestions } from '../supabase/functions/_shared/bankCodec.ts'
 import { parseCsvText } from '../src/lib/csvParser.ts'
 import { parseQuestionImageRefs } from '../src/lib/questionMedia.ts'
@@ -239,10 +240,15 @@ export async function validateGithubBatch(input: PublishInput, fetcher: typeof f
   const result = await prepare(input, fetcher, token, false)
   return result.alreadyPublished ? null : result.preview
 }
-export async function publishGithubBatch(input: PublishInput, fetcher: typeof fetch, token: string) {
+export async function publishGithubBatch(input: PublishInput, fetcher: typeof fetch, token: string, bundleMedia?: MediaBundler) {
   if (!input.expectedHead || !input.validationId) throw new PublisherError('Validate the files before publishing.', 409)
   const result = await prepare(input, fetcher, token, true)
   if (result.alreadyPublished) return { revision: result.state.release.revision, commit: result.state.head, alreadyPublished: true, repository: GITHUB_BANK_REPOSITORY }
+  const references = collectBankImages(result.decoded)
+  checkPublishBudget(result.decoded.length, references.length)
+  if (references.length && !bundleMedia) throw new PublisherError('Question images must be bundled before publishing.', 503)
+  // Finish and verify every image before creating any GitHub object or moving main.
+  const media = references.length ? await checkMediaAssets(references, { assets: await bundleMedia!(references) }) : []
   const { api } = result.state
   const entries: { path: string; mode: string; type: string; sha?: string; content?: string }[] = []
   const files = result.state.files.map(file => ({ ...file }))
@@ -250,6 +256,11 @@ export async function publishGithubBatch(input: PublishInput, fetcher: typeof fe
     const blob = await (await api('git/blobs', 'POST', { content: base64(file.bytes), encoding: 'base64' }))!.json() as { sha: string }
     entries.push({ path: GITHUB_BANK_ROOT + '/' + githubAssetPath(file.path), mode: '100644', type: 'blob', sha: blob.sha })
     Object.assign(files.find(item => item.path === file.path)!, { bytes: file.bytes.length, sha256: await sha256(file.bytes) })
+  }
+  for (const asset of media) {
+    const blob = await (await api('git/blobs', 'POST', { content: asset.ciphertext, encoding: 'base64' }))!.json() as { sha: string }
+    if (!/^[a-f0-9]{40}$/.test(blob.sha)) throw new PublisherError('GitHub returned an invalid image blob.', 502)
+    entries.push({ path: 'app/src/main/assets/' + asset.path, mode: '100644', type: 'blob', sha: blob.sha })
   }
   const manifestText = JSON.stringify({ ...result.state.manifest, version: 1, encrypted: true, files }, null, 2) + '\n'
   entries.push({ path: GITHUB_BANK_ROOT + '/' + GITHUB_BANK_MANIFEST, mode: '100644', type: 'blob', content: manifestText })
