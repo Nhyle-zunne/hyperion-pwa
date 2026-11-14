@@ -44,9 +44,9 @@ export default function AboutScreen() {
             <li>Timed mock examinations and performance review for active licensed tracks.</li>
             <li>Bookmarks, mistakes notebook, and saved/resumable sessions.</li>
             <li>Study history, session logs, study-time summaries, and streak tracking.</li>
-            <li>Offline-capable Android study tools and an installable PWA with licensed, encrypted offline question-bank downloads.</li>
+            <li>Offline-capable Android study tools and an installable PWA with locally saved Free Reviewer questions and diagrams, plus licensed encrypted offline full-bank downloads.</li>
           </ul>
-          <p style={{ ...paragraphStyle, marginBottom: 0 }}><strong>Free vs full reviewer:</strong> Without an active license for the selected track, the examination-mode menu offers Free Reviewer and UNLOCK FULL REVIEWER only. Timed Mock Exam, Practice All, Quick Scan, Flashcards, Mistakes Notebook, search, and licensed offline question-bank access are premium modes. The website Free Reviewer requires an internet connection.</p>
+          <p style={{ ...paragraphStyle, marginBottom: 0 }}><strong>Free vs full reviewer:</strong> Without an active license for the selected track, the examination-mode menu offers Free Reviewer and UNLOCK FULL REVIEWER only. Timed Mock Exam, Practice All, Quick Scan, Flashcards, Mistakes Notebook, search, and licensed offline question-bank access are premium modes. The website Free Reviewer can work offline after its free question pool and diagrams have been saved to the device while online.</p>
         </div>
       </section>
 
