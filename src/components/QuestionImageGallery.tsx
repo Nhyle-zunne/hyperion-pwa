@@ -18,7 +18,7 @@ export default function QuestionImageGallery({ question, placement }: { question
   if (!images.length) return null
   if (!unlocked) return <button type="button" className="btn btn-outline"
     aria-haspopup="dialog"
-    style={{ display: 'block', width: '100%', minHeight: 48, padding: 14, margin: '1rem 0', whiteSpace: 'normal', textAlign: 'center' }}
+    style={{ display: 'block', width: '100%', minHeight: 48, padding: 14, margin: '1rem 0', borderRadius: 0, whiteSpace: 'normal', textAlign: 'center' }}
     onClick={() => {
       const code = paidProductCodeForTrackId(question.track)
       if (!code) return
