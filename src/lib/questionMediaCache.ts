@@ -152,11 +152,71 @@ export async function preloadQuestionImages(
   const refs = new Map<string, QuestionImageRef>()
   for (const question of questions) for (const ref of question.imageAttachments || []) refs.set(ref.sha256, ref)
   if (!refs.size) return
-  for (const ref of refs.values()) {
-    if (!canContinue()) throw new Error('Offline diagram preparation was interrupted. Retry while connected.')
-    await loadQuestionImage(track, ref, freeOnly)
+  const owner = freeOnly ? 'public-free' : currentOwner(track)
+  if (!owner) throw new Error('An active track license is required to prepare diagrams.')
+  const assertAccess = () => {
+    if (!canContinue() || (!freeOnly && currentOwner(track) !== owner)) throw new Error('Offline diagram preparation was interrupted. Retry while connected.')
   }
-  if (!canContinue() || !await offlineQuestionImagesComplete(track, questions, freeOnly)) {
+  const missing: QuestionImageRef[] = []
+  for (const ref of refs.values()) {
+    assertAccess()
+    if (!await cached(owner, track, ref)) missing.push(ref)
+  }
+  let authorization = ''
+  if (missing.length && !freeOnly) {
+    if (!supabase) throw new Error('Sign in to prepare licensed diagrams.')
+    const { data: { session } } = await supabase.auth.getSession()
+    assertAccess()
+    if (!session || session.user.id !== owner) throw new Error('Sign in to prepare licensed diagrams.')
+    authorization = `Bearer ${session.access_token}`
+  }
+  for (let offset = 0; offset < missing.length; offset += 8) {
+    const batch = missing.slice(offset, offset + 8)
+    assertAccess()
+    const response = await fetch('/api/question-bank/media', {
+      method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(60000),
+      headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
+      body: JSON.stringify({ track, freeOnly, images: batch.map(({sha256, mime}) => ({sha256, mime})) })
+    })
+    if (!response.ok || !response.headers.get('content-type')?.startsWith('application/json')) throw new Error('Offline diagrams could not be downloaded.')
+    const maxBytes = 8 * Math.ceil(QUESTION_MEDIA_MAX_BYTES / 3) * 4 + 16384
+    if (Number(response.headers.get('content-length') || 0) > maxBytes || !response.body) {
+      await response.body?.cancel()
+      throw new Error('Invalid offline diagram response.')
+    }
+    const reader = response.body.getReader(), chunks: Uint8Array[] = []
+    let size = 0
+    try {
+      while (true) {
+        assertAccess()
+        const { done, value } = await reader.read()
+        if (done) break
+        size += value.length
+        if (size > maxBytes) throw new Error('Offline diagram response is too large.')
+        chunks.push(value)
+      }
+    } catch (error) { await reader.cancel().catch(() => undefined); throw error }
+    finally { reader.releaseLock() }
+    const bytes = new Uint8Array(size); let position = 0
+    for (const chunk of chunks) { bytes.set(chunk, position); position += chunk.length }
+    const result = JSON.parse(new TextDecoder().decode(bytes)) as { images?: { sha256: string; mime: string; data: string }[] }
+    if (!Array.isArray(result.images) || result.images.length !== batch.length || new Set(result.images.map(item => item.sha256)).size !== batch.length) throw new Error('Incomplete offline diagram response.')
+    const verified: Blob[] = []
+    for (const ref of batch) {
+      const item = result.images.find(image => image.sha256 === ref.sha256 && image.mime === ref.mime)
+      if (!item || typeof item.data !== 'string' || item.data.length > Math.ceil(QUESTION_MEDIA_MAX_BYTES / 3) * 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(item.data)) throw new Error('Invalid offline diagram response.')
+      const plain = Uint8Array.from(atob(item.data), char => char.charCodeAt(0))
+      if (!await verifyImage(plain, ref)) throw new Error('Offline diagram integrity verification failed.')
+      assertAccess()
+      verified.push(new Blob([plain], { type: ref.mime }))
+    }
+    for (let index = 0; index < batch.length; index++) {
+      assertAccess()
+      await store(owner, track, batch[index], verified[index])
+    }
+  }
+  assertAccess()
+  if (!await offlineQuestionImagesComplete(track, questions, freeOnly)) {
     throw new Error('Not every question diagram is saved. Offline study is not ready yet.')
   }
 }

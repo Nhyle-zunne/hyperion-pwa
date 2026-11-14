@@ -134,11 +134,27 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
     // its encrypted GitHub asset. Free samples never call Supabase; paid images
     // require the same live entitlement check as paid question pages.
     if (url.pathname === '/api/question-bank/media') {
-      if (request.method !== 'GET') return reply({ error: 'Method not allowed.' }, 405)
-      const track = url.searchParams.get('track'), digest = url.searchParams.get('sha256')
-      const mime = url.searchParams.get('mime'), tier = url.searchParams.get('freeOnly')
-      if (!mediaObjectPath(track, digest, mime) || !validTrack(track) || !validMime(mime) ||
-          !digest || (tier !== '1' && tier !== '0')) return reply({ error: 'Invalid image request.' }, 400)
+      const batch = request.method === 'POST'
+      if (!batch && request.method !== 'GET') return reply({ error: 'Method not allowed.' }, 405)
+      let track: string | null, tier: string | null
+      let requested: { sha256: string; mime: string }[]
+      if (batch) {
+        let body: { track?: string; freeOnly?: boolean; images?: { sha256: string; mime: string }[] }
+        try { body = JSON.parse(new TextDecoder().decode(await readBounded(request.body, 8192))) }
+        catch { return reply({ error: 'Invalid image request.' }, 400) }
+        if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.freeOnly !== 'boolean' ||
+            !Array.isArray(body.images) || body.images.length < 1 || body.images.length > 8) return reply({ error: 'Invalid image request.' }, 400)
+        track = body.track ?? null; tier = body.freeOnly ? '1' : '0'; requested = body.images
+      } else {
+        track = url.searchParams.get('track'); tier = url.searchParams.get('freeOnly')
+        requested = [{ sha256: url.searchParams.get('sha256') || '', mime: url.searchParams.get('mime') || '' }]
+      }
+      if (!validTrack(track) || (tier !== '1' && tier !== '0') ||
+          requested.some(ref => !ref || typeof ref !== 'object' || Array.isArray(ref) ||
+            Object.keys(ref).length !== 2 || !validMime(ref.mime) || !mediaObjectPath(track, ref.sha256, ref.mime)) ||
+          new Set(requested.map(ref => ref.sha256 + ':' + ref.mime)).size !== requested.length) {
+        return reply({ error: 'Invalid image request.' }, 400)
+      }
       const freeOnly = tier === '1'
       if (!freeOnly) {
         const authorization = request.headers.get('Authorization')
@@ -166,7 +182,7 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         if (!refs) {
           const found = new Set<string>()
           for (const path of SOURCE_ASSETS.filter(path => sourceInfo(path)?.track === track)) {
-            const text = await source.read(path, release)
+            const text = await source.read(path, release, false)
             for (const question of toSearchQuestions(path, freeOnly ? sampleFreeCsv(path, text) : text)) {
               const attachments = Array.isArray(question.imageAttachments) ? question.imageAttachments : []
               for (const ref of attachments) if (validQuestionImageRef(ref)) found.add(ref.sha256 + ':' + ref.mime)
@@ -176,11 +192,23 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
           publishedImageRefs.set(key, refs)
           while (publishedImageRefs.size > 10) publishedImageRefs.delete(publishedImageRefs.keys().next().value!)
         }
-        if (!refs.has(digest + ':' + mime)) return reply({ error: 'This diagram is not included in the selected reviewer pool.' }, 404)
-        const bytes = await readGithubQuestionImage(fetcher, track, digest, mime)
+        if (requested.some(ref => !refs.has(ref.sha256 + ':' + ref.mime))) return reply({ error: 'This diagram is not included in the selected reviewer pool.' }, 404)
+        if (batch) {
+          const images = await Promise.all(requested.map(async ref => {
+            if (!validMime(ref.mime)) throw new Error('Invalid image MIME.')
+            const bytes = await readGithubQuestionImage(fetcher, track, ref.sha256, ref.mime)
+            let binary = ''
+            for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
+            return { ...ref, data: btoa(binary) }
+          }))
+          return reply({ images })
+        }
+        const ref = requested[0]
+        if (!validMime(ref.mime)) throw new Error('Invalid image MIME.')
+        const bytes = await readGithubQuestionImage(fetcher, track, ref.sha256, ref.mime)
         return new Response(Uint8Array.from(bytes), { headers: {
-          'Content-Type': mime, 'Content-Length': String(bytes.length),
-          'X-Hyperion-Media-SHA256': digest, 'X-Content-Type-Options': 'nosniff',
+          'Content-Type': ref.mime, 'Content-Length': String(bytes.length),
+          'X-Hyperion-Media-SHA256': ref.sha256, 'X-Content-Type-Options': 'nosniff',
           'Cache-Control': 'private, no-store'
         } })
       } catch { return reply({ error: 'The published diagram could not be verified. The existing offline copy remains safe.' }, 503) }

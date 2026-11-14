@@ -12,7 +12,7 @@ import BookmarksScreen from '../../src/screens/BookmarksScreen'
 import VaultScreen from '../../src/screens/VaultScreen'
 import HistoryScreen from '../../src/screens/HistoryScreen'
 import SearchScreen from '../../src/screens/SearchScreen'
-import { loadLicensedQuestionImage, preloadQuestionImages, offlineQuestionImagesComplete } from '../../src/lib/questionMediaCache'
+import { loadLicensedQuestionImage, loadQuestionImage, preloadQuestionImages, offlineQuestionImagesComplete } from '../../src/lib/questionMediaCache'
 import { useLicenseStore } from '../../src/stores/licenseStore'
 import { usePracticeStore } from '../../src/stores/practiceStore'
 import { useBookmarksStore } from '../../src/stores/bookmarksStore'
@@ -22,7 +22,7 @@ import { setLocalProgressIdentity, markLocalProgressReady } from '../../src/lib/
 import { readEncryptedPersistedValue } from '../../src/lib/encryptedPersistStorage'
 import { saveSessionSnapshot } from '../../src/lib/sessionArchive'
 import { mediaQuestion } from './media-bank-fixture'
-import { mediaOwner } from './media-supabase-fixture'
+import { mediaOwner, mediaAuthCalls } from './media-supabase-fixture'
 import '../../src/index.css'
 
 async function main() {
@@ -56,7 +56,8 @@ async function main() {
   Object.assign(window, { mediaFixture: {
     sha, png: Array.from(png), license,
     lookupImage: (digest: string) => ({ sha: digest, png: syntheticImages.get(digest) || Array.from(png) }),
-    prepareMany: async (count: number) => {
+    authCount: () => mediaAuthCalls.count,
+    prepareMany: async (count: number, freeOnly = false, quotaFailure = false) => {
       const questions = []
       const hashes: string[] = []
       for (let i = 0; i < count; i++) {
@@ -68,12 +69,22 @@ async function main() {
           sha256: digest, mime: 'image/png' as const, placement: 'question' as const, alt: 'Synthetic offline diagram'
         }] })
       }
-      await preloadQuestionImages('DECK_OIC_NW', questions, false)
-      return { ready: await offlineQuestionImagesComplete('DECK_OIC_NW', questions, false), last: hashes.at(-1) }
+      const originalPut = IDBObjectStore.prototype.put
+      if (quotaFailure) IDBObjectStore.prototype.put = function (...args) {
+        if (this.name === 'images') throw new DOMException('Synthetic quota failure', 'QuotaExceededError')
+        return originalPut.apply(this, args)
+      }
+      try {
+        await preloadQuestionImages('DECK_OIC_NW', questions, freeOnly)
+        return { ready: await offlineQuestionImagesComplete('DECK_OIC_NW', questions, freeOnly), last: hashes.at(-1) }
+      } catch (error) {
+        if (!quotaFailure) throw error
+        return { ready: await offlineQuestionImagesComplete('DECK_OIC_NW', questions, freeOnly), rejected: true }
+      } finally { IDBObjectStore.prototype.put = originalPut }
     },
-    loadMulti: (digest: string) => loadLicensedQuestionImage('DECK_OIC_NW', {
+    loadMulti: (digest: string, freeOnly = false) => loadQuestionImage('DECK_OIC_NW', {
       sha256: digest, mime: 'image/png', placement: 'question', alt: 'Cached offline diagram'
-    }).then(blob => blob.size),
+    }, freeOnly).then(blob => blob.size),
     savedRefs: async () => {
       await Promise.all([readEncryptedPersistedValue('hyperion-bookmarks'), readEncryptedPersistedValue('hyperion-vault')])
       await Promise.all([useBookmarksStore.persist.rehydrate(), useVaultStore.persist.rehydrate()])
