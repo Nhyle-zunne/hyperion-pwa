@@ -1,4 +1,4 @@
-import { createMediaBundler } from './questionMediaBundler.ts'
+import { createGithubMediaBundler, stageGithubQuestionImage } from './githubMediaStore.ts'
 import { readGithubQuestionImage } from './questionMediaDelivery.ts'
 import { mediaObjectPath, validTrack, validMime } from '../supabase/functions/question-media/policy.ts'
 import { validQuestionImageRef } from '../src/lib/questionMedia.ts'
@@ -125,8 +125,9 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
           if (new TextEncoder().encode(csvText).length > 700000) return reply({ error: 'This question bank is too large for direct editing. Use the CSV uploader.' }, 413)
           return reply({ path, csvText, baseHead: state.head, bankRevision: release.revision })
         }
+        if (body.action === 'media-upload') return reply(await stageGithubQuestionImage(fetcher, token, body))
         if (body.action === 'validate') return reply({ preview: await validateGithubBatch(body, fetcher, token) })
-        if (body.action === 'publish') { const result = await publishGithubBatch(body, fetcher, token, createMediaBundler(fetcher, config.supabaseUrl, config.supabaseAnonKey, authorization)); source.invalidate(); return reply({ ...result, source: 'github' }) }
+        if (body.action === 'publish') { const result = await publishGithubBatch(body, fetcher, token, createGithubMediaBundler(fetcher, token)); source.invalidate(); return reply({ ...result, source: 'github' }) }
         return reply({ error: 'Unknown administration action.' }, 400)
       } catch (error) { return reply({ error: error instanceof PublisherError ? error.message : 'GitHub administration is temporarily unavailable. Your live bank and saved progress remain preserved.' }, error instanceof PublisherError ? error.status : 503) }
     }
