@@ -409,6 +409,16 @@ try {
       assert(await thumb.evaluate(el => el === document.activeElement), 'Closing image returns focus to thumbnail')
     }
   })
+  await scenario('Free Reviewer diagrams work without a subscription and remain locally cached', async ({ page, context, open, downloads }) => {
+    await open('gallery')
+    await page.evaluate(() => window.mediaFixture.license(false, null))
+    await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()
+    const count = downloads()
+    await context.setOffline(true)
+    await page.getByTitle('Tap to enlarge diagram').click()
+    await page.getByRole('dialog', { name: 'Enlarged question diagram' }).waitFor()
+    assert.equal(downloads(), count, 'Opening a free sample image offline requires no image request')
+  })
   await scenario('Cached read rechecks license after asynchronous digest', async ({ page, open }) => {
     await open('gallery'); await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()
     assert.deepEqual(await page.evaluate(() => window.mediaFixture.revokeDuringCachedDigest()), { rejected: true, revoked: true })
