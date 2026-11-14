@@ -1,4 +1,4 @@
-import { openDB, type DBSchema } from 'idb'
+import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { supabase } from './supabase'
 import type { Question } from '../types/question'
 import { QUESTION_MEDIA_MAX_BYTES, type QuestionImageRef } from './questionMedia'
@@ -17,9 +17,12 @@ interface SavedImage {
 interface MediaDB extends DBSchema {
   images: { key: string; value: SavedImage }
 }
-const database = openDB<MediaDB>('hyperion-licensed-question-images', 1, {
-  upgrade(db) { db.createObjectStore('images', { keyPath: 'id' }) }
-})
+let mediaDatabase: Promise<IDBPDatabase<MediaDB>> | undefined
+function database() {
+  return mediaDatabase ??= openDB<MediaDB>('hyperion-licensed-question-images', 1, {
+    upgrade(db) { db.createObjectStore('images', { keyPath: 'id' }) }
+  })
+}
 function cacheKey(owner: string, track: TrackId, sha: string) { return `${owner}:${track}:${sha}` }
 function currentOwner(track: TrackId): string | null {
   const state = useLicenseStore.getState()
@@ -38,11 +41,11 @@ async function verifyImage(bytes: Uint8Array, ref: QuestionImageRef): Promise<bo
 }
 async function cached(owner: string, track: TrackId, ref: QuestionImageRef): Promise<Blob | null> {
   try {
-    const saved = await (await database).get('images', cacheKey(owner,track,ref.sha256))
+    const saved = await (await database()).get('images', cacheKey(owner,track,ref.sha256))
     if (!saved || saved.ownerId!==owner || saved.track!==track || saved.mime!==ref.mime) return null
     const bytes = new Uint8Array(await saved.blob.arrayBuffer())
     if (!await verifyImage(bytes,ref)) {
-      await (await database).delete('images',saved.id)
+      await (await database()).delete('images',saved.id)
       return null
     }
     return saved.blob
@@ -51,7 +54,7 @@ async function cached(owner: string, track: TrackId, ref: QuestionImageRef): Pro
 async function store(owner: string, track: TrackId, ref: QuestionImageRef, blob: Blob) {
   // No fixed entry cap: removing an older diagram silently breaks complete offline packs.
   // A quota error must stop offline preparation instead of showing SAVED ON DEVICE.
-  await (await database).put('images', { id: cacheKey(owner, track, ref.sha256),
+  await (await database()).put('images', { id: cacheKey(owner, track, ref.sha256),
     ownerId: owner, track, sha256: ref.sha256, mime: ref.mime, blob, storedAt: Date.now() })
 }
 
