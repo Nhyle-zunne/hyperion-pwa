@@ -1,6 +1,7 @@
 import { createMediaBundler } from './questionMediaBundler.ts'
 import { readGithubQuestionImage } from './questionMediaDelivery.ts'
 import { mediaObjectPath, validTrack, validMime } from '../supabase/functions/question-media/policy.ts'
+import { validQuestionImageRef } from '../src/lib/questionMedia.ts'
 import { createAdminQuestionSearch, validAdminSearchInput } from './adminQuestionSearch.ts'
 import { PublisherError, publisherState, validateGithubBatch, publishGithubBatch, type PublishInput } from './githubBankPublisher.ts'
 import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, githubAssetPath, githubBankRequest, sha256, readBounded } from '../supabase/functions/_shared/githubBankSource.ts'
@@ -167,7 +168,8 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
           for (const path of SOURCE_ASSETS.filter(path => sourceInfo(path)?.track === track)) {
             const text = await source.read(path, release)
             for (const question of toSearchQuestions(path, freeOnly ? sampleFreeCsv(path, text) : text)) {
-              for (const ref of question.imageAttachments || []) found.add(ref.sha256 + ':' + ref.mime)
+              const attachments = Array.isArray(question.imageAttachments) ? question.imageAttachments : []
+              for (const ref of attachments) if (validQuestionImageRef(ref)) found.add(ref.sha256 + ':' + ref.mime)
             }
           }
           refs = found
