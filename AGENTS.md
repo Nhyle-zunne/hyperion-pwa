@@ -31,3 +31,7 @@ Keep Supabase log investigations narrow; reading logs consumes the Log Query all
 For skill configuration, run `node scripts/tests/agent-skills-test.mjs`. For application changes, run the relevant tests listed in `package.json` and the release guide; `npm run test:security` and `npm run build` are the standard regression/build checks. Changes to progress or recovery also need the relevant revision, saved-data, offline-license, and browser checks. State precisely what passed and what was not tested. Do not claim cross-device or production acceptance from static tests alone.
 
 Inspect diffs and preserve unrelated work. Main pushes trigger production deployment, so use a focused branch for review unless the user has authorized that release. Commit configuration when requested; do not infer permission for unrelated application changes or production data operations.
+
+## Graphify code navigation (optional)
+
+Use [the Graphify source-map guide](docs/graphify.md) before broad source searches when a current code-only graph is available. Query the local `graphify-out/graph.json` first to identify related files and dependencies, then verify findings in current source and tests. If the graph is absent and the CLI/network is available, generate it once using the guide's pinned `uvx` command. Do not block urgent work if Graphify cannot run. Never use a graph as proof of permissions, licensing, or production correctness. No cloud graph service or machine-wide hooks are enabled.
