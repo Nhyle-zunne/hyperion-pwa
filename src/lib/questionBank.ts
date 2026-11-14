@@ -1564,6 +1564,7 @@ async function downloadOfflinePackInternal(
       previousPacks.reduce((sum, pack) => sum + pack.questions.length, 0) === previousManifest.questionCount) {
     assertDownloadAccount()
     await preloadQuestionImages(track, previousPacks.flatMap(pack => pack.questions), false, assertDownloadAccountSafe)
+    await preloadQuestionImages(track, freeSample(previousPacks.flatMap(pack => pack.questions), track), true, assertDownloadAccountSafe)
     await recordOfflinePackVersionCheck(track, false, {
       checkedAt: Date.now(), state: 'current',
       sourceVersions: fullVersionsBefore,
@@ -1686,6 +1687,8 @@ async function downloadOfflinePackInternal(
       sampleGroups.set(key, existing)
     }
     if (!samples.length || !sampleGroups.size) throw new Error('The free reviewer sample could not be prepared. Your previous offline packs are unchanged.')
+    // Keep public free diagrams available even after a paid license expires offline.
+    await preloadQuestionImages(track, samples, true, assertDownloadAccountSafe)
     updates.push({
       track,
       freeOnly: true,
