@@ -1246,10 +1246,11 @@ assert.ok(
   'Desktop Account dropdown shows Bond Store, My Licenses, Orders, and Sign Out'
 );
 assert.ok(
-  desktopAccountMenu.includes("accountLinks.filter(link => signedIn || link.to === '/account?tab=payments')") &&
+  desktopAccountMenu.includes("accountLinks.filter(link => signedIn || link.to === '/account?tab=payments' || (offlineAccount && link.to === '/account?tab=licenses'))") &&
   desktopAccountMenu.includes('{signedIn ? (') &&
-  desktopAccountMenu.includes('Sign In'),
-  'Signed-out visitors see only Bond Store and Sign In; licenses, orders, and Sign Out require a session'
+  desktopAccountMenu.includes("const offlineAccount = !signedIn && hasVerifiedOfflineLicense") &&
+  desktopAccountMenu.includes('Reconnect Google account'),
+  'Guests see only Bond Store, verified offline license holders can view My Licenses, and Orders/Sign Out still require Auth'
 );
 assert.ok(
   desktopAccountMenu.includes('onClick={() => { void signInWithGoogle() }}') &&
@@ -1272,11 +1273,12 @@ assert.ok(
   'Desktop Account dropdown opens on hover or keyboard interaction and closes on escape/outside click'
 );
 assert.ok(
-  desktopAccountMenu.includes('client.auth.signOut()') &&
+  desktopAccountMenu.includes("client.auth.signOut({ scope: 'local' })") &&
+  accountScreen.includes("supabase.auth.signOut({ scope: 'local' })") &&
   desktopAccountMenu.includes('useLicenseStore.getState().clearLicense()') &&
   desktopAccountMenu.includes("navigate('/account', { replace: true })") &&
   desktopAccountMenu.includes('if (!client || !signedIn || signingOut) return'),
-  'Desktop Sign Out authenticates the session state, clears licenses, and returns to Account'
+  'Both explicit sign-outs revoke only the current device, clear its saved license, and return to Account'
 );
 assert.ok(
   indexCss.includes('.app-bottom-nav > a[href="/account"] { display: none !important; }') &&
