@@ -37,6 +37,7 @@ export function planSmartBankReuse(previous, remote, groupSources, cachedGroups)
     const comparable = typeof group.path === 'string' &&
       token(remote.sourceVersions[group.path]) &&
       previous.sourceVersions[group.path] === remote.sourceVersions[group.path] &&
+      !group.forceDownload &&
       cached?.questions?.length === group.count && group.count > 0
     if (comparable) reused.push({ ...group, questions: cached.questions })
     else download.push(group)

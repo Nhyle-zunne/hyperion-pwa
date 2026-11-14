@@ -23,6 +23,12 @@ import { readEncryptedPersistedValue } from '../../src/lib/encryptedPersistStora
 import { saveSessionSnapshot } from '../../src/lib/sessionArchive'
 import { mediaQuestion } from './media-bank-fixture'
 import { mediaOwner, mediaAuthCalls } from './media-supabase-fixture'
+import {
+  saveOfflineQuestionPack, saveOfflinePackManifest, saveOfflineQuestionPackSets,
+  getOfflinePackStatus, getOfflineQuestionPacks, getOfflineQuestionCounts,
+  getOfflineQuestionsByCompetence
+} from '../../src/lib/offlineQuestionCache'
+import type { TrackId } from '../../src/types/question'
 import '../../src/index.css'
 
 async function main() {
@@ -56,6 +62,54 @@ async function main() {
   const syntheticImages = new Map<string, number[]>()
   Object.assign(window, { mediaFixture: {
     sha, png: Array.from(png), license,
+    testActiveOfflinePacks: async () => {
+      const tracks: TrackId[] = ['DECK_OIC_NW', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT', 'GMDSS_GOC']
+      const outcomes = []
+      for (const track of tracks) {
+        const competenceId = track === 'ENGINE_MGT' ? 'C10' : 'C1'
+        const idPrefix = track === 'ENGINE_MGT' ? 'EM-C10' : 'TEST-C1'
+        const rows = [
+          { ...mediaQuestion, id: `${idPrefix}-001`, track, competenceId, imageAttachments: [] },
+          { ...mediaQuestion, id: `${idPrefix}-002`, track, competenceId, imageAttachments: [], isRetired: true },
+          { ...mediaQuestion, id: `${idPrefix}-003`, track, competenceId, imageAttachments: [] },
+          ...(track === 'ENGINE_MGT'
+            ? [182, 373, 406].map(n => ({ ...mediaQuestion, id: `EM-C10-${n}`, track, competenceId, imageAttachments: [] }))
+            : [])
+        ]
+        // Legacy raw pack as saved by an older version of the PWA.
+        await saveOfflineQuestionPack({ track, freeOnly: false, competenceId, part: null, questions: rows })
+        await saveOfflinePackManifest({
+          track, freeOnly: false, complete: true, questionCount: rows.length, groupCount: 1,
+          sourceVersionFormat: 'github-content-sha256-v1',
+          sourceVersions: { [track]: 'a'.repeat(64) }, lastKnownUpdateState: 'current', lastCheckedAt: 123
+        })
+        const migrated = await getOfflinePackStatus(track, false)
+        const groups = await getOfflineQuestionPacks(track, false)
+        const byCompetence = await getOfflineQuestionsByCompetence(track, competenceId, undefined, false)
+        const counts = await getOfflineQuestionCounts(track, false)
+        outcomes.push({
+          track, actual: migrated?.questionCount, groups: groups?.length,
+          ids: groups?.flatMap(group => group.questions.map(question => question.id)),
+          competenceCount: counts?.reduce((sum, group) => sum + group.count, 0),
+          targetedCount: byCompetence?.length,
+          sourceVersions: migrated?.sourceVersions,
+          lastCheckedAt: migrated?.lastCheckedAt
+        })
+      }
+      // Newly downloaded packs must not persist retired records either.
+      const track: TrackId = 'ENGINE_MGT'
+      const latest = [
+        { ...mediaQuestion, id: 'EM-C10-001', track, competenceId: 'C10', imageAttachments: [] },
+        { ...mediaQuestion, id: 'EM-C10-182', track, competenceId: 'C10', imageAttachments: [] },
+        { ...mediaQuestion, id: 'EM-C10-003', track, competenceId: 'C10', imageAttachments: [], isRetired: true },
+      ]
+      await saveOfflineQuestionPackSets([{
+        track, freeOnly: false, groups: [{ competenceId: 'C10', part: null, questions: latest }]
+      }])
+      const fresh = await getOfflinePackStatus(track, false)
+      const freshPacks = await getOfflineQuestionPacks(track, false)
+      return { outcomes, freshCount: fresh?.questionCount, freshIds: freshPacks?.flatMap(group => group.questions.map(question => question.id)) }
+    },
     lookupImage: (digest: string) => ({ sha: digest, png: syntheticImages.get(digest) || Array.from(png) }),
     authCount: () => mediaAuthCalls.count,
     prepareMany: async (count: number, freeOnly = false, quotaFailure = false) => {

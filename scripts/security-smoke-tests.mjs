@@ -437,8 +437,11 @@ assert.ok(
 assert.ok(
   questionBankClient.includes('if (freeOnly) return downloadFreeOfflinePack(track, onProgress, canContinue)') &&
   questionBankClient.includes('assertDownloadAccount()\n  await saveOfflineQuestionPackSets(updates)') &&
-  questionBankClient.includes('await preloadQuestionImages(track, allQuestions, false, assertDownloadAccountSafe)'),
-  'Paid offline packs check license and account after preloading all images; Free Reviewer is a separate public download'
+  questionBankClient.includes('await preloadQuestionImages(track, selectActiveQuestions(allQuestions), false, assertDownloadAccountSafe)') &&
+  questionBankClient.includes('const active = selectActiveQuestions(questions)') &&
+  offlineQuestionCache.includes('activeOnlyVersion: 1') &&
+  offlineQuestionCache.includes('const activeQuestions = selectActiveQuestions(group.questions)'),
+  'Paid offline packs gate licensed images and commit only active encrypted questions; Free Reviewer has a separate public download'
 );
 
 assert.ok(
