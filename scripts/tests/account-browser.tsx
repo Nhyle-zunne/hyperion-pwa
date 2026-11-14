@@ -35,7 +35,7 @@ if (section === 'study-time') useStudyTimeStore.setState({ selectedDate: '2026-1
 const initialPath = section === 'study-time' ? '/study-time' : section === 'account-menu' ? '/account?tab=licenses' : section === 'account' ? '/account?tab=payments' : section === 'admin' ? '/admin/licenses' : section === 'question-editor' ? '/admin/questions' : section === 'basket' ? '/BASKET' : section === 'orders' ? '/orders' : section === 'payment' ? '/checkout?payment=success&order_id=fixture-order' : '/checkout?buy_product=gmdss&buy_term=month'
 createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={[initialPath]}>
   <TopLoadingIndicator />
-  {section === 'account-menu' && <div style={{ position: 'relative', margin: '1rem', display: 'flex', justifyContent: 'flex-end' }}><DesktopAccountMenu /></div>}
+  {section === 'account-menu' && <nav className="app-bottom-nav" aria-label="Main navigation"><DesktopAccountMenu /></nav>}
   <div className="route-transition">
   <Routes>
     <Route path="/study-time" element={<StudyTimeScreen />} />
