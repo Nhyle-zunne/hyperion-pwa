@@ -20,6 +20,16 @@ try {
   await editorPage.route('**/api/question-bank/admin', async route => {
     const body = route.request().postDataJSON()
     editorApiCalls.push(body.action)
+    if (body.action === 'media-upload') {
+      assert.equal(route.request().headers().authorization, 'Bearer fixture-token')
+      assert.equal(body.mime, 'image/webp')
+      uploadedImage = Buffer.from(body.base64, 'base64')
+      await uploadHeld
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+        track: body.track, mime: body.mime, bytes: uploadedImage.length,
+        sha256: createHash('sha256').update(uploadedImage).digest('hex'), source: 'github'
+      }) })
+    }
     if (body.action === 'validate') editorValidatedFiles = body.files
     const path = body.action === 'editor-load' ? body.path : 'engine_mgt/em_c10.csv.enc'
     const csvText = [
@@ -53,20 +63,8 @@ try {
   let uploadedImage
   let releaseUpload
   const uploadHeld = new Promise(resolve => { releaseUpload = resolve })
-  await editorPage.route('**/functions/v1/question-media*', async route => {
-    if (route.request().method() === 'POST') {
-      const body = route.request().postDataJSON()
-      assert.equal(route.request().headers().authorization, 'Bearer fixture-token')
-      uploadedImage = Buffer.from(body.base64, 'base64')
-      await uploadHeld
-      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ track: body.track, mime: body.mime, bytes: uploadedImage.length, sha256: createHash('sha256').update(uploadedImage).digest('hex') }) })
-    }
-    if (new URL(route.request().url()).searchParams.get('sha256') === existingRef.sha256) return route.fulfill({ contentType: 'image/png', headers: { 'X-Hyperion-Media-SHA256': existingRef.sha256 }, body: existingImage })
-    assert(uploadedImage)
-    return route.fulfill({ contentType: 'image/webp', headers: { 'X-Hyperion-Media-SHA256': createHash('sha256').update(uploadedImage).digest('hex') }, body: uploadedImage })
-  })
-  // Admin uploads remain private. Display reads use the same public/paid Worker
-  // route as the reviewer, not the historical Supabase image GET endpoint.
+  // Admin uploads use the GitHub-backed Worker and published display reads use
+  // the same protected Worker media route as the reviewer.
   await editorPage.route('**/api/question-bank/media?*', async route => {
     const url = new URL(route.request().url())
     const digest = url.searchParams.get('sha256')
