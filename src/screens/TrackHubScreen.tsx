@@ -262,7 +262,7 @@ export default function TrackHubScreen() {
           // Backend reports real questions received. Do not claim completion before
           // encryption, version verification and the atomic local save finish.
           const transfer: OfflineTransfer = {
-            trackId: track, userId: accountUserId, downloaded: 0, total: 0, phase: 'starting'
+            trackId: track, userId: accountUserId ?? null, downloaded: 0, total: 0, phase: 'starting'
           }
           publishOfflineTransfer(transfer)
           try {
