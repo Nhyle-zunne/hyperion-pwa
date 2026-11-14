@@ -1,3 +1,4 @@
+import { createMediaBundler } from './questionMediaBundler.ts'
 import { createAdminQuestionSearch, validAdminSearchInput } from './adminQuestionSearch.ts'
 import { PublisherError, publisherState, validateGithubBatch, publishGithubBatch, type PublishInput } from './githubBankPublisher.ts'
 import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, githubAssetPath, githubBankRequest, sha256, readBounded } from '../supabase/functions/_shared/githubBankSource.ts'
@@ -121,7 +122,7 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
           return reply({ path, csvText, baseHead: state.head, bankRevision: release.revision })
         }
         if (body.action === 'validate') return reply({ preview: await validateGithubBatch(body, fetcher, token) })
-        if (body.action === 'publish') { const result = await publishGithubBatch(body, fetcher, token); source.invalidate(); return reply({ ...result, source: 'github' }) }
+        if (body.action === 'publish') { const result = await publishGithubBatch(body, fetcher, token, createMediaBundler(fetcher, config.supabaseUrl, config.supabaseAnonKey, authorization)); source.invalidate(); return reply({ ...result, source: 'github' }) }
         return reply({ error: 'Unknown administration action.' }, 400)
       } catch (error) { return reply({ error: error instanceof PublisherError ? error.message : 'GitHub administration is temporarily unavailable. Your live bank and saved progress remain preserved.' }, error instanceof PublisherError ? error.status : 503) }
     }

@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.reconcile-google-play-subscriptions]
 verify_jwt = false
+
+[functions.question-media-build]
+verify_jwt = false
