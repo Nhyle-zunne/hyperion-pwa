@@ -45,6 +45,17 @@ const fakeFetch = async (input, options) => {
 }
 const assets = { fetch: async () => new Response(JSON.stringify({ supabaseUrl: 'https://evnjoezffghtrzqacwcj.supabase.co', supabaseAnonKey: 'sb_publishable_test_only' })) }
 const worker = createBankWorker(fakeFetch)
+// Media is served only when its digest belongs to the published track pool.
+// An arbitrary encrypted GitHub asset path cannot be requested by guests or paid users.
+const imageRequest = (freeOnly, token = '', digest = 'a'.repeat(64)) => worker(
+  new Request('https://hyperionmaritime.org/api/question-bank/media?track=ENGINE_OIC_EW&sha256=' +
+    digest + '&mime=image/png&freeOnly=' + Number(freeOnly), {
+    method: 'GET', headers: token ? { Authorization: 'Bearer ' + token } : {}
+  }), { ASSETS: assets }
+)
+assert.equal((await imageRequest(false)).status, 401, 'Paid images require account authentication')
+assert.equal((await imageRequest(true, '')).status, 404, 'Free image requests cannot read non-sample digests')
+assert.equal((await imageRequest(true, '', '../private')).status, 400, 'Invalid image paths fail closed')
 const request = (body, handler = worker, token = 'test-user') => handler(new Request('https://hyperionmaritime.org/api/question-bank/questions', { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: JSON.stringify(body) }), { ASSETS: assets })
 const selection = { track: 'DECK_OIC_NW', competenceId: 'C1', offset: 0, limit: 20, freeOnly: false }
 let response = await request(selection)
