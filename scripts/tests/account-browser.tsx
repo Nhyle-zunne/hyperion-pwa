@@ -10,12 +10,20 @@ import AdminLicensesScreen from '../../src/screens/AdminLicensesScreen'
 import AccountScreen from '../../src/screens/AccountScreen'
 import BasketScreen from '../../src/screens/BasketScreen'
 import OrdersPaymentHistoryScreen from '../../src/screens/OrdersPaymentHistoryScreen'
-import { fixtureCalls, releaseFixtureEntitlements, switchFixtureAccount } from '../../src/lib/supabase'
+import { fixtureCalls, releaseFixtureEntitlements, switchFixtureAccount, releaseFixtureHeldNullSession, emitFixtureAuth } from '../../src/lib/supabase'
 import StudyTimeScreen from '../../src/screens/StudyTimeScreen'
 import { useStudyTimeStore } from '../../src/stores/studyTimeStore'
 import '../../src/index.css'
 
-Object.assign(window, { releaseFixtureEntitlements, switchFixtureAccount, accountFixtureCalls: fixtureCalls, beginFixtureLoading: beginPageLoading })
+Object.assign(window, {
+  releaseFixtureEntitlements, switchFixtureAccount, releaseFixtureHeldNullSession, emitFixtureAuth,
+  accountFixtureCalls: fixtureCalls, beginFixtureLoading: beginPageLoading,
+  setFixtureOfflineLicense: (enabled: boolean) => useLicenseStore.setState({
+    entitlementUserId: enabled ? '11111111-1111-4111-8111-111111111111' : null,
+    entitlementsVerified: enabled, cloudTrackIds: enabled ? ['DECK_OIC_NW'] : [],
+    isOicNwUnlocked: enabled, isAllAccessUnlocked: false
+  })
+})
 document.documentElement.dataset.theme = 'light'
 const section = new URLSearchParams(location.search).get('section')
 if (section === 'question-editor') useLicenseStore.setState({ entitlementUserId: '11111111-1111-4111-8111-111111111111', isAllAccessUnlocked: true, entitlementsVerified: true })
