@@ -21,9 +21,9 @@ export function collectBankImages(banks: { path: string; text: string }[]): Buil
   return [...refs.values()]
 }
 export function checkPublishBudget(bankCount: number, imageCount: number) {
-  // Includes admin checks, release integrity reads, up to two GitHub media lookups per image, blob writes and ref update.
+  // Includes admin checks, release integrity reads, up to two GitHub media lookups plus one encrypted blob write per image, bank blob writes and ref update.
   // Reserve two subrequests below the Free plan limit for platform bookkeeping.
-  if (14 + 2 * bankCount + 2 * imageCount > 48) {
+  if (14 + 2 * bankCount + 3 * imageCount > 48) {
     throw new PublisherError('This batch exceeds the publishing request limit. Publish a smaller batch of banks with images.', 413)
   }
 }
