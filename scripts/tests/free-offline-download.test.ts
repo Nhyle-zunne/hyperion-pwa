@@ -67,11 +67,11 @@ test('offline free saved session requires exact question fingerprints from its s
   expect(authCalls).toBe(0)
 })
 
-test('free offline download retains retired physical rows so original question IDs remain stable', async () => {
+test('free offline preparation paginates original physical rows but saves only active question IDs', async () => {
   rawRows = true
   const saved = await downloadOfflinePack('ENGINE_OIC_EW', true, undefined, { background: true })
-  expect(saved.questionCount).toBe(2)
-  expect(written[0].groups[0].questions.map((q: any) => q.id)).toEqual(['EW-C1-001', 'EW-C1-002'])
-  expect(written[0].groups[0].questions[1].isRetired).toBe(true)
+  expect(saved.questionCount).toBe(1)
+  expect(written[0].groups[0].questions.map((q: any) => q.id)).toEqual(['EW-C1-001'])
+  expect(written[0].groups[0].questions.every((q: any) => q.isRetired !== true)).toBe(true)
   expect(authCalls).toBe(0)
 })
