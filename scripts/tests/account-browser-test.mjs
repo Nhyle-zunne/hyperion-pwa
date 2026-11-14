@@ -856,6 +856,54 @@ try {
       if (width === 390) await navigation.screenshot({ path: `admin-nav-${label.split(' ')[0].toLowerCase()}-390.png` })
     }
   }
+  // Mobile PWA regression: auth hydration may finish after a newer sign-in
+  // event; an older null getSession() must never make a signed-in account a guest.
+  const mobileAccountPage = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  await mobileAccountPage.route('**/*', route =>
+    ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  await mobileAccountPage.addInitScript(() => localStorage.setItem('fixture-hold-account-session', 'yes'))
+  await mobileAccountPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await mobileAccountPage.getByText('Checking your saved session').waitFor()
+  assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Slow session hydration must not show a false guest')
+  await mobileAccountPage.evaluate(() => window.emitFixtureAuth('SIGNED_IN'))
+  await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).waitFor()
+  await mobileAccountPage.evaluate(() => window.releaseFixtureHeldNullSession())
+  await mobileAccountPage.waitForTimeout(80)
+  assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Stale null auth results cannot overwrite newer SIGNED_IN')
+  assert.equal(await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).count(), 1)
+
+  // A verified local track lease remains visible without implying that an
+  // unavailable Google session is authenticated. Checkout stays auth-gated.
+  await mobileAccountPage.evaluate(() => {
+    localStorage.removeItem('fixture-hold-account-session')
+    localStorage.setItem('fixture-guest', 'yes')
+    window.setFixtureOfflineLicense(true)
+    window.emitFixtureAuth('SIGNED_OUT')
+  })
+  await mobileAccountPage.getByText('Valid offline license on this device').waitFor()
+  assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Valid offline license is not presented as a guest account')
+  assert.equal(await mobileAccountPage.getByText(/license and study progress have not been cleared/).count(), 1)
+  assert.equal(await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).count(), 0, 'Account details remain protected without Auth')
+  await mobileAccountPage.context().setOffline(true)
+  await mobileAccountPage.getByRole('button', { name: 'Reconnect when online' }).waitFor()
+  assert.equal(await mobileAccountPage.getByRole('button', { name: 'Reconnect when online' }).isDisabled(), true)
+  await mobileAccountPage.context().setOffline(false)
+  await mobileAccountPage.getByRole('button', { name: 'Reconnect Google account' }).waitFor()
+  await mobileAccountPage.evaluate(() => {
+    localStorage.removeItem('fixture-guest')
+    window.emitFixtureAuth('SIGNED_IN')
+  })
+  await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).waitFor()
+  assert.equal(await mobileAccountPage.getByText('Valid offline license on this device').count(), 0, 'Restored Auth replaces the fallback immediately')
+  await mobileAccountPage.evaluate(() => {
+    window.setFixtureOfflineLicense(false)
+    window.emitFixtureAuth('SIGNED_OUT')
+  })
+  await mobileAccountPage.getByText('Guest visitor').waitFor()
+  assert.equal(await mobileAccountPage.getByText('Valid offline license on this device').count(), 0, 'Cleared local license cannot masquerade as saved access')
+  await mobileAccountPage.close()
+  console.log('PASS: mobile Account auth hydration race, offline license fallback, reconnect, and no false paid authentication')
+
   await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=study-time`)
   await page.getByRole('img', { name: /Study time breakdown by track/ }).waitFor()
   for (const width of [320, 390, 1531]) {
