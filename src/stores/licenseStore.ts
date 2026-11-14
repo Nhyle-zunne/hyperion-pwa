@@ -156,17 +156,17 @@ export const useLicenseStore = create<LicenseState>()((set, get) => {
   refreshCloudEntitlements: async () => {
     const observedEpoch = invalidationEpoch;
     const authRequest = ++authRequestSequence;
-    // A signed server lease is the common entitlement source for both purchase
-    // channels. Offline startup never depends on Supabase session restoration.
+    // Show a previously verified, owner-bound, unexpired offline grant BEFORE
+    // waiting for Supabase Auth. Browsers can report "online" despite having
+    // unusable connectivity; refreshing a token must not hide licensed tracks.
+    // The cryptographic signature, owner and expiry are checked locally.
+    await applyCachedOfflineEntitlements();
+    if (observedEpoch !== invalidationEpoch || authRequest < latestResolvedAuthRequest) return;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       set({ cloudSyncVerified: false });
-      await applyCachedOfflineEntitlements();
       return;
     }
-    if (!supabase) {
-      await applyCachedOfflineEntitlements();
-      return;
-    }
+    if (!supabase) return;
 
     let session;
     try {
