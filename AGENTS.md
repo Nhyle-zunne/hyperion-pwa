@@ -35,3 +35,9 @@ Inspect diffs and preserve unrelated work. Main pushes trigger production deploy
 ## Graphify code navigation (optional)
 
 Use [the Graphify source-map guide](docs/graphify.md) before broad source searches when a current code-only graph is available. Query the local `graphify-out/graph.json` first to identify related files and dependencies, then verify findings in current source and tests. If the graph is absent and the CLI/network is available, generate it once using the guide's pinned `uvx` command. Do not block urgent work if Graphify cannot run. Never use a graph as proof of permissions, licensing, or production correctness. No cloud graph service or machine-wide hooks are enabled.
+
+## UI/UX Pro Max — native repository skill
+
+For interface, visual design, layout, accessibility, responsiveness, touch interaction, typography, and animation, read .agents/skills/ui-ux-pro-max/SKILL.md. Use its Python search script with react for Hyperion PWA, jetpack-compose for Android, and flutter for Hyperion Books. Preserve Hyperion branding and approved layouts. Do not use for purely backend changes.
+
+The skill is pinned to the ui-ux-pro-max-cli@2.15.0 package, with local file hashes in .agents/upstream-lock.json. No app dependencies or automatic updates. From the repository root, use: python3 .agents/skills/ui-ux-pro-max/scripts/search.py "mobile navigation touch" --domain ux.
