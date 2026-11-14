@@ -72,6 +72,7 @@ jobs:
           node scripts/tests/smart-bank-download-plan-test.mjs
           bun test scripts/tests/github-offline-version.test.ts
           bun test scripts/tests/github-download-revision.test.ts
+          bun test scripts/tests/free-offline-download.test.ts
       - name: Saved-data database and offline-license regressions
         run: |
           bun run test:saved-data:sql
