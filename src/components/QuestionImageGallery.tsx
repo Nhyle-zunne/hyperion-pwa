@@ -5,15 +5,30 @@ import type { Question, TrackId } from '../types/question'
 import type { QuestionImageRef } from '../lib/questionMedia'
 import { loadQuestionImage } from '../lib/questionMediaCache'
 import { useLicenseStore } from '../stores/licenseStore'
+import { useSearchParams } from 'react-router-dom'
+import { paidProductCodeForTrackId } from '../lib/supabase'
 
 type Loaded = { url: string; error?: string }
 
 export default function QuestionImageGallery({ question, placement }: { question: Pick<Question, 'id' | 'track' | 'imageAttachments'>; placement: 'question' | 'explanation' }) {
+  const [, setParams] = useSearchParams()
   const images = question.imageAttachments?.filter(ref => ref.placement === placement) || []
   const owner = useLicenseStore(state => state.entitlementUserId)
   const unlocked = useLicenseStore(state => state.isTrackUnlocked(question.track))
   if (!images.length) return null
-  if (!unlocked) return <p role="status" style={{ padding: 14, textAlign: 'center', border: '1px solid var(--border)', borderRadius: 8 }}>UNLOCK FULL REVIEWER TO VIEW IMAGES</p>
+  if (!unlocked) return <button type="button" className="btn btn-outline"
+    aria-haspopup="dialog"
+    style={{ display: 'block', width: '100%', minHeight: 48, padding: 14, margin: '1rem 0', whiteSpace: 'normal', textAlign: 'center' }}
+    onClick={() => {
+      const code = paidProductCodeForTrackId(question.track)
+      if (!code) return
+      setParams(current => {
+        const params = new URLSearchParams(current)
+        params.set('purchase', '1')
+        params.set('purchase_product', code)
+        return params
+      }, { replace: true })
+    }}>UNLOCK FULL REVIEWER TO VIEW IMAGES</button>
   if (!owner) return <p role="status">Sign in to view this track's licensed diagrams.</p>
   // Changing account or entitlement remounts the image session and closes zoom.
   const scope = JSON.stringify([question.track, question.id, placement, images, owner])
