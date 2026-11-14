@@ -25,6 +25,8 @@ jobs:
           test -s .agents/skills/ui-ux-pro-max/SKILL.md
           test -s .agents/skills/ui-ux-pro-max/scripts/search.py
           test -s .agents/skills/ui-ux-pro-max/data/ux-guidelines.csv
+          # The installer also adds six independent bundled design skills; keep this change focused.
+          rm -rf .agents/skills/banner-design .agents/skills/brand .agents/skills/design-system .agents/skills/design .agents/skills/slides .agents/skills/ui-styling
       - name: Verify skill searches
         run: |
           case "$GITHUB_REPOSITORY" in
@@ -101,7 +103,7 @@ jobs:
           if [ -f scripts/tests/agent-skills-test.mjs ]; then
             node scripts/tests/agent-skills-test.mjs
           else
-            node -e 'const fs=require("fs"), crypto=require("crypto"); const m=JSON.parse(fs.readFileSync(".agents/upstream-lock.json","utf8")); for(const s of m.sources)for(const f of s.files)if(crypto.createHash("sha256").update(fs.readFileSync(f.destination)).digest("hex")!==f.sha256)throw Error(f.destination); if(!fs.readFileSync(".agents/skills/ui-ux-pro-max/SKILL.md","utf8").startsWith("---\\nname: ui-ux-pro-max"))throw Error("Invalid frontmatter"); console.log("PASS: pinned UI/UX Pro Max files")'
+            node -e 'const fs=require("fs"), crypto=require("crypto"); const m=JSON.parse(fs.readFileSync(".agents/upstream-lock.json","utf8")); for(const s of m.sources)for(const f of s.files)if(crypto.createHash("sha256").update(fs.readFileSync(f.destination)).digest("hex")!==f.sha256)throw Error(f.destination); if(!fs.readFileSync(".agents/skills/ui-ux-pro-max/SKILL.md","utf8").includes("name: ui-ux-pro-max"))throw Error("Invalid frontmatter"); console.log("PASS: pinned UI/UX Pro Max files")'
           fi
       - name: Commit to isolated branch and remove installer
         run: |
