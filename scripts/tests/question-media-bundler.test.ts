@@ -10,7 +10,8 @@ const csv='No.,Question,A,B,C,D,Correct Answer,Explanation,HYPERION_MEDIA\n1,Whi
 test('collect unique references with track derived from bank path',()=>{
  assert.deepEqual(collectBankImages([{path:'engine_mgt/em_c2.csv.enc',text:csv},{path:'engine_mgt/em_c1.csv.enc',text:csv}]),[ref])
  assert.throws(()=>collectBankImages([{path:'../secret',text:csv}]))
- assert.doesNotThrow(()=>checkPublishBudget(10,7))
+ assert.doesNotThrow(()=>checkPublishBudget(10,4))
+ assert.throws(()=>checkPublishBudget(10,5),/limit|smaller/i)
  assert.throws(()=>checkPublishBudget(10,20),/limit|smaller/i)
 })
 test('bundler verifies exact paths, references, sizes, encryption and image hash',async()=>{
