@@ -9,6 +9,7 @@ import BondStoreCardContent from '../components/BondStoreCardContent'
 import { withPageLoading } from '../lib/pageLoading'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
+import { getCachedOfflineEntitlementSnapshot, type CachedOfflineEntitlementSnapshot } from '../lib/offlineQuestionCache'
 
 type Order = {
   id: string
@@ -151,7 +152,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const licenseOwnerId = useLicenseStore(state => state.entitlementUserId)
   const savedLicenseActive = useLicenseStore(state =>
     state.entitlementsVerified && (state.isAllAccessUnlocked || state.cloudTrackIds.length > 0))
-  const hasSavedOfflineAccess = !session && sessionChecked && savedLicenseActive && Boolean(licenseOwnerId)
+  // A signed, current device license is meaningful even when network detection
+  // says "online" and Supabase Auth is still waiting for a token refresh.
+  const hasSavedOfflineAccess = !session && savedLicenseActive && Boolean(licenseOwnerId)
+  const [offlineSnapshot, setOfflineSnapshot] = useState<CachedOfflineEntitlementSnapshot | null>(null)
   const [basket, setBasket] = useState<BasketItem[]>(() => {
     try {
       const raw = localStorage.getItem('hyperion-account-basket-v1')
@@ -196,6 +200,24 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [orders, setOrders] = useState<Order[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
   const entitlementExpiryRevision = useLicenseStore(s => s.entitlementExpiryRevision)
+  useEffect(() => {
+    let active = true
+    if (!hasSavedOfflineAccess || !licenseOwnerId) {
+      setOfflineSnapshot(null)
+      return
+    }
+    // Only the signed owner/expiry claims can supply offline license details.
+    // This is local cryptographic verification, not a Supabase request.
+    void getCachedOfflineEntitlementSnapshot(licenseOwnerId)
+      .then(snapshot => { if (active) setOfflineSnapshot(snapshot?.userId === licenseOwnerId ? snapshot : null) })
+      .catch(() => { if (active) setOfflineSnapshot(null) })
+    return () => { active = false }
+  }, [hasSavedOfflineAccess, licenseOwnerId, entitlementExpiryRevision])
+  useEffect(() => {
+    if (hasSavedOfflineAccess && pathname === '/account' && !params.has('tab')) {
+      setAccountTab('licenses')
+    }
+  }, [hasSavedOfflineAccess, pathname, params])
 
   useEffect(() => {
     // Checkout owns cart persistence when this screen supplies only the profile layout.
@@ -596,7 +618,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     setBusy(true)
     try {
       keepSuccessBackdropRef.current = true
-      const { error } = await supabase.auth.signOut()
+      const { error } = await supabase.auth.signOut({ scope: 'local' })
       if (error) throw error
       // Clear the device-bound offline grant only for an intentional user sign-out.
       useLicenseStore.getState().clearLicense()
@@ -829,9 +851,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             <div style={{ display: 'flex', gap: '.8rem', alignItems: 'center', marginBottom: '.8rem' }}>
               <div className="profile-avatar">H</div>
               <div style={{ minWidth: 0 }}>
-                <h2 style={{ margin: 0, fontSize: '1rem' }}>{!sessionChecked ? 'Restoring your account…' : hasSavedOfflineAccess ? 'Saved Hyperion account' : 'Welcome to Hyperion'}</h2>
+                <h2 style={{ margin: 0, fontSize: '1rem' }}>{hasSavedOfflineAccess ? 'Saved Hyperion account' : !sessionChecked ? 'Restoring your account…' : 'Welcome to Hyperion'}</h2>
                 <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginTop: '.2rem' }}>
-                  {!sessionChecked ? 'Checking your saved session' : hasSavedOfflineAccess ? 'Valid offline license on this device' : 'Guest visitor'}
+                  {hasSavedOfflineAccess ? 'Valid offline license on this device' : !sessionChecked ? 'Checking your saved session' : 'Guest visitor'}
                 </div>
               </div>
             </div>
@@ -850,8 +872,35 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
 
         <main className="account-main">
           {isLayout ? children : <>
-          {session && <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />}
-          {session && accountTab === 'licenses' ? <>
+          {(session || hasSavedOfflineAccess) && <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />}
+          {hasSavedOfflineAccess && accountTab === 'licenses' ? (
+            <section style={card} aria-label="Saved offline licenses">
+              <div className="account-panel-title">
+                <div>
+                  <div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>VERIFIED ON THIS DEVICE</div>
+                  <h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>My licenses · offline access</h2>
+                </div>
+              </div>
+              <p style={{ lineHeight: 1.55, color: 'var(--text-muted)' }}>
+                Your locally verified licenses are still active. You can use downloaded reviewer content without a Google connection.
+                Orders, profile changes and new purchases require online sign-in.
+              </p>
+              {offlineSnapshot ? (
+                offlineSnapshot.isAdmin
+                  ? <p role="status">Administrator access · All reviewer tracks available offline.</p>
+                  : PAID_PRODUCTS.filter(item => offlineSnapshot.trackExpiries[item.trackLabel as keyof typeof offlineSnapshot.trackExpiries]).map(item =>
+                    <div key={item.code} style={{ padding: '.75rem 0', borderBottom: '1px solid var(--border)' }}>
+                      <strong>✓ {item.label}</strong>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '.86rem', marginTop: '.25rem' }}>
+                        ACTIVE · Valid until {new Date(offlineSnapshot.trackExpiries[item.trackLabel as keyof typeof offlineSnapshot.trackExpiries]!).toLocaleString()}
+                      </div>
+                    </div>)
+              ) : <p role="status">Verifying saved license details on this device…</p>}
+              <p style={{ margin: '1rem 0 0', fontSize: '.82rem', color: 'var(--text-muted)' }}>
+                License expiry is enforced locally. Reconnect Google when online to update account details; no automatic license-sync traffic is required for offline study.
+              </p>
+            </section>
+          ) : session && accountTab === 'licenses' ? <>
           <section style={card}>
             <div className="account-panel-title">
               <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
