@@ -45,6 +45,24 @@ async function scenario(name, run) {
   finally { await context.close() }
 }
 try {
+  await scenario('Every track saves only active offline questions and migrates older encrypted packs without changing IDs', async ({ page, open }) => {
+    await open('gallery')
+    const result = await page.evaluate(() => window.mediaFixture.testActiveOfflinePacks())
+    assert.equal(result.outcomes.length, 5)
+    for (const outcome of result.outcomes) {
+      assert.equal(outcome.actual, 2, outcome.track + ' offline saved count must exclude retired records')
+      assert.equal(outcome.competenceCount, 2, outcome.track + ' competence counts must exclude retired records')
+      assert.equal(outcome.targetedCount, 2, outcome.track + ' offline question reads must exclude retired records')
+      assert.equal(outcome.groups, 1)
+      assert.deepEqual(outcome.ids, [outcome.track === 'ENGINE_MGT' ? 'EM-C10-001' : 'TEST-C1-001',
+        outcome.track === 'ENGINE_MGT' ? 'EM-C10-003' : 'TEST-C1-003'])
+      assert.deepEqual(outcome.sourceVersions, { [outcome.track]: 'a'.repeat(64) },
+        'Local compaction must preserve the existing revision/version for offline access')
+      assert.equal(outcome.lastCheckedAt, 123)
+    }
+    assert.equal(result.freshCount, 1, 'New encrypted manifests store active count, not raw row count')
+    assert.deepEqual(result.freshIds, ['EM-C10-001'], 'New encrypted groups must omit all retired physical rows')
+  })
   await scenario('Offline preparation batches verified paid images and reuses them without network or session', async ({ page, context, open, downloads, batches }) => {
     await open('gallery')
     await page.getByRole('img', { name: 'Synthetic question diagram' }).waitFor()
