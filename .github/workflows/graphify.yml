@@ -40,8 +40,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
       - name: Build local-only Graphify source graph
-        run: uvx --from graphifyy==0.9.108 graphify extract . --code-only
+        run: uvx --from graphifyy[sql]==0.9.108 graphify extract . --code-only
       - name: Verify graph was generated
         run: test -s graphify-out/graph.json
       - name: Retain map for code investigation
