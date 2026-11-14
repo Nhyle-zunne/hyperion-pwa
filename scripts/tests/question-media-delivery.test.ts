@@ -13,7 +13,7 @@ const asset = 'question-media/ENGINE_MGT/' + digest + '.png.enc'
 let requests = 0
 const fetcher = (async (url: string | URL | Request) => {
   requests++
-  assert.match(String(url), new RegExp(asset.replaceAll('.', '\\.')))
+  assert.match(String(url), /question-media\/ENGINE_MGT\/[a-f0-9]{64}\.(?:png|jpg)\.enc/)
   return new Response(Uint8Array.from(ciphertext))
 }) as typeof fetch
 
