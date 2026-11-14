@@ -468,7 +468,7 @@ export default function App() {
   const flashcardTrack = isFlashcards ? quickScanKeys[new URLSearchParams(location.search).get('track') || 'oic_nw'] || 'DECK_OIC_NW' : null
   const guardedTrack = isQuestionRunner ? currentTrack : quickScanTrack ?? flashcardTrack
   const hasGuardedTrackLicense = !!guardedTrack && entitlementsVerified && (isAllAccessUnlocked || cloudTrackIds.includes('ALL') || cloudTrackIds.includes(guardedTrack))
-  const permittedFreeRunner = isFreeSession && ((isMockRunner && currentMode === 'MOCK') || (isPracticeQuiz && currentMode === 'PRACTICE'))
+  const permittedFreeRunner = isFreeSession && isPracticeQuiz && currentMode === 'PRACTICE'
   const showQuestionAccessCheck = !isRestoringPinnedRunner && !!guardedTrack && (isQuestionRunner || isQuickScanViewer || isFlashcards)
     && (!entitlementsChecked || (!hasGuardedTrackLicense && !permittedFreeRunner))
 
