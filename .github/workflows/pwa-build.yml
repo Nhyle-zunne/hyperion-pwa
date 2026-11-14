@@ -66,6 +66,7 @@ jobs:
           node scripts/tests/github-publisher-transaction-test.mjs
           node scripts/tests/question-media-build.test.ts
           node scripts/tests/question-media-bundler.test.ts
+          node scripts/tests/question-media-delivery.test.ts
           node scripts/tests/github-bank-delivery-test.mjs
           node scripts/tests/github-bank-request-isolation-test.mjs
           node scripts/tests/smart-bank-download-plan-test.mjs
