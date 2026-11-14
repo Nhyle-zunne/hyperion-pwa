@@ -14,7 +14,7 @@ async function scenario(name, run) {
   let downloads = 0, failFirst = false
   await page.route('**/*', async route => {
     const url = new URL(route.request().url())
-    if (url.hostname === 'media-fixture.invalid' && url.pathname === '/functions/v1/question-media') {
+    if (url.pathname === '/api/question-bank/media') {
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization,apikey' } })
       downloads++
       if (failFirst && downloads === 1) return route.fulfill({ status: 503, headers: { 'Access-Control-Allow-Origin': '*' }, body: 'Synthetic transient failure' })
