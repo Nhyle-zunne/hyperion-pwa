@@ -78,7 +78,7 @@ let offlinePreparationInFlight: Promise<void> | null = null
 // Only a count and its account/track scope are shared. No question text is exposed.
 type OfflineTransfer = {
   trackId: TrackId
-  userId: string
+  userId: string | null
   downloaded: number
   total: number
   phase: 'starting' | 'downloading' | 'saving'
@@ -196,7 +196,7 @@ export default function TrackHubScreen() {
     const refresh = () => {
       const transfer = currentOfflineTransfer
       setOfflineTransfer(
-        transfer && accountUserId && transfer.trackId === info.trackId && transfer.userId === accountUserId
+        transfer && accountUserId !== undefined && transfer.trackId === info.trackId && transfer.userId === accountUserId
           ? transfer : null
       )
     }
