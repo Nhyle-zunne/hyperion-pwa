@@ -1451,17 +1451,20 @@ async function downloadFreeOfflinePack(
     onProgress?.(saved!.questionCount, saved!.questionCount)
     return { questionCount: saved!.questionCount, groupCount: existing.length }
   }
-  const total = snapshot.counts.reduce((sum, group) => sum + group.count, 0)
+  // Pages are indexed by published physical position; retired rows must remain
+  // in the saved pack so active ranges and historical IDs do not shift.
+  const total = snapshot.counts.reduce((sum, group) => sum + (group.rawCount ?? group.count), 0)
   if (!total || !snapshot.counts.length) throw new Error('The free question pool is currently unavailable.')
   let received = 0
   const groups: { competenceId: string; part: number | null; questions: Question[] }[] = []
   const all: Question[] = []
   for (const group of snapshot.counts) {
-    if (group.count <= 0) continue
+    const physicalCount = group.rawCount ?? group.count
+    if (physicalCount <= 0) continue
     const questions: Question[] = []
-    for (let offset = 0; offset < group.count; offset += 200) {
+    for (let offset = 0; offset < physicalCount; offset += 200) {
       if (!canContinue() || (typeof navigator !== 'undefined' && navigator.onLine === false)) throw new Error('Free Reviewer download was interrupted.')
-      const limit = Math.min(200, group.count - offset)
+      const limit = Math.min(200, physicalCount - offset)
       const { data, error } = await invokeQuestionBank({ body: {
         action: 'questions', track, competenceId: group.competenceId, part: group.part,
         freeOnly: true, offset, limit, bankRevision: revision, randomSample: false
