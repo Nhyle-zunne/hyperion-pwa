@@ -52,6 +52,7 @@ async function main() {
   useHistoryStore.setState({ entries: [{ id: snapshot.sessionId, mode: 'MOCK', track: mediaQuestion.track, competenceId: 'C1', total: 1, correct: 0, answered: 0, percent: 0, durationMs: 1000, startedAt: Date.now() - 1000, finishedAt: Date.now() }], savedSessions: [] })
   usePracticeStore.setState({ ...snapshot, finished: false, loading: false, error: null, finishing: false, completionError: null })
   let changeRef: (() => void) | undefined
+  let changeTrack: ((track: typeof mediaQuestion.track) => void) | undefined
   const syntheticImages = new Map<string, number[]>()
   Object.assign(window, { mediaFixture: {
     sha, png: Array.from(png), license,
@@ -91,6 +92,7 @@ async function main() {
       return { bookmarks: useBookmarksStore.getState().asQuestions()[0]?.imageAttachments, vault: useVaultStore.getState().asQuestions()[0]?.imageAttachments }
     },
     changeRef: () => changeRef?.(),
+    changeTrack: (track: typeof mediaQuestion.track) => changeTrack?.(track),
     load: () => loadLicensedQuestionImage('DECK_OIC_NW', mediaQuestion.imageAttachments![0]).then(blob => blob.size),
     boundedStream: async () => {
       const original = window.fetch
@@ -124,6 +126,7 @@ async function main() {
   function Gallery() {
     const [question, setQuestion] = useState(mediaQuestion)
     changeRef = () => setQuestion({ ...mediaQuestion, imageAttachments: [] })
+    changeTrack = track => setQuestion(current => ({ ...current, track }))
     return <div style={{ transform: 'translateZ(0)', height: 180, overflow: 'hidden' }}><QuestionImageGallery question={question} placement="question" /></div>
   }
   function HubFixture() {
@@ -153,7 +156,7 @@ async function main() {
   }
   const mode = new URLSearchParams(location.search).get('screen') || 'gallery'
   const screens: Record<string, React.ReactNode> = { results: <SessionResults onTryAgain={() => {}} onHistory={() => {}} />, gallery: <Gallery />, mock: <MockExamRunner />, flashcards: <FlashcardsScreen />, bookmarks: <BookmarksScreen />, vault: <VaultScreen />, history: <HistoryScreen />, search: <SearchScreen /> }
-  createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={[mode === 'hub' ? '/track?track=oic_nw' : '/?track=oic_nw']} >{mode === 'hub' ? <HubFixture /> : screens[mode]}</MemoryRouter>)
+  createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={[mode === 'hub' ? '/track?track=oic_nw' : '/?track=oic_nw']} >{mode === 'hub' ? <HubFixture /> : screens[mode]}{mode !== 'hub' && <TrackPurchaseDialog />}</MemoryRouter>)
 
 }
 void main()

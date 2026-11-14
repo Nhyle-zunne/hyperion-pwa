@@ -60,21 +60,20 @@ try {
     assert.equal(downloads(), beforeNetwork)
     assert.equal(await page.evaluate(() => window.mediaFixture.authCount()), beforeOfflineAuth)
   })
-  await scenario('Free and paid batches stay separate and quota failure prevents readiness', async ({ page, open, batches }) => {
+  await scenario('Free offline packs skip premium images without extra network or auth; paid quota failures remain safe', async ({ page, open, batches, downloads }) => {
     await open('gallery')
     await page.getByRole('img', { name: 'Synthetic question diagram' }).waitFor()
     const paid = await page.evaluate(() => window.mediaFixture.prepareMany(2))
     assert.equal(paid.ready, true)
-    const beforeAuth = await page.evaluate(() => window.mediaFixture.authCount())
+    const beforeAuth = await page.evaluate(() => window.mediaFixture.authCount()), beforeNetwork = downloads()
     const free = await page.evaluate(() => window.mediaFixture.prepareMany(2, true))
-    assert.equal(free.ready, true)
-    assert.equal(batches.length, 2, 'Free preparation cannot reuse paid-account cache')
-    assert.equal(batches[1].freeOnly, true)
-    assert.equal(batches[1].authorization, null)
-    assert.equal(await page.evaluate(() => window.mediaFixture.authCount()), beforeAuth, 'Free preparation does not use account auth')
-    const quota = await page.evaluate(() => window.mediaFixture.prepareMany(3, true, true))
+    assert.equal(free.ready, true, 'Free text questions are complete without premium images')
+    assert.equal(batches.length, 1, 'Free preparation never downloads or caches premium images')
+    assert.equal(downloads(), beforeNetwork)
+    assert.equal(await page.evaluate(() => window.mediaFixture.authCount()), beforeAuth, 'Free preparation does not request an account session')
+    const quota = await page.evaluate(() => window.mediaFixture.prepareMany(3, false, true))
     assert.equal(quota.rejected, true)
-    assert.equal(quota.ready, false)
+    assert.equal(quota.ready, false, 'Paid offline readiness still fails safely when image storage is unavailable')
   })
   await scenario('Track hub renders free-only modes, track-scoped upgrade popup, licensed modes and expiry changes', async ({ page, open }) => {
     await open('hub')
@@ -456,15 +455,48 @@ try {
       assert(await thumb.evaluate(el => el === document.activeElement), 'Closing image returns focus to thumbnail')
     }
   })
-  await scenario('Free Reviewer diagrams work without a subscription and remain locally cached', async ({ page, context, open, downloads }) => {
+  await scenario('Unlicensed Free Reviewer shows unlock message and cannot read cached or network images', async ({ page, context, open, downloads }) => {
+    await open('gallery')
+    await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()
+    const beforeNetwork = downloads()
+    await page.evaluate(() => window.mediaFixture.license(false, null))
+    await page.getByText('UNLOCK FULL REVIEWER TO VIEW IMAGES').waitFor()
+    assert.equal(await page.getByAltText('Synthetic question diagram', { exact: true }).count(), 0)
+    assert.equal(await page.getByTitle('Tap to enlarge diagram').count(), 0)
+    assert.equal(downloads(), beforeNetwork, 'Losing the track license never fetches an image')
+    await context.setOffline(true)
+    assert.equal(await page.evaluate(() => window.mediaFixture.loadMulti(window.mediaFixture.sha, true).then(() => 'allowed', () => 'denied')), 'denied')
+    assert.equal(await page.evaluate(() => window.mediaFixture.load().then(() => 'allowed', () => 'denied')), 'denied')
+    assert.equal(downloads(), beforeNetwork, 'Cached and offline premium image bytes remain inaccessible')
+    await page.evaluate(() => window.mediaFixture.license(true))
+    await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()
+    assert.equal(downloads(), beforeNetwork, 'License restoration reads cached media offline')
+  })
+  await scenario('Locked image notice opens the existing matching Bond Store popup for each track', async ({ page, open, downloads }) => {
     await open('gallery')
     await page.evaluate(() => window.mediaFixture.license(false, null))
-    await page.getByAltText('Synthetic question diagram', { exact: true }).waitFor()
-    const count = downloads()
-    await context.setOffline(true)
-    await page.getByTitle('Tap to enlarge diagram').click()
-    await page.getByRole('dialog', { name: 'Enlarged question diagram' }).waitFor()
-    assert.equal(downloads(), count, 'Opening a free sample image offline requires no image request')
+    await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER TO VIEW IMAGES' }).waitFor()
+    const beforeClicks = downloads()
+    const products = [
+      ['DECK_OIC_NW', 'oic_nw', 'Deck OIC-NW'],
+      ['GMDSS_GOC', 'gmdss', 'GMDSS GOC'],
+      ['ENGINE_OIC_EW', 'engine_ew', 'Engine OIC-EW'],
+      ['DECK_MGT', 'deck_mgt', 'Deck Management'],
+      ['ENGINE_MGT', 'engine_mgt', 'Engine Management'],
+    ]
+    for (const [track, code, name] of products) {
+      await page.evaluate(value => window.mediaFixture.changeTrack(value), track)
+      const upgrade = page.getByRole('button', { name: 'UNLOCK FULL REVIEWER TO VIEW IMAGES' })
+      await upgrade.waitFor()
+      assert.equal(await upgrade.getAttribute('aria-haspopup'), 'dialog', 'Locked diagram is an accessible purchase control')
+      await upgrade.click()
+      const popup = page.getByRole('dialog', { name })
+      await popup.waitFor()
+      assert.equal(await popup.locator('#store-benefits-popup-' + code).count(), 1, 'Popup selects the diagram’s product, not the current route')
+      await popup.getByRole('button', { name: 'Close purchase dialog' }).click()
+      await popup.waitFor({ state: 'hidden' })
+    }
+    assert.equal(downloads(), beforeClicks, 'Clicking the paywall never fetches protected image bytes')
   })
   await scenario('All 105 separately referenced diagrams remain accessible offline without new image requests', async ({ page, context, open, downloads }) => {
     await open('gallery')

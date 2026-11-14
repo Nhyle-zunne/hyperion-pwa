@@ -131,9 +131,8 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         return reply({ error: 'Unknown administration action.' }, 400)
       } catch (error) { return reply({ error: error instanceof PublisherError ? error.message : 'GitHub administration is temporarily unavailable. Your live bank and saved progress remain preserved.' }, error instanceof PublisherError ? error.status : 503) }
     }
-    // Verify image membership against the immutable published bank, then fetch
-    // its encrypted GitHub asset. Free samples never call Supabase; paid images
-    // require the same live entitlement check as paid question pages.
+    // Every diagram requires the same live paid-track entitlement as full question
+    // delivery, even if its reference appears inside a public Free Reviewer question.
     if (url.pathname === '/api/question-bank/media') {
       const batch = request.method === 'POST'
       if (!batch && request.method !== 'GET') return reply({ error: 'Method not allowed.' }, 405)
@@ -156,8 +155,9 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
           new Set(requested.map(ref => ref.sha256 + ':' + ref.mime)).size !== requested.length) {
         return reply({ error: 'Invalid image request.' }, 400)
       }
-      const freeOnly = tier === '1'
-      if (!freeOnly) {
+      // Reject anonymous/free media before reading configuration or GitHub assets.
+      if (tier === '1') return reply({ error: 'UNLOCK FULL REVIEWER TO VIEW IMAGES' }, 403)
+      {
         const authorization = request.headers.get('Authorization')
         if (!authorization?.startsWith('Bearer ')) return reply({ error: 'Sign in to view licensed diagrams.' }, 401)
         try {
@@ -178,13 +178,13 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
       }
       try {
         const release = await source.release()
-        const key = release.revision + ':' + track + ':' + tier
+        const key = release.revision + ':' + track
         let refs = publishedImageRefs.get(key)
         if (!refs) {
           const found = new Set<string>()
           for (const path of SOURCE_ASSETS.filter(path => sourceInfo(path)?.track === track)) {
             const text = await source.read(path, release, false)
-            for (const question of toSearchQuestions(path, freeOnly ? sampleFreeCsv(path, text) : text)) {
+            for (const question of toSearchQuestions(path, text)) {
               const attachments = Array.isArray(question.imageAttachments) ? question.imageAttachments : []
               for (const ref of attachments) if (validQuestionImageRef(ref)) found.add(ref.sha256 + ':' + ref.mime)
             }

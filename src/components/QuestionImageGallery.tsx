@@ -5,23 +5,37 @@ import type { Question, TrackId } from '../types/question'
 import type { QuestionImageRef } from '../lib/questionMedia'
 import { loadQuestionImage } from '../lib/questionMediaCache'
 import { useLicenseStore } from '../stores/licenseStore'
+import { useSearchParams } from 'react-router-dom'
+import { paidProductCodeForTrackId } from '../lib/supabase'
 
 type Loaded = { url: string; error?: string }
 
 export default function QuestionImageGallery({ question, placement }: { question: Pick<Question, 'id' | 'track' | 'imageAttachments'>; placement: 'question' | 'explanation' }) {
+  const [, setParams] = useSearchParams()
   const images = question.imageAttachments?.filter(ref => ref.placement === placement) || []
   const owner = useLicenseStore(state => state.entitlementUserId)
   const unlocked = useLicenseStore(state => state.isTrackUnlocked(question.track))
   if (!images.length) return null
-  if (unlocked && !owner) return <p role="status">Sign in to download this question's diagram.</p>
-  // A Free Reviewer image is served only if it belongs to the published free pool.
-  // Account changes must discard thumbnails from a previous licensed session.
-  const freeOnly = !unlocked
-  const scope = JSON.stringify([question.track, question.id, placement, images, freeOnly ? 'public-free' : owner])
-  return <ImageSession key={scope} track={question.track} images={images} freeOnly={freeOnly} />
+  if (!unlocked) return <button type="button" className="btn btn-outline"
+    aria-haspopup="dialog"
+    style={{ display: 'block', width: '100%', minHeight: 48, padding: 14, margin: '1rem 0', whiteSpace: 'normal', textAlign: 'center' }}
+    onClick={() => {
+      const code = paidProductCodeForTrackId(question.track)
+      if (!code) return
+      setParams(current => {
+        const params = new URLSearchParams(current)
+        params.set('purchase', '1')
+        params.set('purchase_product', code)
+        return params
+      }, { replace: true })
+    }}>UNLOCK FULL REVIEWER TO VIEW IMAGES</button>
+  if (!owner) return <p role="status">Sign in to view this track's licensed diagrams.</p>
+  // Changing account or entitlement remounts the image session and closes zoom.
+  const scope = JSON.stringify([question.track, question.id, placement, images, owner])
+  return <ImageSession key={scope} track={question.track} images={images} />
 }
 
-function ImageSession({ track, images, freeOnly }: { track: TrackId; images: QuestionImageRef[]; freeOnly: boolean }) {
+function ImageSession({ track, images }: { track: TrackId; images: QuestionImageRef[] }) {
   const [loaded, setLoaded] = useState<Record<string, Loaded>>({})
   const [zoom, setZoom] = useState<{ url: string; alt: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -33,7 +47,7 @@ function ImageSession({ track, images, freeOnly }: { track: TrackId; images: Que
     setZoom(null)
     for (const ref of images) void (async () => {
       try {
-        const blob = await loadQuestionImage(track, ref, freeOnly, controller.signal)
+        const blob = await loadQuestionImage(track, ref, false, controller.signal)
         if (controller.signal.aborted) return
         const url = URL.createObjectURL(blob)
         urls.push(url)
@@ -46,7 +60,7 @@ function ImageSession({ track, images, freeOnly }: { track: TrackId; images: Que
     return () => { controller.abort(); for (const url of urls) URL.revokeObjectURL(url) }
     // The serialized refs retain stable identity across unrelated screen renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track, refs, attempt, freeOnly])
+  }, [track, refs, attempt])
   return <div style={{ display: 'grid', gap: 12, margin: '1rem 0' }} aria-label="Question diagrams">
     {images.map(ref => {
       const image = loaded[ref.sha256]
