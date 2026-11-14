@@ -13,15 +13,14 @@ export default function QuestionImageGallery({ question, placement }: { question
   const owner = useLicenseStore(state => state.entitlementUserId)
   const unlocked = useLicenseStore(state => state.isTrackUnlocked(question.track))
   if (!images.length) return null
-  if (unlocked && !owner) return <p role="status">Sign in to download this question's diagram.</p>
-  // A Free Reviewer image is served only if it belongs to the published free pool.
-  // Account changes must discard thumbnails from a previous licensed session.
-  const freeOnly = !unlocked
-  const scope = JSON.stringify([question.track, question.id, placement, images, freeOnly ? 'public-free' : owner])
-  return <ImageSession key={scope} track={question.track} images={images} freeOnly={freeOnly} />
+  if (!unlocked) return <p role="status" style={{ padding: 14, textAlign: 'center', border: '1px solid var(--border)', borderRadius: 8 }}>UNLOCK FULL REVIEWER TO VIEW IMAGES</p>
+  if (!owner) return <p role="status">Sign in to view this track's licensed diagrams.</p>
+  // Changing account or entitlement remounts the image session and closes zoom.
+  const scope = JSON.stringify([question.track, question.id, placement, images, owner])
+  return <ImageSession key={scope} track={question.track} images={images} />
 }
 
-function ImageSession({ track, images, freeOnly }: { track: TrackId; images: QuestionImageRef[]; freeOnly: boolean }) {
+function ImageSession({ track, images }: { track: TrackId; images: QuestionImageRef[] }) {
   const [loaded, setLoaded] = useState<Record<string, Loaded>>({})
   const [zoom, setZoom] = useState<{ url: string; alt: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -33,7 +32,7 @@ function ImageSession({ track, images, freeOnly }: { track: TrackId; images: Que
     setZoom(null)
     for (const ref of images) void (async () => {
       try {
-        const blob = await loadQuestionImage(track, ref, freeOnly, controller.signal)
+        const blob = await loadQuestionImage(track, ref, false, controller.signal)
         if (controller.signal.aborted) return
         const url = URL.createObjectURL(blob)
         urls.push(url)
@@ -46,7 +45,7 @@ function ImageSession({ track, images, freeOnly }: { track: TrackId; images: Que
     return () => { controller.abort(); for (const url of urls) URL.revokeObjectURL(url) }
     // The serialized refs retain stable identity across unrelated screen renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track, refs, attempt, freeOnly])
+  }, [track, refs, attempt])
   return <div style={{ display: 'grid', gap: 12, margin: '1rem 0' }} aria-label="Question diagrams">
     {images.map(ref => {
       const image = loaded[ref.sha256]
