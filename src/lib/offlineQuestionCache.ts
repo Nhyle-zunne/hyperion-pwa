@@ -8,6 +8,7 @@ import {
   OFFLINE_CLOCK_PERSIST_INTERVAL_MS
 } from './offlineEntitlementCrypto.mjs'
 import { isGmdssFreeSampleQuestion, isOfflinePackSetComplete } from './offlinePackIntegrity.mjs'
+import { selectActiveQuestions } from './retiredQuestions'
 
 export interface OfflineQuestionPack {
   id: string
@@ -27,6 +28,8 @@ export interface OfflinePackManifest {
   groupCount: number
   savedAt: number
   complete: boolean
+  /** Version 1 guarantees the encrypted pack contains only non-retired questions. */
+  activeOnlyVersion?: 1
   sampleVersion?: number
   /** Public release checked without Supabase; only official Free Reviewer pages may populate this pack. */
   publicBankRevision?: string
@@ -218,13 +221,18 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
   // while a crypto operation is pending.
   for (const update of updates) {
     let questionCount = 0
+    let groupCount = 0
     for (const group of update.groups) {
       if (group.questions.some(question => question.track !== update.track || question.competenceId !== group.competenceId)) {
         throw new Error('Question pack metadata does not match its questions.')
       }
+      // Published rows retain their original IDs/positions. The on-device study
+      // pack contains active questions only; archived sessions are stored separately.
+      const activeQuestions = selectActiveQuestions(group.questions)
+      if (!activeQuestions.length) continue
       const id = offlinePackId(update.track, group.competenceId, group.part, update.freeOnly)
       const iv = crypto.getRandomValues(new Uint8Array(12))
-      const plaintext = new TextEncoder().encode(JSON.stringify(group.questions))
+      const plaintext = new TextEncoder().encode(JSON.stringify(activeQuestions))
       const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
       records.push({
         id,
@@ -232,21 +240,24 @@ export async function saveOfflineQuestionPackSets(updates: OfflineQuestionPackSe
         competenceId: group.competenceId,
         part: group.part,
         freeOnly: update.freeOnly,
-        questionCount: group.questions.length,
+        questionCount: activeQuestions.length,
         savedAt: Date.now(),
         iv,
         ciphertext: new Uint8Array(encrypted)
       })
-      questionCount += group.questions.length
+      questionCount += activeQuestions.length
+      groupCount++
     }
+    if (!groupCount) throw new Error('No active questions remain in this offline pack.')
     manifests.push({
       id: offlineManifestId(update.track, update.freeOnly),
       track: update.track,
       freeOnly: update.freeOnly,
       questionCount,
-      groupCount: update.groups.length,
+      groupCount,
       savedAt: Date.now(),
       complete: true,
+      activeOnlyVersion: 1,
       ...(update.publicBankRevision ? { publicBankRevision: update.publicBankRevision, lastCheckedAt: Date.now(), lastKnownUpdateState: 'current' as const } : {}),
       ...((update.track === 'DECK_OIC_NW' || update.track === 'GMDSS_GOC') && update.freeOnly ? { sampleVersion: 2 } : {}),
       ...(update.sourceVersions ? {
@@ -338,6 +349,88 @@ async function getValidatedPackMetadata(
   return { manifest, metadata, key: savedKey.key, db }
 }
 
+/**
+ * One-time, local-only upgrade for already downloaded encrypted packs. Retired
+ * records are removed from the pack, not the published question bank or any
+ * encrypted study history/bookmarks. Re-encrypt changed groups before opening
+ * the transaction; an IDB quota failure leaves the old complete pack intact.
+ */
+const activeOnlyMigrations = new Map<string, Promise<void>>()
+async function migrateLegacyRetiredOfflinePack(track: TrackId, freeOnly: boolean): Promise<void> {
+  const id = offlineManifestId(track, freeOnly)
+  const ongoing = activeOnlyMigrations.get(id)
+  if (ongoing) return ongoing
+  const task = (async () => {
+    const db = await database()
+    const manifest = await db.get('manifests', id)
+    if (!manifest?.complete || manifest.activeOnlyVersion === 1) return
+    const metadata = (await db.getAll('packMeta')).filter(meta =>
+      meta.track === track && meta.freeOnly === freeOnly)
+    if (!isOfflinePackSetComplete(manifest, metadata)) return
+    const key = (await db.get('keys', 'device-key'))?.key
+    if (!key) return
+
+    const rewrites: { id: string; record?: StoredOfflineQuestionPack }[] = []
+    let questionCount = 0
+    let groupCount = 0
+    for (const meta of metadata) {
+      const stored = await db.get('packs', meta.id)
+      if (!stored) return
+      const decoded = await getCachedDecryptedPack(key, stored)
+      if (decoded.questions.length !== meta.questionCount ||
+          (track === 'GMDSS_GOC' && freeOnly && decoded.questions.some(q => !isGmdssFreeSampleQuestion(q)))) return
+      const active = selectActiveQuestions(decoded.questions)
+      questionCount += active.length
+      if (!active.length) {
+        rewrites.push({ id: meta.id })
+        continue
+      }
+      groupCount++
+      if (active.length === decoded.questions.length) continue
+      const iv = crypto.getRandomValues(new Uint8Array(12))
+      const plaintext = new TextEncoder().encode(JSON.stringify(active))
+      const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
+      rewrites.push({ id: meta.id, record: {
+        ...stored, questionCount: active.length, savedAt: Date.now(),
+        iv, ciphertext: new Uint8Array(encrypted)
+      } })
+    }
+    if (!groupCount) return
+
+    const tx = db.transaction(['packs', 'packMeta', 'manifests'], 'readwrite')
+    const live = await tx.objectStore('manifests').get(id)
+    // A newer download may have committed while the legacy pack was decrypted.
+    if (!live || live.activeOnlyVersion === 1 || live.savedAt !== manifest.savedAt ||
+        live.questionCount !== manifest.questionCount || live.groupCount !== manifest.groupCount) {
+      await tx.done
+      return
+    }
+    for (const change of rewrites) {
+      if (change.record) {
+        await tx.objectStore('packs').put(change.record)
+        await tx.objectStore('packMeta').put({
+          id: change.record.id, track: change.record.track, freeOnly: change.record.freeOnly,
+          competenceId: change.record.competenceId, part: change.record.part,
+          questionCount: change.record.questionCount, savedAt: change.record.savedAt
+        })
+      } else {
+        await tx.objectStore('packs').delete(change.id)
+        await tx.objectStore('packMeta').delete(change.id)
+      }
+    }
+    // Preserve all source hashes, revision hints, dates and prior availability.
+    await tx.objectStore('manifests').put({
+      ...live, questionCount, groupCount, activeOnlyVersion: 1
+    })
+    await tx.done
+    for (const change of rewrites) decryptedPackCache.delete(change.id)
+  })().catch(() => {
+    // Do not invalidate or remove an older pack when local storage is unavailable.
+  })
+  activeOnlyMigrations.set(id, task)
+  try { await task } finally { if (activeOnlyMigrations.get(id) === task) activeOnlyMigrations.delete(id) }
+}
+
 export async function saveOfflinePackManifest(manifest: Omit<OfflinePackManifest, 'id' | 'savedAt'>) {
   const db = await database()
   await db.put('manifests', {
@@ -349,6 +442,7 @@ export async function saveOfflinePackManifest(manifest: Omit<OfflinePackManifest
 
 export async function getOfflinePackManifest(track: TrackId, freeOnly: boolean) {
   try {
+    await migrateLegacyRetiredOfflinePack(track, freeOnly)
     return (await (await database()).get('manifests', offlineManifestId(track, freeOnly))) ?? null
   } catch {
     return null
@@ -384,6 +478,7 @@ export async function recordOfflinePackVersionCheck(
 
 export async function getOfflinePackStatus(track: TrackId, freeOnly: boolean) {
   try {
+    await migrateLegacyRetiredOfflinePack(track, freeOnly)
     const db = await database()
     const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
     if (!manifest) return null
@@ -398,6 +493,7 @@ export async function getOfflinePackStatus(track: TrackId, freeOnly: boolean) {
 
 export async function getOfflineQuestionPacks(track: TrackId, freeOnly: boolean) {
   try {
+    await migrateLegacyRetiredOfflinePack(track, freeOnly)
     const db = await database()
     const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
     if (!manifest) return null
@@ -431,6 +527,7 @@ export async function getOfflineQuestionsByCompetence(
   freeOnly: boolean
 ): Promise<Question[] | null> {
   try {
+    await migrateLegacyRetiredOfflinePack(track, freeOnly)
     const validated = await getValidatedPackMetadata(track, freeOnly)
     if (!validated) return null
     const matching = validated.metadata
@@ -466,6 +563,7 @@ export async function getOfflineQuestionsByTrack(track: TrackId, freeOnly: boole
 
 export async function getOfflineQuestionCounts(track: TrackId, freeOnly: boolean) {
   try {
+    await migrateLegacyRetiredOfflinePack(track, freeOnly)
     const db = await database()
     const manifest = await db.get('manifests', offlineManifestId(track, freeOnly))
     if (!manifest) return null
@@ -475,7 +573,8 @@ export async function getOfflineQuestionCounts(track: TrackId, freeOnly: boolean
     return metadata.map(pack => ({
       competenceId: pack.competenceId,
       part: pack.part,
-      count: pack.questionCount
+      count: pack.questionCount,
+      activeOnly: manifest.activeOnlyVersion === 1
     }))
   } catch {
     return null
