@@ -54,7 +54,7 @@ const imageRequest = (freeOnly, token = '', digest = 'a'.repeat(64)) => worker(
   }), { ASSETS: assets }
 )
 assert.equal((await imageRequest(false)).status, 401, 'Paid images require account authentication')
-assert.equal((await imageRequest(true, '')).status, 404, 'Free image requests cannot read non-sample digests')
+assert.equal((await imageRequest(true, '')).status, 403, 'All Free Reviewer images are licensed, including official samples')
 assert.equal((await imageRequest(true, '', '../private')).status, 400, 'Invalid image paths fail closed')
 const request = (body, handler = worker, token = 'test-user') => handler(new Request('https://hyperionmaritime.org/api/question-bank/questions', { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: JSON.stringify(body) }), { ASSETS: assets })
 const selection = { track: 'DECK_OIC_NW', competenceId: 'C1', offset: 0, limit: 20, freeOnly: false }
