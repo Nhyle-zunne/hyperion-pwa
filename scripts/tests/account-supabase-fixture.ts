@@ -29,6 +29,13 @@ const fixtureOrders = () => user.id !== '11111111-1111-4111-8111-111111111111' ?
 ] : []
 const session = () => localStorage.getItem('fixture-guest') === 'yes' ? null : { user, access_token: 'fixture-token' }
 const authListeners = new Set<(event: string, value: ReturnType<typeof session>) => void>()
+const heldSessionResolvers: (() => void)[] = []
+export function releaseFixtureHeldNullSession() {
+  for (const resolve of heldSessionResolvers.splice(0)) resolve()
+}
+export function emitFixtureAuth(event: 'SIGNED_IN' | 'SIGNED_OUT') {
+  for (const listener of authListeners) listener(event, event === 'SIGNED_OUT' ? null : session())
+}
 let releaseEntitlements: (() => void) | undefined
 export function releaseFixtureEntitlements() { releaseEntitlements?.(); releaseEntitlements = undefined }
 export function switchFixtureAccount() {
@@ -37,7 +44,13 @@ export function switchFixtureAccount() {
 }
 export const supabase = {
   auth: {
-    getSession: async () => ({ data: { session: session() }, error: null }),
+    getSession: async () => {
+      if (localStorage.getItem('fixture-hold-account-session') === 'yes') {
+        return new Promise(resolve => heldSessionResolvers.push(() => resolve({ data: { session: null }, error: null })))
+      }
+      if (localStorage.getItem('fixture-account-auth-failure') === 'yes') throw Error('Synthetic mobile network failure')
+      return { data: { session: session() }, error: null }
+    },
     onAuthStateChange: (listener: (event: string, value: ReturnType<typeof session>) => void) => {
       authListeners.add(listener)
       return { data: { subscription: { unsubscribe() { authListeners.delete(listener) } } } }
