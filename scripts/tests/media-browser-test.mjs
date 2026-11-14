@@ -492,7 +492,7 @@ try {
       await upgrade.click()
       const popup = page.getByRole('dialog', { name })
       await popup.waitFor()
-      assert.equal(new URL(page.url()).searchParams.get('purchase_product'), code, 'Popup selects the diagram’s track, not the current route')
+      assert.equal(await popup.locator('#store-benefits-popup-' + code).count(), 1, 'Popup selects the diagram’s product, not the current route')
       await popup.getByRole('button', { name: 'Close purchase dialog' }).click()
       await popup.waitFor({ state: 'hidden' })
     }
