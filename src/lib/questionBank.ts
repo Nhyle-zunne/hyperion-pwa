@@ -847,6 +847,18 @@ export async function ensureOfflineFreeSamplePack(track: TrackId): Promise<void>
   const status = await getOfflinePackStatus(track, true);
   if (status?.complete && status.sampleVersion === 2) return;
 
+  // A compacted full pack no longer contains retired physical positions.
+  // Re-running the Deck shuffle on it could pull formerly paid questions into
+  // the free sample. Fetch the authoritative free pool instead, or leave the
+  // old complete pack untouched while offline.
+  const fullManifest = await getOfflinePackManifest(track, false);
+  if (fullManifest?.activeOnlyVersion === 1) {
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+      await downloadFreeOfflinePack(track);
+    }
+    return;
+  }
+
   const fullBank = await getOfflineQuestionsByTrack(track, false);
   if (!fullBank?.length) return;
 
