@@ -34,7 +34,7 @@ mock.module('../../src/lib/offlineQuestionCache', () => ({ ...actualCache,
 }))
 mock.module('../../src/lib/questionMediaCache', () => ({
   preloadQuestionImages: async (_track: string, questions: unknown[], freeOnly: boolean) => {
-    expect(freeOnly).toBe(true); expect(questions).toHaveLength(rawRows ? 2 : 1); mediaPrepared = true
+    expect(freeOnly).toBe(true); expect(questions).toHaveLength(1); mediaPrepared = true
   },
   offlineQuestionImagesComplete: async () => mediaPrepared,
 }))
