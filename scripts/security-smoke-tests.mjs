@@ -425,7 +425,7 @@ assert.ok(
   trackHubScreen.includes('await downloadOfflinePack(track, freeOnly,') &&
   trackHubScreen.includes('(freeOnly || (access.entitlementsVerified &&') &&
   trackHubScreen.includes('offlineQuestionImagesComplete') &&
-  !trackHubScreen.includes('if (!unlocked) return'),
+  trackHubScreen.includes('if (!isCurrent() || !online || (unlocked && !accountUserId)) return'),
   'Track hubs download free pools anonymously, preserve paid gating, and verify all local images before READY'
 );
 
