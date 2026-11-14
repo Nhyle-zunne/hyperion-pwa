@@ -69,30 +69,29 @@ export async function cacheUploadedQuestionImage(track: TrackId, ref: QuestionIm
 }
 
 /**
- * Published Free Reviewer diagrams are available without an account; paid
- * diagrams still require the current user's license and identity. Cached bytes
- * are hash-verified and stored in separate free or owner-specific namespaces.
+ * All question images are premium, including images referenced by the Free Reviewer.
+ * Check the active track entitlement before accessing even a previously cached blob.
+ * Legacy anonymous "public-free" cache entries are never read or exposed.
  */
 export async function loadQuestionImage(track: TrackId, ref: QuestionImageRef, freeOnly: boolean, signal?: AbortSignal): Promise<Blob> {
-  const owner = freeOnly ? 'public-free' : currentOwner(track)
-  if (!owner) throw new Error('An active track license is required to view this image.')
+  if (freeOnly) throw new Error('UNLOCK FULL REVIEWER TO VIEW IMAGES')
+  const owner = currentOwner(track)
+  if (!owner) throw new Error('UNLOCK FULL REVIEWER TO VIEW IMAGES')
   const assertAccess = () => {
     if (signal?.aborted) throw new DOMException('Image loading cancelled.', 'AbortError')
-    if (!freeOnly && currentOwner(track) !== owner) throw new Error('License/account changed during image loading.')
+    if (currentOwner(track) !== owner) throw new Error('License/account changed during image loading.')
   }
   assertAccess()
   const existing = await cached(owner,track,ref)
   assertAccess()
   if (existing) return existing
   const headers: Record<string, string> = {}
-  if (!freeOnly) {
-    if (!supabase) throw new Error('Sign in to access this licensed diagram.')
-    const { data: { session } } = await supabase.auth.getSession()
-    assertAccess()
-    if (!session || session.user.id !== owner) throw new Error('Sign in to download the licensed image.')
-    headers.Authorization = 'Bearer ' + session.access_token
-  }
-  const params = new URLSearchParams({ track, sha256: ref.sha256, mime: ref.mime, freeOnly: freeOnly ? '1' : '0' })
+  if (!supabase) throw new Error('Sign in to access this licensed diagram.')
+  const { data: { session } } = await supabase.auth.getSession()
+  assertAccess()
+  if (!session || session.user.id !== owner) throw new Error('Sign in to download the licensed image.')
+  headers.Authorization = 'Bearer ' + session.access_token
+  const params = new URLSearchParams({ track, sha256: ref.sha256, mime: ref.mime, freeOnly: '0' })
   const controller = new AbortController()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
@@ -141,31 +140,35 @@ export async function loadQuestionImage(track: TrackId, ref: QuestionImageRef, f
   }
 }
 
-/** Keep existing callers strictly licensed; Free Reviewer explicitly selects the public tier. */
+/** Reuse the same track-license gate in every licensed image reader. */
 export const loadLicensedQuestionImage = (track: TrackId, ref: QuestionImageRef, signal?: AbortSignal) =>
   loadQuestionImage(track, ref, false, signal)
 
 export async function offlineQuestionImagesComplete(track: TrackId, questions: Question[], freeOnly: boolean): Promise<boolean> {
+  // Free question text remains offline even when its image requires a license.
+  if (freeOnly) return true
   const refs = new Map<string, QuestionImageRef>()
   for (const question of questions) for (const ref of question.imageAttachments || []) refs.set(ref.sha256, ref)
   if (!refs.size) return true
-  const owner = freeOnly ? 'public-free' : currentOwner(track)
+  const owner = currentOwner(track)
   if (!owner) return false
   for (const ref of refs.values()) if (!await cached(owner, track, ref)) return false
-  return freeOnly || currentOwner(track) === owner
+  return currentOwner(track) === owner
 }
 
 export async function preloadQuestionImages(
   track: TrackId, questions: Question[], freeOnly: boolean,
   canContinue: () => boolean = () => true,
 ): Promise<void> {
+  // Free packs never fetch or retain images. A license unlocks image preparation.
+  if (freeOnly) return
   const refs = new Map<string, QuestionImageRef>()
   for (const question of questions) for (const ref of question.imageAttachments || []) refs.set(ref.sha256, ref)
   if (!refs.size) return
-  const owner = freeOnly ? 'public-free' : currentOwner(track)
+  const owner = currentOwner(track)
   if (!owner) throw new Error('An active track license is required to prepare diagrams.')
   const assertAccess = () => {
-    if (!canContinue() || (!freeOnly && currentOwner(track) !== owner)) throw new Error('Offline diagram preparation was interrupted. Retry while connected.')
+    if (!canContinue() || currentOwner(track) !== owner) throw new Error('Offline diagram preparation was interrupted. Retry while connected.')
   }
   const missing: QuestionImageRef[] = []
   for (const ref of refs.values()) {
@@ -173,7 +176,7 @@ export async function preloadQuestionImages(
     if (!await cached(owner, track, ref)) missing.push(ref)
   }
   let authorization = ''
-  if (missing.length && !freeOnly) {
+  if (missing.length) {
     if (!supabase) throw new Error('Sign in to prepare licensed diagrams.')
     const { data: { session } } = await supabase.auth.getSession()
     assertAccess()
@@ -186,7 +189,7 @@ export async function preloadQuestionImages(
     const response = await fetch('/api/question-bank/media', {
       method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(60000),
       headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
-      body: JSON.stringify({ track, freeOnly, images: batch.map(({sha256, mime}) => ({sha256, mime})) })
+      body: JSON.stringify({ track, freeOnly: false, images: batch.map(({sha256, mime}) => ({sha256, mime})) })
     })
     if (!response.ok || !response.headers.get('content-type')?.startsWith('application/json')) throw new Error('Offline diagrams could not be downloaded.')
     const maxBytes = 8 * Math.ceil(QUESTION_MEDIA_MAX_BYTES / 3) * 4 + 16384
