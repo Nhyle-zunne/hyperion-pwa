@@ -3,7 +3,7 @@ import type { BankRelease } from '../supabase/functions/_shared/githubBankSource
 
 export const ADMIN_SEARCH_TRACKS = ['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT']
 export type AdminSearchInput = { query: string; track?: string; limit?: number; cursor?: number; bankRevision?: string }
-export type AdminSearchResult = { path: string; ordinal: number; questionText: string; track: string; competenceId: string; part: number | null }
+export type AdminSearchResult = { path: string; ordinal: number; questionText: string; track: string; competenceId: string; part: number | null; isRetired: boolean }
 type SearchSource = { read: (path: string, release: BankRelease, persistToEdgeCache: boolean) => Promise<string> }
 type IndexedQuestion = { result: AdminSearchResult; lowercaseText: string }
 
@@ -40,7 +40,7 @@ export function createAdminQuestionSearch() {
           const info = sourceInfo(path)!
           index = toSearchQuestions(path, text).map((question, position) => {
             const questionText = String(question.questionText ?? '')
-            return { result: { path, ordinal: position + 1, questionText: questionText.slice(0, 500), track: info.track, competenceId: info.competenceId, part: info.part }, lowercaseText: questionText.toLowerCase() }
+            return { result: { path, ordinal: position + 1, questionText: questionText.slice(0, 500), track: info.track, competenceId: info.competenceId, part: info.part, isRetired: question.isRetired === true || (path === 'engine_mgt/em_c10.csv.enc' && [182, 373, 406].includes(position + 1)) }, lowercaseText: questionText.toLowerCase() }
           })
           indexes.set(key, index)
           while (indexes.size > SOURCE_ASSETS.length * 2) indexes.delete(indexes.keys().next().value!)
