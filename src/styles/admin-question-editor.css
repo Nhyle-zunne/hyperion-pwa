@@ -43,8 +43,14 @@
 .admin-qb-question-results { display: grid; align-content: start; gap: 4px; overflow: auto; min-height: 0; flex: 1; }
 .admin-qb-page .admin-qb-question-results button { width: 100%; padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 6px; text-align: left; color: var(--text); background: transparent; }
 .admin-qb-question-results button[aria-current=true] { background: var(--bg-elevated); border-color: var(--accent); }
+.admin-qb-page .admin-qb-question-results button.is-retired { border-color: var(--danger, #dc2626); border-radius: 0; background: color-mix(in srgb, var(--danger, #dc2626) 12%, var(--bg-elevated)); }
+.admin-qb-page .admin-qb-question-results button.is-retired[aria-current=true] { border-color: var(--danger, #dc2626); box-shadow: inset 3px 0 var(--danger, #dc2626); background: color-mix(in srgb, var(--danger, #dc2626) 20%, var(--bg-elevated)); }
 .admin-qb-question-results small { display: block; color: var(--text-muted); font-size: .69rem; margin-bottom: .2rem; }
-.admin-qb-question-results span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.admin-qb-question-results .admin-qb-question-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.admin-qb-page .admin-qb-retired-chip { display: inline-block; padding: .15rem .35rem; border: 1px solid var(--danger, #dc2626); border-radius: 0; background: color-mix(in srgb, var(--danger, #dc2626) 12%, var(--bg-elevated)); color: var(--danger, #dc2626); font-size: .7rem; font-weight: 800; letter-spacing: .035em; line-height: 1.2; white-space: nowrap; }
+.admin-qb-question-heading { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.admin-qb-question-form.is-retired { border-left: 3px solid var(--danger, #dc2626); padding-left: .65rem; }
+.admin-qb-page .admin-qb-retired-notice { margin: 0; padding: .6rem; border: 1px solid var(--danger, #dc2626); border-radius: 0; background: color-mix(in srgb, var(--danger, #dc2626) 12%, var(--bg-elevated)); color: var(--danger, #dc2626); font-size: .81rem; font-weight: 700; }
 .admin-qb-question-list input { width: 100%; min-width: 0; padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-elevated); color: var(--text); }
 .admin-qb-search-form { display: grid; gap: .3rem; font-size: .76rem; }
 .admin-qb-search-form > div { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .3rem; }
