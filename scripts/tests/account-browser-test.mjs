@@ -41,8 +41,8 @@ try {
     if (body.action === 'editor-search') {
       editorSearchRequests.push(body)
       assert.equal(body.query, 'cooling')
-      const engine = { path: 'engine_mgt/em_c10.csv.enc', ordinal: 2, questionText: 'What does cooling do?', track: 'ENGINE_MGT', competenceId: 'C10', part: null }
-      const deck = { path: 'deck/oic_nw_c1.csv.enc', ordinal: 1, questionText: 'Cooling question in another track', track: 'DECK_OIC_NW', competenceId: 'C1', part: null }
+      const engine = { path: 'engine_mgt/em_c10.csv.enc', ordinal: 2, questionText: 'What does cooling do?', track: 'ENGINE_MGT', competenceId: 'C10', part: null, isRetired: false }
+      const deck = { path: 'deck/oic_nw_c1.csv.enc', ordinal: 1, questionText: 'Cooling question in another track', track: 'DECK_OIC_NW', competenceId: 'C1', part: null, isRetired: false }
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ results: body.track ? [engine] : body.cursor ? [deck] : [engine], nextCursor: !body.track && !body.cursor ? 2 : null, truncated: false, bankRevision: fixtureBankRevision }) })
     }
     const reply = body.action === 'inventory'
