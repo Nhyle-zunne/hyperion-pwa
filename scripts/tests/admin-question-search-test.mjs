@@ -37,7 +37,20 @@ assert.equal(images.results.length, 12)
 assert.ok(images.results.every(item => item.ordinal === 2 && item.questionText === ''))
 const retired = await search(source, release, { query: 'Retired', track: 'DECK_OIC_NW', limit: 100 })
 assert.ok(retired.results.every(item => item.ordinal === 3))
-assert.deepEqual(Object.keys(retired.results[0]).sort(), ['path','ordinal','questionText','track','competenceId','part'].sort())
+assert.deepEqual(Object.keys(retired.results[0]).sort(), ['path','ordinal','questionText','track','competenceId','part','isRetired'].sort())
+assert.ok(retired.results.every(item => item.isRetired === true), 'Retired source records are visibly marked')
+assert.ok(all.results.every(item => typeof item.isRetired === 'boolean'), 'Every indexed result includes a consistent retirement flag')
+assert.equal(images.results[0].isRetired, false, 'Active questions remain unmarked')
+
+const legacySearch = createAdminQuestionSearch()
+const legacyCsv = standard(Array.from({ length: 406 }, (_, i) => ({ text: 'Historical #' + (i + 1) })))
+const legacySource = { read: async path => path === 'engine_mgt/em_c10.csv.enc' ? legacyCsv : standard([{ text: 'Normal question' }]) }
+for (const retiredNumber of [182, 373, 406]) {
+  const found = await legacySearch(legacySource, release, { query: String(retiredNumber), track: 'ENGINE_MGT' })
+  assert.equal(found.results.length, 1)
+  assert.equal(found.results[0].ordinal, retiredNumber)
+  assert.equal(found.results[0].isRetired, true, 'Legacy C10 retired questions need a badge even if the CSV has no status column')
+}
 const browse = await search(source, release, { query: '', limit: 2 })
 assert.equal(browse.results.length, 2)
 assert.equal(browse.truncated, true)
