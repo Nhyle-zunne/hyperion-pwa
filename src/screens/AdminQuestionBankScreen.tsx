@@ -286,7 +286,7 @@ export default function AdminQuestionBankScreen() {
         const track = questionBankScopeTrack(pickerValue)
         const reply = await call({ action: 'editor-search', query: searchQuery, ...(track ? { track } : {}), limit: 100 - collected.length, cursor, ...(revision ? { bankRevision: revision } : {}) }, controller.signal)
         if (!Array.isArray(reply.results) || typeof reply.bankRevision !== 'string' || !/^[a-f0-9]{40}$/.test(reply.bankRevision) || (revision && revision !== reply.bankRevision)) throw new Error('The search result changed. Please search again.')
-        if (reply.results.some((item: AdminSearchResult) => !item || typeof item !== 'object' || !assets.some(asset => asset.path === item.path && asset.track === item.track && asset.competenceId === item.competenceId && asset.part === item.part) || !Number.isSafeInteger(item.ordinal) || item.ordinal < 1 || typeof item.questionText !== 'string')) throw new Error('The search returned invalid question references.')
+        if (reply.results.some((item: AdminSearchResult) => !item || typeof item !== 'object' || !assets.some(asset => asset.path === item.path && asset.track === item.track && asset.competenceId === item.competenceId && asset.part === item.part) || !Number.isSafeInteger(item.ordinal) || item.ordinal < 1 || typeof item.questionText !== 'string' || typeof item.isRetired !== 'boolean')) throw new Error('The search returned invalid question references.')
         revision = reply.bankRevision
         collected.push(...reply.results)
         if (collected.length > 100) throw new Error('The search response exceeded its limit.')
@@ -543,11 +543,12 @@ export default function AdminQuestionBankScreen() {
               {searchSummary && <p role="status">{searchSummary}</p>}
             </form> : <input aria-label="Find question by number or text" placeholder="Search question number or text…" value={editorSearch} onChange={event => setEditorSearch(event.target.value)} />}
             <div className="admin-qb-question-results">
-              {allScope ? searchResults.map(result => <button key={result.path + ':' + result.ordinal} type="button" disabled={busy || editorBusy} aria-current={result.path === editorTarget && result.ordinal === editorOrdinal ? 'true' : undefined} onClick={() => void loadEditor(result.path, result.ordinal, searchRevision)}>
-                <small>{TRACKS.find(([track]) => track === result.track)?.[1]} · {result.competenceId}{result.part == null ? '' : ' · Part ' + result.part} · #{result.ordinal}</small>
-                <span>{result.questionText || 'Image question'}</span>
-              </button>) : editorMatches.map(question => <button key={question.ordinal} type="button" disabled={busy} aria-current={question.ordinal === editorOrdinal ? 'true' : undefined} onClick={() => chooseEditorQuestion(question.ordinal)}>
-                <strong>#{question.ordinal}</strong> {question.retired ? '· Retired' : ''} · {question.questionText.slice(0, 110) || 'Image question'}
+              {allScope ? searchResults.map(result => <button key={result.path + ':' + result.ordinal} type="button" className={result.isRetired ? 'is-retired' : undefined} disabled={busy || editorBusy} aria-current={result.path === editorTarget && result.ordinal === editorOrdinal ? 'true' : undefined} onClick={() => void loadEditor(result.path, result.ordinal, searchRevision)}>
+                <small>{TRACKS.find(([track]) => track === result.track)?.[1]} · {result.competenceId}{result.part == null ? '' : ' · Part ' + result.part} · #{result.ordinal} {result.isRetired && <span className="admin-qb-retired-chip">RETIRED</span>}</small>
+                <span className="admin-qb-question-preview">{result.questionText || 'Image question'}</span>
+              </button>) : editorMatches.map(question => <button key={question.ordinal} type="button" className={question.retired ? 'is-retired' : undefined} disabled={busy} aria-current={question.ordinal === editorOrdinal ? 'true' : undefined} onClick={() => chooseEditorQuestion(question.ordinal)}>
+                <small><strong>#{question.ordinal}</strong> {question.retired && <span className="admin-qb-retired-chip">RETIRED</span>}</small>
+                <span className="admin-qb-question-preview">{question.questionText.slice(0, 110) || 'Image question'}</span>
               </button>)}
               {!allScope && editorBank && editorBank.questions.length > 150 && <p style={secondaryText}>Showing up to 150 matches. Search to find a specific question.</p>}
             </div>
@@ -569,8 +570,11 @@ export default function AdminQuestionBankScreen() {
           {editorDraftQueued && <a className="admin-qb-editor-queue-link" href="#admin-qb-upload-queue">Review publish queue ↓</a>}
         </div>}
           </div>
-          {selectedEditorQuestion && editorDraft && <fieldset ref={editorFormRef} disabled={busy || editorBusy} className="admin-qb-question-form">
-            <strong>Question #{selectedEditorQuestion.ordinal}</strong>
+          {selectedEditorQuestion && editorDraft && <fieldset ref={editorFormRef} disabled={busy || editorBusy} className={'admin-qb-question-form' + (editorDraft.retired ? ' is-retired' : '')}>
+            <div className="admin-qb-question-heading"><strong>Question #{selectedEditorQuestion.ordinal}</strong>
+              {editorDraft.retired && <span className="admin-qb-retired-chip">RETIRED</span>}
+            </div>
+            {editorDraft.retired && <p className="admin-qb-retired-notice" role="status">Retired question — excluded from new study sessions. Existing saved history is preserved.</p>}
             <label>Question text<EditorTextarea aria-label="Question text" value={editorDraft.questionText} onChange={event => updateEditorDraft({ ...editorDraft, questionText: event.target.value })} /></label>
             <small className="admin-qb-hint">Optional when a question image is attached.</small>
             <div className="admin-qb-choices">
