@@ -7,7 +7,7 @@ try {
   'No.,Question,A,B,C,D,Correct Answer,Explanation,HYPERION_STATUS',
   '1,Active sample?,Port,Starboard,Ahead,Astern,A,,ACTIVE',
   '2,Retired sample?,Port,Starboard,Ahead,Astern,B,,RETIRED'
- ].join('\\n')
+ ].join('\n')
  const externalRequests=[]
  await page.route('**/*',route=>{
   const host=new URL(route.request().url()).hostname
