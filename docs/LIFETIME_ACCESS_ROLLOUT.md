@@ -1,76 +1,50 @@
-# Lifetime Access rollout — staged, not for sale yet
+# Lifetime Access rollout — staged, checkout disabled by default
 
-## Approved product policy
+## Product policy
 
-- Lifetime Access is a **non-renewing, one-time purchase for one of five tracks**.
-- It includes future question-bank updates while the Hyperion service operates.
-- A lifetime receipt belongs to exactly one Hyperion user/track and follows that
-  account between Android and PWA. The discontinued All Access product is excluded.
-- Subscription billing remains unchanged. Buying lifetime access does **not**
-  automatically cancel a Google Play auto-renewing subscription; warn owners to
-  cancel their recurring subscription before/when upgrading.
-- A refunded/charged-back or revoked lifetime receipt must not grant access.
-- Offline access uses the current account-bound signed entitlement protocol.
-  After a successful online sync, revocations take effect; disconnected clients
-  cannot receive an immediate remote revocation signal.
+- One-time, non-renewing **per-track** ownership for the supported lifetime of Hyperion, including future question-bank updates. No All Access SKU.
+- Ownership follows the linked Hyperion account between the PWA and Android; signed offline grants use the existing owner-bound verification mechanism.
+- Subscription prices/durations remain unchanged. A lifetime purchase does not automatically cancel an auto-renewing Google Play subscription. Warn customers to cancel their old subscription separately before buying Lifetime Access.
+- A successfully refunded/charged-back receipt must not provide premium access. Old study progress and question references remain recoverable after revocation.
+- Disconnected clients cannot receive instantaneous remote revocation; signed offline ownership updates on a successful online license sync or sign-in.
 
-## Provisional prices (NOT approved / NOT active)
+## PayMongo one-time catalogue (PHP)
 
-| Track | Lifetime PHP | Proposed Play product ID |
+| Track | One-time PHP | Planned Play INAPP product ID |
 |---|---:|---|
-| GMDSS GOC | 1,999 | `hyperion_gmdss_lifetime` |
-| OIC-NW | 2,499 | `hyperion_oic_nw_lifetime` |
-| OIC-EW | 2,499 | `hyperion_engine_oic_ew_lifetime` |
-| Deck Management | 4,999 | `hyperion_deck_mgt_lifetime` |
-| Engine Management | 4,999 | `hyperion_engine_mgt_lifetime` |
+| GMDSS GOC | 1,999 | hyperion_gmdss_lifetime |
+| OIC-NW | 2,499 | hyperion_oic_nw_lifetime |
+| OIC-EW | 2,499 | hyperion_engine_oic_ew_lifetime |
+| Deck Management | 4,999 | hyperion_deck_mgt_lifetime |
+| Engine Management | 4,999 | hyperion_engine_mgt_lifetime |
 
-These figures were *suggested*, not explicitly agreed as final, so do not
-activate products, expose a live Buy button, or charge these prices yet.
+PayMongo code is prepared using the proposed amounts above. They are **not published or charged** while the Lifetime feature flag is disabled. Android Play Console products/prices are a separate launch step.
 
-## Completed in this foundation branch
+## Backend and storefront implemented in the draft PR
 
-1. An isolated `lifetime_entitlements` table with account-scoped RLS, service-only
-   writes and a globally unique hashed receipt ID per provider.
-2. A service-only, idempotent receipt recorder that rejects another account
-   or product claiming the same purchase and never resurrects revoked receipts.
-   This RPC is a **data primitive**, not proof of payment: callers must verify
-   PayMongo or Google Play server-side before invoking it.
-3. Existing active-license and progress-ownership readers include lifetime
-   purchases without changing subscription rows. An active lifetime track is
-   represented by an ISO-compatible far-future expiry in the existing signed
-   offline grant format to preserve both platform clients.
-4. Account retention excludes active lifetime owners; an unavailable lifetime
-   lookup fails closed to prevent accidental account deletion.
-5. Existing PayMongo subscription checkout denies new charges to a user who
-   already owns that track for life.
-6. Synthetic isolated PostgreSQL regression tests for receipt replay, account
-   isolation, revocation, scoped access and database privileges.
+- Isolated lifetime receipt and PayMongo order tables, RLS owner reads, service-role-only writes, canonical price/track check constraints, and uniqueness of provider payment receipts.
+- One-time checkout server action: authenticate the customer, reject existing active lifetime ownership, verify displayed price, create one QR Ph PayMongo session and resume a pending order using the same idempotency key. A failed provider response never results in an untracked payable URL.
+- Dedicated payment verification: only a server-to-PayMongo GET or correctly signed webhook can confirm a payment. Check session reference, metadata owner/product, live/test mode, amount and currency against server-owned values.
+- Atomic fulfillment/revocation: replayed payments are idempotent; overlapping paid sessions are flagged for manual reconciliation rather than granted twice; refunds of a duplicate charge do not revoke a separate valid purchase; a delayed paid callback cannot resurrect a refunded receipt.
+- My Licenses displays Lifetime without a fabricated expiration date. Orders & Payment History includes one-time transactions and a Refresh status recovery path. Pending Lifetime checkouts can be resumed or safely cancelled.
+- The normal PayMongo and manual subscription checkouts reject a user who already owns permanent access to the selected track. Existing subscription entitlements are never overwritten.
+- Account retention excludes active Lifetime owners. Progress ownership preserves even historical refunded lifetime receipts for saved-data recovery.
 
-## Required before launch
+## PayMongo configuration (not changed in production)
 
-- Approve final lifetime prices and the customer-facing Lifetime terms.
-- Create the five **non-consumable** Play Console one-time products and verify
-  actual PHP prices. Never add an All Access product.
-- Implement Android `INAPP` product query/purchase/restore flow and **backend**
-  `purchases.productsv2.getproductpurchasev2` validation. Acknowledge only
-  verified `PURCHASED` orders, never pending or rejected purchases.
-- Implement PayMongo lifetime checkout and payment verification separately from
-  expiring subscription orders. Keep client-provided prices untrusted; match
-  provider order/currency/amount, user, product and reference atomically.
-- Handle one-time-product RTDN, voided purchase/refund reconciliation and PayMongo
-  refund/revocation without resuscitating refunded receipts.
-- Surface the Lifetime option, lifetime purchase history and expiry-free
-  ownership state in both PWA and Android stores/account pages.
-- Verify payment failures, interruptions, duplicate callbacks, signed offline
-  access, saved progress, all five tracks and account isolation using test
-  transactions only; then independently authorize production migration/Edge
-  deployment and Android Studio release. The feature must remain unpurchasable
-  until *all* of these checks pass.
+1. Apply **both** lifetime migrations in timestamp order. The new checkout and retention functions must **not** run against a database without them.
+2. Deploy create-lifetime-checkout, verify-lifetime-checkout, paymongo-webhook, create-checkout, submit-manual-payment, expire-inactive-accounts together, followed by the PWA.
+3. Keep all existing PAYMONGO_* secrets and the configured API key mode. Register/extend the corresponding existing PayMongo **webhook** subscription to include checkout_session.payment.paid, payment.refund.updated, and payment.refunded.
+4. In **test mode**, only after all migrations and functions pass validation, set LIFETIME_PAYMONGO_ENABLED=true. Also requires the existing PAYMONGO_CHECKOUT_ENABLED=true, a matching PAYMONGO_SECRET_KEY (sk_test_... for test), and PAYMONGO_EXPECT_LIVEMODE=false.
+5. Verify five exact-price test checkouts; successful redirect without payment must **not** grant; validate missed webhook recovery, duplicate delivery, concurrent tab purchases, cancellation/resume, refund and account isolation.
+6. Check the shape of real signed payment.refund.updated payloads and confirm a completed refund revokes the correct lifetime receipt. Partial refunds currently revoke the lifetime receipt too. Disputes/chargebacks require an additional provider reconciliation process before general live launch.
+7. Promote to **live mode only after** test and rollback verification. Explicitly authorize migration/deploy and enable the Lifetime flag only after the live PayMongo webhook has been registered with the correct signing secret.
 
-## Release gating
+LIFETIME_PAYMONGO_ENABLED defaults to **disabled**. Existing subscription checkout is unaffected by this flag. Never enable live Lifetime checkout merely by merging the schema PR; a main-branch PWA merge can trigger deployment.
 
-Do **not** merge or deploy this foundation on its own: the existing checkout
-guard requires its accompanying migration and would fail closed before that
-migration is installed. Launch the schema and compatible Edge Functions in a
-controlled, verified sequence. Never modify Android `versionCode` or
-`versionName`, generate a release AAB/APK, or publish to Google Play from CI.
+## Outstanding Android and release tasks
+
+- Android INAPP query/launch, server-side Google Play productsV2 verification, acknowledgment/restore, real-time developer notifications and refund handling are **not** implemented by these PayMongo-only changes. Android PR #43 only stages product IDs; it must not be presented as a ready-to-use payment feature.
+- Confirm Google Play one-time-product PHP prices, inventory and account binding. Never activate the discontinued All Access purchase.
+- Cross-platform access from a website Lifetime purchase works via the existing signed Hyperion-account license sync, subject to device testing.
+- Do not modify Android versionCode/versionName, generate a release APK/AAB, sign artifacts, publish to Play or run release workflows here.
