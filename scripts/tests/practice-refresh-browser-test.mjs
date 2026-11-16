@@ -121,6 +121,43 @@ try {
   await page.goto(url + '?resume=' + encodeURIComponent(practice.id) + '&runner=mock')
   await page.getByText('This saved session is not a mock exam.', { exact: false }).waitFor()
 
+  // Practice automations share the same answer path regardless of whether a
+  // user confirms manually or Direct Answer confirms on option selection.
+  await page.clock.install()
+  const openAutomationFixture = async settings => {
+    await page.goto(url)
+    await page.getByRole('button', { name: 'Start practice automation fixture' }).click()
+    await page.getByText('Automation first question?', { exact: true }).waitFor()
+    await page.evaluate(nextSettings => {
+      window.dispatchEvent(new CustomEvent('hyperion:practice-settings', { detail: nextSettings }))
+    }, settings)
+  }
+  const firstQuestion = page.getByText('Automation first question?', { exact: true })
+  const secondQuestion = page.getByText('Automation second question?', { exact: true })
+  const selectCorrect = () => page.getByRole('button', { name: /^A\\.\\s*Port$/ }).click()
+  const selectWrong = () => page.getByRole('button', { name: /^B\\.\\s*Starboard$/ }).click()
+
+  await openAutomationFixture({ directAnswer: true, autoNextCorrect: true, autoNextWrong: false })
+  await selectCorrect()
+  assert.equal(await page.getByRole('button', { name: 'Check Answer' }).count(), 0,
+    'Direct Answer must evaluate when the option is tapped')
+  await page.clock.fastForward(350)
+  await secondQuestion.waitFor({ timeout: 4000 })
+
+  await openAutomationFixture({ directAnswer: true, autoNextCorrect: false, autoNextWrong: true })
+  await selectWrong()
+  await firstQuestion.waitFor()
+  await page.clock.fastForward(550)
+  await secondQuestion.waitFor({ timeout: 4000 })
+
+  await openAutomationFixture({ directAnswer: false, autoNextCorrect: true, autoNextWrong: false })
+  await selectCorrect()
+  assert.equal(await page.getByRole('button', { name: 'Check Answer' }).isEnabled(), true,
+    'With Direct Answer disabled, selecting an option must still require Check Answer')
+  await page.getByRole('button', { name: 'Check Answer' }).click()
+  await page.clock.fastForward(350)
+  await secondQuestion.waitFor({ timeout: 4000 })
+
   assert.deepEqual(errors, [], 'The all-track refresh fixture must not have browser exceptions')
   console.log('PASS: pinned hard refresh across ' + matrix.length + ' sessions from ' + tracks.length +
     ' track banks, every competence, free practice, drill, mock and GMDSS multipart; mismatches rejected without deletion.')
