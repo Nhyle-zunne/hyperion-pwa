@@ -48,6 +48,11 @@ begin
     raise exception 'Old payment replay resurrected revoked entitlement';
   end if;
 
+  if not exists (select 1 from public.get_learning_progress_owned_tracks(v_a)
+                 where track_id='GMDSS_GOC') then
+    raise exception 'Refund wiped the user's historical ownership needed for progress recovery';
+  end if;
+
   -- No unrelated user or track can inherit lifetime access.
   if exists (select 1 from public.get_active_paid_track_entitlements(v_b))
      or exists (select 1 from public.get_active_paid_track_entitlements(v_a,'DECK_OIC_NW')) then
