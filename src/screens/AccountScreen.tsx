@@ -40,62 +40,6 @@ if (typeof window !== 'undefined') {
   })
 }
 
-// A raised desktop card needs to retain its collapsed grid-cell height.
-// Reuse this for both hover and explicit See all actions so clicking never
-// makes the card expand into the document or push Buy Now below the screen.
-function prepareStoreCardLift(slot: HTMLElement) {
-  if (slot.style.height) return
-  const card = slot.querySelector<HTMLElement>('.account-product-card')
-  if (!card) return
-  const bounds = slot.getBoundingClientRect()
-  slot.style.height = `${Math.ceil(card.getBoundingClientRect().height)}px`
-  const sidebarRight = document.querySelector('.account-sidebar')?.getBoundingClientRect().right ?? 0
-  const extra = Math.min(54, bounds.width * .24)
-  slot.style.setProperty('--store-hover-left', `${Math.max(0, Math.min(extra, bounds.left - Math.max(12, sidebarRight + 10)))}px`)
-  slot.style.setProperty('--store-hover-right', `${Math.max(0, Math.min(extra, window.innerWidth - bounds.right - 12))}px`)
-}
-
-function releaseStoreCardLift(slot: HTMLElement) {
-  window.requestAnimationFrame(() => {
-    if (slot.matches(':hover') || slot.classList.contains('is-expanded')) return
-    slot.style.height = ''
-    slot.style.removeProperty('--store-hover-left')
-    slot.style.removeProperty('--store-hover-right')
-  })
-}
-
-// Hold an exiting card in its absolute, bottom-anchored position until its
-// geometry finishes animating. Switching straight back to normal layout made
-// adjacent cards snap and could retrigger mouseenter/mouseleave mid-transition.
-const storeCardSettleTimers = new WeakMap<HTMLElement, number>()
-function cancelStoreCardSettle(slot: HTMLElement) {
-  const timer = storeCardSettleTimers.get(slot)
-  if (timer !== undefined) window.clearTimeout(timer)
-  storeCardSettleTimers.delete(slot)
-}
-function beginStoreCardLift(slot: HTMLElement) {
-  cancelStoreCardSettle(slot)
-  prepareStoreCardLift(slot)
-  slot.dataset.storeLift = 'entering'
-  // Establish the original absolute geometry before React applies is-hovered,
-  // so the horizontal expansion animates rather than instantly jumping.
-  void slot.querySelector<HTMLElement>('.account-product-card')?.offsetWidth
-}
-function settleStoreCardLift(slot: HTMLElement, force = false) {
-  cancelStoreCardSettle(slot)
-  if (!force && slot.classList.contains('is-expanded')) {
-    delete slot.dataset.storeLift
-    return
-  }
-  slot.dataset.storeLift = 'settling'
-  const timer = window.setTimeout(() => {
-    storeCardSettleTimers.delete(slot)
-    delete slot.dataset.storeLift
-    releaseStoreCardLift(slot)
-  }, 320)
-  storeCardSettleTimers.set(slot, timer)
-}
-
 function safeAccountError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : ''
   if (!message || /supabase|postgrest|postgres|sqlstate|provider credentials|redirect settings|edge function|row[- ]level security|\bpgrst\b|\bjwt\b|database schema|relation .* does not exist|violates .* constraint/i.test(message)) return fallback
@@ -196,7 +140,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [renewalGraceUntil, setRenewalGraceUntil] = useState<string | null>(null)
   const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>(() => Object.fromEntries(PAID_PRODUCTS.map(item => [item.code, basket.find(entry => entry.code === item.code)?.term ?? 'year'])) as Record<PaidTrack, LicenseTerm>)
   const [expandedStorePerks, setExpandedStorePerks] = useState<PaidTrack | null>(null)
-  const [hoveredStore, setHoveredStore] = useState<PaidTrack | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
   const entitlementExpiryRevision = useLicenseStore(s => s.entitlementExpiryRevision)
@@ -688,23 +631,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-toolbar-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
       .account-page .account-toolbar-actions button{min-height:42px}
       .account-page .account-products-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;gap:clamp(.55rem,.75vw,.9rem);isolation:isolate;align-items:start}
-      .account-page .account-product-slot{min-width:0;position:relative;z-index:0}
-      .account-page .account-product-slot.is-hovered,.account-page .account-product-slot.is-expanded{z-index:8}
-      .account-page .account-product-slot[data-store-lift="settling"]{z-index:1;pointer-events:none}
-      .account-page .account-product-card{position:relative;z-index:0;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:var(--store-card-radius);background:var(--bg-card);transition:left .26s cubic-bezier(.2,.8,.2,1),right .26s cubic-bezier(.2,.8,.2,1),transform .26s cubic-bezier(.2,.8,.2,1),border-color .26s ease,box-shadow .26s ease;transform-origin:50% 100%;will-change:transform;box-sizing:border-box}
-      .account-page .account-product-card:focus-within{z-index:5;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-      @media (hover:hover) and (pointer:fine){
-        .account-page .account-product-slot[data-store-lift="entering"] .account-product-card,
-        .account-page .account-product-slot.is-hovered .account-product-card,
-        .account-page .account-product-slot.is-expanded .account-product-card,
-        .account-page .account-product-slot[data-store-lift="settling"] .account-product-card{position:absolute;bottom:0;left:0;right:0}
-        .account-page .account-product-slot.is-hovered:not([data-store-lift="settling"]) .account-product-card,
-        .account-page .account-product-slot.is-expanded:not([data-store-lift="settling"]) .account-product-card{left:calc(-1 * var(--store-hover-left,0px));right:calc(-1 * var(--store-hover-right,0px));z-index:9;border-color:#e7bc41;box-shadow:0 8px 20px rgba(4,35,83,.16);transform:translateY(-3px) scale(1.035);transform-origin:50% 100%;background:var(--bg-card)}
-      }
-      @media(prefers-reduced-motion:reduce){
-        .account-page .account-product-card,.account-page .store-benefits-list{transition:none}
-        .account-page .account-product-slot.is-hovered .account-product-card,.account-page .account-product-slot.is-expanded .account-product-card{transform:none}
-      }
+      .account-page .account-product-slot{min-width:0}
+      .account-page .account-product-card{position:relative;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:var(--store-card-radius);background:var(--bg-card);box-sizing:border-box}
+      .account-page .account-product-card:focus-within{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+      @media(prefers-reduced-motion:reduce){.account-page .store-benefits-list{transition:none}}
       .account-page .account-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
       .account-page .account-cart-row{display:flex;align-items:center;justify-content:space-between;gap:.8rem;border-bottom:1px solid var(--border);padding:.75rem 0}
       .account-page .account-cart-row:last-child{border-bottom:0}
@@ -988,23 +918,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   const selectedTerm = selectedTerms[item.code]
                   const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
                   const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
-                  return <div className={`account-product-slot${hoveredStore === item.code ? ' is-hovered' : ''}${expandedStorePerks === item.code ? ' is-expanded' : ''}`} key={item.code}
-                    onMouseEnter={event => {
-                      if (!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return
-                      beginStoreCardLift(event.currentTarget)
-                      setHoveredStore(item.code)
-                    }}
-                    onMouseLeave={event => {
-                      if (!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return
-                      // On desktop the full feature list is temporary: leaving
-                      // the card collapses it, even after See all was clicked.
-                      // Touch and keyboard toggles continue to work independently.
-                      setHoveredStore(current => current === item.code ? null : current)
-                      setExpandedStorePerks(current => current === item.code ? null : current)
-                      // Force a bottom-anchored exit; otherwise the old
-                      // is-expanded class skips settling and freezes the slot.
-                      settleStoreCardLift(event.currentTarget, true)
-                    }}>
+                  return <div className="account-product-slot" key={item.code}>
                     <article className={`account-product-card bond-store-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} aria-label={`${item.label} reviewer plan`}>
                       <BondStoreCardContent
                         product={item}
@@ -1013,14 +927,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                         onTermChange={newTerm => setSelectedTerms(old => ({ ...old, [item.code]: newTerm }))}
                         expanded={expandedStorePerks === item.code}
                         benefitsId={`store-benefits-${item.code}`}
-                        onToggleBenefits={event => {
-                          const slot = event.currentTarget.closest<HTMLElement>('.account-product-slot')
-                          if (slot && window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
-                            if (expandedStorePerks !== item.code) beginStoreCardLift(slot)
-                            else if (!slot.matches(':hover')) settleStoreCardLift(slot, true)
-                          }
-                          setExpandedStorePerks(current => current === item.code ? null : item.code)
-                        }}
+                        onToggleBenefits={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}
                       />
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
                     <button type="button" className="btn btn-primary store-buy-button" disabled={busy || isGooglePlayOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)}>
