@@ -89,6 +89,7 @@ jobs:
           bun test scripts/tests/question-bank-picker.test.ts
           bun test scripts/tests/question-bank-editor.test.ts
           bun test scripts/tests/question-media.test.ts
+          bun test scripts/tests/practice-auto-next-delay.test.ts
           bun test scripts/tests/progress-request-policy.test.ts
           bun test scripts/tests/account-activity-policy.test.ts
           bun test scripts/tests/session-archive-batch.test.ts
