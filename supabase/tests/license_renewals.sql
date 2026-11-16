@@ -24,7 +24,7 @@ BEGIN
     user_id, product_code, track_id, license_term, amount_php,
     status, payment_method, paid_at
   ) VALUES (
-    v_user, 'oic_nw', 'DECK_OIC_NW', 'week', 20,
+    v_user, 'oic_nw', 'DECK_OIC_NW', 'week', 29,
     'paid', 'QR Ph (MariBank / InstaPay)', now()
   ) RETURNING id INTO v_paid;
 
@@ -40,7 +40,7 @@ BEGIN
     user_id, product_code, track_id, license_term, amount_php,
     status, payment_method
   ) VALUES (
-    v_user, 'oic_nw', 'DECK_OIC_NW', 'week', 20,
+    v_user, 'oic_nw', 'DECK_OIC_NW', 'week', 29,
     'submitted', 'QR Ph (MariBank / InstaPay)'
   ) RETURNING id INTO v_renewal;
 
@@ -69,7 +69,7 @@ BEGIN
     user_id, product_code, track_id, license_term, amount_php,
     status, payment_method
   ) VALUES (
-    v_user, 'oic_nw', 'DECK_OIC_NW', 'month', 50,
+    v_user, 'oic_nw', 'DECK_OIC_NW', 'month', 79,
     'submitted', 'QR Ph (MariBank / InstaPay)'
   ) RETURNING id INTO v_followup;
   v_result := public.review_manual_payment(v_followup, 'approve', 'admin@fixture.invalid');
@@ -85,13 +85,13 @@ BEGIN
     user_id, product_code, track_id, license_term, amount_php,
     status, payment_method, paymongo_checkout_session_id
   ) VALUES (
-    v_user, 'oic_nw', 'DECK_OIC_NW', 'week', 20,
+    v_user, 'oic_nw', 'DECK_OIC_NW', 'week', 29,
     'pending', 'PayMongo Checkout', 'cs_license_renewal_test'
   ) RETURNING id INTO v_provider;
 
   v_result := public.finalize_paymongo_checkout(
     v_provider, 'cs_license_renewal_test', v_payment_id,
-    'PayMongo · QR Ph', 'PHP', 2000
+    'PayMongo · QR Ph', 'PHP', 2900
   );
   IF v_result->>'status' <> 'paid'
      OR (SELECT expires_at FROM public.entitlements
@@ -100,7 +100,7 @@ BEGIN
   END IF;
   v_result := public.finalize_paymongo_checkout(
     v_provider, 'cs_license_renewal_test', v_payment_id,
-    'PayMongo · QR Ph', 'PHP', 2000
+    'PayMongo · QR Ph', 'PHP', 2900
   );
   IF v_result->>'duplicate' <> 'true'
     OR (SELECT expires_at FROM public.entitlements
@@ -112,7 +112,7 @@ BEGIN
     user_id, product_code, track_id, license_term, amount_php,
     status, payment_method, paid_at
   ) VALUES (
-    v_other, 'oic_nw', 'DECK_OIC_NW', 'week', 20,
+    v_other, 'oic_nw', 'DECK_OIC_NW', 'week', 29,
     'paid', 'QR Ph (MariBank / InstaPay)', now()
   ) RETURNING id INTO v_other_order;
   INSERT INTO public.entitlements (
