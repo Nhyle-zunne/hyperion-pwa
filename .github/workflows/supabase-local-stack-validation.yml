@@ -56,6 +56,11 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/license_renewals.sql
 
+      - name: Verify lifetime receipt isolation, revocation and current access checks
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lifetime_entitlements.sql
+
       - name: Verify Google Play access controls and opt-in scheduler
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
