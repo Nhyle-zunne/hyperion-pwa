@@ -157,13 +157,13 @@ language sql
 stable
 security invoker
 set search_path = ''
-as $
+as $$
   select e.track_id::text from public.entitlements e where e.user_id=p_user_id
   union
   select g.track_id::text from public.google_play_entitlements g where g.user_id=p_user_id
   union
   select l.track_id::text from public.lifetime_entitlements l where l.user_id=p_user_id
-$;
+$$;
 revoke all on function public.get_learning_progress_owned_tracks(uuid)
   from public,anon,authenticated;
 grant execute on function public.get_learning_progress_owned_tracks(uuid)
