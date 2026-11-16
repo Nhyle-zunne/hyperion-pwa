@@ -83,7 +83,17 @@ export const supabase = {
       then: (resolve: (value: { data: unknown[]; error: unknown }) => unknown) => {
         fixtureCalls.push({ action: `select:${table}`, data: { columns, limit, cursor, filters } })
         if (cursor && localStorage.getItem('fixture-fail-older-orders') === 'yes') return Promise.resolve({ data: [], error: { message: 'Synthetic page failure' } }).then(resolve)
-        let rows: Record<string, any>[] = table === 'orders' ? fixtureOrders().map(row => ({ ...row, user_id: user.id })) : []
+        const websiteRenewal = localStorage.getItem('fixture-renewal-website') === 'yes'
+        const playRenewal = localStorage.getItem('fixture-renewal-play') === 'yes'
+        const fixtureLicense = {
+          user_id: user.id, product_code: 'oic_nw', status: 'active',
+          granted_at: new Date(Date.now() - 86400_000).toISOString(),
+          expires_at: new Date(Date.now() + 5 * 86400_000).toISOString(),
+        }
+        let rows: Record<string, any>[] = table === 'orders' ? fixtureOrders().map(row => ({ ...row, user_id: user.id }))
+          : table === 'entitlements' && websiteRenewal ? [{ ...fixtureLicense, order_id: null, license_term: 'week', renewed_at: null }]
+          : table === 'google_play_entitlements' && playRenewal ? [{ ...fixtureLicense, updated_at: new Date().toISOString() }]
+          : []
         rows = rows.filter(row => filters.every(({ key, kind, value }) => kind === 'in' ? (value as unknown[]).includes(row[key]) : kind === 'gt' ? row[key] > value! : row[key] === value))
         if (cursor) {
           const match = cursor.match(/^created_at\.lt\.([^,]+),and\(created_at\.eq\.([^,]+),id\.lt\.([^\)]+)\)$/)
