@@ -80,6 +80,23 @@ begin
     raise exception 'Second paid receipt was accepted on same checkout';
   exception when sqlstate '23505' then null; end;
 
+  -- An unrelated signed refund must not mark the already-paid original
+  -- receipt refunded during replay of a second payment ID.
+  if public.revoke_paymongo_lifetime_checkout('pay_second_different') then
+    raise exception 'An unknown second payment refund matched the original order';
+  end if;
+  begin
+    perform public.finalize_paymongo_lifetime_checkout(
+      v_order,'cs_lifetime_test_1','pay_second_different',v_ref2,199900,'PHP',false
+    );
+    raise exception 'A refunded second payment overwrote the original receipt';
+  exception when sqlstate '23505' then null; end;
+  if not exists (
+    select 1 from public.get_active_paid_track_entitlements(v_owner,'GMDSS_GOC')
+  ) or (select status from public.lifetime_orders where id=v_order) <> 'paid' then
+    raise exception 'Refund of a different receipt revoked the valid paid purchase';
+  end if;
+
   -- Another checkout that got paid despite a previously fulfilled lifetime
   -- purchase must be flagged for customer support; never unlock twice.
   insert into public.lifetime_orders(
