@@ -1,4 +1,4 @@
-# Lifetime Access rollout — staged, checkout disabled by default
+# Lifetime Access rollout — reuses existing PayMongo checkout and validates webhooks
 
 ## Product policy
 
@@ -18,7 +18,7 @@
 | Deck Management | 4,999 | hyperion_deck_mgt_lifetime |
 | Engine Management | 4,999 | hyperion_engine_mgt_lifetime |
 
-PayMongo code is prepared using the proposed amounts above. They are **not published or charged** while the Lifetime feature flag is disabled. Android Play Console products/prices are a separate launch step.
+Website Lifetime checkout uses the approved amounts above and the existing PayMongo account; Android Play Console products/prices are a separate launch step.
 
 ## Backend and storefront implemented in the draft PR
 
@@ -30,17 +30,17 @@ PayMongo code is prepared using the proposed amounts above. They are **not publi
 - The normal PayMongo and manual subscription checkouts reject a user who already owns permanent access to the selected track. Existing subscription entitlements are never overwritten.
 - Account retention excludes active Lifetime owners. Progress ownership preserves even historical refunded lifetime receipts for saved-data recovery.
 
-## PayMongo configuration (not changed in production)
+## PayMongo configuration and safe activation
 
 1. Apply **both** lifetime migrations in timestamp order. The new checkout and retention functions must **not** run against a database without them.
 2. Deploy create-lifetime-checkout, verify-lifetime-checkout, paymongo-webhook, create-checkout, submit-manual-payment, expire-inactive-accounts together, followed by the PWA.
-3. Keep all existing PAYMONGO_* secrets and the configured API key mode. Register/extend the corresponding existing PayMongo **webhook** subscription to include checkout_session.payment.paid, payment.refund.updated, and payment.refunded.
-4. In **test mode**, only after all migrations and functions pass validation, set LIFETIME_PAYMONGO_ENABLED=true. Also requires the existing PAYMONGO_CHECKOUT_ENABLED=true, a matching PAYMONGO_SECRET_KEY (sk_test_... for test), and PAYMONGO_EXPECT_LIVEMODE=false.
+3. Keep existing PayMongo API keys and signing secrets. The existing **enabled, matching-mode PayMongo webhook** must include checkout_session.payment.paid **and** at least one completed refund event: payment.refund.updated or payment.refunded. The checkout server checks this directly using the existing PayMongo key before offering a one-time purchase.
+4. Lifetime checkout uses the existing PAYMONGO_CHECKOUT_ENABLED=true and the existing API key/mode. No new PayMongo credentials or Lifetime enable secret are required. A correctly configured active paid-and-refund webhook is a separate mandatory prerequisite. For an emergency shutdown, set LIFETIME_PAYMONGO_ENABLED=false; cancelling existing one-time orders remains possible.
 5. Verify five exact-price test checkouts; successful redirect without payment must **not** grant; validate missed webhook recovery, duplicate delivery, concurrent tab purchases, cancellation/resume, refund and account isolation.
 6. Check the shape of real signed payment.refund.updated payloads and confirm a completed refund revokes the correct lifetime receipt. Partial refunds currently revoke the lifetime receipt too. Disputes/chargebacks require an additional provider reconciliation process before general live launch.
-7. Promote to **live mode only after** test and rollback verification. Explicitly authorize migration/deploy and enable the Lifetime flag only after the live PayMongo webhook has been registered with the correct signing secret.
+7. Live mode is available after the existing production PayMongo key, compatible webhook events and live/test mode checks all pass. Confirm refund event behavior and test recovery before considering the payment system fully verified.
 
-LIFETIME_PAYMONGO_ENABLED defaults to **disabled**. Existing subscription checkout is unaffected by this flag. Never enable live Lifetime checkout merely by merging the schema PR; a main-branch PWA merge can trigger deployment.
+Lifetime checkout **fails closed** if the existing PayMongo checkout is disabled, the webhook endpoint cannot be queried, the webhook is disabled or points elsewhere, the event subscription is missing refunds, or the live/test mode differs. Webhook readiness is cached for at most 60 seconds in each Edge isolate. Existing subscriptions continue independently; merging the PWA is not proof of a successful real payment or refund.
 
 ## Outstanding Android and release tasks
 
