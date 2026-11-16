@@ -1,3 +1,4 @@
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import { createSavedQuestionSelection } from '../lib/savedQuestionSets'
 import SavedQuestionSearch from '../components/SavedQuestionSearch'
 import { useMemo, useState } from 'react'
@@ -141,9 +142,11 @@ export default function VaultScreen() {
                             <button className="btn btn-outline" style={{width:'100%',textAlign:'left',marginTop:'.45rem'}} aria-expanded={expanded} onClick={()=>toggle(expandedQuestions,setExpandedQuestions,item.id)}>{expanded?'Hide details':'View question'} · {item.questionText}</button>
                             {expanded&&<div style={{marginTop:'.6rem',lineHeight:1.5}}>
                               <div>{item.questionText}</div>
+                              <QuestionImageGallery question={item} placement="question" />
                               <ol type="A" style={{paddingLeft:'1.4rem'}}>{item.options.map((option,i)=><li key={i} style={{color:i===item.correctAnswerIndex?'var(--success)':'var(--text)'}}>{option}{i===item.correctAnswerIndex?' ✓':''}</li>)}</ol>
                               {item.lastSelectedIndex!=null&&item.lastSelectedIndex!==item.correctAnswerIndex&&<p style={{color:'var(--danger)'}}>Previously selected: {String.fromCharCode(65+item.lastSelectedIndex)}. {item.options[item.lastSelectedIndex]}</p>}
                               {item.explanation&&<p style={{color:'var(--text-muted)'}}>Explanation: {item.explanation}</p>}
+                              <QuestionImageGallery question={item} placement="explanation" />
                             </div>}
                           </article>
                         })}

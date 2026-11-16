@@ -7,8 +7,10 @@ import { useHistoryStore } from '../stores/historyStore'
 import { useBookmarksStore } from '../stores/bookmarksStore'
 import { useVaultStore } from '../stores/vaultStore'
 import type { TrackId } from '../types/question'
+import { totalMockExamQuestionCount } from '../lib/mockExamCounts'
 import { checkOfflineQuestionPackUpdates, downloadOfflinePack, getQuestionCountsByTrack, getPublicQuestionCountByTrack } from '../lib/questionBank'
-import { getCachedOfflineEntitlementSnapshot, getOfflinePackStatus } from '../lib/offlineQuestionCache'
+import { getCachedOfflineEntitlementSnapshot, getOfflinePackStatus, getOfflineQuestionPacks } from '../lib/offlineQuestionCache'
+import { offlineQuestionImagesComplete } from '../lib/questionMediaCache'
 import { supabase } from '../lib/supabase'
 import './TrackHubScreen.css'
 
@@ -58,7 +60,10 @@ const TRACKS: Record<string, TrackInfo> = {
 
 interface Mode {
   title: string
+  audience?: 'free' | 'licensed'
+  actionLabel?: string
   desc: string
+  metric?: { value: number | null; label: string }
   badge: string
   icon: MaterialIconName
   locked: boolean
@@ -73,7 +78,7 @@ let offlinePreparationInFlight: Promise<void> | null = null
 // Only a count and its account/track scope are shared. No question text is exposed.
 type OfflineTransfer = {
   trackId: TrackId
-  userId: string
+  userId: string | null
   downloaded: number
   total: number
   phase: 'starting' | 'downloading' | 'saving'
@@ -104,6 +109,8 @@ export default function TrackHubScreen() {
   const [offlineLicenseChecked, setOfflineLicenseChecked] = useState(false)
   const [offlineRefreshKey, setOfflineRefreshKey] = useState(0)
 
+  const unlocked = useLicenseStore((s) => s.entitlementsVerified && (s.isTrackUnlocked(info.trackId) || s.isAllAccessUnlocked))
+
   useEffect(() => {
     let active = true
     setTotalQuestionCount(null)
@@ -116,6 +123,8 @@ export default function TrackHubScreen() {
   useEffect(() => {
     let active = true
     setFreeQuestionCount(null)
+    // The paid reviewer does not display the sample pool; avoid fetching its count.
+    if (unlocked) return
     void getQuestionCountsByTrack(info.trackId, true)
       .then(counts => {
         if (active) setFreeQuestionCount(counts.reduce((total, item) => total + item.count, 0))
@@ -125,9 +134,7 @@ export default function TrackHubScreen() {
       })
 
     return () => { active = false }
-  }, [key, info.trackId])
-
-  const unlocked = useLicenseStore((s) => s.entitlementsVerified && (s.isTrackUnlocked(info.trackId) || s.isAllAccessUnlocked))
+  }, [key, info.trackId, unlocked])
   const remaining = useLicenseStore((s) => s.getRemainingLabel)
   const openPaywall = useUIStore((s) => s.openPaywall)
   const history = useHistoryStore((s) => s.entries)
@@ -189,7 +196,7 @@ export default function TrackHubScreen() {
     const refresh = () => {
       const transfer = currentOfflineTransfer
       setOfflineTransfer(
-        transfer && accountUserId && transfer.trackId === info.trackId && transfer.userId === accountUserId
+        transfer && accountUserId !== undefined && transfer.trackId === info.trackId && transfer.userId === accountUserId
           ? transfer : null
       )
     }
@@ -222,19 +229,21 @@ export default function TrackHubScreen() {
       setOfflineLicenseExpiry(accountMatches ? snapshot?.trackExpiries[track] ?? null : null)
       setOfflineLicenseAdmin(accountMatches && snapshot?.isAdmin === true)
     }
+    const freeOnly = !unlocked
     const loadStatus = async () => {
-      const status = await getOfflinePackStatus(track, false)
-      if (isCurrent()) setOfflineStatus(status?.complete ? status : null)
-      return status?.complete ? status : null
+      const status = await getOfflinePackStatus(track, freeOnly)
+      const packs = status?.complete ? await getOfflineQuestionPacks(track, freeOnly) : null
+      const ready = !!packs?.length && await offlineQuestionImagesComplete(track, packs.flatMap(pack => pack.questions), freeOnly)
+      if (isCurrent()) setOfflineStatus(ready ? status : null)
+      return ready ? status : null
     }
     const prepareOffline = async () => {
       try {
-        // Guests, signed-out users and expired tracks never read/download
-        // offline packs. Free Reviewer is intentionally online-only.
-        if (!unlocked) return
+        // Everyone may save the official free pool. Only licensed users may
+        // save paid questions or their diagrams.
         await loadStatus()
-        await loadLicense()
-        if (!isCurrent() || !unlocked || !online || !accountUserId) return
+        if (unlocked) await loadLicense()
+        if (!isCurrent() || !online || (unlocked && !accountUserId)) return
 
         // A previous track/account may still be finishing. Wait without starting
         // another transfer; canceled effects never enqueue replacement work.
@@ -246,18 +255,18 @@ export default function TrackHubScreen() {
         const prepare = async () => {
           const status = await loadStatus()
           if (!isCurrent()) return
-          const check = status ? await checkOfflineQuestionPackUpdates(track, false) : null
+          const check = status ? await checkOfflineQuestionPackUpdates(track, freeOnly) : null
           if (!isCurrent() || navigator.onLine === false) return
           if (status && check?.status !== 'available') return
           setOfflinePreparing(true)
           // Backend reports real questions received. Do not claim completion before
           // encryption, version verification and the atomic local save finish.
           const transfer: OfflineTransfer = {
-            trackId: track, userId: accountUserId, downloaded: 0, total: 0, phase: 'starting'
+            trackId: track, userId: accountUserId ?? null, downloaded: 0, total: 0, phase: 'starting'
           }
           publishOfflineTransfer(transfer)
           try {
-            await downloadOfflinePack(track, false, (downloaded, total) => {
+            await downloadOfflinePack(track, freeOnly, (downloaded, total) => {
               publishOfflineTransfer({
                 ...transfer, downloaded, total,
                 phase: total > 0 && downloaded >= total ? 'saving' : 'downloading'
@@ -268,8 +277,8 @@ export default function TrackHubScreen() {
                 const access = useLicenseStore.getState()
                 return latestOfflineContext.current === offlineContext &&
                   accountGeneration.current === generation &&
-                  access.entitlementsVerified &&
-                  (access.isAllAccessUnlocked || access.isTrackUnlocked(track)) &&
+                  (freeOnly || (access.entitlementsVerified &&
+                    (access.isAllAccessUnlocked || access.isTrackUnlocked(track)))) &&
                   navigator.onLine !== false
               }
             })
@@ -305,8 +314,8 @@ export default function TrackHubScreen() {
     return () => { active = false }
   }, [info.trackId, unlocked, online, accountUserId, offlineRefreshKey, offlineContext])
 
-  const transferActive = Boolean(offlineTransfer && unlocked)
-  const checkingOffline = unlocked && online && accountUserId !== undefined && !offlineLicenseChecked && !transferActive && !offlinePreparing
+  const transferActive = Boolean(offlineTransfer)
+  const checkingOffline = online && (accountUserId !== undefined || !unlocked) && !offlineLicenseChecked && !transferActive && !offlinePreparing
   const offlineBusy = transferActive || offlinePreparing || checkingOffline
   const receivedCount = offlineTransfer?.downloaded ?? 0
   const expectedCount = offlineTransfer?.total ?? 0
@@ -334,9 +343,9 @@ export default function TrackHubScreen() {
   const modes: Mode[] = [
     {
       title: info.freeTitle,
-      desc: freeQuestionCount === null
-        ? 'Loading verified free-question count…'
-        : `${freeQuestionCount.toLocaleString()} valid questions in the free pool`,
+      audience: 'free',
+      metric: { value: freeQuestionCount, label: 'FREE QUESTIONS AVAILABLE' },
+      desc: 'Practise online with this track’s free question pool. Choose a competence, answer questions and review your results.',
       badge: 'FREE ACCESS',
       icon: 'school',
       locked: false,
@@ -345,7 +354,9 @@ export default function TrackHubScreen() {
     },
     {
       title: 'PRACTICE ALL QUESTIONS',
-      desc: 'Full question bank, by competence or mixed.',
+      audience: 'licensed',
+      metric: { value: totalQuestionCount, label: 'QUESTIONS AVAILABLE' },
+      desc: 'Practise with the full track question bank. Choose a competence or mix topics, set your question range and review your answers.',
       badge: unlocked ? 'CUSTOMIZABLE' : 'LOCKED',
       icon: 'tune',
       locked: !unlocked,
@@ -353,7 +364,9 @@ export default function TrackHubScreen() {
     },
     {
       title: 'QUICK SCAN MODE',
-      desc: 'Browse questions sequentially with correct answers highlighted. Select a competence to begin.',
+      audience: 'licensed',
+      metric: { value: totalQuestionCount, label: 'QUESTIONS AVAILABLE' },
+      desc: 'Read through the full bank with correct answers highlighted. Choose a competence and study at your own pace.',
       badge: unlocked ? 'READ-ONLY REVIEW' : 'LOCKED',
       icon: 'menuBook',
       locked: !unlocked,
@@ -361,15 +374,19 @@ export default function TrackHubScreen() {
     },
     {
       title: 'TIMED MOCK EXAM',
-      desc: '70% cutoff · timed · MARINA format.',
-      badge: 'FREE ACCESS',
+      audience: 'licensed',
+      metric: { value: totalMockExamQuestionCount(info.trackId), label: 'MOCK EXAM QUESTIONS' },
+      desc: 'Prepare with timed, competence-based mock exams in MARINA format. Aim for the 70% cutoff and review your score after submission.',
+      badge: 'LICENSED ACCESS',
       icon: 'timer',
-      locked: false,
-      onClick: () => navigate(`/mock?track=${key}`)
+      locked: !unlocked,
+      onClick: gated('Timed Mock Exam', `/mock?track=${key}`)
     },
     {
       title: 'FLASHCARD REVISION',
-      desc: 'Active recall · tap to flip cards.',
+      audience: 'licensed',
+      metric: { value: totalQuestionCount, label: 'QUESTIONS AVAILABLE' },
+      desc: 'Test your recall before revealing the correct answer. Choose a competence and tap to flip each flashcard.',
       badge: unlocked ? 'ACTIVE RECALL' : 'LOCKED',
       icon: 'style',
       locked: !unlocked,
@@ -377,7 +394,9 @@ export default function TrackHubScreen() {
     },
     {
       title: 'MISTAKES NOTEBOOK',
-      desc: `${trackMistakes.length} questions to review. Track your wrong answers.`,
+      audience: 'licensed',
+      metric: { value: trackMistakes.length, label: 'SAVED MISTAKES' },
+      desc: 'Revisit questions you answered incorrectly. Review the correct answers and focus your next session on these topics.',
       badge: !unlocked ? 'LICENSE REQUIRED' : trackMistakes.length ? `${trackMistakes.length} SAVED` : 'EMPTY',
       icon: 'autoFixHigh',
       locked: !unlocked,
@@ -385,7 +404,9 @@ export default function TrackHubScreen() {
     },
     {
       title: 'SESSION LOG',
-      desc: 'Past practice sessions, mock attempts and scores.',
+      audience: 'licensed',
+      metric: { value: trackHistory.length, label: 'RECORDED SESSIONS' },
+      desc: 'Review past practice sessions, mock attempts and scores for this track. Open a saved session to inspect your answers.',
       badge: `${trackHistory.length} LOGS`,
       icon: 'analytics',
       locked: false,
@@ -393,11 +414,25 @@ export default function TrackHubScreen() {
     },
     {
       title: 'SEARCH QUESTION BANK',
-      desc: 'Search by keyword, item code, or competence.',
+      audience: 'licensed',
+      metric: { value: totalQuestionCount, label: 'SEARCHABLE QUESTIONS' },
+      desc: 'Find questions across the full track bank by keyword, item code or competence, then open a result to review it.',
       badge: unlocked ? 'DATABASE' : 'LOCKED',
       icon: 'search',
       locked: !unlocked,
       onClick: gated('Search', `/search?track=${key}`)
+    },
+    {
+      title: 'UNLOCK FULL REVIEWER',
+      audience: 'free',
+      metric: { value: totalQuestionCount, label: 'QUESTIONS IN FULL REVIEWER' },
+      desc: 'Unlock the complete track: unlimited practice, timed mock exams, Quick Scan, flashcards, search and licensed offline study.',
+      badge: 'FULL ACCESS',
+      icon: 'lock',
+      locked: false,
+      className: 'hub-mode-unlock',
+      actionLabel: 'VIEW ACCESS PLANS',
+      onClick: () => openPaywall(`${info.title} · Full reviewer`)
     }
   ]
 
@@ -439,21 +474,21 @@ export default function TrackHubScreen() {
         <p role="status" className="hub-offline-description">
           {transferActive
             ? offlineTransfer?.phase === 'saving'
-              ? 'All questions received. Verifying and securely saving the offline pack…'
+              ? 'All questions received. Saving and verifying diagrams for offline study…'
               : 'Downloading and encrypting questions for offline study…'
             : offlinePreparing || checkingOffline
-              ? 'Checking the question bank and preparing licensed offline access…'
+              ? 'Checking local questions and diagrams for offline study…'
               : offlineStatus
                 ? unlocked
-                  ? 'Questions are saved on this device for licensed offline study.'
-                  : 'Free reviewer questions are available on this device.'
+                  ? 'Questions and diagrams are saved on this device for licensed offline study.'
+                  : 'Free Reviewer questions and diagrams are saved on this device.'
                 : unlocked
                   ? online
                     ? 'Offline study prepares automatically while you are online and signed in.'
                     : 'Connect to prepare offline study automatically.'
                   : online
-                    ? 'Free Reviewer is online-only. Downloading questions for offline use requires an active license.'
-                    : 'Connect to the internet to use Free Reviewer. Offline downloads require an active license.'}
+                    ? 'Preparing the free question pool and diagrams for offline use. No subscription required.'
+                    : 'Reconnect once to save Free Reviewer questions and diagrams for offline use.'}
         </p>
         {(transferActive || checkingOffline || offlinePreparing || offlineStatus) && (
           <div className="hub-offline-progress">
@@ -462,7 +497,7 @@ export default function TrackHubScreen() {
                 {transferActive
                   ? expectedCount > 0
                     ? offlineTransfer?.phase === 'saving'
-                      ? 'Verifying and saving downloaded questions'
+                      ? 'Verifying questions and saving all diagrams'
                       : `${receivedCount.toLocaleString()} of ${expectedCount.toLocaleString()} questions downloaded`
                     : 'Connecting to question service…'
                   : offlinePreparing || checkingOffline
@@ -525,12 +560,13 @@ export default function TrackHubScreen() {
       <section className="hub-modes" aria-labelledby="hub-modes-title">
         <h2 id="hub-modes-title" className="hub-section-title">EXAMINATION MODES</h2>
         <div className="hub-mode-grid">
-          {modes.map((mode) => (
+          {modes.filter(mode => !mode.audience || mode.audience === (unlocked ? 'licensed' : 'free')).map((mode) => (
             <button
               key={mode.title}
               type="button"
               className={`hub-mode-card ${mode.className ?? ''} ${mode.locked ? 'is-locked' : ''}`}
               onClick={mode.onClick}
+              aria-describedby={`hub-mode-${key}-${mode.icon}-details`}
               aria-label={`${mode.title}${mode.locked ? ', locked' : ''}`}
             >
               <div className="hub-mode-top">
@@ -540,20 +576,21 @@ export default function TrackHubScreen() {
                 </span>
               </div>
               <h3>{mode.title}</h3>
-              <p>{mode.desc}</p>
+              <div className="hub-mode-body" id={`hub-mode-${key}-${mode.icon}-details`}>
+                {mode.metric && <div className="hub-mode-metric" aria-live="polite">
+                  <strong className="hub-mode-count">{mode.metric.value === null ? '—' : mode.metric.value.toLocaleString()}</strong>
+                  <span className="hub-mode-count-label">{mode.metric.label}</span>
+                </div>}
+                <p>{mode.desc}</p>
+              </div>
               <span className="hub-mode-action">
-                SELECT MODE <span aria-hidden="true">→</span>
+                {mode.actionLabel || 'SELECT MODE'} <span aria-hidden="true">→</span>
               </span>
             </button>
           ))}
         </div>
       </section>
 
-      {!unlocked && (
-        <button className="btn btn-primary hub-activate" onClick={() => openPaywall(`${info.title} · Track subscription`)}>
-          VIEW SUBSCRIPTION OPTIONS
-        </button>
-      )}
     </div>
   )
 }

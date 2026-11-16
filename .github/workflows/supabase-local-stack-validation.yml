@@ -46,6 +46,26 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
             -f supabase/tests/google_play_subscription_atomic.sql
 
+      - name: Verify old and updated PayMongo prices in isolated PostgreSQL
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/paymongo_price_rollout.sql
+
+      - name: Verify active website license extensions are atomic and idempotent
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/license_renewals.sql
+
+      - name: Verify lifetime receipt isolation, revocation and current access checks
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lifetime_entitlements.sql
+
+      - name: Verify PayMongo Lifetime checkout, duplicate charges and refund reversals
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/paymongo_lifetime_checkout.sql
+
       - name: Verify Google Play access controls and opt-in scheduler
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -241,6 +261,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/free_tier_daily_usage_telemetry.sql
+
+      - name: Verify question images are stored in a private bucket
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/question_media_private_storage.sql
 
       - name: Lint the migrated local database
         run: supabase db lint --local --fail-on error

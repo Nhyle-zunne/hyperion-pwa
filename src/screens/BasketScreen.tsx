@@ -448,20 +448,14 @@ export default function BasketScreen() {
       setMessage('Your checkout is empty. Return to the shop and add a reviewer track first.')
       return
     }
-    const unavailable = codes.filter(code => ownedCodes.includes(code))
-    if (unavailable.length) {
-      setIsError(true)
-      setMessage(`Remove already-active licenses before checking out: ${unavailable.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code).join(', ')}.`)
-      return
-    }
-
     setBusy(true)
     setIsError(false)
     setManualFallbackItems([])
     setCheckoutUrlFallback(null)
     setMessage('Preparing secure checkout…')
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { items: items.map(item => ({ productCode: item.code, term: item.term })) } })
+      const expectedTotalPhp = items.reduce((sum, item) => sum + priceForTerm(PAID_PRODUCTS.find(product => product.code === item.code)!, item.term), 0)
+      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { items: items.map(item => ({ productCode: item.code, term: item.term })), expectedTotalPhp } })
       if (error) throw new Error(await edgeError(error))
       if (data?.error) throw new Error(data.error)
       if (data?.alreadyProcessing === true && typeof data.orderId === 'string') {
@@ -785,7 +779,7 @@ export default function BasketScreen() {
             return <div className="basket-row" key={code}>
               <div className="basket-item-description" style={{ display: 'flex', alignItems: 'center', gap: '.75rem', minWidth: 0 }}>
                 <div className="basket-item-art">{code === 'gmdss' ? '📡' : code === 'engine_ew' || code === 'engine_mgt' ? '⚙️' : '⚓'}</div>
-                <div style={{ minWidth: 0 }}><strong style={{ display: 'block' }}>{item.label}</strong><div className="basket-muted">{term === 'week' ? '7-day' : term === 'month' ? '1-month' : '12-month'} reviewer license</div>{active && <div style={{ color: 'var(--success, #15803d)', fontWeight: 800, fontSize: '.75rem', marginTop: '.25rem' }}>Already active</div>}</div>
+                <div style={{ minWidth: 0 }}><strong style={{ display: 'block' }}>{item.label}</strong><div className="basket-muted">{term === 'week' ? '7-day' : term === 'month' ? '1-month' : '12-month'} reviewer license</div>{active && <div style={{ color: 'var(--success, #15803d)', fontWeight: 800, fontSize: '.75rem', marginTop: '.25rem' }}>Extend existing license · remaining days are kept</div>}</div>
               </div>
               <div className="basket-item-actions" style={{ display: 'flex', alignItems: 'center', gap: '.6rem', flexShrink: 0 }}><strong>₱{price}</strong><button type="button" disabled={busy} onClick={() => setBasket(current => current.filter(entry => entry.code !== code))} style={{ color: 'var(--danger, #dc2626)', fontWeight: 850, padding: '.35rem' }}>Remove</button></div>
             </div>
@@ -798,11 +792,11 @@ export default function BasketScreen() {
           {selectedItems.map(({ code, term, product, price }) => <div className="basket-summary-list" key={code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{product.label} <span className="basket-muted">({termLabel(term)})</span></span><strong>₱{price}</strong></div>)}
           <div className={`basket-checkout-action${paymongoCheckoutEnabled === true ? ' is-payable' : ''}`}>
             <div className="basket-total-row" style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
-          {paymongoCheckoutEnabled === true ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length || activeInBasket.length > 0} onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : <>Checkout <span aria-hidden="true">🛒</span></>}</button> : <div role="status" aria-live="polite" style={{ marginTop: '1rem', padding: '.75rem', textAlign: 'center', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text-muted)', fontSize: '.84rem', fontWeight: 750 }}>{paymongoCheckoutEnabled === null ? 'Checking PayMongo checkout availability…' : 'PayMongo checkout is disabled. Use a manual payment option above.'}</div>}
+          {paymongoCheckoutEnabled === true ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length } onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : <>Checkout <span aria-hidden="true">🛒</span></>}</button> : <div role="status" aria-live="polite" style={{ marginTop: '1rem', padding: '.75rem', textAlign: 'center', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text-muted)', fontSize: '.84rem', fontWeight: 750 }}>{paymongoCheckoutEnabled === null ? 'Checking PayMongo checkout availability…' : 'PayMongo checkout is disabled. Use a manual payment option above.'}</div>}
           </div>
-          {activeInBasket.length > 0 && <p style={{ color: 'var(--danger, #dc2626)', fontSize: '.8rem', lineHeight: 1.45 }}>Remove already active tracks to continue checkout.</p>}
+          {activeInBasket.length > 0 && <p style={{ color: 'var(--success, #15803d)', fontSize: '.8rem', lineHeight: 1.45 }}>An active website license is extended from its current expiration date after verified payment. Google Play subscriptions must be managed in Google Play.</p>}
           {paymongoCheckoutEnabled === true && <div className="basket-payment-methods" style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['QR Ph'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>}
-          <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{paymongoCheckoutEnabled === true ? 'Each selected track is activated only after PayMongo confirms this exact basket payment.' : paymongoCheckoutEnabled === null ? 'Checking whether PayMongo checkout is available…' : 'Use the manual-payment option above. Manual payments require admin review before your license is activated.'}</p>
+          <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{paymongoCheckoutEnabled === true ? 'After PayMongo verifies this exact payment, new tracks activate and existing website licenses are extended without losing remaining days.' : paymongoCheckoutEnabled === null ? 'Checking whether PayMongo checkout is available…' : 'Use the manual-payment option above. Manual payments require admin review before your license is activated.'}</p>
         </aside>
       </div>
     </>}

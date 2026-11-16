@@ -9,3 +9,6 @@ question-bank-backups/
 
 # OS/editor local files
 .DS_Store
+
+# Generated local Graphify map (CI uploads it as a short-lived artifact)
+graphify-out/

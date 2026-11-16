@@ -1,5 +1,7 @@
+import { collectBankImages, checkMediaAssets, checkPublishBudget, type MediaBundler } from './questionMediaBundler.ts'
 import { decryptToText, deriveKeyBytes, toSearchQuestions } from '../supabase/functions/_shared/bankCodec.ts'
 import { parseCsvText } from '../src/lib/csvParser.ts'
+import { parseQuestionImageRefs } from '../src/lib/questionMedia.ts'
 import { GITHUB_BANK_FILES, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, GITHUB_BANK_MANIFEST, GITHUB_BANK_RELEASE, githubAssetPath, INITIAL_BANK_RELEASE, readBounded, sha256, validateBankManifest, type BankRelease } from '../supabase/functions/_shared/githubBankSource.ts'
 
 export class PublisherError extends Error { status: number; constructor(message: string, status = 400) { super(message); this.status = status } }
@@ -69,10 +71,38 @@ export function validateQuestionChanges(path: string, before: string, after: str
   if (previous.some(question => question.isRetired === true) && !hasStatusColumn(after)) {
     throw new PublisherError('This CSV omits existing retirement flags. Open the question bank in the admin editor or preserve its HYPERION_STATUS column.', 409)
   }
+  // Match bankCodec's header selection so a marker in a data cell cannot authorize image removal.
+  const rows = parseCsvText(after), gmdss = path.startsWith('gmdss/')
+  const detectedHeader = rows.slice(0, 15).findIndex(row => {
+    const joined = row.map(cell => cell.trim().toLowerCase()).join('|')
+    return gmdss ? joined.includes('question') && joined.includes('option1')
+      : (joined.includes('question') && (joined.includes('correct') || joined.includes('|a|')))
+        || (row[0]?.trim().toLowerCase() === 'no.' && row[1]?.trim().toLowerCase() === 'question')
+  })
+  const header = detectedHeader < 0 ? (gmdss ? 3 : 0) : detectedHeader
+  const mediaColumn = (rows[header] || []).findIndex(value => value.trim().toUpperCase() === 'HYPERION_MEDIA')
+  if (previous.some(question => Array.isArray(question.imageAttachments) && question.imageAttachments.length) && mediaColumn < 0) {
+    throw new PublisherError('This CSV omits existing question images. Preserve its HYPERION_MEDIA column; to remove images intentionally, keep the column and explicitly clear their cells.', 409)
+  }
+  if (mediaColumn >= 0) {
+    for (const row of rows.slice(header + 1)) {
+      const value = row[mediaColumn] || ''
+      if (value.trim() && !parseQuestionImageRefs(value).length) {
+        throw new PublisherError('The HYPERION_MEDIA column contains invalid image metadata. Preserve valid attachment references or explicitly clear the cell to remove images.')
+      }
+    }
+  }
   if (!next.length) throw new PublisherError('The CSV does not contain valid questions.')
   if (next.length < previous.length) throw new PublisherError('Removing questions or publishing a shorter list would break saved references. Keep existing questions and append new ones.')
-  const identity = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options])
-  const semantic = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options, q.correctAnswerIndex, q.explanation, q.isRetired === true])
+  const identity = (q: Record<string, unknown>) => {
+    const prompt = [q.questionText, q.options]
+    if (typeof q.questionText === 'string' && !q.questionText.trim()) {
+      const images = Array.isArray(q.imageAttachments) ? q.imageAttachments : []
+      prompt.push(images.filter(ref => ref.placement === 'question').map(ref => [ref.sha256, ref.mime]).sort())
+    }
+    return JSON.stringify(prompt)
+  }
+  const semantic = (q: Record<string, unknown>) => JSON.stringify([q.questionText, q.options, q.correctAnswerIndex, q.explanation, q.isRetired === true, q.imageAttachments || []])
   const positions = new Map<string, Set<number>>()
   previous.forEach((q, i) => { const key = identity(q); const indexes = positions.get(key) || new Set<number>(); indexes.add(i); positions.set(key, indexes) })
   let changed = 0
@@ -82,7 +112,7 @@ export function validateQuestionChanges(path: string, before: string, after: str
     if (oldPositions && !oldPositions.has(i)) throw new PublisherError(`Question ${i + 1} was reordered from an existing position. Preserve question order to protect bookmarks and mistakes.`)
     if (i < previous.length && semantic(previous[i]) !== semantic(q)) {
       changed++
-      if (corrections.length < 20) corrections.push({ number: i + 1, before: { questionText: previous[i].questionText, options: previous[i].options, correctAnswerIndex: previous[i].correctAnswerIndex, explanation: previous[i].explanation, isRetired: previous[i].isRetired === true }, after: { questionText: q.questionText, options: q.options, correctAnswerIndex: q.correctAnswerIndex, explanation: q.explanation, isRetired: q.isRetired === true } })
+      if (corrections.length < 20) corrections.push({ number: i + 1, before: { questionText: previous[i].questionText, options: previous[i].options, correctAnswerIndex: previous[i].correctAnswerIndex, explanation: previous[i].explanation, isRetired: previous[i].isRetired === true, imageAttachments: previous[i].imageAttachments || [] }, after: { questionText: q.questionText, options: q.options, correctAnswerIndex: q.correctAnswerIndex, explanation: q.explanation, isRetired: q.isRetired === true, imageAttachments: q.imageAttachments || [] } })
     }
     if (i < previous.length && previous[i].id !== q.id) throw new PublisherError('An existing question ID changed.')
   })
@@ -94,7 +124,7 @@ async function encrypt(text: string): Promise<Uint8Array> {
   const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(text)))
   const bytes = new Uint8Array(12 + ciphertext.byteLength); bytes.set(iv); bytes.set(ciphertext, 12); return bytes
 }
-function apiClient(fetcher: typeof fetch, token: string) {
+export function apiClient(fetcher: typeof fetch, token: string) {
   return async (path: string, method = 'GET', body?: unknown, raw = false, missing = false) => {
     let response: Response
     try { response = await fetcher(`https://api.github.com/repos/${GITHUB_BANK_REPOSITORY}/${path}`, { method, headers: { Authorization: `Bearer ${token}`, Accept: raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json', 'Content-Type': 'application/json', 'User-Agent': 'Hyperion-Bank-Publisher', 'X-GitHub-Api-Version': '2022-11-28' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000) }) }
@@ -210,10 +240,15 @@ export async function validateGithubBatch(input: PublishInput, fetcher: typeof f
   const result = await prepare(input, fetcher, token, false)
   return result.alreadyPublished ? null : result.preview
 }
-export async function publishGithubBatch(input: PublishInput, fetcher: typeof fetch, token: string) {
+export async function publishGithubBatch(input: PublishInput, fetcher: typeof fetch, token: string, bundleMedia?: MediaBundler) {
   if (!input.expectedHead || !input.validationId) throw new PublisherError('Validate the files before publishing.', 409)
   const result = await prepare(input, fetcher, token, true)
   if (result.alreadyPublished) return { revision: result.state.release.revision, commit: result.state.head, alreadyPublished: true, repository: GITHUB_BANK_REPOSITORY }
+  const references = collectBankImages(result.decoded)
+  checkPublishBudget(result.decoded.length, references.length)
+  if (references.length && !bundleMedia) throw new PublisherError('Question images must be bundled before publishing.', 503)
+  // Finish and verify every image before creating any GitHub object or moving main.
+  const media = references.length ? await checkMediaAssets(references, { assets: await bundleMedia!(references) }) : []
   const { api } = result.state
   const entries: { path: string; mode: string; type: string; sha?: string; content?: string }[] = []
   const files = result.state.files.map(file => ({ ...file }))
@@ -221,6 +256,11 @@ export async function publishGithubBatch(input: PublishInput, fetcher: typeof fe
     const blob = await (await api('git/blobs', 'POST', { content: base64(file.bytes), encoding: 'base64' }))!.json() as { sha: string }
     entries.push({ path: GITHUB_BANK_ROOT + '/' + githubAssetPath(file.path), mode: '100644', type: 'blob', sha: blob.sha })
     Object.assign(files.find(item => item.path === file.path)!, { bytes: file.bytes.length, sha256: await sha256(file.bytes) })
+  }
+  for (const asset of media) {
+    const blob = await (await api('git/blobs', 'POST', { content: asset.ciphertext, encoding: 'base64' }))!.json() as { sha: string }
+    if (!/^[a-f0-9]{40}$/.test(blob.sha)) throw new PublisherError('GitHub returned an invalid image blob.', 502)
+    entries.push({ path: 'app/src/main/assets/' + asset.path, mode: '100644', type: 'blob', sha: blob.sha })
   }
   const manifestText = JSON.stringify({ ...result.state.manifest, version: 1, encrypted: true, files }, null, 2) + '\n'
   entries.push({ path: GITHUB_BANK_ROOT + '/' + GITHUB_BANK_MANIFEST, mode: '100644', type: 'blob', content: manifestText })

@@ -6,7 +6,7 @@
 }
 .admin-bank-picker__preset-heading strong { font-size: .75rem; color: var(--text); letter-spacing: .035em; }
 .admin-bank-picker__presets {
-  display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px;
+  display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 8px;
 }
 .admin-bank-picker__preset {
   display: flex; align-items: center; justify-content: space-between; gap: 5px;

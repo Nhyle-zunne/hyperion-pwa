@@ -16,6 +16,8 @@ import {
 import { fingerprintQuestion } from './questionFingerprint.mjs';
 import { planSmartBankReuse } from './smartBankDownloadPlan.mjs';
 import { parseCsvText } from './csvParser';
+import { hasQuestionPrompt, parseQuestionImageRefsFromCsv } from './questionMedia';
+import { preloadQuestionImages } from './questionMediaCache';
 import type { Question, TrackId, Difficulty } from '../types/question';
 import { activeToPublishedC10Position, requiresC10ActivePositionMapping, selectActiveQuestions, visibleCompetenceCount } from './retiredQuestions';
 
@@ -292,10 +294,10 @@ async function hasValidOfflineTrackLease(track: TrackId, expectedUserId?: string
 /**
  * Starting new offline sessions still requires an integrity-checked downloaded pack.
  */
-async function mayUseOfflineTrack(track: TrackId, _freeOnly: boolean): Promise<boolean> {
-  // Free reviewer access is online-only. A signed and unexpired paid-track lease
-  // is mandatory even if a previous subscription left a free sample on this device.
-  return hasValidOfflineTrackLease(track)
+async function mayUseOfflineTrack(track: TrackId, freeOnly: boolean): Promise<boolean> {
+  // Free packs contain only the public server-selected sample; paid packs still
+  // require an unexpired signed offline lease for the exact track.
+  return freeOnly || hasValidOfflineTrackLease(track)
 }
 
 function canFallbackToOffline(error: unknown): boolean {
@@ -397,13 +399,14 @@ function parseStandardRows(
     const optD = row[5].trim();
     const ansStr = row[6].trim();
 
+    const imageAttachments = parseQuestionImageRefsFromCsv(rows[headerIdx] || [], row);
     const qNoInt = parseInt(qNo, 10);
-    const isHeader = qText.toLowerCase() === 'question' || !qText;
+    const isHeader = qText.toLowerCase() === 'question';
     const isDummy = optA === 'A' && optB === 'B' && optC === 'C' && optD === 'D';
-    if (!qNoInt || qNoInt <= 0 || isHeader || isDummy) continue;
+    if (!qNoInt || qNoInt <= 0 || isHeader || (isDummy && !!qText)) continue;
 
     const options = [optA, optB, optC, optD].filter((o) => o.length > 0);
-    if (!qText || options.length < 2) continue;
+    if (!hasQuestionPrompt(qText, imageAttachments) || options.length < 2) continue;
 
     const ansIdx = Math.min(mapAnswer(ansStr), options.length - 1);
     const topic =
@@ -422,6 +425,7 @@ function parseStandardRows(
       options,
       correctAnswerIndex: ansIdx,
       explanation,
+      ...(imageAttachments.length ? { imageAttachments } : {}),
       ...(statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED' ? { isRetired: true } : {}),
       difficulty: difficultyForIndex(validIndex)
     });
@@ -437,9 +441,10 @@ function pushGmdssQuestion(
   options: string[],
   explanation: string,
   ansStr: string,
-  isRetired = false
+  isRetired = false,
+  imageAttachments = [] as Question['imageAttachments']
 ) {
-  if (!qText || qText.toLowerCase() === 'question' || options.length < 2) return;
+  if (!hasQuestionPrompt(qText, imageAttachments) || qText.toLowerCase() === 'question' || options.length < 2) return;
   let ansIdx = mapAnswer(ansStr);
   if (ansIdx >= options.length) ansIdx = 0;
   const validIndex = list.length + 1;
@@ -453,6 +458,7 @@ function pushGmdssQuestion(
     options,
     correctAnswerIndex: ansIdx,
     explanation,
+    ...(imageAttachments?.length ? { imageAttachments } : {}),
     ...(isRetired ? { isRetired: true } : {}),
     difficulty: difficultyForIndex(validIndex)
   });
@@ -468,7 +474,7 @@ function parseGmdssRows(
   const statusIndex = (rows[headerIdx] || []).findIndex(cell => cell.trim().toUpperCase() === 'HYPERION_STATUS');
 
   // Multi-line files: one question per row after header
-  if (rows.length > 3) {
+  if (rows.length > 3 || (rows[headerIdx] || []).some(cell => cell.trim().toLowerCase() === 'option1')) {
     for (let i = headerIdx + 1; i < rows.length; i++) {
       const row = rows[i];
       if (row.length < 10) continue;
@@ -482,7 +488,8 @@ function parseGmdssRows(
         options,
         (row[8] || '').trim(),
         (row[9] || '').trim(),
-        statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED'
+        statusIndex >= 0 && (row[statusIndex] || '').trim().toUpperCase() === 'RETIRED',
+        parseQuestionImageRefsFromCsv(rows[headerIdx] || [], row)
       );
     }
   }
@@ -840,6 +847,18 @@ export async function ensureOfflineFreeSamplePack(track: TrackId): Promise<void>
   const status = await getOfflinePackStatus(track, true);
   if (status?.complete && status.sampleVersion === 2) return;
 
+  // A compacted full pack no longer contains retired physical positions.
+  // Re-running the Deck shuffle on it could pull formerly paid questions into
+  // the free sample. Fetch the authoritative free pool instead, or leave the
+  // old complete pack untouched while offline.
+  const fullManifest = await getOfflinePackManifest(track, false);
+  if (fullManifest?.activeOnlyVersion === 1) {
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+      await downloadFreeOfflinePack(track);
+    }
+    return;
+  }
+
   const fullBank = await getOfflineQuestionsByTrack(track, false);
   if (!fullBank?.length) return;
 
@@ -905,6 +924,8 @@ export interface QuestionBankCount {
   count: number;
   rawCount?: number;
   retiredPositions?: number[];
+  /** Already excludes retired records when read from a compacted offline pack. */
+  activeOnly?: boolean;
 }
 
 export type QuestionSetAccess = 'admin' | 'licensed' | 'free-sample';
@@ -914,6 +935,17 @@ export type QuestionSetAccess = 'admin' | 'licensed' | 'free-sample';
  * The persisted isFreeSession flag is never trusted on its own; the access tier
  * is returned by the server or verified against the free sample.
  */
+async function matchesSavedFreeQuestionSet(track: TrackId, questions: Question[], fingerprints: string[]): Promise<boolean> {
+  const free = await getOfflineQuestionsByTrack(track, true)
+  if (!free?.length) return false
+  const allowed = new Map(free.map(question => [question.id, question]))
+  for (let i = 0; i < questions.length; i++) {
+    const published = allowed.get(questions[i].id)
+    if (!published || await fingerprintQuestion(published) !== fingerprints[i]) return false
+  }
+  return true
+}
+
 export async function authorizeQuestionSetAccess(track: TrackId, questions: Question[]): Promise<QuestionSetAccess | null> {
   if (!questions.length || questions.length > 3000 || questions.some(q => q.track !== track)) return null;
 
@@ -927,11 +959,9 @@ export async function authorizeQuestionSetAccess(track: TrackId, questions: Ques
   const fingerprints = fingerprintResults as string[];
 
 
-  if (offline) {
-    // Free users must reconnect to review. Old locally saved free samples never
-    // authorize offline sessions after sign-out, revocation, or license expiry.
-    return null
-  }
+  if (offline) return await matchesSavedFreeQuestionSet(track, questions, fingerprints) ? 'free-sample' : null
+  // The local public pack also authorizes free sessions without a Supabase call.
+  if (await matchesSavedFreeQuestionSet(track, questions, fingerprints)) return 'free-sample'
 
   if (supabase) {
     const { data, error } = await invokeQuestionBank({
@@ -1032,7 +1062,7 @@ export async function getQuestionCountsByTrack(track: TrackId, freeOnly = false)
   return withPageLoading('Loading question counts', async () =>
     (await loadQuestionCountsByTrackInternal(track, freeOnly)).map(item => ({
       ...item,
-      count: visibleCompetenceCount(track, item.competenceId, item.count, freeOnly)
+      count: item.activeOnly ? item.count : visibleCompetenceCount(track, item.competenceId, item.count, freeOnly)
     })))
 }
 
@@ -1185,6 +1215,22 @@ async function performOfflineQuestionPackUpdateCheck(
     return { status: 'not-downloaded', changedCompetences: [], checkedAt: null }
   }
 
+  if (freeOnly && typeof navigator !== 'undefined' && navigator.onLine !== false) {
+    try {
+      const publicRevision = (await fetchRevisionQuestionCounts(track, true)).bankRevision
+      const current = Boolean(publicRevision && publicRevision === manifest.publicBankRevision)
+      const checkedAt = Date.now()
+      await recordOfflinePackVersionCheck(track, true, {
+        checkedAt, state: current ? 'current' : 'available', availableSources: []
+      })
+      return { status: current ? 'current' : 'available', changedCompetences: current ? [] : ['Free Reviewer'],
+        checkedAt, lastKnownState: current ? 'current' : 'available', savedAt: manifest.savedAt }
+    } catch {
+      return { status: 'unavailable', changedCompetences: [], checkedAt: manifest.lastCheckedAt ?? null,
+        lastKnownState: manifest.lastKnownUpdateState, savedAt: manifest.savedAt }
+    }
+  }
+
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     const knownPaths = manifest.availableSources ?? []
     return {
@@ -1298,6 +1344,7 @@ async function hasFreshCurrentOfflinePack(track: TrackId, freeOnly: boolean): Pr
   if (!manifest?.complete) return false
 
   const checkedAt = Number(manifest.lastCheckedAt ?? 0)
+  if (freeOnly && !manifest.publicBankRevision) return false
   if (checkedAt > 0 && Date.now() - checkedAt < OFFLINE_PACK_VERSION_CHECK_TTL_MS) {
     return manifest.lastKnownUpdateState === 'current'
   }
@@ -1315,9 +1362,7 @@ async function getCurrentCachedCompetenceRange(
   limit: number | undefined,
   randomSample: boolean
 ): Promise<Question[] | null> {
-  // A free viewer without a signed local license must use the online service,
-  // not inspect previously encrypted offline packs or fetch their update metadata.
-  if (!(await hasValidOfflineTrackLease(track))) return null
+  if (!freeOnly && !(await hasValidOfflineTrackLease(track))) return null
   if (!(await hasFreshCurrentOfflinePack(track, freeOnly))) return null
   try {
     return await getCachedCompetenceRange(track, competenceId, part, freeOnly, startItem, limit, randomSample)
@@ -1397,14 +1442,79 @@ async function requestPersistentStorageIfSupported(): Promise<void> {
   }
 }
 
+
+/** Download the public free pool, with no authentication or paid bank access. */
+async function downloadFreeOfflinePack(
+  track: TrackId,
+  onProgress?: (downloaded: number, total: number) => void,
+  canContinue: () => boolean = () => true
+): Promise<{ questionCount: number; groupCount: number }> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect to save the Free Reviewer for offline use.')
+  if (!canContinue()) throw new Error('Free Reviewer preparation was cancelled.')
+  await requestPersistentStorageIfSupported()
+  const snapshot = await fetchRevisionQuestionCounts(track, true)
+  const revision = snapshot.bankRevision
+  if (!revision || !/^[a-f0-9]{40}$/.test(revision)) throw new Error('The published Free Reviewer version is unavailable.')
+  const saved = await getOfflinePackManifest(track, true)
+  const existing = saved?.complete && saved.publicBankRevision === revision
+    ? await getOfflineQuestionPacks(track, true) : null
+  if (existing?.length && existing.length === saved?.groupCount &&
+      existing.reduce((sum, pack) => sum + pack.questions.length, 0) === saved?.questionCount) {
+    await preloadQuestionImages(track, existing.flatMap(pack => pack.questions), true, canContinue)
+    if (!canContinue()) throw new Error('Free Reviewer preparation was cancelled.')
+    onProgress?.(saved!.questionCount, saved!.questionCount)
+    return { questionCount: saved!.questionCount, groupCount: existing.length }
+  }
+  // Fetch every original physical position so stable IDs and the official
+  // free pool remain intact. Remove retired rows only from the encrypted copy
+  // saved for future study; historical session archives are independent.
+  const total = snapshot.counts.reduce((sum, group) => sum + (group.rawCount ?? group.count), 0)
+  if (!total || !snapshot.counts.length) throw new Error('The free question pool is currently unavailable.')
+  let received = 0
+  const groups: { competenceId: string; part: number | null; questions: Question[] }[] = []
+  const all: Question[] = []
+  for (const group of snapshot.counts) {
+    const physicalCount = group.rawCount ?? group.count
+    if (physicalCount <= 0) continue
+    const questions: Question[] = []
+    for (let offset = 0; offset < physicalCount; offset += 200) {
+      if (!canContinue() || (typeof navigator !== 'undefined' && navigator.onLine === false)) throw new Error('Free Reviewer download was interrupted.')
+      const limit = Math.min(200, physicalCount - offset)
+      const { data, error } = await invokeQuestionBank({ body: {
+        action: 'questions', track, competenceId: group.competenceId, part: group.part,
+        freeOnly: true, offset, limit, bankRevision: revision, randomSample: false
+      } })
+      if (error || !Array.isArray(data?.questions) || data.access !== 'free-sample' ||
+          data.bankRevision !== revision || data.questions.length !== limit ||
+          data.questions.some((question: Question) => question.track !== track || question.competenceId !== group.competenceId)) {
+        throw new Error('The published Free Reviewer download was incomplete. Reconnect and retry.')
+      }
+      questions.push(...data.questions as Question[])
+      received += limit
+      onProgress?.(received, total)
+    }
+    const active = selectActiveQuestions(questions)
+    if (active.length) {
+      groups.push({ competenceId: group.competenceId, part: group.part, questions: active })
+      all.push(...active)
+    }
+  }
+  if (received !== total || !canContinue()) throw new Error('The free reviewer pool was not fully received.')
+  if (!groups.length) throw new Error('No active Free Reviewer questions remain in this pack.')
+  await fetchRevisionQuestionCounts(track, true, revision)
+  await preloadQuestionImages(track, all, true, canContinue)
+  if (!canContinue()) throw new Error('Free Reviewer preparation was cancelled.')
+  await saveOfflineQuestionPackSets([{ track, freeOnly: true, groups, publicBankRevision: revision }])
+  return { questionCount: all.length, groupCount: groups.length }
+}
+
 async function downloadOfflinePackInternal(
   track: TrackId,
   freeOnly: boolean,
   onProgress?: (downloaded: number, total: number) => void,
   canContinue: () => boolean = () => true
 ): Promise<{ questionCount: number; groupCount: number }> {
-  // Offline downloads are a licensed feature. Free users study the free sample online only.
-  if (freeOnly) throw new Error('Offline downloads require an active license for this track.')
+  if (freeOnly) return downloadFreeOfflinePack(track, onProgress, canContinue)
   if (!canContinue()) throw new Error('The track license is no longer active. Offline preparation was stopped.')
   if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect to the internet before downloading an offline pack.')
   if (!supabase) throw new Error('Protected question service is not configured.')
@@ -1425,6 +1535,10 @@ async function downloadOfflinePackInternal(
     if (!accountActive || !canContinue()) {
       throw new Error('The account or track license changed during offline preparation. Your existing saved pack is preserved.')
     }
+  }
+  const assertDownloadAccountSafe = () => {
+    assertDownloadAccount()
+    return true
   }
   try {
   const { data: offlineLicense, error: offlineLicenseError } = await invokeQuestionBank({
@@ -1471,6 +1585,8 @@ async function downloadOfflinePackInternal(
       previousPacks.length === previousManifest.groupCount &&
       previousPacks.reduce((sum, pack) => sum + pack.questions.length, 0) === previousManifest.questionCount) {
     assertDownloadAccount()
+    await preloadQuestionImages(track, previousPacks.flatMap(pack => pack.questions), false, assertDownloadAccountSafe)
+    await preloadQuestionImages(track, freeSample(previousPacks.flatMap(pack => pack.questions), track), true, assertDownloadAccountSafe)
     await recordOfflinePackVersionCheck(track, false, {
       checkedAt: Date.now(), state: 'current',
       sourceVersions: fullVersionsBefore,
@@ -1484,10 +1600,18 @@ async function downloadOfflinePackInternal(
   const counts = (await fetchRevisionQuestionCounts(track, false, versionsBefore.bankRevision)).counts
   // Match a published source path to its competence/part. An unknown mapping
   // fails closed to a fresh download rather than falsely reusing stale content.
-  const publishedGroups = counts.filter(group => group.count > 0).map(group => ({
+  const activeCount = (group: QuestionBankCount) =>
+    group.retiredPositions
+      ? (group.rawCount ?? group.count) - group.retiredPositions.length
+      : visibleCompetenceCount(track, group.competenceId, group.count, false)
+  const publishedGroups = counts.filter(group => activeCount(group) > 0).map(group => ({
     competenceId: group.competenceId,
     part: group.part ?? null,
-    count: group.count,
+    count: activeCount(group),
+    // A reused active-only group no longer has every original physical row.
+    // Fetch a source containing retirements when rebuilding a full-bank-derived
+    // official free sample, so shuffling/quota selection never exposes paid items.
+    forceDownload: Boolean(group.retiredPositions?.length),
     path: SOURCES.find(source => source.track === track &&
       source.competenceId === group.competenceId &&
       (track !== 'GMDSS_GOC' || Number(source.path.match(/_part(\d+)\./)?.[1]) === group.part)
@@ -1502,7 +1626,8 @@ async function downloadOfflinePackInternal(
   const reusableGroups = new Map(reusePlan.reused.map(group => [
     `${group.competenceId}:${group.part ?? 'all'}`, group.questions
   ] as const))
-  const totalExpected = counts.reduce((sum, item) => sum + item.count, 0)
+  const totalExpected = counts.reduce((sum, item) =>
+    sum + (activeCount(item) > 0 ? (item.rawCount ?? item.count) : 0), 0)
   if (!counts.length || totalExpected <= 0) throw new Error('No questions are available to download for this track.')
 
   // Keep any existing complete pack usable until the entire replacement has
@@ -1514,7 +1639,9 @@ async function downloadOfflinePackInternal(
   for (const group of counts) {
     // Some banks can include a registered competence with no published questions.
     // Do not create empty pack records for those entries.
-    if (group.count <= 0) continue
+    const expectedActive = activeCount(group)
+    if (expectedActive <= 0) continue
+    const physicalCount = group.rawCount ?? group.count
     const reuse = reusableGroups.get(`${group.competenceId}:${group.part ?? 'all'}`)
     if (reuse) {
       assertDownloadAccount()
@@ -1525,10 +1652,10 @@ async function downloadOfflinePackInternal(
       continue
     }
     const questions: Question[] = []
-    for (let offset = 0; offset < group.count; offset += 200) {
+    for (let offset = 0; offset < physicalCount; offset += 200) {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connection lost. Reconnect and retry the offline download.')
       assertDownloadAccount()
-      const pageLimit = Math.min(200, group.count - offset)
+      const pageLimit = Math.min(200, physicalCount - offset)
       const { data, error } = await invokeQuestionBank({
         body: {
           action: 'questions', track, competenceId: group.competenceId, part: group.part,
@@ -1542,11 +1669,17 @@ async function downloadOfflinePackInternal(
       questions.push(...page)
       downloaded += page.length
       onProgress?.(Math.min(downloaded, totalExpected), totalExpected)
-      if (page.length < pageLimit && offset + page.length < group.count) {
+      if (page.length < pageLimit && offset + page.length < physicalCount) {
         throw new Error('The server returned fewer questions than expected. No complete offline pack was marked ready.')
       }
     }
-    writtenGroups.push({ competenceId: group.competenceId, part: group.part, questions })
+    const active = selectActiveQuestions(questions)
+    if (active.length !== expectedActive) {
+      throw new Error('The active question count differs from the pinned bank revision. Your existing offline pack is preserved.')
+    }
+    writtenGroups.push({ competenceId: group.competenceId, part: group.part, questions: active })
+    // Official free quotas refer to physical source positions, so hold the
+    // original rows only in memory until the free sample has been derived.
     allQuestions.push(...questions)
   }
 
@@ -1593,6 +1726,8 @@ async function downloadOfflinePackInternal(
       sampleGroups.set(key, existing)
     }
     if (!samples.length || !sampleGroups.size) throw new Error('The free reviewer sample could not be prepared. Your previous offline packs are unchanged.')
+    // Keep public free diagrams available even after a paid license expires offline.
+    await preloadQuestionImages(track, samples, true, assertDownloadAccountSafe)
     updates.push({
       track,
       freeOnly: true,
@@ -1602,12 +1737,14 @@ async function downloadOfflinePackInternal(
     })
   }
 
+  // Do not mark questions saved until every attached image is cached and verified.
   assertDownloadAccount()
+  await preloadQuestionImages(track, selectActiveQuestions(allQuestions), false, assertDownloadAccountSafe)
   // A revoked/expired license cannot finish committing a pack if access changed
   // while its final pages were in flight. Existing saved packs are untouched.
   assertDownloadAccount()
   await saveOfflineQuestionPackSets(updates)
-  return { questionCount: allQuestions.length, groupCount: writtenGroups.length }
+  return { questionCount: writtenGroups.reduce((sum, group) => sum + group.questions.length, 0), groupCount: writtenGroups.length }
   } finally { accountSubscription.subscription.unsubscribe() }
 }
 

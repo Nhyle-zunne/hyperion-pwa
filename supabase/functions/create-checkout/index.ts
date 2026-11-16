@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { termPrices } from '../_shared/paymentPrices.mjs'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -9,13 +10,7 @@ const cors = {
 const productOrder = ['oic_nw', 'gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt'] as const
 const termOrder = ['week', 'month', 'year'] as const
 type LicenseTerm = typeof termOrder[number]
-const termPrices: Record<typeof productOrder[number], Record<LicenseTerm, number>> = {
-  oic_nw: { week: 20, month: 50, year: 350 },
-  gmdss: { week: 15, month: 40, year: 250 },
-  engine_ew: { week: 20, month: 50, year: 350 },
-  deck_mgt: { week: 40, month: 100, year: 700 },
-  engine_mgt: { week: 40, month: 100, year: 700 }
-}
+
 const products = {
   oic_nw: { env: 'PRICE_DECK_OIC_NW_PHP', name: 'Hyperion Deck OIC-NW', track: 'DECK_OIC_NW' },
   gmdss: { env: 'PRICE_GMDSS_PHP', name: 'Hyperion GMDSS GOC', track: 'GMDSS_GOC' },
@@ -81,7 +76,7 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userError } = await authClient.auth.getUser()
   if (userError || !user) return json({ error: 'Your session is invalid. Please sign in again.' }, 401)
 
-  let body: { action?: string; productCode?: string; productCodes?: unknown; items?: unknown; returnTo?: unknown }
+  let body: { action?: string; productCode?: string; productCodes?: unknown; items?: unknown; returnTo?: unknown; expectedTotalPhp?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid request body.' }, 400) }
 
   const modeIsValid = expectedLiveMode === 'true' || expectedLiveMode === 'false'
@@ -137,6 +132,16 @@ Deno.serve(async (req) => {
   const totalPrice = codes.reduce((sum, code) => sum + productPrices[code], 0)
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  // Never charge someone again for access they already own permanently.
+  // A failed entitlement read is not permission to proceed with a payment.
+  const { data: lifetimeRows, error: lifetimeError } = await admin.from('lifetime_entitlements')
+    .select('product_code').eq('user_id', user.id)
+    .eq('status', 'active').in('product_code', codes)
+  if (lifetimeError) return json({ error: 'Could not verify lifetime ownership. Please retry before paying.' }, 503)
+  if (lifetimeRows?.length) {
+    return json({ error: 'Lifetime Access is already owned for one or more selected tracks. Remove those tracks from your basket.' }, 409)
+  }
 
   // Preserve compatibility with an older single-track checkout already created before
   // basket checkout was introduced. Never open a second charge for that same product.
@@ -234,6 +239,12 @@ Deno.serve(async (req) => {
     }
   }
 
+  // A cached pre-increase PWA must not create a checkout above its displayed price.
+  // Keep this after pending-checkout reuse so existing PayMongo quotes still work.
+  if (body.expectedTotalPhp !== totalPrice) {
+    return json({ error: 'Subscription prices have changed. Refresh Hyperion before paying; no new checkout was created.' }, 409)
+  }
+
   for (const code of codes) {
     const [website, play] = await Promise.all([
       admin.from('entitlements')
@@ -250,8 +261,12 @@ Deno.serve(async (req) => {
       Number.isFinite(Date.parse(website.data.expires_at)) && new Date(website.data.expires_at).getTime() > Date.now()
     const activePlay = !playTableMissing && play.data?.status === 'active' && play.data.expires_at &&
       Number.isFinite(Date.parse(play.data.expires_at)) && new Date(play.data.expires_at).getTime() > Date.now()
-    if (activeWebsite || activePlay) {
-      return json({ error: `${products[code].name} is already active for your account. You do not need to purchase it again.` }, 409)
+    // Website renewals extend the current expiry in the payment finalizer. A
+    // Google Play term extending beyond website access must stay managed in
+    // Google Play until cross-store renewal accounting is supported.
+    if (activePlay && (!activeWebsite ||
+        Date.parse(play.data!.expires_at) > Date.parse(website.data!.expires_at))) {
+      return json({ error: `${products[code].name} has a Google Play subscription lasting beyond your website license. Manage that subscription in Google Play to avoid overlapping access.` }, 409)
     }
   }
 

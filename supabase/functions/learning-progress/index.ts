@@ -200,7 +200,25 @@ async function fingerprintQuestion(question: JsonRecord): Promise<string | null>
       if (left.text > right.text) return 1
       return Number(left.correct) - Number(right.correct)
     })
-  const payload = new TextEncoder().encode(JSON.stringify([question.questionText, canonicalOptions]))
+  const identity: unknown[] = [question.questionText, canonicalOptions]
+  if (!question.questionText.trim()) {
+    const refs = question.imageAttachments
+    if (!Array.isArray(refs) || refs.length < 1 || refs.length > 4 ||
+        !refs.every(ref => ref && typeof ref === 'object' && !Array.isArray(ref) &&
+          Object.keys(ref).length === 4 && typeof ref.sha256 === 'string' && /^[a-f0-9]{64}$/.test(ref.sha256) &&
+          ['image/webp', 'image/png', 'image/jpeg'].includes(ref.mime) &&
+          ['question', 'explanation'].includes(ref.placement) &&
+          typeof ref.alt === 'string' && ref.alt.trim().length > 0 && ref.alt.length <= 160 && !/[\x00-\x1F\x7F]/.test(ref.alt)) ||
+        JSON.stringify(refs).length > 2048 ||
+        new Set(refs.map(ref => `${ref.sha256}:${ref.placement}`)).size !== refs.length) return null
+    const prompts = refs.filter(ref => ref.placement === 'question').map(ref => [ref.sha256, ref.mime]).sort((left, right) => {
+      if (left[0] !== right[0]) return left[0] < right[0] ? -1 : 1
+      return left[1] < right[1] ? -1 : left[1] > right[1] ? 1 : 0
+    })
+    if (!prompts.length) return null
+    identity.push(prompts)
+  }
+  const payload = new TextEncoder().encode(JSON.stringify(identity))
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', payload))
   return Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('')
 }

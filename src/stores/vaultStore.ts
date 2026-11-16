@@ -14,6 +14,7 @@ export interface VaultItem {
   options: string[];
   correctAnswerIndex: number;
   explanation: string;
+  imageAttachments?: Question['imageAttachments'];
   difficulty: string;
   wrongCount: number;
   consecutiveCorrect: number;
@@ -68,6 +69,7 @@ export const useVaultStore = create<VaultState>()(
           options: q.options,
           correctAnswerIndex: q.correctAnswerIndex,
           explanation: q.explanation,
+          ...(q.imageAttachments?.length ? { imageAttachments: q.imageAttachments } : {}),
           difficulty: q.difficulty,
           wrongCount: 1,
           consecutiveCorrect: 0,
@@ -116,6 +118,7 @@ export const useVaultStore = create<VaultState>()(
           options: i.options,
           correctAnswerIndex: i.correctAnswerIndex,
           explanation: i.explanation,
+          ...(i.imageAttachments?.length ? { imageAttachments: i.imageAttachments } : {}),
           difficulty: i.difficulty as Question['difficulty']
         }))
     }),

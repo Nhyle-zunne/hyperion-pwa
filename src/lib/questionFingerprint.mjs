@@ -9,6 +9,7 @@
  * @property {string} questionText
  * @property {string[]} options
  * @property {number} correctAnswerIndex
+ * @property {unknown} [imageAttachments]
  */
 
 /** @param {FingerprintableQuestion} question */
@@ -30,7 +31,25 @@ export function questionFingerprintPayload(question) {
       return Number(left.correct) - Number(right.correct);
     });
 
-  return JSON.stringify([question.questionText, canonicalOptions]);
+  const payload = [question.questionText, canonicalOptions];
+  if (!question.questionText.trim()) {
+    const refs = question.imageAttachments;
+    if (!Array.isArray(refs) || refs.length < 1 || refs.length > 4 ||
+        !refs.every(ref => ref && typeof ref === 'object' && !Array.isArray(ref) &&
+          Object.keys(ref).length === 4 && typeof ref.sha256 === 'string' && /^[a-f0-9]{64}$/.test(ref.sha256) &&
+          ['image/webp', 'image/png', 'image/jpeg'].includes(ref.mime) &&
+          ['question', 'explanation'].includes(ref.placement) &&
+          typeof ref.alt === 'string' && ref.alt.trim().length > 0 && ref.alt.length <= 160 && !/[\x00-\x1F\x7F]/.test(ref.alt)) ||
+        JSON.stringify(refs).length > 2048 ||
+        new Set(refs.map(ref => `${ref.sha256}:${ref.placement}`)).size !== refs.length) return null;
+    const prompts = refs.filter(ref => ref.placement === 'question').map(ref => [ref.sha256, ref.mime]).sort((left, right) => {
+      if (left[0] !== right[0]) return left[0] < right[0] ? -1 : 1;
+      return left[1] < right[1] ? -1 : left[1] > right[1] ? 1 : 0;
+    });
+    if (!prompts.length) return null;
+    payload.push(prompts);
+  }
+  return JSON.stringify(payload);
 }
 
 // Saved sessions and downloaded packs repeatedly validate the same in-memory

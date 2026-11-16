@@ -3,7 +3,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const fixture = process.env.HYPERION_BROWSER_FIXTURE === 'practice-refresh' ? 'practice-refresh-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'results' ? 'results-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'account' ? 'account-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'sync' ? 'sync-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'publisher' ? 'publisher-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'recovery' ? 'recovery-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'quickscan' ? 'quickscan-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'session' ? 'session-browser' : 'keyword-browser'
+const fixture = process.env.HYPERION_BROWSER_FIXTURE === 'media' ? 'media-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'practice-refresh' ? 'practice-refresh-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'results' ? 'results-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'account' ? 'account-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'sync' ? 'sync-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'publisher' ? 'publisher-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'recovery' ? 'recovery-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'quickscan' ? 'quickscan-browser' : process.env.HYPERION_BROWSER_FIXTURE === 'session' ? 'session-browser' : 'keyword-browser'
 
 // Isolated browser fixture using the real editor and encrypted storage. Run from repository root.
 export default defineConfig({
@@ -11,6 +11,8 @@ export default defineConfig({
     name: 'quickscan-synthetic-bank',
     enforce: 'pre',
     resolveId(source, importer) {
+      if (fixture === 'media-browser' && /(?:\/lib\/|^\.\/)supabase(?:\.ts)?$/.test(source) && !importer?.endsWith('media-supabase-fixture.ts')) return fileURLToPath(new URL('./media-supabase-fixture.ts', import.meta.url))
+      if (fixture === 'media-browser' && /(?:\/lib\/|^\.\/)questionBank(?:\.ts)?$/.test(source) && !importer?.endsWith('media-bank-fixture.ts')) return fileURLToPath(new URL('./media-bank-fixture.ts', import.meta.url))
       if (fixture === 'account-browser' && /(?:\/lib\/|^\.\/)supabase(?:\.ts)?$/.test(source) && !importer?.endsWith('account-supabase-fixture.ts')) return fileURLToPath(new URL('./account-supabase-fixture.ts', import.meta.url))
       if ((fixture === 'recovery-browser' || fixture === 'publisher-browser' || fixture === 'sync-browser') && /(?:\/lib\/|^\.\/)supabase(?:\.ts)?$/.test(source) && !importer?.endsWith('recovery-supabase-fixture.ts')) return fileURLToPath(new URL('./recovery-supabase-fixture.ts', import.meta.url))
       if ((fixture === 'recovery-browser' || fixture === 'sync-browser' || fixture === 'practice-refresh-browser') && /(?:\/lib\/|^\.\/)questionBank(?:\.ts)?$/.test(source) && !importer?.endsWith('recovery-bank-fixture.ts')) return fileURLToPath(new URL('./recovery-bank-fixture.ts', import.meta.url))

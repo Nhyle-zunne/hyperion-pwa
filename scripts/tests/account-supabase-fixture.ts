@@ -2,6 +2,8 @@ export * from '../../src/lib/supabase'
 
 // Synthetic account responses for the isolated browser fixture; no production services.
 export const supabaseConfigured = true
+export const supabaseUrl = location.origin
+export const supabaseAnonKey = 'synthetic-anon-key'
 export const fixtureCalls: { action: string; data?: unknown }[] = []
 let user = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -27,6 +29,13 @@ const fixtureOrders = () => user.id !== '11111111-1111-4111-8111-111111111111' ?
 ] : []
 const session = () => localStorage.getItem('fixture-guest') === 'yes' ? null : { user, access_token: 'fixture-token' }
 const authListeners = new Set<(event: string, value: ReturnType<typeof session>) => void>()
+const heldSessionResolvers: (() => void)[] = []
+export function releaseFixtureHeldNullSession() {
+  for (const resolve of heldSessionResolvers.splice(0)) resolve()
+}
+export function emitFixtureAuth(event: 'SIGNED_IN' | 'SIGNED_OUT') {
+  for (const listener of authListeners) listener(event, event === 'SIGNED_OUT' ? null : session())
+}
 let releaseEntitlements: (() => void) | undefined
 export function releaseFixtureEntitlements() { releaseEntitlements?.(); releaseEntitlements = undefined }
 export function switchFixtureAccount() {
@@ -35,7 +44,13 @@ export function switchFixtureAccount() {
 }
 export const supabase = {
   auth: {
-    getSession: async () => ({ data: { session: session() }, error: null }),
+    getSession: async () => {
+      if (localStorage.getItem('fixture-hold-account-session') === 'yes') {
+        return new Promise(resolve => heldSessionResolvers.push(() => resolve({ data: { session: null }, error: null })))
+      }
+      if (localStorage.getItem('fixture-account-auth-failure') === 'yes') throw Error('Synthetic mobile network failure')
+      return { data: { session: session() }, error: null }
+    },
     onAuthStateChange: (listener: (event: string, value: ReturnType<typeof session>) => void) => {
       authListeners.add(listener)
       return { data: { subscription: { unsubscribe() { authListeners.delete(listener) } } } }
@@ -45,7 +60,12 @@ export const supabase = {
       user = { ...user, user_metadata: data }
       return { data: { user }, error: null }
     },
-    signOut: async () => { fixtureCalls.push({ action: 'sign-out' }); return { error: null } },
+    signOut: async (options?: { scope?: string }) => {
+      fixtureCalls.push({ action: 'sign-out', data: options })
+      localStorage.setItem('fixture-guest', 'yes')
+      for (const listener of authListeners) listener('SIGNED_OUT', null)
+      return { error: null }
+    },
   },
   from: (table: string) => {
     fixtureCalls.push({ action: `table:${table}` })
@@ -56,6 +76,11 @@ export const supabase = {
       select: (value: string) => { columns = value; return query },
       eq: (key: string, value: unknown) => { filters.push({ key, kind: 'eq', value }); return query },
       gt: (key: string, value: unknown) => { filters.push({ key, kind: 'gt', value }); return query },
+      not: (key: string, operator: string, value: unknown) => {
+        if (operator !== 'is' || value !== null) throw Error('Unsupported fixture NOT filter')
+        filters.push({ key, kind: 'not-null', value })
+        return query
+      },
       in: (key: string, value: unknown[]) => { filters.push({ key, kind: 'in', value }); return query },
       or: (value: string) => { cursor = value; return query },
       order: (key: string, { ascending }: { ascending: boolean }) => { ordering.push({ key, ascending }); return query },
@@ -63,8 +88,23 @@ export const supabase = {
       then: (resolve: (value: { data: unknown[]; error: unknown }) => unknown) => {
         fixtureCalls.push({ action: `select:${table}`, data: { columns, limit, cursor, filters } })
         if (cursor && localStorage.getItem('fixture-fail-older-orders') === 'yes') return Promise.resolve({ data: [], error: { message: 'Synthetic page failure' } }).then(resolve)
-        let rows: Record<string, any>[] = table === 'orders' ? fixtureOrders().map(row => ({ ...row, user_id: user.id })) : []
-        rows = rows.filter(row => filters.every(({ key, kind, value }) => kind === 'in' ? (value as unknown[]).includes(row[key]) : kind === 'gt' ? row[key] > value! : row[key] === value))
+        const websiteRenewal = localStorage.getItem('fixture-renewal-website') === 'yes'
+        const playRenewal = localStorage.getItem('fixture-renewal-play') === 'yes'
+        const fixtureLicense = {
+          user_id: user.id, product_code: 'oic_nw', status: 'active',
+          granted_at: new Date(Date.now() - 86400_000).toISOString(),
+          expires_at: new Date(Date.now() + 5 * 86400_000).toISOString(),
+        }
+        let rows: Record<string, any>[] = table === 'orders' ? fixtureOrders().map(row => ({ ...row, user_id: user.id }))
+          : table === 'lifetime_orders' && user.id === '11111111-1111-4111-8111-111111111111'
+            && localStorage.getItem('fixture-lifetime-pending') === 'yes'
+              ? [{id:'88888888-8888-4888-8888-888888888888',user_id:user.id,product_code:'gmdss',
+                  amount_php:1999,status:'pending',created_at:new Date().toISOString(),paid_at:null,
+                  paymongo_checkout_session_id:'cs_fixture_lifetime'}]
+          : table === 'entitlements' && websiteRenewal ? [{ ...fixtureLicense, order_id: null, license_term: 'week', renewed_at: null }]
+          : table === 'google_play_entitlements' && playRenewal ? [{ ...fixtureLicense, updated_at: new Date().toISOString() }]
+          : []
+        rows = rows.filter(row => filters.every(({ key, kind, value }) => kind === 'in' ? (value as unknown[]).includes(row[key]) : kind === 'gt' ? row[key] > value! : kind === 'not-null' ? row[key] !== null && row[key] !== undefined : row[key] === value))
         if (cursor) {
           const match = cursor.match(/^created_at\.lt\.([^,]+),and\(created_at\.eq\.([^,]+),id\.lt\.([^\)]+)\)$/)
           if (!match) throw Error('Invalid synthetic cursor')
@@ -77,8 +117,13 @@ export const supabase = {
     return query
   },
   functions: {
-    invoke: async (name: string, request: { body?: { action?: string; orderId?: string } }) => {
+    invoke: async (name: string, request: { body?: { action?: string; orderId?: string; base64?: string; track?: string; mime?: string } }) => {
       fixtureCalls.push({ action: `${name}:${request.body?.action ?? ''}`, data: request.body })
+      if (name === 'question-media') {
+        const bytes = Uint8Array.from(atob(request.body?.base64 || ''), char => char.charCodeAt(0))
+        const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(value => value.toString(16).padStart(2, '0')).join('')
+        return { data: { track: request.body?.track, mime: request.body?.mime, bytes: bytes.length, sha256 }, error: null }
+      }
       if (name === 'question-bank' && localStorage.getItem('fixture-hold-entitlements') === 'yes') {
         fixtureCalls.push({ action: 'fixture-entitlements-held' })
         return new Promise(resolve => { releaseEntitlements = () => resolve({ data: { token: 'invalid-synthetic-token' }, error: null }) })
@@ -97,6 +142,16 @@ export const supabase = {
       }
       if (name === 'admin-payment-review') return { data: { isAdmin: false }, error: null }
       if (name === 'create-checkout' && request.body?.action === 'status') return { data: { action: 'status', enabled: true }, error: null }
+      if (name === 'create-lifetime-checkout' && request.body?.action === 'status') {
+        return {data:{enabled:localStorage.getItem('fixture-lifetime-enabled') === 'yes'},error:null}
+      }
+      if (name === 'create-lifetime-checkout' && request.body?.action === 'cancel') {
+        localStorage.removeItem('fixture-lifetime-pending')
+        return {data:{status:'cancelled',orderId:request.body?.orderId},error:null}
+      }
+      if (name === 'create-lifetime-checkout' && request.body?.action === 'create') {
+        return {data:{error:'This synthetic fixture never initiates a real payment.'},error:null}
+      }
       return { data: { entitlements: [] }, error: null }
     },
   },

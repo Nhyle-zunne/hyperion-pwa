@@ -40,9 +40,9 @@ for (const source of manifest.sources) {
   }
 }
 assert.deepEqual([...files], [], 'Unpinned skill files')
-assert.equal(names.size, 17, 'Expected 15 Superpowers skills, Ponytail, and Caveman')
+assert.equal(names.size, 18, 'Expected 15 Superpowers skills, Ponytail, Caveman, and UI/UX Pro Max')
 const instructions = await readFile(path.join(root, 'AGENTS.md'), 'utf8')
-for (const name of ['using-superpowers', 'ponytail', 'caveman']) {
+for (const name of ['using-superpowers', 'ponytail', 'caveman', 'ui-ux-pro-max']) {
   assert(instructions.includes(`.agents/skills/${name}/SKILL.md`), `Missing entry point: ${name}`)
 }
 console.log(`PASS: ${names.size} repository skills, unique names, pinned bytes, portable files, and AGENTS entry points`)

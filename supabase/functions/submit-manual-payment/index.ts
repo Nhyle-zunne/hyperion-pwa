@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { termPrices } from '../_shared/paymentPrices.mjs'
 
 const products = {
   oic_nw: { track: 'DECK_OIC_NW' },
@@ -8,13 +9,7 @@ const products = {
   engine_mgt: { track: 'ENGINE_MGT' },
 } as const
 type LicenseTerm = 'week' | 'month' | 'year'
-const prices: Record<keyof typeof products, Record<LicenseTerm, number>> = {
-  oic_nw: { week: 20, month: 50, year: 350 },
-  gmdss: { week: 15, month: 40, year: 250 },
-  engine_ew: { week: 20, month: 50, year: 350 },
-  deck_mgt: { week: 40, month: 100, year: 700 },
-  engine_mgt: { week: 40, month: 100, year: 700 },
-}
+const prices = termPrices
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 
 function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
@@ -35,13 +30,16 @@ Deno.serve(async req => {
   const client = createClient(url, anon, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } })
   const { data: { user }, error: authError } = await client.auth.getUser()
   if (authError || !user) return json({ error: 'Please sign in again.' }, 401)
-  let body: { productCode?: string; licenseTerm?: string; paymentMethod?: string; paymentReference?: string; proofUrl?: string; customerNote?: string; customerProfile?: { fullName?: string; company?: string; school?: string } }
+  let body: { productCode?: string; licenseTerm?: string; expectedAmountPhp?: unknown; paymentMethod?: string; paymentReference?: string; proofUrl?: string; customerNote?: string; customerProfile?: { fullName?: string; company?: string; school?: string } }
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
   const code = body.productCode as keyof typeof products, product = products[code]
   if (!product) return json({ error: 'Unknown product.' }, 400)
   const requestedTerm = body.licenseTerm ?? 'year'
   if (requestedTerm !== 'week' && requestedTerm !== 'month' && requestedTerm !== 'year') return json({ error: 'Choose a valid access duration.' }, 400)
   const term: LicenseTerm = requestedTerm
+  if (body.expectedAmountPhp !== prices[code][term]) {
+    return json({ error: 'Subscription prices have changed. Refresh Hyperion before making a manual transfer. If you already sent money, contact support with your receipt.' }, 409)
+  }
   const paymentMethod = String(body.paymentMethod || '').trim().slice(0, 80)
   // This endpoint is only for manual QR transfer submissions. Never accept
   // PayMongo's internal method marker from a client-provided request.
@@ -63,6 +61,13 @@ Deno.serve(async req => {
   if (!customerName) return json({ error: 'Please add your full name to your account before submitting payment details.' }, 400)
 
   const admin = createClient(url, service, { auth: { persistSession: false } })
+  // Lifetime owners must never be asked to transfer money for another term.
+  const { data: lifetime, error: lifetimeError } = await admin.from('lifetime_entitlements')
+    .select('id').eq('user_id', user.id).eq('product_code', code)
+    .eq('status', 'active').limit(1)
+  if (lifetimeError) return json({ error: 'Could not verify Lifetime Access ownership. Please retry.' }, 503)
+  if (lifetime?.length) return json({ error: 'Lifetime Access is already owned for this track; no further payment is needed.' }, 409)
+
   const [activeLicenseResult, activePlayResult] = await Promise.all([
     admin.from('entitlements')
       .select('id,expires_at,status').eq('user_id', user.id).eq('product_code', code).eq('status', 'active').maybeSingle(),
@@ -79,8 +84,10 @@ Deno.serve(async req => {
   const licenseExpiry = activeLicense?.expires_at ? new Date(activeLicense.expires_at).getTime() : null
   const websiteActive = activeLicense?.status === 'active' && licenseExpiry !== null && licenseExpiry > Date.now()
   const playActive = !!activePlayLicense?.expires_at && new Date(activePlayLicense.expires_at).getTime() > Date.now()
-  if (websiteActive || playActive) {
-    return json({ error: 'This license is already active for your account. You do not need to purchase this track again.' }, 409)
+  // Website extensions are applied only after administrator verification.
+  // Do not sell an overlapping website term against a longer Google Play license.
+  if (playActive && (!websiteActive || new Date(activePlayLicense!.expires_at).getTime() > licenseExpiry!)) {
+    return json({ error: 'This track has an active Google Play subscription extending beyond website access. Manage it through Google Play to avoid overlapping payments.' }, 409)
   }
 
   const { data: failedPayMongoSessions, error: failedPayMongoError } = await admin.from('orders')

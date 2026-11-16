@@ -6,6 +6,7 @@ import ResultsProcessing from '../../src/components/ResultsProcessing'
 import { showResultsProcessing } from '../../src/components/ResultsProcessing'
 import { MockExamRunner } from '../../src/screens/MockExamScreen'
 import { usePracticeStore } from '../../src/stores/practiceStore'
+import { useLicenseStore } from '../../src/stores/licenseStore'
 import { useHistoryStore } from '../../src/stores/historyStore'
 import { getSessionSnapshot } from '../../src/lib/sessionArchive'
 import { setLocalProgressIdentity, markLocalProgressReady } from '../../src/lib/localProgressIdentity'
@@ -19,11 +20,19 @@ const sessionId = `results-${mode}-${crypto.randomUUID()}`
 const questions: Question[] = [0, 1, 2].map(index => ({ id: `results-${index}`, track: 'DECK_OIC_NW', functionId: 'F1', competenceId: index < 2 ? 'C1' : 'C2', topic: 'Synthetic topic', questionText: `Synthetic question ${index + 1}?`, options: ['Port', 'Starboard'], correctAnswerIndex: 0, explanation: `Synthetic explanation ${index + 1}.`, difficulty: index === 0 ? 'EASY' : index === 1 ? 'MODERATE' : 'DIFFICULT' }))
 setLocalProgressIdentity(null)
 markLocalProgressReady(null)
+// The synthetic scored-MOCK fixture represents a licensed track. Free mock
+// sessions are no longer part of the product's access policy.
+if (mode === 'MOCK') {
+  useLicenseStore.setState({
+    entitlementsVerified: true, isAllAccessUnlocked: true,
+    cloudTrackIds: ['ALL'], entitlementUserId: 'results-fixture-licensed-owner'
+  })
+}
 if (managed) {
   questions.forEach(question => { question.competenceId = 'C1' })
   localStorage.setItem('hyperion-mock-exam-plan-v1', JSON.stringify({ trackId: 'DECK_OIC_NW', trackParam: 'oic_nw', selectedFunctions: ['F1'], startedAt: Date.now(), status: 'in_progress', results: {} }))
 }
-usePracticeStore.setState({ sessionId, mode, track: 'DECK_OIC_NW', competenceId: null, questions, answers: { 'results-0': { questionId: 'results-0', selectedIndex: 0, isCorrect: true, isFlagged: false }, 'results-1': { questionId: 'results-1', selectedIndex: 1, isCorrect: false, isFlagged: false } }, currentIndex: 2, loading: false, error: null, finished: false, finishing: false, completionError: null, isFreeSession: true, startedAt: Date.now() - 30000, timeLeftSec: 3600, timeLimitSec: 3600, bestStreak: 1 })
+usePracticeStore.setState({ sessionId, mode, track: 'DECK_OIC_NW', competenceId: null, questions, answers: { 'results-0': { questionId: 'results-0', selectedIndex: 0, isCorrect: true, isFlagged: false }, 'results-1': { questionId: 'results-1', selectedIndex: 1, isCorrect: false, isFlagged: false } }, currentIndex: 2, loading: false, error: null, finished: false, finishing: false, completionError: null, isFreeSession: mode !== 'MOCK', startedAt: Date.now() - 30000, timeLeftSec: 3600, timeLimitSec: 3600, bestStreak: 1 })
 if (managed) usePracticeStore.setState({ competenceId: 'C1' })
 Object.assign(window, { resultsFixture: { finish: () => { usePracticeStore.getState().finish(); usePracticeStore.getState().finish() }, presentOverallMock: showResultsProcessing, reset: () => usePracticeStore.getState().reset(), state: () => ({ finished: usePracticeStore.getState().finished, finishing: usePracticeStore.getState().finishing, error: usePracticeStore.getState().completionError, score: usePracticeStore.getState().score() }), history: () => useHistoryStore.getState().entries, snapshot: () => getSessionSnapshot(sessionId, true) } })
 function Controls() {

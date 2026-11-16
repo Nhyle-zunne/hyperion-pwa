@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { isAcceptedStoredPrice } from '../_shared/paymentPrices.mjs'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -15,13 +16,7 @@ const products = {
 } as const
 type ProductCode = keyof typeof products
 type LicenseTerm = 'week' | 'month' | 'year'
-const termPrices: Record<ProductCode, Record<LicenseTerm, number>> = {
-  oic_nw: { week: 20, month: 50, year: 350 },
-  gmdss: { week: 15, month: 40, year: 250 },
-  engine_ew: { week: 20, month: 50, year: 350 },
-  deck_mgt: { week: 40, month: 100, year: 700 },
-  engine_mgt: { week: 40, month: 100, year: 700 }
-}
+
 function expiryForTerm(base: Date, term: LicenseTerm) {
   const result = new Date(base)
   if (term === 'week') {
@@ -194,7 +189,7 @@ Deno.serve(async (req) => {
       const termByCode = Object.fromEntries(codes.map((code, index) => [code, batchTerms[index]])) as Record<string, LicenseTerm>
       if (childOrders.length !== codes.length || childCodes.some((code: string, i: number) => code !== expectedCodes[i]) ||
           childOrders.some((order: any) => order.track_id !== (products as any)[order.product_code]?.track || order.currency !== 'PHP' ||
-            order.license_term !== termByCode[order.product_code] || Number(order.amount_php) !== termPrices[order.product_code as ProductCode]?.[termByCode[order.product_code]]) ||
+            order.license_term !== termByCode[order.product_code] || !isAcceptedStoredPrice(order.product_code, termByCode[order.product_code], Number(order.amount_php))) ||
           childTotal !== batch.amount_php) {
         return json({ error: 'The basket order does not match its stored products and total. No license was granted.' }, 409)
       }
@@ -304,7 +299,7 @@ Deno.serve(async (req) => {
     const paidPayment = payments.find((payment: any) => payment?.attributes?.status === 'paid')
     if (!paidPayment) return json({ status: 'pending', orderId: order.id, productCode: order.product_code, message: 'PayMongo has not confirmed a paid transaction for this checkout yet.' })
     const orderTerm: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' ? order.license_term : 'year'
-    if (Number(order.amount_php) !== termPrices[order.product_code as ProductCode]?.[orderTerm] ||
+    if (!isAcceptedStoredPrice(order.product_code, orderTerm, Number(order.amount_php)) ||
         paidPayment.attributes?.currency !== 'PHP' || Number(paidPayment.attributes?.amount) !== Number(order.amount_php) * 100) {
       return json({ error: 'The confirmed payment amount or currency does not match this order. No license was granted.' }, 409)
     }

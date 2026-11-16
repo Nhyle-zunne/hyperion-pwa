@@ -5,10 +5,11 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
+import BondStoreCardContent from '../components/BondStoreCardContent'
 import { withPageLoading } from '../lib/pageLoading'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
-import { LICENSE_TERMS, priceForTerm } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
+import { getCachedOfflineEntitlementSnapshot, type CachedOfflineEntitlementSnapshot } from '../lib/offlineQuestionCache'
 
 type Order = {
   id: string
@@ -25,7 +26,7 @@ type Order = {
   paid_at: string | null
   checkout_batch_id: string | null
 }
-type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' }
+type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' | 'lifetime'; lifetimeProvider?: 'paymongo' | 'google_play' }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
 // Owner-bound in-memory display cache for this browser session. These rows are
@@ -37,95 +38,6 @@ if (typeof window !== 'undefined') {
     const owner = (event as CustomEvent<{ userId?: string }>).detail?.userId
     if (owner) accountOverviewCache.delete(owner)
   })
-}
-
-// A raised desktop card needs to retain its collapsed grid-cell height.
-// Reuse this for both hover and explicit See all actions so clicking never
-// makes the card expand into the document or push Buy Now below the screen.
-function prepareStoreCardLift(slot: HTMLElement) {
-  if (slot.style.height) return
-  const card = slot.querySelector<HTMLElement>('.account-product-card')
-  if (!card) return
-  const bounds = slot.getBoundingClientRect()
-  slot.style.height = `${Math.ceil(card.getBoundingClientRect().height)}px`
-  const sidebarRight = document.querySelector('.account-sidebar')?.getBoundingClientRect().right ?? 0
-  const extra = Math.min(54, bounds.width * .24)
-  slot.style.setProperty('--store-hover-left', `${Math.max(0, Math.min(extra, bounds.left - Math.max(12, sidebarRight + 10)))}px`)
-  slot.style.setProperty('--store-hover-right', `${Math.max(0, Math.min(extra, window.innerWidth - bounds.right - 12))}px`)
-}
-
-function releaseStoreCardLift(slot: HTMLElement) {
-  window.requestAnimationFrame(() => {
-    if (slot.matches(':hover') || slot.classList.contains('is-expanded')) return
-    slot.style.height = ''
-    slot.style.removeProperty('--store-hover-left')
-    slot.style.removeProperty('--store-hover-right')
-  })
-}
-
-// Hold an exiting card in its absolute, bottom-anchored position until its
-// geometry finishes animating. Switching straight back to normal layout made
-// adjacent cards snap and could retrigger mouseenter/mouseleave mid-transition.
-const storeCardSettleTimers = new WeakMap<HTMLElement, number>()
-function cancelStoreCardSettle(slot: HTMLElement) {
-  const timer = storeCardSettleTimers.get(slot)
-  if (timer !== undefined) window.clearTimeout(timer)
-  storeCardSettleTimers.delete(slot)
-}
-function beginStoreCardLift(slot: HTMLElement) {
-  cancelStoreCardSettle(slot)
-  prepareStoreCardLift(slot)
-  slot.dataset.storeLift = 'entering'
-  // Establish the original absolute geometry before React applies is-hovered,
-  // so the horizontal expansion animates rather than instantly jumping.
-  void slot.querySelector<HTMLElement>('.account-product-card')?.offsetWidth
-}
-function settleStoreCardLift(slot: HTMLElement, force = false) {
-  cancelStoreCardSettle(slot)
-  if (!force && slot.classList.contains('is-expanded')) {
-    delete slot.dataset.storeLift
-    return
-  }
-  slot.dataset.storeLift = 'settling'
-  const timer = window.setTimeout(() => {
-    storeCardSettleTimers.delete(slot)
-    delete slot.dataset.storeLift
-    releaseStoreCardLift(slot)
-  }, 320)
-  storeCardSettleTimers.set(slot, timer)
-}
-
-const STORE_FEATURES = [
-  'Unlimited practice sessions',
-  'Unlimited timed mock exams',
-  'Full question bank for your licensed track',
-  'Custom drills and question ranges',
-  'Quick Scan Mode',
-  'Mistakes Notebook and bookmarks',
-  'Full-text question search',
-  'Offline review after downloading',
-  'Study history and cross-device progress sync'
-] as const
-
-const STORE_TRACK_CAPTIONS: Record<PaidTrack, string> = {
-  oic_nw: 'DECK · OPERATIONAL',
-  engine_ew: 'ENGINE · OPERATIONAL',
-  gmdss: 'GMDSS · RADIO',
-  deck_mgt: 'DECK · MANAGEMENT',
-  engine_mgt: 'ENGINE · MANAGEMENT'
-}
-
-const STORE_CATEGORY_ICON: Record<PaidTrack, number> = {
-  oic_nw: 1, engine_ew: 2, gmdss: 3, deck_mgt: 1, engine_mgt: 2
-}
-const STORE_LEVEL_ICON: Partial<Record<PaidTrack, number>> = {
-  oic_nw: 4, engine_ew: 4, deck_mgt: 5, engine_mgt: 5
-}
-// Exact supplied Hyperion banner artwork, cropped into one local image sprite.
-// Cells: anchor, deck helm, engine, GMDSS, operational shield, management cap.
-function StoreBannerSymbol({ index, small = false }: { index: number; small?: boolean }) {
-  const size = small ? 24 : 42
-  return <span aria-hidden="true" className={`store-banner-symbol${small ? ' store-banner-symbol--small' : ''}`} style={{ backgroundPosition: `-${size * index}px 0px` }} />
 }
 
 function safeAccountError(error: unknown, fallback: string) {
@@ -177,6 +89,17 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
   useEffect(() => { setAccountTab(params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments') }, [params])
   const [session, setSession] = useState<Session | null>(null)
+  const [sessionChecked, setSessionChecked] = useState(!supabase)
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  // License access and account authentication have different lifetimes. A
+  // verified device-bound offline pass must not be described as a guest login.
+  const licenseOwnerId = useLicenseStore(state => state.entitlementUserId)
+  const savedLicenseActive = useLicenseStore(state =>
+    state.entitlementsVerified && (state.isAllAccessUnlocked || state.cloudTrackIds.length > 0))
+  // A signed, current device license is meaningful even when network detection
+  // says "online" and Supabase Auth is still waiting for a token refresh.
+  const hasSavedOfflineAccess = !session && savedLicenseActive && Boolean(licenseOwnerId)
+  const [offlineSnapshot, setOfflineSnapshot] = useState<CachedOfflineEntitlementSnapshot | null>(null)
   const [basket, setBasket] = useState<BasketItem[]>(() => {
     try {
       const raw = localStorage.getItem('hyperion-account-basket-v1')
@@ -217,10 +140,30 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [renewalGraceUntil, setRenewalGraceUntil] = useState<string | null>(null)
   const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>(() => Object.fromEntries(PAID_PRODUCTS.map(item => [item.code, basket.find(entry => entry.code === item.code)?.term ?? 'year'])) as Record<PaidTrack, LicenseTerm>)
   const [expandedStorePerks, setExpandedStorePerks] = useState<PaidTrack | null>(null)
-  const [hoveredStore, setHoveredStore] = useState<PaidTrack | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
+  const [lifetimeCheckoutEnabled, setLifetimeCheckoutEnabled] = useState(false)
+  const [pendingLifetimeOrders, setPendingLifetimeOrders] = useState<Array<{id: string; product_code: string}>>([])
+  const [lifetimeRefreshRevision, setLifetimeRefreshRevision] = useState(0)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
   const entitlementExpiryRevision = useLicenseStore(s => s.entitlementExpiryRevision)
+  useEffect(() => {
+    let active = true
+    if (!hasSavedOfflineAccess || !licenseOwnerId) {
+      setOfflineSnapshot(null)
+      return
+    }
+    // Only the signed owner/expiry claims can supply offline license details.
+    // This is local cryptographic verification, not a Supabase request.
+    void getCachedOfflineEntitlementSnapshot(licenseOwnerId)
+      .then(snapshot => { if (active) setOfflineSnapshot(snapshot?.userId === licenseOwnerId ? snapshot : null) })
+      .catch(() => { if (active) setOfflineSnapshot(null) })
+    return () => { active = false }
+  }, [hasSavedOfflineAccess, licenseOwnerId, entitlementExpiryRevision])
+  useEffect(() => {
+    if (hasSavedOfflineAccess && pathname === '/account' && !params.has('tab')) {
+      setAccountTab('licenses')
+    }
+  }, [hasSavedOfflineAccess, pathname, params])
 
   useEffect(() => {
     // Checkout owns cart persistence when this screen supplies only the profile layout.
@@ -244,15 +187,132 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   }
   const clearBasketItems = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
 
+  // Lifetime checkout is separate from the timed subscription basket.
+  // Only the server can enable it or calculate the actual charged amount.
   useEffect(() => {
-    if (!supabase) return
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    if (!session?.user.id || isLayout || !supabase) {
+      setLifetimeCheckoutEnabled(false)
+      setPendingLifetimeOrders([])
+      return
+    }
+    const client = supabase
+    const ownerId = session.user.id
+    let active = true
+    const load = async () => {
+      const [availability, pending] = await Promise.all([
+        client.functions.invoke('create-lifetime-checkout', { body: { action: 'status' } }),
+        client.from('lifetime_orders').select('id,product_code')
+          .eq('user_id', ownerId).eq('status','pending').limit(10)
+      ])
+      if (!active) return
+      setLifetimeCheckoutEnabled(!availability.error && availability.data?.enabled === true)
+      setPendingLifetimeOrders(pending.error ? [] : pending.data ?? [])
+    }
+    void load()
+    return () => { active = false }
+  }, [session?.user.id, lifetimeRefreshRevision, isLayout])
+
+  const buyLifetime = async (code: PaidTrack) => {
+    if (!supabase || !session) {
+      setMessage('Sign in with Google to buy Lifetime Access for your account.')
+      return
+    }
+    const product = PAID_PRODUCTS.find(item => item.code === code)
+    if (!product || busy || !lifetimeCheckoutEnabled) return
+    setBusy(true)
+    setMessage('Preparing your secure one-time PayMongo checkout…')
+    try {
+      const { data, error } = await supabase.functions.invoke('create-lifetime-checkout', {
+        body: { action: 'create', productCode: code, expectedTotalPhp: product.lifetimePrice }
+      })
+      if (error || data?.error) throw new Error((await edgeFunctionErrorMessage(error)) || data?.error || 'Unable to prepare lifetime checkout.')
+      if (data.status === 'paid') {
+        await refreshAccount(false, true)
+        setLifetimeRefreshRevision(v => v + 1)
+        setMessage('Payment confirmed. Lifetime Access is active for ' + product.label + '.')
+        return
+      }
+      const target = typeof data?.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
+      if (!target || target.protocol !== 'https:' || target.hostname !== 'checkout.paymongo.com') {
+        throw new Error('PayMongo did not return a trusted checkout link.')
+      }
+      window.location.assign(target.toString())
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Lifetime checkout could not be opened. Try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const cancelLifetimeCheckout = async (orderId: string) => {
+    if (!supabase || busy) return
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('create-lifetime-checkout', {
+        body: { action: 'cancel', orderId }
+      })
+      if (error || data?.status !== 'cancelled') {
+        throw new Error((await edgeFunctionErrorMessage(error)) || data?.error || 'PayMongo did not confirm cancellation.')
+      }
+      setLifetimeRefreshRevision(v => v + 1)
+      setMessage('PayMongo confirmed this Lifetime checkout was cancelled. No Lifetime license was added.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not safely cancel the checkout.')
+    } finally { setBusy(false) }
+  }
+
+  useEffect(() => {
+    const client = supabase
+    if (!client) return
+    let mounted = true
+    let authEventRevision = 0
+    let pending: Promise<void> | null = null
+
+    // Auth events are authoritative for the UI. A slower getSession() (for
+    // example after an iOS PWA wakes from sleep) must never overwrite a later
+    // SIGNED_IN/TOKEN_REFRESHED with an older null session.
+    const { data: listener } = client.auth.onAuthStateChange((event, nextSession) => {
+      if (!mounted) return
+      authEventRevision++
       if (event === 'SIGNED_OUT') accountOverviewCache.clear()
-      // Keep the page the user acted on mounted behind the success dialog until Continue is pressed.
+      // Preserve the sign-out confirmation until the user dismisses it.
       if (nextSession || !keepSuccessBackdropRef.current) setSession(nextSession)
+      setSessionChecked(true)
     })
-    return () => listener.subscription.unsubscribe()
+
+    const checkSavedSession = () => {
+      if (pending) return pending
+      const lookupRevision = authEventRevision
+      const task = client.auth.getSession().then(({ data, error }) => {
+        if (!mounted || authEventRevision !== lookupRevision || error) return
+        if (data.session || !keepSuccessBackdropRef.current) setSession(data.session)
+      }).catch(() => {
+        // Offline or failed refresh is not a deliberate logout. The existing
+        // signed local license is shown independently, not erased.
+      }).finally(() => {
+        if (mounted) setSessionChecked(true)
+      })
+      pending = task
+      void task.finally(() => { if (pending === task) pending = null })
+      return task
+    }
+    void checkSavedSession()
+    // A guest account screen needn't poll Auth. When a disconnected device
+    // reconnects, ask the existing client once to restore its saved session.
+    const onReconnect = () => { setOnline(true); void checkSavedSession() }
+    const onDisconnect = () => setOnline(false)
+    window.addEventListener('online', onReconnect)
+    window.addEventListener('offline', onDisconnect)
+    const fallback = window.setTimeout(() => {
+      if (mounted) setSessionChecked(true)
+    }, 5000)
+
+    return () => {
+      mounted = false
+      window.clearTimeout(fallback)
+      window.removeEventListener('online', onReconnect)
+      window.removeEventListener('offline', onDisconnect)
+      listener.subscription.unsubscribe()
+    }
   }, [])
 
 
@@ -336,12 +396,15 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       return
     }
     const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,checkout_batch_id'
-    const [entitlements, playEntitlements, orderResult] = await Promise.all([
+    const [entitlements, playEntitlements, lifetimeEntitlements, orderResult] = await Promise.all([
       supabase.from('entitlements')
         .select('product_code,order_id,license_term,status,granted_at,expires_at,renewed_at')
         .eq('user_id', session.user.id),
       supabase.from('google_play_entitlements')
         .select('product_code,status,granted_at,expires_at,updated_at')
+        .eq('user_id', session.user.id),
+      supabase.from('lifetime_entitlements')
+        .select('product_code,provider,status,purchased_at,revoked_at')
         .eq('user_id', session.user.id),
       supabase.from('orders')
         .select(orderColumns)
@@ -353,7 +416,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     // The Google Play table is optional until its backend migration is released.
     // Ignore only PostgREST's exact missing-table/schema-cache response.
     const playTableMissing = isMissingGooglePlayEntitlementsTable(playEntitlements.error)
-    const entitlementError = entitlements.error || (playTableMissing ? null : playEntitlements.error)
+    const entitlementError = entitlements.error || (playTableMissing ? null : playEntitlements.error) || lifetimeEntitlements.error
     const mergeNow = Date.now()
     const fetchedEntitlements: OwnedTrack[] = [
       ...((entitlements.data ?? []) as Omit<OwnedTrack, 'source'>[]).map(row => ({ ...row, source: 'website' as const })),
@@ -366,6 +429,17 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
         expires_at: row.expires_at,
         renewed_at: row.updated_at,
         source: 'google_play' as const,
+      }))),
+      ...((lifetimeEntitlements.data ?? []).map(row => ({
+        product_code: row.product_code,
+        order_id: null,
+        license_term: null,
+        status: row.status,
+        granted_at: row.purchased_at,
+        expires_at: '9999-12-31T23:59:59Z',
+        renewed_at: row.revoked_at,
+        source: 'lifetime' as const,
+        lifetimeProvider: row.provider as 'paymongo' | 'google_play',
       })))
     ]
     // Preserve the last known license display during network outages, then re-evaluate expiry locally.
@@ -478,6 +552,45 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     void checkPayment()
     return () => { cancelled = true }
   }, [session?.user.id, params, isLayout])
+  // The return URL is informational; only the authenticated verifier can grant access.
+  useEffect(() => {
+    if (isLayout || !session || !supabase) return
+    const state = params.get('lifetime_payment')
+    const orderId = params.get('lifetime_order_id')
+    if (!state) return
+    let active = true
+    if (state === 'cancelled') {
+      setMessage('You returned from PayMongo without confirming payment. Resume or safely cancel the pending Lifetime checkout below.')
+      setLifetimeRefreshRevision(v => v + 1)
+      return
+    }
+    if (state !== 'success' || !orderId) return
+    setMessage('Checking your one-time payment directly with PayMongo…')
+    const client = supabase
+    const verify = async () => {
+      let lastError = ''
+      for (let attempt = 0; attempt < 5 && active; attempt++) {
+        const { data, error } = await client.functions.invoke('verify-lifetime-checkout', { body: { orderId } })
+        if (!active) return
+        if (!error && data?.status === 'paid') {
+          await refreshAccount(false, true)
+          setLifetimeRefreshRevision(v => v + 1)
+          if (active) setMessage('Lifetime payment confirmed. Your purchased track has been unlocked permanently for the supported lifetime of Hyperion.')
+          return
+        }
+        if (data?.status === 'refunded' || data?.status === 'reconciliation_required') {
+          setMessage('PayMongo payment requires account support review. Do not pay again.')
+          return
+        }
+        lastError = (await edgeFunctionErrorMessage(error)) || data?.error || data?.message || 'Payment confirmation is pending.'
+        if (attempt < 4) await new Promise(resolve => window.setTimeout(resolve, 1500))
+      }
+      if (active) setMessage(lastError + ' Do not pay twice. Refresh the Lifetime checkout status or contact support.')
+    }
+    void verify()
+    return () => { active = false }
+  }, [session?.user.id, params, isLayout])
+
   const signInWithGoogle = async () => {
     if (!supabase) {
       setMessage('Sign-in is temporarily unavailable. Please try again later.')
@@ -516,7 +629,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     }
   }
 
-  const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', marginBottom: '1rem', borderRadius: 10 }
+  const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', marginBottom: '1rem', borderRadius: 0 }
   const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', minHeight: 40, padding: '.45rem .55rem', marginTop: '.25rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, font: 'inherit', fontSize: '.85rem' }
   const profileField = (editable: boolean): React.CSSProperties => ({ ...field, background: editable ? 'var(--bg-elevated)' : 'var(--bg)', color: editable ? 'var(--text)' : 'var(--text-muted)', border: editable ? '1px solid var(--border)' : '1px solid #cbd5e1', boxShadow: 'none', outline: 'none', cursor: editable ? 'text' : 'default', userSelect: editable ? 'text' : 'none', WebkitUserSelect: editable ? 'text' : 'none', pointerEvents: editable ? 'auto' : 'none', caretColor: editable ? 'auto' : 'transparent' })
   const label: React.CSSProperties = { display: 'block', marginTop: '.5rem', fontSize: '.8rem', lineHeight: 1.35 }
@@ -577,7 +690,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     setBusy(true)
     try {
       keepSuccessBackdropRef.current = true
-      const { error } = await supabase.auth.signOut()
+      const { error } = await supabase.auth.signOut({ scope: 'local' })
       if (error) throw error
       // Clear the device-bound offline grant only for an intentional user sign-out.
       useLicenseStore.getState().clearLicense()
@@ -642,47 +755,15 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .account-main > .screen{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
       @media(max-width:1180px){.account-page .basket-page .basket-layout{grid-template-columns:minmax(0,1fr)}.account-page .basket-page .basket-summary{position:static}}
       .account-page .account-section-tabs{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;min-width:0}
-      .account-page .account-section-tabs button{min-height:48px;padding:.7rem 1rem;font-weight:850;font-size:.9rem;border-radius:9px;white-space:nowrap}
+      .account-page .account-section-tabs button{min-height:48px;padding:.7rem 1rem;font-weight:850;font-size:.9rem;border-radius:var(--store-control-radius);white-space:nowrap}
       .account-page .account-section-tabs button[aria-selected="true"]{background:#147d43;border-color:#147d43;color:#fff}
       .account-page .account-toolbar-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
       .account-page .account-toolbar-actions button{min-height:42px}
       .account-page .account-products-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;gap:clamp(.55rem,.75vw,.9rem);isolation:isolate;align-items:start}
-      .account-page .account-product-slot{min-width:0;position:relative;z-index:0}
-      .account-page .account-product-slot.is-hovered,.account-page .account-product-slot.is-expanded{z-index:8}
-      .account-page .account-product-slot[data-store-lift="settling"]{z-index:1;pointer-events:none}
-      .account-page .account-product-card{position:relative;z-index:0;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:13px;background:var(--bg-card);transition:left .26s cubic-bezier(.2,.8,.2,1),right .26s cubic-bezier(.2,.8,.2,1),transform .26s cubic-bezier(.2,.8,.2,1),border-color .26s ease,box-shadow .26s ease;transform-origin:50% 100%;will-change:transform;box-sizing:border-box}
-      .account-page .account-product-card:focus-within{z-index:5;border-color:#d9ad36;box-shadow:0 14px 30px rgba(4,35,83,.13)}
-      .account-page .account-product-card .product-art{min-height:58px;display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border-radius:9px;background:radial-gradient(circle at 95% 0%,#17497d 0,transparent 45%),linear-gradient(125deg,#042353,#061a3b);color:#f6c84a;margin-bottom:.6rem;position:relative;overflow:hidden;border:1px solid rgba(241,195,70,.5)}
-      .account-page .account-product-card .product-art:before{content:"";position:absolute;inset:0;border-top:2px solid #f3c452;pointer-events:none}
-      .account-page .account-product-card .product-art:after{content:"";position:absolute;width:96px;height:96px;border:1px solid rgba(244,191,51,.25);border-radius:50%;right:-37px;top:-51px;pointer-events:none}
-      .account-page .store-banner-symbol{position:relative;z-index:1;display:block;flex:0 0 42px;width:42px;height:42px;background-image:url('/store-art/hyperion-banner-sprite.png');background-repeat:no-repeat;background-size:252px 42px}
-      .account-page .store-banner-symbol--small{flex-basis:24px;width:24px;height:24px;background-size:144px 24px}
-      .account-page .store-banner-text{position:relative;z-index:1;min-width:0;flex:1;display:grid;gap:.15rem}
-      .account-page .store-banner-text strong{display:block;color:#ffcf55;font-size:.73rem;line-height:1.1;font-weight:950;letter-spacing:.045em}
-      .account-page .store-banner-text small{color:#f8e6a7;font-size:.52rem;font-weight:800;letter-spacing:.02em;line-height:1.2}
-      .account-page .store-banner-track{position:relative;z-index:1;display:flex;align-items:center;gap:0;flex-shrink:0}
-      .account-page .product-price{font-size:clamp(1.2rem,1.4vw,1.48rem);font-weight:950;line-height:1.1;color:var(--text);margin:.4rem 0 .55rem}
-      .account-page .store-feature-highlight{font-size:.7rem;font-weight:850;letter-spacing:.02em;color:#b4871b;margin:.15rem 0 .2rem}
-      .account-page .store-benefits-list{display:grid;gap:.14rem;list-style:none;padding:0;margin:.3rem 0 .1rem;max-height:3.55rem;overflow:hidden;transition:max-height .3s cubic-bezier(.2,.8,.2,1)}
-      .account-page .store-benefits-list li{display:flex;gap:.3rem;align-items:flex-start;line-height:1.25;font-size:.66rem;color:var(--text-muted);overflow-wrap:anywhere}
-      .account-page .store-benefits-list li:before{content:"✓";color:#b68714;font-weight:900;flex-shrink:0}
-      .account-page .account-product-card.perks-expanded .store-benefits-list{max-height:18rem}
-      .account-page .store-benefits-toggle{margin:.15rem 0 .5rem;padding:.15rem 0;border:0;text-align:left;background:none;color:var(--accent);font:inherit;font-size:.67rem;font-weight:850;line-height:1.3;cursor:pointer;align-self:flex-start}
-      .account-page .store-benefits-toggle:hover{text-decoration:underline}
-      .account-page .store-benefits-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
-      .account-page .product-status{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);padding:.25rem .45rem;font-size:.61rem;font-weight:850;letter-spacing:.01em;margin-top:auto;line-height:1.3;max-width:100%}
-      @media (hover:hover) and (pointer:fine){
-        .account-page .account-product-slot[data-store-lift="entering"] .account-product-card,
-        .account-page .account-product-slot.is-hovered .account-product-card,
-        .account-page .account-product-slot.is-expanded .account-product-card,
-        .account-page .account-product-slot[data-store-lift="settling"] .account-product-card{position:absolute;bottom:0;left:0;right:0}
-        .account-page .account-product-slot.is-hovered:not([data-store-lift="settling"]) .account-product-card,
-        .account-page .account-product-slot.is-expanded:not([data-store-lift="settling"]) .account-product-card{left:calc(-1 * var(--store-hover-left,0px));right:calc(-1 * var(--store-hover-right,0px));z-index:9;border-color:#e7bc41;box-shadow:0 20px 42px rgba(4,35,83,.24),0 0 0 1px rgba(243,195,67,.28);transform:translateY(-3px) scale(1.035);transform-origin:50% 100%;background:var(--bg-card)}
-      }
-      @media(prefers-reduced-motion:reduce){
-        .account-page .account-product-card,.account-page .store-benefits-list{transition:none}
-        .account-page .account-product-slot.is-hovered .account-product-card,.account-page .account-product-slot.is-expanded .account-product-card{transform:none}
-      }
+      .account-page .account-product-slot{min-width:0}
+      .account-page .account-product-card{position:relative;min-width:0;display:flex;flex-direction:column;padding:clamp(.58rem,.8vw,.8rem);border:1px solid var(--border);border-radius:var(--store-card-radius);background:var(--bg-card);box-sizing:border-box}
+      .account-page .account-product-card:focus-within{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+      @media(prefers-reduced-motion:reduce){.account-page .store-benefits-list{transition:none}}
       .account-page .account-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
       .account-page .account-cart-row{display:flex;align-items:center;justify-content:space-between;gap:.8rem;border-bottom:1px solid var(--border);padding:.75rem 0}
       .account-page .account-cart-row:last-child{border-bottom:0}
@@ -695,7 +776,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       @media(prefers-reduced-motion:reduce){.account-page .profile-mobile-toggle svg{transition:none}}
       .account-page .account-profile-content{display:block}
       .account-page .account-section-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
-      .account-page .account-section-tabs button{min-height:48px;padding:.75rem 1rem;font-weight:850;border-radius:9px}
+      .account-page .account-section-tabs button{min-height:48px;padding:.75rem 1rem;font-weight:850;border-radius:var(--store-control-radius)}
       .account-page .profile-side-links{font-size:.76rem;color:var(--text-muted);line-height:1.4}
       .account-cart-fab{position:fixed;right:max(1.25rem,env(safe-area-inset-right));bottom:max(1.25rem,env(safe-area-inset-bottom));z-index:160;display:grid;place-items:center;width:56px;height:56px;padding:0;border:2px solid #e2e8f0;border-radius:50%;background:#fff;color:#147d43;line-height:1;box-shadow:0 8px 24px rgba(4,35,83,.24);cursor:pointer;touch-action:manipulation;transition:box-shadow .2s ease}
       [data-theme='dark'] .account-cart-fab{background:#147d43;border-color:#147d43;color:#fff}
@@ -829,28 +910,61 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             <div style={{ display: 'flex', gap: '.8rem', alignItems: 'center', marginBottom: '.8rem' }}>
               <div className="profile-avatar">H</div>
               <div style={{ minWidth: 0 }}>
-                <h2 style={{ margin: 0, fontSize: '1rem' }}>Welcome to Hyperion</h2>
-                <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginTop: '.2rem' }}>Guest visitor</div>
+                <h2 style={{ margin: 0, fontSize: '1rem' }}>{hasSavedOfflineAccess ? 'Saved Hyperion account' : !sessionChecked ? 'Restoring your account…' : 'Welcome to Hyperion'}</h2>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginTop: '.2rem' }}>
+                  {hasSavedOfflineAccess ? 'Valid offline license on this device' : !sessionChecked ? 'Checking your saved session' : 'Guest visitor'}
+                </div>
               </div>
             </div>
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '.85rem' }}>
               <h3 style={{ margin: '0 0 .25rem', fontSize: '.98rem' }}>Your profile</h3>
-              <p className="profile-side-links" style={{ margin: '0 0 .8rem' }}>Sign in with Google to manage your Hyperion account, sync licenses, and complete purchases.</p>
-              <button type="button" className="btn btn-primary" disabled={!supabaseConfigured || busy} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>
-                {busy ? 'Opening Google…' : 'Sign in with Google'}
+              {hasSavedOfflineAccess
+                ? <p className="profile-side-links" role="status" style={{ margin: '0 0 .8rem' }}>Your saved track access remains available offline until its verified expiry. Google account details and purchases need an online sign-in; your license and study progress have not been cleared.</p>
+                : <p className="profile-side-links" style={{ margin: '0 0 .8rem' }}>{sessionChecked ? 'Sign in with Google to manage your Hyperion account, sync licenses, and complete purchases.' : 'Checking your saved Google session before offering sign-in.'}</p>}
+              <button type="button" className="btn btn-primary" disabled={!sessionChecked || !supabaseConfigured || busy || !online} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>
+                {!sessionChecked ? 'Checking session…' : !online ? 'Reconnect when online' : busy ? 'Opening Google…' : hasSavedOfflineAccess ? 'Reconnect Google account' : 'Sign in with Google'}
               </button>
-              <p className="profile-side-links" style={{ margin: '.7rem 0 0' }}>You can browse the Bond Store without signing in. Sign-in is required only when you proceed to checkout or manage your account.</p>
+              {!hasSavedOfflineAccess && sessionChecked && <p className="profile-side-links" style={{ margin: '.7rem 0 0' }}>You can browse the Bond Store without signing in. Sign-in is required only when you proceed to checkout or manage your account.</p>}
             </div>
           </section>}
         </aside>
 
         <main className="account-main">
           {isLayout ? children : <>
-          {session && <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />}
-          {session && accountTab === 'licenses' ? <>
+          {(session || hasSavedOfflineAccess) && <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />}
+          {hasSavedOfflineAccess && accountTab === 'licenses' ? (
+            <section style={card} aria-label="Saved offline licenses">
+              <div className="account-panel-title">
+                <div>
+                  <div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>VERIFIED ON THIS DEVICE</div>
+                  <h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>My licenses · offline access</h2>
+                </div>
+              </div>
+              <p style={{ lineHeight: 1.55, color: 'var(--text-muted)' }}>
+                Your locally verified licenses are still active. You can use downloaded reviewer content without a Google connection.
+                Orders, profile changes and new purchases require online sign-in.
+              </p>
+              {offlineSnapshot ? (
+                offlineSnapshot.isAdmin
+                  ? <p role="status">Administrator access · All reviewer tracks available offline.</p>
+                  : PAID_PRODUCTS.filter(item => offlineSnapshot.trackExpiries[item.trackLabel as keyof typeof offlineSnapshot.trackExpiries]).map(item =>
+                    <div key={item.code} style={{ padding: '.75rem 0', borderBottom: '1px solid var(--border)' }}>
+                      <strong>✓ {item.label}</strong>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '.86rem', marginTop: '.25rem' }}>
+                        {new Date(offlineSnapshot.trackExpiries[item.trackLabel as keyof typeof offlineSnapshot.trackExpiries]!).getUTCFullYear() >= 9999
+                          ? 'LIFETIME ACCESS · No subscription renewal'
+                          : 'ACTIVE · Valid until ' + new Date(offlineSnapshot.trackExpiries[item.trackLabel as keyof typeof offlineSnapshot.trackExpiries]!).toLocaleString()}
+                      </div>
+                    </div>)
+              ) : <p role="status">Verifying saved license details on this device…</p>}
+              <p style={{ margin: '1rem 0 0', fontSize: '.82rem', color: 'var(--text-muted)' }}>
+                License expiry is enforced locally. Reconnect Google when online to update account details; no automatic license-sync traffic is required for offline study.
+              </p>
+            </section>
+          ) : session && accountTab === 'licenses' ? <>
           <section style={card}>
             <div className="account-panel-title">
-              <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
+              <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR LICENSES</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
                 <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
                 <button type="button" className="btn btn-outline" style={{ padding: '.35rem .7rem', minHeight: 38, fontSize: '.78rem' }}
@@ -862,19 +976,26 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             {owned.length ? owned.map(item => {
               const transaction = orders.find(order => order.id === item.order_id)
               const expiry = licenseExpiryDetails(item.expires_at)
-              const expiringSoon = expiry.daysRemaining !== null && expiry.daysRemaining <= 7
+              const lifetime = item.source === 'lifetime'
+              const expiringSoon = !lifetime && expiry.daysRemaining !== null && expiry.daysRemaining <= 7
               return <div key={item.product_code} style={{ padding: '.9rem 0', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <strong>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code}</strong>
-                  <span style={{ color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 850 }}>{expiringSoon ? 'EXPIRING SOON' : 'ACTIVE'}</span>
+                  <span style={{ color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 850 }}>{lifetime ? 'LIFETIME' : expiringSoon ? 'EXPIRING SOON' : 'ACTIVE'}</span>
                 </div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>{item.source === 'google_play' ? 'Google Play subscription' : (item.license_term === 'week' ? 'Weekly' : item.license_term === 'month' ? 'Monthly' : 'Yearly') + ' website access'} · Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>{lifetime
+                    ? 'Lifetime access · ' + (item.lifetimeProvider === 'google_play' ? 'Google Play one-time purchase' : 'Website one-time purchase') + ' · No renewal'
+                    : (item.source === 'google_play' ? 'Google Play subscription' : (item.license_term === 'week' ? 'Weekly' : item.license_term === 'month' ? 'Monthly' : 'Yearly') + ' website access') + ' · Valid until ' + (item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable')}</div>
                 <div role="status" style={{ marginTop: '.45rem', padding: '.55rem .7rem', borderRadius: 8, background: expiringSoon ? 'var(--bg-elevated)' : 'transparent', border: expiringSoon ? '1px solid var(--border)' : '1px solid transparent', color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--text-muted)', fontSize: '.84rem', fontWeight: expiringSoon ? 800 : 600 }}>
-                  {expiry.label}{expiringSoon ? ' · You can purchase access again after this license expires.' : ''}
+                  {lifetime ? 'Access for the supported lifetime of Hyperion, including future question-bank updates.' : expiry.label}{item.source === 'website' ? ' · Extend now to keep all remaining days.' : ''}
                 </div>
                 <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
                   <strong style={{ display: 'block', marginBottom: '.25rem' }}>{item.source === 'google_play' ? 'Subscription details' : 'Transaction details'}</strong>
-                  {transaction ? <>
+                  {lifetime ? <>
+                    <div>Purchase: One-time, non-renewing</div>
+                    <div>Source: {item.lifetimeProvider === 'google_play' ? 'Google Play' : 'PayMongo'}</div>
+                    <div>Purchased: {new Date(item.granted_at).toLocaleString()}</div>
+                  </> : transaction ? <>
                     {transaction.customer_name && <div>Customer name: {transaction.customer_name}</div>}
                     <div>Access duration: {transaction.license_term === 'week' ? 'Weekly' : transaction.license_term === 'month' ? 'Monthly' : 'Yearly'}</div>
                     <div>Amount paid: ₱{transaction.amount_php}</div>
@@ -910,7 +1031,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   <span style={{ color: revoked ? 'var(--danger, #b91c1c)' : 'var(--text-muted)', fontSize: '.8rem', fontWeight: 850 }}>{revoked ? (item.source === 'google_play' ? 'INACTIVE' : 'REVOKED') : 'EXPIRED'}</span>
                 </div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '.88rem', marginTop: '.3rem' }}>
-                  {revoked ? (item.source === 'google_play' ? 'Google Play no longer reports this subscription as active.' : 'Access was revoked by an administrator.') : item.expires_at ? `Access ended on ${new Date(item.expires_at).toLocaleDateString()}.` : 'No valid expiry date is recorded.'}
+                  {revoked ? (item.source === 'lifetime' ? 'This one-time purchase was revoked or refunded.' : item.source === 'google_play' ? 'Google Play no longer reports this subscription as active.' : 'Access was revoked by an administrator.') : item.expires_at ? `Access ended on ${new Date(item.expires_at).toLocaleDateString()}.` : 'No valid expiry date is recorded.'}
                 </div>
                 {transaction && <div style={{ marginTop: '.5rem', color: 'var(--text-muted)', fontSize: '.82rem' }}>
                   {transaction.amount_php > 0 ? `Last recorded purchase: ₱${transaction.amount_php} · ` : ''}{new Date(transaction.paid_at || transaction.created_at).toLocaleDateString()}
@@ -922,71 +1043,33 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           </> : <>
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
-                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Unlimited practice, mock exams, and offline study for your chosen track. Active licenses cannot be purchased again.</p></div>
+                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Unlimited practice, mock exams, and offline study for your chosen track. Active website licenses can be extended without losing remaining days.</p></div>
                 <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>WEEK · MONTH · YEAR ACCESS</span>
               </div>
               <div className="account-products-grid">
                 {PAID_PRODUCTS.map(item => {
-                  const isOwned = owned.some(license => license.product_code === item.code)
+                  const currentLicense = owned.find(license => license.product_code === item.code)
+                  const isOwned = Boolean(currentLicense)
+                  const isGooglePlayOwned = currentLicense?.source === 'google_play'
                   const basketItem = basket.find(entry => entry.code === item.code)
                   const inBasket = Boolean(basketItem)
                   const selectedTerm = selectedTerms[item.code]
-                  const selectedPrice = priceForTerm(item, selectedTerm)
                   const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
                   const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
-                  return <div className={`account-product-slot${hoveredStore === item.code ? ' is-hovered' : ''}${expandedStorePerks === item.code ? ' is-expanded' : ''}`} key={item.code}
-                    onMouseEnter={event => {
-                      if (!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return
-                      beginStoreCardLift(event.currentTarget)
-                      setHoveredStore(item.code)
-                    }}
-                    onMouseLeave={event => {
-                      if (!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return
-                      // On desktop the full feature list is temporary: leaving
-                      // the card collapses it, even after See all was clicked.
-                      // Touch and keyboard toggles continue to work independently.
-                      setHoveredStore(current => current === item.code ? null : current)
-                      setExpandedStorePerks(current => current === item.code ? null : current)
-                      // Force a bottom-anchored exit; otherwise the old
-                      // is-expanded class skips settling and freezes the slot.
-                      settleStoreCardLift(event.currentTarget, true)
-                    }}>
-                    <article className={`account-product-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} aria-label={`${item.label} reviewer plan`}>
-                      <div className="product-art">
-                        <StoreBannerSymbol index={0} />
-                        <div className="store-banner-text"><strong>HYPERION</strong><small>{STORE_TRACK_CAPTIONS[item.code]}</small></div>
-                        <span className="store-banner-track">
-                          <StoreBannerSymbol index={STORE_CATEGORY_ICON[item.code]} />
-                          {STORE_LEVEL_ICON[item.code] != null && <StoreBannerSymbol index={STORE_LEVEL_ICON[item.code]!} small />}
-                        </span>
-                      </div>
-                    <h3 style={{ margin: 0, fontSize: '.94rem', minHeight: '2.3em', lineHeight: 1.2 }}>{item.label}</h3>
-                    <div className="product-price">₱{selectedPrice}<span style={{ fontSize: '.68rem', color: 'var(--text-muted)', fontWeight: 650 }}> / {selectedTerm}</span></div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '.61rem', fontWeight: 900, letterSpacing: '.04em' }}>CHOOSE DURATION</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '.25rem', margin: '.35rem 0 .65rem' }}>
-                      {LICENSE_TERMS.map(option => {
-                        const optionPrice = priceForTerm(item, option.code)
-                        const isSelected = selectedTerm === option.code
-                        return <button key={option.code} type="button" aria-label={`${item.label} ${option.label} ₱${optionPrice}`} aria-pressed={isSelected} disabled={busy || isOwned || manualPending} onClick={() => setSelectedTerms(old => ({ ...old, [item.code]: option.code }))} style={{ minWidth: 0, minHeight: 40, border: '1px solid ' + (isSelected ? 'var(--accent)' : 'var(--border)'), borderRadius: 7, padding: '.3rem .1rem', background: isSelected ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)', fontSize: '.66rem', lineHeight: 1.15, fontWeight: 800, cursor: busy || isOwned || manualPending ? 'not-allowed' : 'pointer' }}><span style={{ display: 'block' }}>{option.label}</span><span style={{ display: 'block', marginTop: '.12rem' }}>₱{optionPrice}</span></button>
-                      })}
-                    </div>
-                    <div className="store-feature-highlight">✦ Full reviewer access</div>
-                    <ul className="store-benefits-list" id={`store-benefits-${item.code}`} aria-label={`Premium features for ${item.label}`}>
-                      {STORE_FEATURES.map(feature => <li key={feature}>{feature}</li>)}
-                    </ul>
-                    <button type="button" className="store-benefits-toggle" aria-controls={`store-benefits-${item.code}`} aria-expanded={expandedStorePerks === item.code} onClick={event => {
-                      const slot = event.currentTarget.closest<HTMLElement>('.account-product-slot')
-                      if (slot && window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
-                        if (expandedStorePerks !== item.code) beginStoreCardLift(slot)
-                        else if (!slot.matches(':hover')) settleStoreCardLift(slot, true)
-                      }
-                      setExpandedStorePerks(current => current === item.code ? null : item.code)
-                    }}>
-                      {expandedStorePerks === item.code ? 'Show fewer features ↑' : 'See all 9 premium features ↓'}
-                    </button>
+                  return <div className="account-product-slot" key={item.code}>
+                    <article className={`account-product-card bond-store-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} aria-label={`${item.label} reviewer plan`}>
+                      <BondStoreCardContent
+                        product={item}
+                        term={selectedTerm}
+                        disabled={busy || isGooglePlayOwned || manualPending}
+                        onTermChange={newTerm => setSelectedTerms(old => ({ ...old, [item.code]: newTerm }))}
+                        expanded={expandedStorePerks === item.code}
+                        benefitsId={`store-benefits-${item.code}`}
+                        onToggleBenefits={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}
+                      />
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
-                    <button type="button" className="btn btn-primary" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)} style={{ width: '100%', marginTop: '.5rem', minHeight: 44, background: '#3abfc0', borderColor: '#3abfc0', color: '#fff', padding: '.5rem .25rem', fontSize: '.78rem' }}>
-                      {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'BUY NOW'}
+                    <button type="button" className="btn btn-primary store-buy-button" disabled={busy || isGooglePlayOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)}>
+                      {isGooglePlayOwned ? 'GOOGLE PLAY ACTIVE' : manualPending ? 'AWAITING REVIEW' : isOwned ? 'EXTEND LICENSE' : 'BUY NOW'}
                     </button>
 
                     </article>
@@ -997,6 +1080,36 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 Features unlock only for the purchased track during its active license. Offline review requires downloading that track, and cross-device progress uses the same Google account.
               </p>
             </section>
+            {lifetimeCheckoutEnabled && <section style={{ ...card, marginTop: '1rem' }} aria-label="One-time Lifetime Access">
+              <div className="account-panel-title">
+                <div>
+                  <div style={{ color: 'var(--accent)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>ONE-TIME PAYMENT</div>
+                  <h3 style={{ margin: '.25rem 0 0' }}>Lifetime Access</h3>
+                  <p style={{ margin: '.35rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.5 }}>
+                    Pay once for your chosen track, including future question-bank updates while Hyperion operates. No renewal.
+                    If you have an auto-renewing Google Play subscription, cancel it separately to avoid further charges.
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gap: '.5rem' }}>
+                {PAID_PRODUCTS.map(product => {
+                  const alreadyLifetime = owned.some(item => item.product_code === product.code && item.source === 'lifetime')
+                  const pendingLifetime = pendingLifetimeOrders.find(item => item.product_code === product.code)
+                  return <div key={product.code} style={{ display: 'flex', gap: '.6rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', border: '1px solid var(--border)', padding: '.65rem' }}>
+                    <div style={{ minWidth: 0 }}><strong>{product.label}</strong><div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>₱{product.lifetimePrice.toLocaleString()} · One time</div></div>
+                    <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
+                      <button className="btn btn-outline" type="button" disabled={busy || alreadyLifetime || !session}
+                        onClick={() => void buyLifetime(product.code)}>
+                        {alreadyLifetime ? 'LIFETIME OWNED' : pendingLifetime ? 'RESUME CHECKOUT' : 'BUY LIFETIME'}
+                      </button>
+                      {pendingLifetime && <button className="btn btn-outline" type="button" disabled={busy}
+                        onClick={() => void cancelLifetimeCheckout(pendingLifetime.id)}>Cancel checkout</button>}
+                    </div>
+                  </div>
+                })}
+              </div>
+              <p style={{ fontSize: '.76rem', color: 'var(--text-muted)', marginTop: '.65rem' }}>Secure QR Ph checkout through PayMongo. The purchase becomes active only after PayMongo confirms the payment.</p>
+            </section>}
 
 
           </>}

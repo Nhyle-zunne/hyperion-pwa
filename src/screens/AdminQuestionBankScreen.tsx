@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import EditorTextarea from '../components/EditorTextarea'
+import '../styles/admin-question-editor.css'
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import AdminNavigation from '../components/AdminNavigation'
+import { isAllQuestionBankScope, questionBankScopeTrack } from '../lib/questionBankPicker'
+import type { AdminSearchResult } from '../../worker/adminQuestionSearch'
 import QuestionBankCombobox from '../components/QuestionBankCombobox'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
 import { editBankQuestion, readEditableBank, type QuestionEdit } from '../lib/questionBankEditor'
+import { QUESTION_MEDIA_LIMIT, mediaTrackForBankPath } from '../lib/questionMedia'
+import { uploadQuestionImage, type ImageUploadProgress } from '../lib/questionMediaUpload'
 
 type Asset = { path: string; label: string; track: string; competenceId: string; part: number | null; format: 'standard' | 'gmdss'; repositoryPath?: string }
 type QuestionPreview = { questionText: string; options: string[]; correctAnswerIndex: number; explanation?: string; isRetired?: boolean }
 type Preview = { requestId: string; baseHead: string; validationId: string; files: { path: string; questionCount: number; previousCount: number; changed: number; appended: number; explanationsPreserved?: number; staleExplanationsCleared?: number; corrections: { number: number; before: QuestionPreview; after: QuestionPreview }[] }[] }
 type QueueStatus = 'ready' | 'publishing' | 'success' | 'error'
-type QueueItem = { id: string; file: File; targetPath: string; status: QueueStatus; error?: string; questionCount?: number; baseHead?: string }
+type QueueItem = { id: string; file: File; targetPath: string; status: QueueStatus; error?: string; questionCount?: number; baseHead?: string; bankRevision?: string }
 const TRACKS = [
   ['DECK_OIC_NW', 'Deck OIC-NW'],
   ['GMDSS_GOC', 'GMDSS GOC'],
@@ -42,6 +49,7 @@ function bytesToBase64(bytes: Uint8Array) {
 }
 
 export default function AdminQuestionBankScreen() {
+  const imagePickerRef = useRef<HTMLInputElement>(null)
   const pickerRef = useRef<HTMLInputElement>(null)
   const [assets, setAssets] = useState<Asset[]>([])
   const [publisherReady, setPublisherReady] = useState<boolean | null>(null)
@@ -54,14 +62,38 @@ export default function AdminQuestionBankScreen() {
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
   const [batchResult, setBatchResult] = useState<{ attempted: number; updated: number; failed: number } | null>(null)
+  const [pickerValue, setPickerValue] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<AdminSearchResult[]>([])
+  const [searchRevision, setSearchRevision] = useState('')
+  const [searchBusy, setSearchBusy] = useState(false)
+  const [searchError, setSearchError] = useState('')
+  const [searchSummary, setSearchSummary] = useState('')
+  const searchAbort = useRef<AbortController | null>(null)
+  const editorLayoutRef = useRef<HTMLDivElement>(null)
+  const editorFormRef = useRef<HTMLFieldSetElement>(null)
+  const allScope = isAllQuestionBankScope(pickerValue)
   const [editorTarget, setEditorTarget] = useState('')
   const [editorText, setEditorText] = useState('')
   const [editorOriginalText, setEditorOriginalText] = useState('')
   const [editorBaseHead, setEditorBaseHead] = useState('')
+  const [editorRevision, setEditorRevision] = useState('')
   const [editorSearch, setEditorSearch] = useState('')
   const [editorOrdinal, setEditorOrdinal] = useState(0)
   const [editorDraft, setEditorDraft] = useState<QuestionEdit | null>(null)
   const [editorBusy, setEditorBusy] = useState(false)
+  const imageUploadAbort = useRef<AbortController | null>(null)
+  const [imageProgress, setImageProgress] = useState<ImageUploadProgress | null>(null)
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageAlt, setImageAlt] = useState('')
+  const [imagePlacement, setImagePlacement] = useState<'question' | 'explanation'>('question')
+  const selectedImageUpload = useRef({ path: '', ordinal: 0 })
+  selectedImageUpload.current = { path: editorTarget, ordinal: editorOrdinal }
+  useEffect(() => {
+    setImageProgress(null)
+    return () => { imageUploadAbort.current?.abort() }
+  }, [editorTarget, editorOrdinal])
+  const editorImageTrack = mediaTrackForBankPath(editorTarget)
   const [editorError, setEditorError] = useState('')
   const [editorNotice, setEditorNotice] = useState<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null)
   const editorBank = useMemo(() => {
@@ -73,29 +105,43 @@ export default function AdminQuestionBankScreen() {
     return !needle || String(q.ordinal).includes(needle) || q.questionText.toLowerCase().includes(needle)
   }).slice(0, 150) || [], [editorBank, editorSearch])
   const selectedEditorQuestion = editorBank?.questions.find(q => q.ordinal === editorOrdinal) || null
-  // The form is separate from the applied CSV draft. Do not silently queue
+  // The form is separate from the staged CSV draft. Do not silently queue
   // old CSV bytes or discard typed edits when switching questions.
   const editorFormDirty = !!(selectedEditorQuestion && editorDraft && (
     editorDraft.questionText.trim() !== selectedEditorQuestion.questionText ||
     editorDraft.correctAnswerIndex !== selectedEditorQuestion.correctAnswerIndex ||
     editorDraft.explanation !== selectedEditorQuestion.explanation ||
     editorDraft.retired !== selectedEditorQuestion.retired ||
+    JSON.stringify(editorDraft.imageAttachments || []) !== JSON.stringify(selectedEditorQuestion.imageAttachments) ||
     editorDraft.options.length !== selectedEditorQuestion.options.length ||
     editorDraft.options.some((option, i) => option.trim() !== selectedEditorQuestion.options[i])
   ))
+  useEffect(() => {
+    const form = editorFormRef.current
+    if (!form) return
+    const resize = () => editorLayoutRef.current?.style.setProperty('--editor-form-height', `${Math.ceil(form.getBoundingClientRect().height)}px`)
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(form)
+    return () => observer.disconnect()
+  }, [editorTarget, editorOrdinal, !!editorBank])
+  useEffect(() => () => searchAbort.current?.abort(), [])
   const editorHasAppliedEdits = !!editorText && editorText !== editorOriginalText
   const editorDraftQueued = queue.some(item => !!item.baseHead && item.targetPath === editorTarget && item.status !== 'success')
   const updateEditorDraft = (draft: QuestionEdit) => {
     setEditorDraft(draft)
+    setQueue(old => old.filter(item => !(item.baseHead && item.targetPath === editorTarget && item.status !== 'success')))
+    setPreview(null)
+    setBatchResult(null)
     setEditorError('')
     setEditorNotice(null)
   }
 
-  const call = useCallback(async (body: Record<string, unknown>) => {
+  const call = useCallback(async (body: Record<string, unknown>, signal?: AbortSignal) => {
     if (!supabase) throw new Error('Question-bank administration is not configured.')
     const { data: auth } = await supabase.auth.getSession()
     if (!auth.session?.access_token) throw new Error('Sign in with your administrator account.')
-    const response = await fetch('/api/question-bank/admin', { method: 'POST', headers: { Authorization: 'Bearer ' + auth.session.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const response = await fetch('/api/question-bank/admin', { method: 'POST', headers: { Authorization: 'Bearer ' + auth.session.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal })
     let data: any
     try { data = await response.json() } catch { throw new Error('The publishing service could not confirm this action. Keep the batch and retry; saved study data is preserved.') }
     if (!response.ok || data?.error) throw Object.assign(new Error(data?.error || 'GitHub administration could not be completed.'), { status: response.status })
@@ -179,117 +225,188 @@ export default function AdminQuestionBankScreen() {
   }
 
 
-  const loadEditor = async () => {
-    if (!editorTarget) return
+  const mayLeaveEditor = () => {
+    if (imageUploading || editorFormDirty || (editorHasAppliedEdits && !editorDraftQueued)) {
+      setEditorNotice({ kind: 'error', text: 'Add current changes to the publish queue or discard them before opening another question bank.' })
+      return false
+    }
+    return true
+  }
+
+  const loadEditor = async (path = editorTarget, ordinal = 1, expectedRevision?: string) => {
+    if (!path || !assets.some(asset => asset.path === path) || !mayLeaveEditor()) return
+    const queuedDraft = queue.find(item => item.baseHead && item.targetPath === path && item.status !== 'success')
+    if (expectedRevision && ((path === editorTarget && editorBank && editorRevision !== expectedRevision && (editorHasAppliedEdits || editorDraftQueued)) || (queuedDraft?.bankRevision && queuedDraft.bankRevision !== expectedRevision))) {
+      setEditorError('This bank changed since your draft was opened. Your edits are preserved. Clear its queue and discard the bank draft before reopening updated search results.')
+      return
+    }
+    if (path === editorTarget && editorBank && (!expectedRevision || editorRevision === expectedRevision)) { chooseEditorQuestion(ordinal); return }
     setEditorBusy(true)
     setEditorError('')
     setEditorNotice(null)
     try {
-      const result = await call({ action: 'editor-load', path: editorTarget })
-      if (result.path !== editorTarget || typeof result.csvText !== 'string' || !/^[a-f0-9]{40}$/.test(result.baseHead || '')) {
-        throw new Error('The question editor received an invalid source revision.')
-      }
-      const bank = readEditableBank(editorTarget, result.csvText)
-      setEditorText(result.csvText)
+      const result = await call({ action: 'editor-load', path })
+      if (result.path !== path || typeof result.csvText !== 'string' || !/^[a-f0-9]{40}$/.test(result.baseHead || '') || !/^[a-f0-9]{40}$/.test(result.bankRevision || '')) throw new Error('The question editor received an invalid source revision.')
+      if (expectedRevision && result.bankRevision !== expectedRevision) throw new Error('The question bank changed. Search again before opening this result.')
+      const queued = queue.find(item => item.baseHead && item.targetPath === path && item.status !== 'success')
+      if (queued?.bankRevision && queued.bankRevision !== result.bankRevision) throw new Error('This queued draft belongs to an older bank version. Clear it before reopening this bank.')
+      const text = queued ? await queued.file.text() : result.csvText
+      const bank = readEditableBank(path, text)
+      const selected = bank.questions.find(question => question.ordinal === ordinal)
+      if (!selected) throw new Error('This question is no longer available. Search again.')
+      setEditorTarget(path)
+      setEditorText(text)
       setEditorOriginalText(result.csvText)
-      setEditorBaseHead(result.baseHead)
-      setEditorOrdinal(bank.questions[0].ordinal)
-      const first = bank.questions[0]
-      setEditorDraft({ questionText: first.questionText, options: first.options, correctAnswerIndex: first.correctAnswerIndex, explanation: first.explanation, retired: first.retired })
-      setMessage('Question set loaded securely. Changes are drafts until you validate and publish.')
+      setEditorBaseHead(queued?.baseHead || result.baseHead)
+      setEditorRevision(result.bankRevision)
+      setEditorOrdinal(selected.ordinal)
+      setEditorSearch('')
+      setEditorDraft({ questionText: selected.questionText, options: selected.options.slice(), correctAnswerIndex: selected.correctAnswerIndex, explanation: selected.explanation, retired: selected.retired, imageAttachments: selected.imageAttachments })
+      setMessage(queued ? 'Queued draft opened. Your earlier edits are preserved.' : 'Question set loaded securely. Changes are drafts until you validate and publish.')
       setIsError(false)
     } catch (reason) {
       setEditorError(reason instanceof Error ? reason.message : 'The question set could not be opened.')
-      setEditorText('')
-      setEditorOriginalText('')
-      setEditorBaseHead('')
-      setEditorDraft(null)
     } finally { setEditorBusy(false) }
   }
 
+  const searchAcrossBanks = async () => {
+    if (!allScope || searchBusy) return
+    searchAbort.current?.abort()
+    const controller = new AbortController()
+    searchAbort.current = controller
+    setSearchBusy(true)
+    setSearchResults([])
+    setSearchSummary('')
+    setSearchError('')
+    const collected: AdminSearchResult[] = []
+    let cursor = 0, revision: string | undefined
+    let truncated = false
+    try {
+      for (let page = 0; page < assets.length + 1; page++) {
+        const track = questionBankScopeTrack(pickerValue)
+        const reply = await call({ action: 'editor-search', query: searchQuery, ...(track ? { track } : {}), limit: 100 - collected.length, cursor, ...(revision ? { bankRevision: revision } : {}) }, controller.signal)
+        if (!Array.isArray(reply.results) || typeof reply.bankRevision !== 'string' || !/^[a-f0-9]{40}$/.test(reply.bankRevision) || (revision && revision !== reply.bankRevision)) throw new Error('The search result changed. Please search again.')
+        if (reply.results.some((item: AdminSearchResult) => !item || typeof item !== 'object' || !assets.some(asset => asset.path === item.path && asset.track === item.track && asset.competenceId === item.competenceId && asset.part === item.part) || !Number.isSafeInteger(item.ordinal) || item.ordinal < 1 || typeof item.questionText !== 'string' || typeof item.isRetired !== 'boolean')) throw new Error('The search returned invalid question references.')
+        revision = reply.bankRevision
+        collected.push(...reply.results)
+        if (collected.length > 100) throw new Error('The search response exceeded its limit.')
+        truncated = reply.truncated === true
+        if (collected.length === 100 || reply.nextCursor == null) { truncated ||= reply.nextCursor != null; break }
+        if (!Number.isSafeInteger(reply.nextCursor) || reply.nextCursor <= cursor || reply.nextCursor > assets.length) throw new Error('The search returned an invalid continuation.')
+        cursor = reply.nextCursor
+      }
+      if (controller.signal.aborted) return
+      setSearchResults(collected)
+      setSearchRevision(revision || '')
+      setSearchSummary(`${collected.length} matching question${collected.length === 1 ? '' : 's'}${truncated ? ' · Showing the first 100; narrow your search for more.' : ''}`)
+    } catch (error) {
+      if (!controller.signal.aborted) setSearchError(error instanceof Error ? error.message : 'Question search is unavailable. Please retry.')
+    } finally { if (!controller.signal.aborted) setSearchBusy(false) }
+  }
+
   const chooseEditorQuestion = (ordinal: number) => {
+    if (imageUploading) { setEditorNotice({kind:'info',text:'Complete the image upload before switching questions.'}); return }
     if (ordinal !== editorOrdinal && editorFormDirty) {
-      setEditorNotice({ kind: 'error', text: `Question #${editorOrdinal} has unapplied form changes. Apply or discard them before selecting another question.` })
+      setEditorNotice({ kind: 'error', text: `Question #${editorOrdinal} has changes that are not queued. Add them to the publish queue or discard them before selecting another question.` })
       return
     }
     const question = editorBank?.questions.find(q => q.ordinal === ordinal)
     if (!question) return
     setEditorOrdinal(ordinal)
-    setEditorDraft({ questionText: question.questionText, options: question.options.slice(), correctAnswerIndex: question.correctAnswerIndex, explanation: question.explanation, retired: question.retired })
+    setEditorDraft({ questionText: question.questionText, options: question.options.slice(), correctAnswerIndex: question.correctAnswerIndex, explanation: question.explanation, retired: question.retired, imageAttachments: question.imageAttachments })
     setEditorError('')
     setEditorNotice(null)
   }
 
-  const applyEditorDraft = () => {
-    if (!editorBank || !editorDraft || !selectedEditorQuestion) {
-      setEditorNotice({ kind: 'error', text: 'Open a question bank and select a question first.' })
+  const attachImageToEditor = async (file: File) => {
+    if (!editorDraft || !selectedEditorQuestion || !editorTarget) return
+    const track = mediaTrackForBankPath(editorTarget)
+    if (!track) {setEditorError('Select a supported question bank before uploading an image.');return}
+    if ((editorDraft.imageAttachments?.length || 0) >= QUESTION_MEDIA_LIMIT) {
+      setEditorError('Each question supports up to four images. Remove one before uploading another.')
       return
     }
-    if (!editorFormDirty) {
-      setEditorNotice({ kind: 'info', text: 'No changes to apply yet. Change a question field, answer, explanation or retirement status first.' })
-      return
-    }
+    const target = {path:editorTarget,ordinal:editorOrdinal}
+    const alt = imageAlt.trim() || `${imagePlacement === 'question' ? 'Diagram' : 'Explanation diagram'} for question ${editorOrdinal}`
+    const placement = imagePlacement
+    const controller = new AbortController()
+    imageUploadAbort.current = controller
+    setImageUploading(true)
+    setQueue(old => old.filter(item => !(item.baseHead && item.targetPath === editorTarget && item.status !== 'success')))
+    setPreview(null)
+    setBatchResult(null)
+    setEditorError('')
     try {
-      const updated = editBankQuestion(editorBank, editorOrdinal, editorDraft)
-      const next = readEditableBank(editorTarget, updated)
-      const selection = next.questions.find(q => q.ordinal === editorOrdinal)
-      if (!selection || next.questions.length !== editorBank.questions.length ||
-          next.questions.some((item, i) => item.ordinal !== editorBank.questions[i].ordinal || item.rowIndex !== editorBank.questions[i].rowIndex)) {
-        throw Error('The question-bank structure changed. The edit was not saved.')
+      const ref = await uploadQuestionImage(track, file, placement, alt, {
+        signal: controller.signal,
+        onProgress: progress => {
+          if (!controller.signal.aborted) setImageProgress(progress)
+        }
+      })
+      if (selectedImageUpload.current.path !== target.path ||
+          selectedImageUpload.current.ordinal !== target.ordinal) {
+        setEditorNotice({kind:'info',text:'Image saved privately, but the selected question changed. Reopen it before attaching.'})
+        return
       }
-      setEditorText(updated)
-      setEditorDraft({ questionText: selection.questionText, options: selection.options.slice(), correctAnswerIndex: selection.correctAnswerIndex, explanation: selection.explanation, retired: selection.retired })
-      // If this bank was already queued, applying another change invalidates
-      // the previously built File. Prevent publishing an obsolete snapshot.
-      setQueue(old => old.filter(item => !(item.baseHead && item.targetPath === editorTarget && item.status !== 'success')))
-      setPreview(null)
-      setBatchResult(null)
-      setEditorError('')
-      setEditorNotice({ kind: 'success', text: `Question #${editorOrdinal} saved to the local draft. ${editorDraftQueued ? 'An older queued version was cleared. ' : ''}Next: add the edited bank to the publish queue.` })
-      setMessage('Question edit saved locally. Add the edited bank to the queue, validate, then publish. No live questions have changed.')
-      setIsError(false)
-    } catch (reason) {
-      const error = reason instanceof Error ? reason.message : 'This question could not be edited.'
-      setEditorError(error)
-      setEditorNotice({ kind: 'error', text: error })
-    }
+      setEditorDraft(prev => {
+        if (!prev) return null
+        const images = prev.imageAttachments || []
+        return {...prev,imageAttachments:[
+          ...images.filter(image=>image.sha256!==ref.sha256 || image.placement!==ref.placement),ref
+        ]}
+      })
+      setImageAlt('')
+      setEditorNotice({kind:'success',text:'Image uploaded. Add the edited question to the publish queue when ready.'})
+    } catch (error) {
+      if (controller.signal.aborted) return
+      setImageProgress(null)
+      setEditorError(error instanceof Error ? error.message : 'Image upload failed.')
+    } finally {setImageUploading(false)}
   }
 
   const queueEditorChanges = () => {
     const feedback = (text: string) => { setEditorError(''); setEditorNotice({ kind: 'error', text }) }
-    if (!editorText || !editorTarget || !editorBaseHead) {
+    if (busy || editorBusy || imageUploading || (!editorFormDirty && editorDraftQueued)) return
+    if (!editorBank || !editorDraft || !selectedEditorQuestion || !editorTarget || !editorBaseHead) {
       feedback('Open a question bank before adding changes to the queue.')
       return
     }
-    if (editorFormDirty) {
-      feedback('Apply the current edit to the local draft first, then add the edited bank to the queue.')
-      return
-    }
-    if (!editorHasAppliedEdits) {
-      feedback('No applied edits to queue. Change a question and click Apply question edit to draft first.')
+    if (!editorFormDirty && !editorHasAppliedEdits) {
+      feedback('No changes to queue. Change the question, choices, image or explanation first.')
       return
     }
     if (queue.some(item => item.status !== 'success' && item.targetPath !== editorTarget)) {
       feedback('Publish or clear the existing upload queue first. An edited question set cannot be mixed with another upload.')
       return
     }
-    const file = new File([editorText], rawCsvName(editorTarget), { type: 'text/csv' })
-    if (file.size > MAX_FILE_BYTES) {
-      feedback('This edited CSV exceeds 700 KB. The current draft was not queued.')
-      return
+    try {
+      const updated = editorFormDirty ? editBankQuestion(editorBank, editorOrdinal, editorDraft) : editorText
+      const next = readEditableBank(editorTarget, updated)
+      const selection = next.questions.find(q => q.ordinal === editorOrdinal)
+      if (!selection || next.questions.length !== editorBank.questions.length ||
+          next.questions.some((item, i) => item.ordinal !== editorBank.questions[i].ordinal || item.rowIndex !== editorBank.questions[i].rowIndex)) {
+        throw Error('The question-bank structure changed. The edit was not queued.')
+      }
+      const file = new File([updated], rawCsvName(editorTarget), { type: 'text/csv' })
+      if (file.size > MAX_FILE_BYTES) throw Error('This edited CSV exceeds 700 KB. The current draft was not queued.')
+      setEditorText(updated)
+      setEditorDraft({ questionText: selection.questionText, options: selection.options.slice(), correctAnswerIndex: selection.correctAnswerIndex, explanation: selection.explanation, retired: selection.retired, imageAttachments: selection.imageAttachments })
+      setQueue(old => [...old.filter(item => item.targetPath !== editorTarget || item.status === 'success'), {
+        id: 'editor-' + crypto.randomUUID(), file, targetPath: editorTarget, status: 'ready', baseHead: editorBaseHead, bankRevision: editorRevision
+      }])
+      setPreview(null)
+      setBatchResult(null)
+      setEditorError('')
+      setEditorNotice({ kind: 'success', text: `Question #${editorOrdinal} saved in the publish queue. Nothing is published until you validate and publish.` })
+      setMessage('Edited questions queued. Validate and review before publishing.')
+      setIsError(false)
+    } catch (reason) {
+      feedback(reason instanceof Error ? reason.message : 'This question could not be queued.')
     }
-    setQueue(old => [...old.filter(item => item.targetPath !== editorTarget || item.status === 'success'), {
-      id: 'editor-' + crypto.randomUUID(), file, targetPath: editorTarget, status: 'ready', baseHead: editorBaseHead
-    }])
-    setPreview(null)
-    setBatchResult(null)
-    setEditorError('')
-    setEditorNotice({ kind: 'success', text: 'Edited question bank added to the upload queue. Next: validate the batch, review the changes, then publish to GitHub.' })
-    setMessage('Edited questions are in the upload queue. Validate and review the changes before publishing.')
-    setIsError(false)
   }
 
   const publishBatch = async () => {
+    if (imageUploading) { setMessage('Finish the image upload and add the edited question to the queue before validating.'); setIsError(true); return }
     const todo = queue.filter(item => item.status !== 'success')
     if (!todo.length) {
       setMessage('All files in this queue are already published.')
@@ -356,54 +473,48 @@ export default function AdminQuestionBankScreen() {
     } finally { setBusy(false) }
   }
 
-  const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '1rem', marginBottom: '1rem', minWidth: 0 }
+  const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '.8rem', marginBottom: '.75rem', minWidth: 0 }
   const secondaryText: React.CSSProperties = { color: 'var(--text-muted)', fontSize: '.84rem', lineHeight: 1.5 }
   const statusLabel: Record<QueueStatus, string> = { ready: 'READY', publishing: 'PUBLISHING…', success: 'PUBLISHED', error: 'FAILED' }
 
 
-  return <div className="screen" style={{ width: 'min(calc(100% - 1rem), 1180px)', maxWidth: 1180, margin: '0 auto', paddingBottom: '2rem' }}>
+  return <div className="screen admin-qb-page">
     <style>{" .admin-qb-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:190px;border:2px dashed var(--border);border-radius:10px;padding:1.25rem;text-align:center;background:var(--bg-elevated);transition:border-color .15s,background .15s}.admin-qb-drop.is-dragging{border-color:var(--accent);background:var(--bg-card)}.admin-qb-folder{border:1px solid var(--border);border-radius:8px;background:var(--bg-card);overflow:hidden}.admin-qb-folder-summary{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;list-style:none;cursor:pointer;padding:.7rem .8rem;min-height:28px}.admin-qb-folder-summary::-webkit-details-marker{display:none}.admin-qb-folder[open] .admin-qb-folder-summary{border-bottom:1px solid var(--border);background:var(--bg-elevated)}.admin-qb-folder-glyph{font-size:1rem}.admin-qb-folder-name{font-weight:850;font-size:.86rem}.admin-qb-folder-count{color:var(--text-muted);font-size:.78rem}.admin-qb-folder-state{margin-left:auto;font-size:.72rem;font-weight:850;color:var(--text-muted)}.admin-qb-folder-state.is-done{color:var(--success,#15803d)}.admin-qb-folder-state.has-error{color:var(--danger,#dc2626)}.admin-qb-folder-files{padding:.35rem .55rem}.admin-qb-file-row{display:grid;grid-template-columns:minmax(160px,1fr) minmax(200px,1.25fr) minmax(95px,.6fr) auto;gap:.55rem;align-items:center;padding:.5rem .35rem;border-bottom:1px solid var(--border);min-width:0}.admin-qb-file-row:last-child{border-bottom:0}.admin-qb-file-primary{display:flex;align-items:flex-start;gap:.45rem;min-width:0}.admin-qb-file-glyph{font-size:.9rem;margin-top:.05rem}.admin-qb-file-primary>div{display:flex;align-items:baseline;gap:.35rem .5rem;flex-wrap:wrap;min-width:0}.admin-qb-file-name{font-size:.8rem;overflow-wrap:anywhere}.admin-qb-file-size,.admin-qb-file-questions{font-size:.72rem;color:var(--text-muted)}.admin-qb-file-questions{color:var(--success,#15803d)}.admin-qb-target-label{font-size:.64rem;font-weight:850;color:var(--text-muted);min-width:0}.admin-qb-target-select{width:100%;margin-top:.18rem;background:var(--bg-elevated);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.45rem;font:inherit;font-size:.76rem;min-width:0}.admin-qb-path{display:block;font-size:.67rem;font-weight:500;margin-top:.15rem;overflow-wrap:anywhere}.admin-qb-file-status{display:flex;flex-direction:column;align-items:flex-start;gap:.15rem;min-width:0}.admin-qb-status-pill{font-size:.67rem;font-weight:900}.admin-qb-status-pill.success{color:var(--success,#15803d)}.admin-qb-status-pill.error{color:var(--danger,#dc2626)}.admin-qb-status-pill.ready{color:var(--text-muted)}.admin-qb-status-pill.publishing{color:var(--accent)}.admin-qb-row-error{font-size:.68rem;color:var(--danger,#dc2626);overflow-wrap:anywhere}.admin-qb-backup-note{font-size:.66rem;color:var(--text-muted)}.admin-qb-remove{padding:.35rem .5rem;font-size:.72rem}.admin-qb-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:.9rem;padding-top:.7rem;border-top:1px solid var(--border)}@media(max-width:800px){.admin-qb-file-row{grid-template-columns:minmax(0,1fr) auto;gap:.45rem}.admin-qb-target-label{grid-column:1/-1}.admin-qb-file-status{grid-column:1}.admin-qb-remove{grid-column:2;grid-row:3;justify-self:end}}"} </style>
 
-    <style>{`
-      .admin-qb-editor-layout{display:grid;grid-template-columns:minmax(170px,1fr) minmax(0,2fr);gap:12px;align-items:start}
-      .admin-qb-editor-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin-top:1rem;padding:1rem;border:1px solid var(--border);border-radius:10px;background:var(--bg-elevated)}
-      .admin-qb-editor-action{min-width:0;display:flex;flex-direction:column;gap:.45rem;padding:.85rem;border:1px solid var(--border);border-radius:9px;background:var(--bg-card)}
-      .admin-qb-editor-action strong{font-size:.87rem;line-height:1.25}
-      .admin-qb-editor-action p{font-size:.75rem;line-height:1.45;color:var(--text-muted);margin:0 0 .3rem}
-      .admin-qb-editor-action .btn{width:100%;min-height:44px;margin-top:auto;white-space:normal;line-height:1.3;padding:.55rem .65rem}
-      .admin-qb-editor-action .admin-qb-discard{align-self:flex-start;margin-top:.2rem;padding:.15rem 0;background:transparent;border:0;color:var(--danger,#dc2626);cursor:pointer;font-size:.74rem;font-weight:750;text-decoration:underline}
-      .admin-qb-editor-status{grid-column:1/-1;margin:0;padding:.65rem .8rem;border:1px solid var(--border);border-radius:8px;font-size:.79rem;line-height:1.45;background:var(--bg-card);overflow-wrap:anywhere}
-      .admin-qb-editor-status.is-success{border-color:var(--success,#15803d);color:var(--success,#15803d)}
-      .admin-qb-editor-status.is-error{border-color:var(--danger,#dc2626);color:var(--danger,#dc2626)}
-      .admin-qb-editor-queue-link{grid-column:1/-1;justify-self:start;color:var(--accent);font-weight:800;font-size:.79rem}
-      @media(max-width:800px){.admin-qb-editor-layout{grid-template-columns:minmax(0,1fr)}.admin-qb-editor-actions{grid-template-columns:minmax(0,1fr);padding:.7rem}.admin-qb-editor-action{padding:.75rem}}
-    `}</style>
     <AdminNavigation />
     <h1 className="page-title" style={{ textAlign: 'left' }}>Question Bank Update</h1>
-    <p className="subtitle" style={{ textAlign: 'left' }}>Drag in raw .csv files or already-encrypted .csv.enc files, individually or in bulk. Hyperion matches filenames to question sets and validates each file before replacement.</p>
+    <p className="subtitle" style={{ textAlign: 'left' }}>Edit questions or upload CSV files. Changes stay in the queue until you validate and publish.</p>
     {publisherReady === false && !loading && <div role="status" style={card}>Publishing needs the GITHUB_BANK_WRITE_TOKEN secret in Cloudflare. Your bank remains available for study.</div>}
     {message && <div role="status" aria-live="polite" style={{ ...card, borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--success, #15803d)' }}>{message}</div>}
     <p style={secondaryText}>Files publish directly to <a href="https://github.com/Nhyle-zunne/hyperion-reviewer/tree/main/app/src/main/assets/questions" target="_blank" rel="noopener noreferrer">the shared Android question folder on GitHub</a>. Upload up to 10 files per release.</p>
 
     <section style={card} aria-label="Edit or retire questions directly">
       <h2 style={{ fontSize: '1.1rem', marginTop: 0 }}>Edit, retire or restore questions</h2>
-      <p style={secondaryText}>Select a track and competence to change a question, its choices, correct answer, explanation or retirement status. The original question numbers and historical records stay untouched. Changes use the same encrypted GitHub validation and publication process as CSV uploads.</p>
+      <p style={secondaryText}>Choose a question, make your changes and add them to the publish queue. Question numbers and saved history are preserved.</p>
       <div style={{ display: 'grid', gap: '.35rem', marginBottom: '.75rem' }}>
         <strong style={{ fontSize: '.82rem' }}>TRACK / COMPETENCE / PART</strong>
-        <QuestionBankCombobox assets={assets} tracks={TRACKS} value={editorTarget}
-          disabled={loading || busy || editorBusy}
+        <QuestionBankCombobox assets={assets} tracks={TRACKS} value={pickerValue}
+          disabled={loading || busy || editorBusy || searchBusy || imageUploading}
           onChange={path => {
-            setEditorTarget(path)
+            if (path === pickerValue || !mayLeaveEditor()) return
+            searchAbort.current?.abort()
+            setSearchResults([])
+            setSearchError('')
+            setSearchSummary('')
+            setSearchQuery('')
+            setPickerValue(path)
+            setEditorTarget(isAllQuestionBankScope(path) ? '' : path)
             setEditorText('')
             setEditorOriginalText('')
             setEditorBaseHead('')
+            setEditorRevision('')
             setEditorOrdinal(0)
             setEditorDraft(null)
             setEditorError('')
             setEditorNotice(null)
           }} />
       </div>
-      <button type="button" className="btn btn-outline"
+      {!allScope && <button type="button" className="btn btn-outline"
         disabled={!editorTarget || !assets.some(asset => asset.path === editorTarget) || !publisherReady || editorBusy || busy || loading}
         style={{
           opacity: !editorTarget ? .4 : 1,
@@ -411,73 +522,119 @@ export default function AdminQuestionBankScreen() {
           pointerEvents: !editorTarget ? 'none' : undefined,
           transition: 'opacity .16s ease'
         }}
-        onClick={() => void withPageLoading('Opening encrypted question bank for editing', loadEditor)}>
+        onClick={() => void withPageLoading('Opening encrypted question bank for editing', () => loadEditor())}>
         {editorBusy ? 'OPENING…' : 'OPEN QUESTION BANK'}
-      </button>
-      {!editorTarget && <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', margin: '.45rem 0 .1rem' }}>
+      </button>}
+      {!pickerValue && <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', margin: '.45rem 0 .1rem' }}>
         Choose a question bank above to enable this button.
       </p>}
-      {editorError && !editorBank && <p role="alert" style={{ color: 'var(--danger, #dc2626)' }}>{editorError}</p>}
-      {editorBank && <>
-        <p style={secondaryText}>{editorBank.questions.length.toLocaleString()} historical questions · {editorBank.questions.filter(q => q.retired).length} retired · {editorFormDirty ? 'Unapplied form changes' : editorHasAppliedEdits ? 'Edits saved locally (not published)' : 'No applied edits yet'}{editorDraftQueued ? ' · In publish queue' : ''}</p>
-        <div className="admin-qb-editor-layout">
-          <div style={{ maxHeight: 420, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
-            <input aria-label="Find question by number or text" placeholder="Search question number or text…" value={editorSearch} onChange={event => setEditorSearch(event.target.value)}
-              style={{ width: '100%', padding: 8, marginBottom: 8, background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }} />
-            <div style={{ display: 'grid', gap: 4 }}>
-              {editorMatches.map(question => <button key={question.ordinal} type="button" disabled={busy} onClick={() => chooseEditorQuestion(question.ordinal)}
-                style={{ textAlign: 'left', padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, background: question.ordinal === editorOrdinal ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text)', cursor: 'pointer' }}>
-                <strong>#{question.ordinal}</strong> {question.retired ? '· Retired' : ''} · {question.questionText.slice(0, 74)}
+      {editorError && <p role="alert" style={{ color: 'var(--danger, #dc2626)' }}>{editorError}</p>}
+      {(editorBank || allScope) && <>
+        {editorBank && <p style={secondaryText}>{editorBank.questions.length.toLocaleString()} historical questions · {editorBank.questions.filter(q => q.retired).length} retired · {editorFormDirty ? 'Unsaved form changes' : editorHasAppliedEdits ? 'Draft edits saved' : 'No edits yet'}{editorDraftQueued ? ' · In publish queue' : ''}</p>}
+        <div className="admin-qb-editor-layout" ref={editorLayoutRef}>
+          <div className="admin-qb-editor-sidebar">
+          <aside className="admin-qb-question-list" aria-label="Question search results">
+            {allScope ? <form className="admin-qb-search-form" onSubmit={event => { event.preventDefault(); void searchAcrossBanks() }}>
+              <label htmlFor="admin-global-question-search">{questionBankScopeTrack(pickerValue) ? 'All competences' : 'All tracks · All competences'}</label>
+              <div><input id="admin-global-question-search" aria-label="Search questions across selected banks" placeholder="Question number or text…" maxLength={160} value={searchQuery} disabled={searchBusy} onChange={event => setSearchQuery(event.target.value)} />
+              <button type="submit" className="btn btn-outline" disabled={searchBusy || editorBusy}>{searchBusy ? 'Searching…' : 'Search questions'}</button></div>
+              {searchBusy && <p role="status">Searching question banks…</p>}
+              {searchError && <p role="alert">{searchError}</p>}
+              {searchSummary && <p role="status">{searchSummary}</p>}
+            </form> : <input aria-label="Find question by number or text" placeholder="Search question number or text…" value={editorSearch} onChange={event => setEditorSearch(event.target.value)} />}
+            <div className="admin-qb-question-results">
+              {allScope ? searchResults.map(result => <button key={result.path + ':' + result.ordinal} type="button" className={result.isRetired ? 'is-retired' : undefined} disabled={busy || editorBusy} aria-current={result.path === editorTarget && result.ordinal === editorOrdinal ? 'true' : undefined} onClick={() => void loadEditor(result.path, result.ordinal, searchRevision)}>
+                <small>{TRACKS.find(([track]) => track === result.track)?.[1]} · {result.competenceId}{result.part == null ? '' : ' · Part ' + result.part} · #{result.ordinal} {result.isRetired && <span className="admin-qb-retired-chip">RETIRED</span>}</small>
+                <span className="admin-qb-question-preview">{result.questionText || 'Image question'}</span>
+              </button>) : editorMatches.map(question => <button key={question.ordinal} type="button" className={question.retired ? 'is-retired' : undefined} disabled={busy} aria-current={question.ordinal === editorOrdinal ? 'true' : undefined} onClick={() => chooseEditorQuestion(question.ordinal)}>
+                <small><strong>#{question.ordinal}</strong> {question.retired && <span className="admin-qb-retired-chip">RETIRED</span>}</small>
+                <span className="admin-qb-question-preview">{question.questionText.slice(0, 110) || 'Image question'}</span>
               </button>)}
-              {editorBank.questions.length > 150 && <p style={secondaryText}>Showing up to 150 matches. Search to find a specific question.</p>}
+              {!allScope && editorBank && editorBank.questions.length > 150 && <p style={secondaryText}>Showing up to 150 matches. Search to find a specific question.</p>}
             </div>
+          </aside>
+        {editorBank && <div className="admin-qb-editor-actions" aria-label="Question editing actions">
+          <button type="button" className="btn btn-primary" disabled={busy || editorBusy || imageUploading || (!editorFormDirty && (editorDraftQueued || !editorHasAppliedEdits))} onClick={queueEditorChanges}>{!editorFormDirty && editorDraftQueued ? 'Saved to queue' : !editorFormDirty && !editorHasAppliedEdits ? 'No changes' : 'Add edited files to publish queue'}</button>
+          {editorFormDirty && selectedEditorQuestion && <button type="button" className="btn btn-outline admin-qb-discard" disabled={busy || editorBusy || imageUploading}
+            onClick={() => {
+              setEditorDraft({ questionText: selectedEditorQuestion.questionText, options: selectedEditorQuestion.options.slice(), correctAnswerIndex: selectedEditorQuestion.correctAnswerIndex, explanation: selectedEditorQuestion.explanation, retired: selectedEditorQuestion.retired, imageAttachments: selectedEditorQuestion.imageAttachments })
+              setEditorError('')
+              setEditorNotice({ kind: 'info', text: 'Form changes discarded. Previously queued draft edits are preserved locally; add them to the queue again when ready.' })
+            }}>Discard changes</button>}
+          {editorHasAppliedEdits && !editorDraftQueued && !editorFormDirty && <button type="button" className="btn btn-outline admin-qb-remove" disabled={busy || editorBusy || imageUploading} onClick={() => {
+            setEditorText(''); setEditorOriginalText(''); setEditorBaseHead(''); setEditorRevision(''); setEditorDraft(null); setEditorOrdinal(0); setEditorError(''); setPreview(null)
+            setMessage('Bank draft discarded. Reopen the bank or select a search result to load its current version.')
+          }}>Discard bank draft</button>}
+          {editorNotice && <div role={editorNotice.kind === 'error' ? 'alert' : 'status'} aria-live="polite"
+            className={`admin-qb-editor-status is-${editorNotice.kind}`}>{editorNotice.text}</div>}
+          {editorDraftQueued && <a className="admin-qb-editor-queue-link" href="#admin-qb-upload-queue">Review publish queue ↓</a>}
+        </div>}
           </div>
-          {selectedEditorQuestion && editorDraft && <div style={{ display: 'grid', gap: 9, minWidth: 0 }}>
-            <strong>Question #{selectedEditorQuestion.ordinal}</strong>
-            <label>Question text<textarea value={editorDraft.questionText} rows={3} onChange={event => updateEditorDraft({ ...editorDraft, questionText: event.target.value })}
-              style={{ width: '100%', marginTop: 4, color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} /></label>
-            {editorDraft.options.map((option, index) => <label key={index} style={{ display: 'grid' }}>Choice {String.fromCharCode(65 + index)}
-              <textarea rows={2} value={option} onChange={event => updateEditorDraft({ ...editorDraft, options: editorDraft.options.map((value, i) => i === index ? event.target.value : value) })}
-                style={{ color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} />
-            </label>)}
-            <label>Correct answer
-              <select value={editorDraft.correctAnswerIndex} className="admin-qb-target-select" onChange={event => updateEditorDraft({ ...editorDraft, correctAnswerIndex: Number(event.target.value) })}>
+          {selectedEditorQuestion && editorDraft && <fieldset ref={editorFormRef} disabled={busy || editorBusy} className={'admin-qb-question-form' + (editorDraft.retired ? ' is-retired' : '')}>
+            <div className="admin-qb-question-heading"><strong>Question #{selectedEditorQuestion.ordinal}</strong>
+              {editorDraft.retired && <span className="admin-qb-retired-chip">RETIRED</span>}
+            </div>
+            {editorDraft.retired && <p className="admin-qb-retired-notice" role="status">Retired question — excluded from new study sessions. Existing saved history is preserved.</p>}
+            <label>Question text<EditorTextarea aria-label="Question text" value={editorDraft.questionText} onChange={event => updateEditorDraft({ ...editorDraft, questionText: event.target.value })} /></label>
+            <small className="admin-qb-hint">Optional when a question image is attached.</small>
+            <div className="admin-qb-choices">
+              {editorDraft.options.map((option, index) => <label key={`${editorTarget}:${editorOrdinal}:${index}`}>Choice {String.fromCharCode(65 + index)}
+                <EditorTextarea autoGrow={false} aria-label={'Choice ' + String.fromCharCode(65 + index)} value={option} onChange={event => updateEditorDraft({ ...editorDraft, options: editorDraft.options.map((value, i) => i === index ? event.target.value : value) })} />
+              </label>)}
+            </div>
+            <label className="admin-qb-answer">Correct answer
+              <select aria-label="Correct answer" value={editorDraft.correctAnswerIndex} className="admin-qb-target-select" onChange={event => updateEditorDraft({ ...editorDraft, correctAnswerIndex: Number(event.target.value) })}>
                 {editorDraft.options.map((_, i) => <option key={i} value={i}>{String.fromCharCode(65 + i)}</option>)}
               </select>
             </label>
-            <label>Explanation<textarea rows={3} value={editorDraft.explanation} onChange={event => updateEditorDraft({ ...editorDraft, explanation: event.target.value })}
-              style={{ width: '100%', marginTop: 4, color: 'var(--text)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }} /></label>
+            <label>Explanation<EditorTextarea aria-label="Explanation" value={editorDraft.explanation} onChange={event => updateEditorDraft({ ...editorDraft, explanation: event.target.value })} /></label>
+            <div className="card admin-qb-images" style={{padding:10,display:'grid',gap:8,border:'1px solid var(--border)'}}>
+              <strong>Question images (up to four)</strong>
+              <p style={secondaryText}>PNG, JPEG or WebP · Up to four private images.</p>
+              <div className="admin-qb-image-workspace">
+              <div className="admin-qb-image-list">{(editorDraft.imageAttachments || []).map((image,index)=><div key={image.sha256+image.placement} style={{display:'grid',gap:8,borderBottom:'1px solid var(--border)',paddingBottom:8}}>
+                {editorImageTrack && <QuestionImageGallery question={{ id: `admin:${editorTarget}:${editorOrdinal}`, track: editorImageTrack, imageAttachments: [image] }} placement={image.placement} />}
+                <span style={{fontSize:'.85rem',overflowWrap:'anywhere'}}>{image.placement==='question'?'Question':'Explanation'} · {image.alt}</span>
+                <button type="button" className="btn btn-outline admin-qb-remove" disabled={imageUploading} onClick={()=>updateEditorDraft({...editorDraft,imageAttachments:(editorDraft.imageAttachments||[]).filter((_,i)=>i!==index)})}>Remove</button>
+              </div>)}</div>
+              <div className="admin-qb-image-controls">
+              <div className="admin-qb-image-options"><label>Image description (optional)
+                <input type="text" maxLength={160} value={imageAlt} placeholder="e.g., Radar plotting diagram" onChange={event=>setImageAlt(event.target.value)} style={{width:'100%',marginTop:4}}/>
+              </label>
+              <label>Image placement
+                <select aria-label="Image placement" value={imagePlacement} onChange={event=>setImagePlacement(event.target.value as 'question'|'explanation')} className="admin-qb-target-select">
+                  <option value="question">Below question</option><option value="explanation">Below explanation</option>
+                </select>
+              </label></div>
+              <input ref={imagePickerRef} aria-label="Attach question image" type="file" accept="image/webp,image/png,image/jpeg" hidden disabled={imageUploading || editorBusy || busy || (editorDraft.imageAttachments?.length || 0)>=QUESTION_MEDIA_LIMIT}
+                onChange={event=>{
+                  const file=event.target.files?.[0]
+                  event.target.value=''
+                  if(file)void attachImageToEditor(file)
+                }}/>
+              <button type="button" className="btn btn-outline" disabled={imageUploading || editorBusy || busy || (editorDraft.imageAttachments?.length || 0)>=QUESTION_MEDIA_LIMIT} onClick={()=>imagePickerRef.current?.click()}>
+                {imageUploading ? 'Uploading image…' : editorDraft.imageAttachments?.length ? 'Add another image' : 'Choose image'}
+              </button>
+              {!!editorDraft.imageAttachments?.length && <p role="status" style={secondaryText}>{editorDraft.imageAttachments.length} {editorDraft.imageAttachments.length === 1 ? 'image attached' : 'images attached'} to this question’s draft.</p>}
+              {imageProgress && <div>
+                <progress aria-label="Image upload progress" max={100} value={imageProgress.stage === 'complete' ? 100 : imageProgress.stage === 'uploading' && imageProgress.total > 0 ? Math.round(imageProgress.loaded / imageProgress.total * 100) : undefined} style={{width:'100%',accentColor:'var(--accent)'}} />
+                <p role="status" style={secondaryText}>{imageProgress.stage === 'preparing' ? 'Preparing image…' : imageProgress.stage === 'verifying' ? 'Verifying uploaded image…' : imageProgress.stage === 'complete' ? 'Image uploaded and verified.' : imageProgress.total > 0 ? `Uploading image… ${Math.round(imageProgress.loaded / imageProgress.total * 100)}%` : 'Uploading image…'}</p>
+              </div>}
+              </div>
+              </div>
+            </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={editorDraft.retired} disabled={selectedEditorQuestion.fixedLegacyRetirement} onChange={event => updateEditorDraft({ ...editorDraft, retired: event.target.checked })} />
               <strong>Retired (exclude from new study sessions)</strong>
             </label>
             {selectedEditorQuestion.fixedLegacyRetirement && <p style={secondaryText}>This is one of the three original C10 retirements, which remain enforced by the packaged Android application and cannot be restored here.</p>}
-            <p style={secondaryText}>Retiring a question excludes it from future sessions but keeps existing bookmarks and History. Question IDs and order are preserved. Apply a changed form before selecting another question.</p>
-          </div>}
+            <p style={secondaryText}>Retired questions stay in saved history but are excluded from new sessions.</p>
+          </fieldset>}
+          {!editorBank && allScope && <div className="admin-qb-empty-editor">Search by question number or text, then select a result to edit its original bank.</div>}
         </div>
-        <div className="admin-qb-editor-actions" aria-label="Question editing actions">
-          <div className="admin-qb-editor-action">
-            <strong>Step 1 · Apply the current question edit</strong>
-            <p>{editorFormDirty ? 'You have unapplied changes in this form.' : 'Save this question to a local draft, without publishing it.'}</p>
-            <button type="button" className="btn btn-outline" disabled={busy || editorBusy} onClick={applyEditorDraft}>APPLY QUESTION EDIT TO DRAFT</button>
-            {editorFormDirty && selectedEditorQuestion && <button type="button" className="admin-qb-discard" disabled={busy || editorBusy}
-              onClick={() => {
-                setEditorDraft({ questionText: selectedEditorQuestion.questionText, options: selectedEditorQuestion.options.slice(), correctAnswerIndex: selectedEditorQuestion.correctAnswerIndex, explanation: selectedEditorQuestion.explanation, retired: selectedEditorQuestion.retired })
-                setEditorError('')
-                setEditorNotice({ kind: 'info', text: 'Unapplied form changes discarded. Previously applied draft edits were not changed.' })
-              }}>Discard form changes</button>}
-          </div>
-          <div className="admin-qb-editor-action">
-            <strong>Step 2 · Add the edited bank to the queue</strong>
-            <p>{editorFormDirty ? 'Apply your current form edit first.' : editorDraftQueued ? 'A draft is queued for validation and review.' : editorHasAppliedEdits ? 'Your applied edits are ready to queue.' : 'Apply at least one question edit first.'}</p>
-            <button type="button" className="btn btn-primary" disabled={busy || editorBusy} onClick={queueEditorChanges}>ADD EDITED QUESTIONS TO PUBLISH QUEUE</button>
-          </div>
-          {editorNotice && <div role={editorNotice.kind === 'error' ? 'alert' : 'status'} aria-live="polite"
-            className={`admin-qb-editor-status is-${editorNotice.kind}`}>{editorNotice.text}</div>}
-          {editorDraftQueued && <a className="admin-qb-editor-queue-link" href="#admin-qb-upload-queue">Step 3 · Go to upload queue to validate and publish ↓</a>}
-        </div>
+
       </>}
-      <p style={{ ...secondaryText, marginBottom: 0 }}>Android installations still require a new app release to receive edited packaged bank content. The website receives the next verified bank revision automatically.</p>
+
     </section>
     <section style={card}>
       <div className={'admin-qb-drop' + (dragging ? ' is-dragging' : '')}

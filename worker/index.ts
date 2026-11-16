@@ -1,3 +1,8 @@
+import { createGithubMediaBundler, stageGithubQuestionImage } from './githubMediaStore.ts'
+import { readGithubQuestionImage } from './questionMediaDelivery.ts'
+import { mediaObjectPath, validTrack, validMime } from '../supabase/functions/question-media/policy.ts'
+import { validQuestionImageRef } from '../src/lib/questionMedia.ts'
+import { createAdminQuestionSearch, validAdminSearchInput } from './adminQuestionSearch.ts'
 import { PublisherError, publisherState, validateGithubBatch, publishGithubBatch, type PublishInput } from './githubBankPublisher.ts'
 import { createGithubBankSource, GITHUB_BANK_REVISION, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, githubAssetPath, githubBankRequest, sha256, readBounded } from '../supabase/functions/_shared/githubBankSource.ts'
 import { SOURCE_ASSETS, sourceInfo, toSearchQuestions, sampleFreeCsv, validQuestionCount, QUESTION_COUNT_ALGORITHM_VERSION } from '../supabase/functions/_shared/bankCodec.ts'
@@ -9,12 +14,14 @@ const reply = (value: unknown, status = 200) => new Response(JSON.stringify(valu
 export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
   let source: ReturnType<typeof createGithubBankSource> | undefined
   let sourceToken: string | undefined
+  let searchQuestions = createAdminQuestionSearch()
   type Counts = { competenceId: string; part: number | null; fullCount: number; freeCount: number; rawCount: number; retiredPositions: number[]; freeRetiredPositions: number[]; rawFreeCount: number }[]
   const completedCounts = new Map<string, Counts>()
+  const publishedImageRefs = new Map<string, Set<string>>()
   return async (request: Request, env: Env): Promise<Response> => {
     const url = new URL(request.url)
     const readToken = env.GITHUB_BANK_READ_TOKEN
-    if (!source || sourceToken !== readToken) { sourceToken = readToken; source = createGithubBankSource(fetcher, cache, readToken); completedCounts.clear() }
+    if (!source || sourceToken !== readToken) { sourceToken = readToken; source = createGithubBankSource(fetcher, cache, readToken); completedCounts.clear(); publishedImageRefs.clear(); searchQuestions = createAdminQuestionSearch() }
     if (url.pathname === '/api/question-bank/source' && request.method === 'GET') {
       try { const release = await source.release(); return reply({ source: 'github', repository: GITHUB_BANK_REPOSITORY, root: GITHUB_BANK_ROOT, revision: release.revision, publishedAt: release.publishedAt, files: release.files.length }) }
       catch { return reply({ error: 'The GitHub release is temporarily unavailable.' }, 503) }
@@ -90,7 +97,7 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         const grant = await grantResponse.json() as { allowed?: boolean; access?: string }
         if (grant.allowed !== true || grant.access !== 'admin') return reply({ error: 'Administrator access is required.' }, 403)
         if (Number(request.headers.get('Content-Length')) > 12 * 1024 * 1024) return reply({ error: 'Publication request exceeds 12 MiB.' }, 413)
-        let body: PublishInput & { action?: string }
+        let body: PublishInput & { action?: string; query?: unknown; track?: unknown; limit?: unknown; cursor?: unknown; bankRevision?: unknown }
         try { body = JSON.parse(new TextDecoder().decode(await readBounded(request.body, 12 * 1024 * 1024))) } catch { return reply({ error: 'Invalid or oversized publication request.' }, 400) }
         if (!body || typeof body !== 'object' || Array.isArray(body)) return reply({ error: 'Invalid administration request.' }, 400)
         const assets = SOURCE_ASSETS.map(path => ({ path, ...sourceInfo(path), repositoryPath: GITHUB_BANK_ROOT + '/' + githubAssetPath(path) }))
@@ -98,6 +105,12 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
         if (body.action === 'inventory') {
           const state = token ? await publisherState(fetcher, token) : null
           return reply({ assets, configured: !!token, source: 'github', repository: GITHUB_BANK_REPOSITORY, root: GITHUB_BANK_ROOT, head: state?.head, bankRevision: state?.release.revision, deliveryRevision: (await source.release()).revision })
+        }
+        if (body.action === 'editor-search') {
+          if (!validAdminSearchInput(body)) return reply({ error: 'Invalid question search. Use a query up to 160 characters, a supported track, and a limit from 1 to 100.' }, 400)
+          const release = await source.release()
+          if (body.bankRevision && body.bankRevision !== release.revision) return reply({ error: 'The question bank changed. Run the search again.' }, 409)
+          return reply(await searchQuestions(source, release, body))
         }
         if (!token) return reply({ error: 'GitHub publishing is not configured. Add GITHUB_BANK_WRITE_TOKEN as a Cloudflare Worker secret.' }, 503)
         if (body.action === 'editor-load') {
@@ -112,11 +125,96 @@ export function createBankWorker(fetcher: typeof fetch = fetch, cache?: Cache) {
           if (new TextEncoder().encode(csvText).length > 700000) return reply({ error: 'This question bank is too large for direct editing. Use the CSV uploader.' }, 413)
           return reply({ path, csvText, baseHead: state.head, bankRevision: release.revision })
         }
+        if (body.action === 'media-upload') return reply(await stageGithubQuestionImage(fetcher, token, body))
         if (body.action === 'validate') return reply({ preview: await validateGithubBatch(body, fetcher, token) })
-        if (body.action === 'publish') { const result = await publishGithubBatch(body, fetcher, token); source.invalidate(); return reply({ ...result, source: 'github' }) }
+        if (body.action === 'publish') { const result = await publishGithubBatch(body, fetcher, token, createGithubMediaBundler(fetcher, token)); source.invalidate(); return reply({ ...result, source: 'github' }) }
         return reply({ error: 'Unknown administration action.' }, 400)
       } catch (error) { return reply({ error: error instanceof PublisherError ? error.message : 'GitHub administration is temporarily unavailable. Your live bank and saved progress remain preserved.' }, error instanceof PublisherError ? error.status : 503) }
     }
+    // Every diagram requires the same live paid-track entitlement as full question
+    // delivery, even if its reference appears inside a public Free Reviewer question.
+    if (url.pathname === '/api/question-bank/media') {
+      const batch = request.method === 'POST'
+      if (!batch && request.method !== 'GET') return reply({ error: 'Method not allowed.' }, 405)
+      let track: string | null, tier: string | null
+      let requested: { sha256: string; mime: string }[]
+      if (batch) {
+        let body: { track?: string; freeOnly?: boolean; images?: { sha256: string; mime: string }[] }
+        try { body = JSON.parse(new TextDecoder().decode(await readBounded(request.body, 8192))) }
+        catch { return reply({ error: 'Invalid image request.' }, 400) }
+        if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.freeOnly !== 'boolean' ||
+            !Array.isArray(body.images) || body.images.length < 1 || body.images.length > 8) return reply({ error: 'Invalid image request.' }, 400)
+        track = body.track ?? null; tier = body.freeOnly ? '1' : '0'; requested = body.images
+      } else {
+        track = url.searchParams.get('track'); tier = url.searchParams.get('freeOnly')
+        requested = [{ sha256: url.searchParams.get('sha256') || '', mime: url.searchParams.get('mime') || '' }]
+      }
+      if (!validTrack(track) || (tier !== '1' && tier !== '0') ||
+          requested.some(ref => !ref || typeof ref !== 'object' || Array.isArray(ref) ||
+            Object.keys(ref).length !== 2 || !validMime(ref.mime) || !mediaObjectPath(track, ref.sha256, ref.mime)) ||
+          new Set(requested.map(ref => ref.sha256 + ':' + ref.mime)).size !== requested.length) {
+        return reply({ error: 'Invalid image request.' }, 400)
+      }
+      // Reject anonymous/free media before reading configuration or GitHub assets.
+      if (tier === '1') return reply({ error: 'UNLOCK FULL REVIEWER TO VIEW IMAGES' }, 403)
+      {
+        const authorization = request.headers.get('Authorization')
+        if (!authorization?.startsWith('Bearer ')) return reply({ error: 'Sign in to view licensed diagrams.' }, 401)
+        try {
+          const configResponse = await env.ASSETS.fetch(new Request(new URL('/hyperion-public-config.json', url)))
+          if (!configResponse.ok) throw new Error('Missing configuration.')
+          const config = await configResponse.json() as Config
+          if (config.supabaseUrl !== 'https://evnjoezffghtrzqacwcj.supabase.co' || !config.supabaseAnonKey) throw new Error('Invalid configuration.')
+          const verified = await fetcher(config.supabaseUrl + '/functions/v1/question-bank', {
+            method: 'POST',
+            headers: { Authorization: authorization, apikey: config.supabaseAnonKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'github-delivery-access', track, freeOnly: false, deliveryRoot: GITHUB_BANK_ROOT }),
+            signal: AbortSignal.timeout(15000)
+          })
+          if (!verified.ok) return reply({ error: 'A current track license is required for this diagram.' }, [401,403].includes(verified.status) ? verified.status : 503)
+          const grant = await verified.json() as { allowed?: boolean; track?: string; access?: string }
+          if (grant.allowed !== true || grant.track !== track || (grant.access !== 'admin' && grant.access !== 'licensed')) return reply({ error: 'A current track license is required.' }, 403)
+        } catch { return reply({ error: 'Could not verify image access.' }, 503) }
+      }
+      try {
+        const release = await source.release()
+        const key = release.revision + ':' + track
+        let refs = publishedImageRefs.get(key)
+        if (!refs) {
+          const found = new Set<string>()
+          for (const path of SOURCE_ASSETS.filter(path => sourceInfo(path)?.track === track)) {
+            const text = await source.read(path, release, false)
+            for (const question of toSearchQuestions(path, text)) {
+              const attachments = Array.isArray(question.imageAttachments) ? question.imageAttachments : []
+              for (const ref of attachments) if (validQuestionImageRef(ref)) found.add(ref.sha256 + ':' + ref.mime)
+            }
+          }
+          refs = found
+          publishedImageRefs.set(key, refs)
+          while (publishedImageRefs.size > 10) publishedImageRefs.delete(publishedImageRefs.keys().next().value!)
+        }
+        if (requested.some(ref => !refs.has(ref.sha256 + ':' + ref.mime))) return reply({ error: 'This diagram is not included in the selected reviewer pool.' }, 404)
+        if (batch) {
+          const images = await Promise.all(requested.map(async ref => {
+            if (!validMime(ref.mime)) throw new Error('Invalid image MIME.')
+            const bytes = await readGithubQuestionImage(fetcher, track, ref.sha256, ref.mime)
+            let binary = ''
+            for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
+            return { ...ref, data: btoa(binary) }
+          }))
+          return reply({ images })
+        }
+        const ref = requested[0]
+        if (!validMime(ref.mime)) throw new Error('Invalid image MIME.')
+        const bytes = await readGithubQuestionImage(fetcher, track, ref.sha256, ref.mime)
+        return new Response(Uint8Array.from(bytes), { headers: {
+          'Content-Type': ref.mime, 'Content-Length': String(bytes.length),
+          'X-Hyperion-Media-SHA256': ref.sha256, 'X-Content-Type-Options': 'nosniff',
+          'Cache-Control': 'private, no-store'
+        } })
+      } catch { return reply({ error: 'The published diagram could not be verified. The existing offline copy remains safe.' }, 503) }
+    }
+
     // Android may request a *single* encrypted, immutable source file after
     // checking the small server manifest. Unlike public free-question pages,
     // every encrypted-source request requires a freshly verified paid license.

@@ -21,6 +21,14 @@ type Order = {
 
 type Entitlement = { product_code: string; expires_at: string | null }
 
+function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { code?: unknown; message?: unknown }
+  return candidate.code === 'PGRST205' && typeof candidate.message === 'string'
+    && candidate.message.toLowerCase().includes('google_play_entitlements')
+    && candidate.message.toLowerCase().includes('schema cache')
+}
+
 const paymentMethod = 'QR Ph (MariBank / InstaPay)'
 const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
 const qrPhImage = '/qr-ph.png'
@@ -59,6 +67,8 @@ export default function ManualPaymentScreen() {
   const [legalAcknowledged, setLegalAcknowledged] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
   const [owned, setOwned] = useState<Entitlement[]>([])
+  const [playExpiry, setPlayExpiry] = useState<string | null>(null)
+  const [licenseChecked, setLicenseChecked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
@@ -108,18 +118,27 @@ export default function ManualPaymentScreen() {
 
   const refreshData = async () => {
     if (!supabase || !session?.user.id || !productCode) return
-    const [entitlements, orderResult] = await Promise.all([
+    setLicenseChecked(false)
+    const [entitlements, playEntitlements, orderResult] = await Promise.all([
       supabase.from('entitlements').select('product_code,expires_at')
         .eq('user_id', session.user.id).eq('status', 'active').gt('expires_at', new Date().toISOString())
         .eq('product_code', productCode),
+      supabase.from('google_play_entitlements').select('product_code,expires_at')
+        .eq('user_id', session.user.id).eq('status', 'active')
+        .gt('expires_at', new Date().toISOString()).eq('product_code', productCode).limit(1),
       supabase.from('orders').select('id,product_code,amount_php,status,payment_method,payment_reference,checkout_batch_id,paymongo_checkout_session_id')
         .eq('user_id', session.user.id).eq('product_code', productCode)
         .order('created_at', { ascending: false }).limit(30)
     ])
-    if (entitlements.error || orderResult.error) throw new Error('Could not check your current license or payment submissions. Please refresh and try again.')
+    if (entitlements.error || orderResult.error ||
+      (playEntitlements.error && !isMissingGooglePlayEntitlementsTable(playEntitlements.error))) {
+      throw new Error('Could not check your current license or payment submissions. Please refresh and try again.')
+    }
     setOwned((entitlements.data ?? []) as Entitlement[])
+    setPlayExpiry((playEntitlements.data ?? [])[0]?.expires_at ?? null)
     setOrders((orderResult.data ?? []) as Order[])
     await refreshCloudEntitlements()
+    setLicenseChecked(true)
   }
 
   useEffect(() => {
@@ -134,6 +153,10 @@ export default function ManualPaymentScreen() {
   }, [session?.user.id, productCode])
 
   const activeLicense = owned.find(item => item.product_code === productCode && (!item.expires_at || new Date(item.expires_at).getTime() > Date.now()))
+  const websiteExpiryMs = activeLicense?.expires_at ? Date.parse(activeLicense.expires_at) : 0
+  const playExpiryMs = playExpiry ? Date.parse(playExpiry) : 0
+  const playOutlastsWebsite = Number.isFinite(playExpiryMs) && playExpiryMs > Date.now()
+    && (!activeLicense || playExpiryMs > websiteExpiryMs)
   const pendingManualOrder = orders.find(order => ['submitted', 'pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
   const preparingPayMongoOrder = orders.find(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout' && !order.paymongo_checkout_session_id)
   const pendingPayMongoOrder = orders.find(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout' && !!order.paymongo_checkout_session_id)
@@ -143,6 +166,13 @@ export default function ManualPaymentScreen() {
   const submitPaymentInternal = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!supabase || !session || !product) return
+    if (!licenseChecked || playOutlastsWebsite) {
+      setIsError(true)
+      setMessage(playOutlastsWebsite
+        ? 'Your active Google Play license lasts beyond website access. Manage its renewal in Google Play to avoid paying for overlapping access.'
+        : 'Please verify your existing licenses before making a manual payment.')
+      return
+    }
     if (!legalAcknowledged) {
       setIsError(true)
       setMessage('Please review and acknowledge the Terms of Use and Privacy Policy before submitting payment details.')
@@ -151,11 +181,6 @@ export default function ManualPaymentScreen() {
     if (!fullName.trim()) {
       setIsError(true)
       setMessage('Please add your full name in Your profile before submitting payment details.')
-      return
-    }
-    if (activeLicense) {
-      setIsError(true)
-      setMessage('This license is already active for your account. You do not need to purchase this track again.')
       return
     }
     if (pendingManualOrder || unresolvedPayMongoOrder) {
@@ -171,6 +196,7 @@ export default function ManualPaymentScreen() {
         body: {
           productCode: product.code,
           licenseTerm,
+          expectedAmountPhp: licensePrice,
           paymentMethod,
           paymentReference: reference,
           customerNote: note,
@@ -274,7 +300,8 @@ export default function ManualPaymentScreen() {
       : !product ? <section style={card}><h2 style={{ marginTop: 0 }}>Choose a reviewer track</h2><p className="manual-muted">The requested track could not be found. Return to Checkout and select the manual QR option when PayMongo checkout is unavailable.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/checkout')}>BACK TO CHECKOUT</button></section>
       : <>
         {message && <div role="status" style={{ ...card, borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', marginBottom: '1rem', lineHeight: 1.5 }}>{message}</div>}
-        {activeLicense ? <section style={{ ...card, borderColor: 'var(--success, #15803d)' }}><h2 style={{ marginTop: 0 }}>License already active</h2><p className="manual-muted">Your {product.label} license is already active{activeLicense.expires_at ? ` until ${new Date(activeLicense.expires_at).toLocaleDateString()}` : ''}.</p><button type="button" className="btn btn-outline" onClick={() => navigate('/account?tab=licenses')}>VIEW MY LICENSES</button></section>
+        {!licenseChecked ? <section style={card}><h2 style={{ marginTop: 0 }}>Checking existing licenses</h2><p className="manual-muted">Your license and payment status must be verified before a QR transfer. If checking failed, use Refresh instead of sending money.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void withPageLoading('Checking licenses', refreshData)}>REFRESH LICENSE STATUS</button></section>
+          : playOutlastsWebsite ? <section style={card}><h2 style={{ marginTop: 0 }}>Google Play subscription active</h2><p className="manual-muted">This track already has Google Play access beyond your website license{playExpiry ? ` until ${new Date(playExpiry).toLocaleDateString()}` : ''}. Manage this subscription in Google Play to avoid overlapping paid time. Do not make a QR transfer.</p><button type="button" className="btn btn-outline" onClick={() => navigate('/account?tab=licenses')}>VIEW MY LICENSES</button></section>
           : (manualSubmission || pendingManualOrder) ? <section style={{ ...card, borderColor: 'var(--border)' }}>
             <h2 style={{ marginTop: 0 }}>Payment submitted · send payment proof</h2>
             <p className="manual-muted">Your manual payment details have been submitted. To help us verify the payment, send a clear screenshot or photo of your payment receipt to our Facebook page.</p>
@@ -293,6 +320,7 @@ export default function ManualPaymentScreen() {
           : <div className="manual-grid">
             <section style={card}>
               <div className="manual-section-title"><div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>{product.label}</h2><p className="manual-muted" style={{ margin: '.25rem 0 0' }}>{licenseTerm === 'week' ? '7-day' : licenseTerm === 'month' ? '1-month' : '12-month'} reviewer license</p></div><strong style={{ fontSize: '1.25rem' }}>₱{licensePrice}</strong></div>
+              {activeLicense && <p className="manual-muted" role="status" style={{ margin: '.7rem 0 0', color: 'var(--success, #15803d)', fontWeight: 700 }}>License active until {activeLicense.expires_at ? new Date(activeLicense.expires_at).toLocaleDateString() : 'its verified expiry'}. After manual payment approval, your chosen term is added to that expiry without losing remaining days.</p>}
               <div className="manual-qr" style={{ marginTop: '1rem' }}>
                 <h3 style={{ margin: '0 0 .3rem', fontSize: '1rem' }}>QR Ph · MariBank / InstaPay</h3>
                 <p style={{ margin: '0 0 .75rem', color: '#4b5563', fontSize: '.85rem' }}>Scan this QR code using your bank or e-wallet app.</p>

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { termPrices, legacyTermPrices, isAcceptedStoredPrice } from '../supabase/functions/_shared/paymentPrices.mjs';
 import { readFile } from 'node:fs/promises';
 import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
 import { encryptJsonPayload, decryptJsonPayload } from '../src/lib/jsonPayloadCrypto.mjs';
@@ -79,6 +80,8 @@ const [
 ]);
 
 const trackPurchaseDialog = await read('../src/components/TrackPurchaseDialog.tsx');
+const bondStoreCardContent = await read('../src/components/BondStoreCardContent.tsx');
+const bondStoreCardStyles = await read('../src/components/BondStoreCardContent.css');
 const desktopAccountMenu = await read('../src/components/DesktopAccountMenu.tsx');
 const bottomNav = await read('../src/components/BottomNav.tsx');
 const pendingBuyNow = await read('../src/lib/pendingBuyNow.ts');
@@ -143,23 +146,46 @@ assert.ok(singleWebhookValidation.includes("(typeof sessionAttrs?.livemode === '
 assert.ok(webhook.includes("Math.abs(Date.now() / 1000 - Number(timestamp)) > 300"), 'Webhook rejects stale signed requests');
 
 const terms = [
-  ['oic_nw', 20, 50, 350],
-  ['gmdss', 15, 40, 250],
-  ['engine_ew', 20, 50, 350],
-  ['deck_mgt', 40, 100, 700],
-  ['engine_mgt', 40, 100, 700]
+  ['oic_nw', 29, 79, 499, 20, 50, 350],
+  ['gmdss', 25, 59, 399, 15, 40, 250],
+  ['engine_ew', 29, 79, 499, 20, 50, 350],
+  ['deck_mgt', 59, 149, 999, 40, 100, 700],
+  ['engine_mgt', 59, 149, 999, 40, 100, 700]
 ];
-for (const [code, weekly, monthly, yearly] of terms) {
+for (const [code, weekly, monthly, yearly, oldWeekly, oldMonthly, oldYearly] of terms) {
   assert.ok(
     pricing.includes(`code: '${code}'`) &&
     pricing.includes(`weeklyPrice: ${weekly}, monthlyPrice: ${monthly}, annualPrice: ${yearly}`),
     `Frontend catalogue has the canonical price for ${code}`
   );
-  const serverMap = `${code}: { week: ${weekly}, month: ${monthly}, year: ${yearly} }`;
-  assert.ok(checkout.includes(serverMap), `Checkout server price for ${code}`);
-  assert.ok(verify.includes(serverMap), `Verification server price for ${code}`);
-  assert.ok(webhook.includes(serverMap), `Webhook server price for ${code}`);
+  assert.deepEqual(termPrices[code], { week: weekly, month: monthly, year: yearly }, `Checkout server price for ${code}`);
+  assert.deepEqual(legacyTermPrices[code], { week: oldWeekly, month: oldMonthly, year: oldYearly }, `Legacy prices preserved for ${code}`);
+  for (const [term, current, previous] of [['week', weekly, oldWeekly], ['month', monthly, oldMonthly], ['year', yearly, oldYearly]]) {
+    assert.ok(isAcceptedStoredPrice(code, term, current), `New paid order accepted: ${code}/${term}`);
+    assert.ok(isAcceptedStoredPrice(code, term, previous), `Old paid order accepted: ${code}/${term}`);
+    assert.equal(isAcceptedStoredPrice(code, term, current + 1), false, `Altered price rejected: ${code}/${term}`);
+  }
   assert.ok(finalizerMigration.includes(`when '${code}' then case v_order.license_term`), `Database finalizer covers ${code}`);
+}
+for (const source of [checkout, verify, webhook, submitManualPaymentFunction]) {
+  assert.ok(source.includes("from '../_shared/paymentPrices.mjs'"), 'All payment entrypoints use the shared price schedule');
+}
+assert.ok(checkout.includes('termPrices[code][termsByCode[code]]'), 'New PayMongo orders use the updated prices');
+assert.ok(checkout.includes('body.expectedTotalPhp !== totalPrice'), 'Stale PWA price quote cannot create an unexpected new charge');
+assert.ok(basketScreen.includes('expectedTotalPhp }'), 'PWA basket transmits the exact displayed quote to checkout');
+assert.ok(submitManualPaymentFunction.includes('body.expectedAmountPhp !== prices[code][term]'), 'Manual endpoint rejects a stale quote before recording a transfer');
+assert.ok(manualPayment.includes('expectedAmountPhp: licensePrice'), 'Manual payment submits the displayed amount for matching');
+assert.ok(submitManualPaymentFunction.includes('const prices = termPrices'), 'New manual orders use the updated prices');
+assert.ok(verify.includes('isAcceptedStoredPrice(') && webhook.includes('isAcceptedStoredPrice('), 'Payment verifiers accept historical recorded prices');
+assert.equal(isAcceptedStoredPrice('made_up', 'week', 29), false, 'Unknown product price rejected');
+assert.equal(isAcceptedStoredPrice('oic_nw', 'century', 29), false, 'Unknown duration rejected');
+assert.equal(isAcceptedStoredPrice('oic_nw', 'week', NaN), false, 'NaN price rejected');
+assert.equal(isAcceptedStoredPrice('oic_nw', 'week', 0), false, 'Free-price tampering rejected');
+const priceMigration = await read('../supabase/migrations/20261113115708_accept_updated_paymongo_prices.sql');
+assert.ok(priceMigration.includes('IF v_occurrences <> 2'), 'SQL migration refuses an unknown finalizer');
+assert.ok(priceMigration.includes('EXECUTE replace(v_function, v_old_guard, v_new_guard)'), 'Migration updates both single and basket finalizer price checks');
+for (const [code, weekly, monthly, yearly] of terms) {
+  assert.ok(priceMigration.includes(`when '${code}' then case v_order.license_term when 'week' then ${weekly} when 'month' then ${monthly} when 'year' then ${yearly}`), `Database finalizer accepts updated ${code} prices`);
 }
 
 assert.match(questionBankMigration, /values\s*\('question-banks',\s*'question-banks',\s*false/i, 'Question bank bucket is private');
@@ -328,7 +354,7 @@ for (const route of [
 assert.ok(practiceStore.includes('useHistoryStore.getState().saveSession'), 'Practice session saves History metadata');
 assert.ok(practiceStore.includes('await saveSessionSnapshot(snapshot.sessionId, snapshot)'), 'Practice session snapshot is persisted');
 assert.ok(practiceStore.includes('authorizeQuestionSetAccess(snapshot.track, snapshot.questions)'), 'Restoring saved questions rechecks authorization');
-assert.ok(mockExam.includes("getQuestionCountsByTrack(trackId, freeOnly)") && mockExam.includes("refreshCachedEntitlements"), 'Mock exam validates cached signed access and asks the protected inventory endpoint for the correct access tier');
+assert.ok(mockExam.includes("getQuestionCountsByTrack(trackId, false)") && mockExam.includes("refreshCachedEntitlements") && mockExam.includes("if (!licensed)"), 'Mock exam requires a signed active track license before loading protected inventory');
 assert.ok(!mockExam.includes("getQuestionsByTrack(trackId, true)"), 'Mock exam selection never preloads the free question text for all users');
 assert.ok(mockExam.includes("free: false") && mockExam.includes("limit: examItemCount") && mockExam.includes("timeLimitSec: examItemCount * 60"), 'Mock exam requests the configured competence count without forcing the free pool or shrinking the timer');
 assert.ok(mockExam.includes("MOCK_COMPETENCES_BY_FUNCTION") && mockExam.includes("functionForCompetence(trackId, competence.id)"), 'Mock exam maps function and competence selection independently of loaded question text');
@@ -338,15 +364,15 @@ assert.ok(['DECK_OIC_NW', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'DECK_MGT', 'ENGINE_MGT'
 assert.ok(practiceStore.includes("mode === 'MOCK' && qs.length < finalLimit") && practiceStore.includes('The exam was not shortened'), 'Practice store rejects any mock sample shorter than the required item count');
 assert.ok(questionBank.includes("if (randomSample) {") && questionBank.includes("Math.floor(Math.random() * (i + 1))") && questionBank.includes("allQuestions.slice(0, limit)"), 'Protected question-bank endpoint randomly shuffles the authorized competence pool before sampling without replacement');
 assert.ok(questionBank.includes('if (!freeOnly)') && questionBank.includes('authorizeTrack(admin, user, isAdmin, track)'), 'Full-bank question requests remain server-authorized by an active track license or admin access');
-assert.ok(questionBank.includes('if (freeOnly) text = sampleFreeCsv(assetPath, text)'), 'Free mock exam sampling remains restricted to the designated free sample');
+assert.ok(questionBank.includes('if (freeOnly) text = sampleFreeCsv(assetPath, text)'), 'Free Reviewer sampling remains restricted to the designated public free sample');
 assert.ok(mockExam.includes('SUBMIT EXAM'), 'Mock exam requires explicit submission');
 assert.ok(mockExam.includes("window.addEventListener('beforeunload', blockExit)"), 'Mock exam guards accidental exit');
 assert.ok(licenseStore.includes('await applyCachedOfflineEntitlements(userId)'), 'Failed signed-lease refresh restores only the cached lease for the current account');
 assert.ok(app.includes("location.pathname === '/practice/competences' || location.pathname === '/practice'") && app.includes('setupNeedsLicense'), 'Direct Practice All Questions and practice-config URLs are guarded by track entitlement');
-assert.ok(app.includes("setupParams.get('free') === '1' && setupMode !== 'drill'") && app.includes('Free Reviewer and Timed Mock Exam remain available without a purchase.'), 'Only the explicit Free Reviewer route bypasses practice setup licensing');
-assert.ok(app.includes("isMockRunner && currentMode === 'MOCK'") && app.includes("isPracticeQuiz && currentMode === 'PRACTICE'") && !app.includes("isPracticeQuiz && (currentMode === 'PRACTICE' || currentMode === 'DRILL')") && app.includes('const isPermittedFreeRunner = isFreeSession') && practiceStore.includes('authorizeQuestionSetAccess(track, activeQuestions)') && practiceStore.includes("isFreeSession: access === 'free-sample'"), 'Question-runner permits free-sample Free Reviewer and Mock sessions but never free-sample mistake drills');
-assert.ok(practiceStore.includes("mode !== 'MOCK' && !licensed && !isFreeReviewerSession") && practiceStore.includes("mode === 'PRACTICE' && free === true"), 'Practice store blocks unlicensed Practice All Questions and Drill sessions except explicit Free Reviewer');
-assert.ok(practiceStore.includes("mode === 'MOCK' ? !licensed : isFreeReviewerSession"), 'Mock Exam remains usable as a free feature and uses the full pool only for licensed users');
+assert.ok(app.includes("setupParams.get('free') === '1' && setupMode !== 'drill'") && app.includes('Free Reviewer remains available without a purchase. UNLOCK FULL REVIEWER to access Timed Mock Exam.'), 'Only the explicit Free Reviewer route bypasses practice setup licensing');
+assert.ok(app.includes("isPracticeQuiz && currentMode === 'PRACTICE'") && !app.includes("isPracticeQuiz && (currentMode === 'PRACTICE' || currentMode === 'DRILL')") && app.includes("const isPermittedFreeRunner = isFreeSession && isPracticeQuiz && currentMode === 'PRACTICE'") && practiceStore.includes('authorizeQuestionSetAccess(track, activeQuestions)') && practiceStore.includes("isFreeSession: access === 'free-sample'"), 'Question runner permits only explicit free-reviewer practice and never free mocks or mistake drills');
+assert.ok(practiceStore.includes("if (!licensed && !isFreeReviewerSession)") && practiceStore.includes("mode === 'PRACTICE' && free === true"), 'Practice store blocks unlicensed Practice All Questions, Drill and Timed Mock Exam except explicit Free Reviewer');
+assert.ok(practiceStore.includes('const isFreeSession = isFreeReviewerSession;') && practiceStore.includes("if (!licensed && !isFreeReviewerSession)"), 'Mock exams require active track access; only explicit Free Reviewer creates a free session');
 assert.ok(practiceConfigScreen.includes('await refreshCachedEntitlements()') && practiceConfigScreen.includes('if (!freeMode && !hasLicense)') && practiceConfigScreen.includes('shuffleChoices, free: freeMode'), 'Practice configuration enforces signed local expiry without repeated network license refresh');
 assert.ok(practiceCompetenceScreen.includes("if (!freeMode && !unlocked)") && practiceCompetenceScreen.includes("openPaywall('Practice')"), 'Practice competence links without the explicit free reviewer flag require a license');
 assert.ok(trackHubScreen.includes("title: 'PRACTICE ALL QUESTIONS'") && trackHubScreen.includes("title: 'QUICK SCAN MODE'") && trackHubScreen.includes("title: 'FLASHCARD REVISION'") && trackHubScreen.includes('locked: !unlocked'), 'Track hub keeps paid practice, Quick Scan and Flashcards locked without the track license');
@@ -387,29 +413,37 @@ assert.ok(questionBank.includes('fullQuestionFingerprints') && questionBank.incl
 assert.ok(questionBank.includes('const canonicalOptions') && learningProgressFunction.includes('const canonicalOptions'), 'Question access and cloud-progress filtering use stable option-order-independent fingerprints');
 assert.ok(questionBankClient.includes("saveOfflineEntitlements") && questionBankClient.includes("body: { action: 'offline-license' }") && questionBankClient.includes('await hasValidOfflineTrackLease(track, userId)'), 'Paid offline-pack downloads save and verify a signed, track-specific offline entitlement lease');
 assert.ok(
-  questionBankClient.includes('return hasValidOfflineTrackLease(track)') &&
-  questionBankClient.includes('if (offline) {\n    // Free users must reconnect to review.') &&
-  questionBankClient.includes('Free reviewing is online-only. Open a Free Reviewer competence') &&
-  !questionBankClient.includes("if (await matchesCachedPack(true)) return 'free-sample'"),
-  'Free users cannot access saved free packs offline or trigger bulk fallback downloads; paid tracks require signed offline leases'
+  questionBankClient.includes('return freeOnly || hasValidOfflineTrackLease(track)') &&
+  questionBankClient.includes('if (offline) return await matchesSavedFreeQuestionSet') &&
+  questionBankClient.includes('async function downloadFreeOfflinePack') &&
+  questionBankClient.includes("data.access !== 'free-sample'") &&
+  questionBankClient.includes('publicBankRevision: revision') &&
+  questionBankClient.includes('await preloadQuestionImages(track, all, true, canContinue)'),
+  'Free offline packs use public-only verified pages without Supabase Auth; full tracks still require signed leases'
 );
 assert.ok(
-  trackHubScreen.includes('if (!isCurrent() || !unlocked || !online || !accountUserId) return') &&
-  trackHubScreen.includes('if (!unlocked) return') &&
-  trackHubScreen.includes('canContinue: () => {') &&
-  !trackHubScreen.includes('if (!unlocked && !online) await ensureOfflineFreeSamplePack(track)'),
-  'Unlicensed track hubs do not prepare/download offline banks, and active transfers stop if their license is revoked'
+  trackHubScreen.includes('await downloadOfflinePack(track, freeOnly,') &&
+  trackHubScreen.includes('(freeOnly || (access.entitlementsVerified &&') &&
+  trackHubScreen.includes('offlineQuestionImagesComplete') &&
+  trackHubScreen.includes('if (!isCurrent() || !online || (unlocked && !accountUserId)) return'),
+  'Track hubs download free pools anonymously, preserve paid gating, and verify all local images before READY'
 );
+
 assert.ok(
   questionBank.includes('Bulk question-file downloads require an active track license.') &&
   questionBank.includes('Question-file downloads require an active track license.'),
   'Backend rejects bulk and raw CSV file downloads for guests and unlicensed users'
 );
 assert.ok(
-  questionBankClient.includes("if (freeOnly) throw new Error('Offline downloads require an active license for this track.')") &&
-  questionBankClient.includes('assertDownloadAccount()\n  await saveOfflineQuestionPackSets(updates)'),
-  'Paid offline download requires license verification and rechecks account/access before encrypted save'
+  questionBankClient.includes('if (freeOnly) return downloadFreeOfflinePack(track, onProgress, canContinue)') &&
+  questionBankClient.includes('assertDownloadAccount()\n  await saveOfflineQuestionPackSets(updates)') &&
+  questionBankClient.includes('await preloadQuestionImages(track, selectActiveQuestions(allQuestions), false, assertDownloadAccountSafe)') &&
+  questionBankClient.includes('const active = selectActiveQuestions(questions)') &&
+  offlineQuestionCache.includes('activeOnlyVersion: 1') &&
+  offlineQuestionCache.includes('const activeQuestions = selectActiveQuestions(group.questions)'),
+  'Paid offline packs gate licensed images and commit only active encrypted questions; Free Reviewer has a separate public download'
 );
+
 assert.ok(
   questionBankClient.includes('QUESTION_BANK_VERSION_CHECK_COOLDOWN_MS = 5 * 60 * 1000') &&
   questionBankClient.includes('offlineQuestionVersionChecksInFlight') &&
@@ -661,7 +695,8 @@ assert.equal(await verifyOfflineEntitlementToken(unsupportedToken, sampleClaims.
 
 assert.ok(accountScreen.includes("status,granted_at,expires_at,renewed_at") && accountScreen.includes("function isCurrentLicense(item: OwnedTrack"), 'Account license display separates current access from past license records using entitlement status and expiry');
 assert.ok(accountScreen.includes('Expired and revoked licenses') && accountScreen.includes("const revoked = item.status === 'revoked'"), 'Account page lists expired and revoked licenses transparently');
-assert.ok(accountScreen.includes('EXPIRING SOON') && accountScreen.includes('purchase access again after this license expires'), 'Account page warns users before a license is about to expire without implying early renewal is available');
+assert.ok(accountScreen.includes('EXPIRING SOON') && accountScreen.includes('Extend now to keep all remaining days.') && accountScreen.includes('EXTEND LICENSE'), 'Account warns about approaching expiry and offers an early extension that preserves remaining days');
+assert.ok(accountScreen.includes('GOOGLE PLAY ACTIVE') && accountScreen.includes('isGooglePlayOwned'), 'Google Play subscriptions remain visibly distinct and not payable through the PWA extension flow');
 assert.ok(accountScreen.includes('This is an account-retention safeguard, not extra paid access.'), 'The retention grace period is not presented as extra paid-track access');
 
 
@@ -765,9 +800,9 @@ assert.ok(sessionElapsedTimer.includes('inline = false') && sessionElapsedTimer.
 assert.ok(indexCss.includes('.quiz-heading-with-timer') && indexCss.includes('.quick-scan-progress-timer'), 'Question headings have responsive compact timer-aligned styling');
 const offlineHubScreen = await read('../src/screens/TrackHubScreen.tsx');
 const offlineHubStyles = await read('../src/screens/TrackHubScreen.css');
-assert.ok(offlineHubScreen.includes('await downloadOfflinePack(track, false, (downloaded, total) =>') && offlineHubScreen.includes('downloaded, total,') && offlineHubScreen.includes("phase: total > 0 && downloaded >= total ? 'saving' : 'downloading'"), 'Background licensed offline packs report real question counts and wait for verified save before completion');
+assert.ok(offlineHubScreen.includes('await downloadOfflinePack(track, freeOnly, (downloaded, total) =>') && offlineHubScreen.includes('downloaded, total,') && offlineHubScreen.includes("phase: total > 0 && downloaded >= total ? 'saving' : 'downloading'"), 'Background free and licensed offline packs report real question counts and wait for verified media save');
 assert.ok(offlineHubScreen.includes("const downloadPercent = hasMeasuredProgress") && offlineHubScreen.includes('Math.min(99,') && offlineHubScreen.includes('offlineStatus?.questionCount.toLocaleString()'), 'Offline progress never claims 100% before the complete encrypted pack is saved and then shows real saved counts');
-assert.ok(offlineHubScreen.includes('currentOfflineTransfer') && offlineHubScreen.includes('hyperion:offline-transfer') && offlineHubScreen.includes('accountUserId && transfer.trackId === info.trackId && transfer.userId === accountUserId'), 'Offline progress survives a track page remount and is scoped to the current track and signed-in account');
+assert.ok(offlineHubScreen.includes('currentOfflineTransfer') && offlineHubScreen.includes('hyperion:offline-transfer') && offlineHubScreen.includes('accountUserId !== undefined && transfer.trackId === info.trackId && transfer.userId === accountUserId'), 'Offline progress survives remounts and scopes paid users or anonymous free transfers to the correct track');
 assert.ok(offlineHubScreen.includes('role="progressbar"') && offlineHubScreen.includes('aria-valuenow=') && offlineHubScreen.includes('hub-offline-spinner'), 'Offline readiness exposes accessible progress and a spinner while checking or downloading');
 assert.ok(offlineHubStyles.includes('.hub-offline-progress-track') && offlineHubStyles.includes('hyperion-offline-indeterminate') && offlineHubStyles.includes('hyperion-offline-spin'), 'Offline track UI styles include determinate and indeterminate progress animations');
 
@@ -896,14 +931,15 @@ const offlineDownloadVersionRequest = questionBankClient.indexOf('const versions
 const offlineDownloadCountsRequest = questionBankClient.indexOf('await fetchRevisionQuestionCounts(track, false, versionsBefore.bankRevision)', offlineDownloadStart);
 assert.ok(
   offlineDownloadStart >= 0 &&
-  questionBankClient.includes("if (freeOnly) throw new Error('Offline downloads require an active license for this track.')") &&
+  questionBankClient.includes('if (freeOnly) return downloadFreeOfflinePack(track, onProgress, canContinue)') &&
   offlineDownloadSessionGate > offlineDownloadStart &&
   offlineDownloadLicenseGate > offlineDownloadSessionGate &&
   questionBankClient.includes('!offlineLicense.trackIds.includes(track)') &&
   offlineDownloadVersionRequest > offlineDownloadLicenseGate &&
   offlineDownloadCountsRequest > offlineDownloadVersionRequest,
-  'Offline pack downloads reject free packs and verify a server-signed entitlement for the selected track before requesting bank metadata or question counts'
+  'Paid offline pack downloads verify a signed entitlement before requesting protected metadata'
 );
+
 assert.ok(
   practiceConfigScreen.includes("next.set('purchase', '1')") && practiceConfigScreen.includes("next.set('purchase_term'"),
   'Unlicensed Practice All Questions opens a track purchase dialog instead of navigating to the locked Account page'
@@ -913,8 +949,14 @@ assert.ok(
   'Track purchase dialog is mounted globally so it survives the OAuth callback return to practice'
 );
 assert.ok(
-  trackPurchaseDialog.includes('LICENSE_TERMS') &&
-  trackPurchaseDialog.includes('priceForTerm(product, term)') &&
+  // Pricing, artwork and plan selectors are now a single shared source
+  // rendered by both the Bond Store and the purchase popup.
+  bondStoreCardContent.includes('LICENSE_TERMS') &&
+  bondStoreCardContent.includes('priceForTerm(product, term)') &&
+  bondStoreCardContent.includes('BOND_STORE_FEATURES.map') &&
+  bondStoreCardStyles.includes('/store-art/hyperion-banner-sprite.png') &&
+  accountScreen.includes('<BondStoreCardContent') &&
+  trackPurchaseDialog.includes('<BondStoreCardContent') &&
   trackPurchaseDialog.includes("provider: 'google'") &&
   trackPurchaseDialog.includes("set('purchase_product', product.code)") &&
   trackPurchaseDialog.includes('rememberPendingBuyNow(product.code, term)') &&
@@ -922,6 +964,14 @@ assert.ok(
   trackPurchaseDialog.includes('const selection = [{ code: product.code, term }]') &&
   trackPurchaseDialog.includes('navigate(buyNowCheckoutPath(product.code, term))'),
   'Buy Now keeps the selected track and term before Google OAuth and opens only that track in Checkout'
+);
+assert.ok(
+  trackHubScreen.includes("title: 'TIMED MOCK EXAM',\n      audience: 'licensed'") &&
+  mockExam.includes("Timed Mock Exam requires an active license") &&
+  mockExam.includes("if (!accessChecked || !hasMockAccess)") &&
+  practiceStore.includes("if (!licensed && !isFreeReviewerSession)") &&
+  practiceStore.includes("snapshot.mode === 'MOCK' && !licensedForMock"),
+  'Timed Mock Exam is hidden from free tracks and denied on direct URLs, new sessions and resumed attempts'
 );
 assert.ok(
   pendingBuyNow.includes("PENDING_BUY_NOW_KEY = 'hyperion-pending-buy-now-v1'") &&
@@ -964,20 +1014,26 @@ assert.ok(
 
 assert.ok(
   !trackHubScreen.includes('DOWNLOAD FULL BANK FOR OFFLINE') &&
-  trackHubScreen.includes('!unlocked || !online || !accountUserId') &&
+  trackHubScreen.includes('(unlocked && !accountUserId)') &&
   trackHubScreen.includes("gated('Mistakes Notebook'") &&
   trackHubScreen.includes('background: true,') && trackHubScreen.includes('canContinue: () => {'),
-  'Manual bank downloads are removed and automatic encrypted preparation requires an online licensed account'
+  'Automatic offline preparation serves free packs publicly while paid download requires online licensed account'
 );
+
 assert.ok(questionBankClient.includes('export async function ensureOfflineFreeSamplePack') && questionBankClient.includes('const fullBank = await getOfflineQuestionsByTrack(track, false)') && questionBankClient.includes('freeSample(fullBank, track)'), 'An old Deck OIC offline free sample is repaired only from the complete cached bank and the current server-matched sampler');
 assert.ok(questionBankClient.includes('async function hasValidOfflineTrackLease(track: TrackId, expectedUserId?: string): Promise<boolean>') && questionBankClient.includes('snapshot.isAdmin') && questionBankClient.includes('snapshot.trackExpiries[track]'), 'Saved paid-session recovery accepts either an authenticated administrator role or the same track’s unexpired signed license');
 const accessQuestionSetStart = questionBankClient.indexOf('export async function authorizeQuestionSetAccess');
-const offlineAuthStart = questionBankClient.indexOf('if (offline) {', accessQuestionSetStart);
+const offlineAuthStart = questionBankClient.indexOf('if (offline) return await matchesSavedFreeQuestionSet(', accessQuestionSetStart);
 const offlineAuthEnd = questionBankClient.indexOf('\n\n  if (supabase)', offlineAuthStart);
 const offlineAuthBlock = questionBankClient.slice(offlineAuthStart, offlineAuthEnd);
-const paidLeaseFastPath = questionBankClient.indexOf('if (offline && await hasValidOfflineTrackLease(track)) return \'licensed\'', accessQuestionSetStart);
+const paidLeaseFastPath = questionBankClient.indexOf("if (offline && await hasValidOfflineTrackLease(track)) return 'licensed'", accessQuestionSetStart);
 const fingerprintWorkStart = questionBankClient.indexOf('const fingerprintResults = await Promise.all(questions.map(fingerprintQuestion))', accessQuestionSetStart);
-assert.ok(paidLeaseFastPath > accessQuestionSetStart && fingerprintWorkStart > paidLeaseFastPath && offlineAuthBlock.includes('return null') && !offlineAuthBlock.includes("return 'free-sample'"), 'Paid offline sessions check a signed lease before hashing; unlicensed offline free samples cannot authorize saved sessions');
+assert.ok(paidLeaseFastPath > accessQuestionSetStart && fingerprintWorkStart > paidLeaseFastPath &&
+  offlineAuthBlock.includes('matchesSavedFreeQuestionSet(track, questions, fingerprints)') &&
+  questionBankClient.includes('const allowed = new Map(free.map(question => [question.id, question]))') &&
+  questionBankClient.includes('await fingerprintQuestion(published) !== fingerprints[i]'),
+  'Offline paid access verifies the signed lease first; free saved sessions match exact fingerprints in the public pack');
+
 assert.ok(offlineQuestionCache.includes("const DB_VERSION = 3") && offlineQuestionCache.includes('packMeta: { key: string; value: StoredOfflineQuestionPackMetadata }') && offlineQuestionCache.includes('MAX_DECRYPTED_PACK_CACHE'), 'Offline cache uses a lightweight metadata store and a bounded decrypted-pack cache');
 const localCompetenceStart = offlineQuestionCache.indexOf('export async function getOfflineQuestionsByCompetence(');
 const localCompetenceEnd = offlineQuestionCache.indexOf('export async function getOfflineQuestionsByTrack(', localCompetenceStart);
@@ -1194,10 +1250,11 @@ assert.ok(
   'Desktop Account dropdown shows Bond Store, My Licenses, Orders, and Sign Out'
 );
 assert.ok(
-  desktopAccountMenu.includes("accountLinks.filter(link => signedIn || link.to === '/account?tab=payments')") &&
+  desktopAccountMenu.includes("accountLinks.filter(link => signedIn || link.to === '/account?tab=payments' || (offlineAccount && link.to === '/account?tab=licenses'))") &&
   desktopAccountMenu.includes('{signedIn ? (') &&
-  desktopAccountMenu.includes('Sign In'),
-  'Signed-out visitors see only Bond Store and Sign In; licenses, orders, and Sign Out require a session'
+  desktopAccountMenu.includes("const offlineAccount = !signedIn && hasVerifiedOfflineLicense") &&
+  desktopAccountMenu.includes('Reconnect Google account'),
+  'Guests see only Bond Store, verified offline license holders can view My Licenses, and Orders/Sign Out still require Auth'
 );
 assert.ok(
   desktopAccountMenu.includes('onClick={() => { void signInWithGoogle() }}') &&
@@ -1220,11 +1277,12 @@ assert.ok(
   'Desktop Account dropdown opens on hover or keyboard interaction and closes on escape/outside click'
 );
 assert.ok(
-  desktopAccountMenu.includes('client.auth.signOut()') &&
+  desktopAccountMenu.includes("client.auth.signOut({ scope: 'local' })") &&
+  accountScreen.includes("supabase.auth.signOut({ scope: 'local' })") &&
   desktopAccountMenu.includes('useLicenseStore.getState().clearLicense()') &&
   desktopAccountMenu.includes("navigate('/account', { replace: true })") &&
   desktopAccountMenu.includes('if (!client || !signedIn || signingOut) return'),
-  'Desktop Sign Out authenticates the session state, clears licenses, and returns to Account'
+  'Both explicit sign-outs revoke only the current device, clear its saved license, and return to Account'
 );
 assert.ok(
   indexCss.includes('.app-bottom-nav > a[href="/account"] { display: none !important; }') &&

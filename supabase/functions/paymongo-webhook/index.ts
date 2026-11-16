@@ -1,4 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { isAcceptedStoredPrice } from '../_shared/paymentPrices.mjs'
+import { finalizeVerifiedLifetimePayment, refundedPaymentIdForEvent } from '../_shared/paymongoLifetime.ts'
 
 type LicenseTerm = 'week' | 'month' | 'year'
 const productTracks: Record<string, string> = {
@@ -8,13 +10,7 @@ const productTracks: Record<string, string> = {
   deck_mgt: 'DECK_MGT',
   engine_mgt: 'ENGINE_MGT'
 }
-const termPrices: Record<string, Record<LicenseTerm, number>> = {
-  oic_nw: { week: 20, month: 50, year: 350 },
-  gmdss: { week: 15, month: 40, year: 250 },
-  engine_ew: { week: 20, month: 50, year: 350 },
-  deck_mgt: { week: 40, month: 100, year: 700 },
-  engine_mgt: { week: 40, month: 100, year: 700 }
-}
+
 function expiryForTerm(base: Date, term: LicenseTerm) {
   const result = new Date(base)
   if (term === 'week') {
@@ -165,6 +161,26 @@ Deno.serve(async (req) => {
     return new Response('Webhook event mode does not match configured checkout mode', { status: 400 })
   }
 
+  // Refunds are authenticated with the same raw-body signature and livemode
+  // checks above. Never revoke on a pending/failed refund notification.
+  if (eventType === 'payment.refunded' || eventType === 'payment.refund.updated') {
+    const paymentId = refundedPaymentIdForEvent(eventType, checkoutSessionFromEvent)
+    if (!paymentId) return Response.json({ received: true, refundIgnored: true })
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    if (!supabaseUrl || !serviceKey) return new Response('Refund verification service unavailable', { status: 503 })
+    const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+    const { error: refundError } = await admin.rpc('revoke_paymongo_lifetime_checkout', {
+      p_payment_id: paymentId
+    })
+    if (refundError) {
+      console.error('[paymongo-webhook] Atomic lifetime refund revocation failed', JSON.stringify({
+        code: refundError.code || 'unknown'
+      }))
+      return new Response('Could not reconcile lifetime refund', { status: 500 })
+    }
+    return Response.json({ received: true, lifetimeRefundChecked: true })
+  }
   if (eventType !== 'checkout_session.payment.paid') return Response.json({ received: true })
 
   const checkoutSession = checkoutSessionFromEvent
@@ -198,6 +214,26 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!supabaseUrl || !serviceKey) return new Response('Payment service is not configured', { status: 503 })
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  // One-time lifetime payments use a distinct order table and are never
+  // finalized as week/month/year subscription orders.
+  if (sessionAttrs?.metadata?.kind === 'lifetime') {
+    const { data: lifetimeOrder, error: lifetimeLookupError } = await admin.from('lifetime_orders')
+      .select('*').eq('id', orderId).maybeSingle()
+    if (lifetimeLookupError || !lifetimeOrder) {
+      return new Response('Lifetime order was not found', { status: lifetimeLookupError ? 500 : 404 })
+    }
+    try {
+      const result = await finalizeVerifiedLifetimePayment(admin, lifetimeOrder, checkoutSession, isLive)
+      if (result.status === 'reconciliation_required') {
+        console.error('[paymongo-webhook] Lifetime purchase needs duplicate-charge reconciliation')
+      }
+      return Response.json({ received: true, lifetime: true, status: result.status })
+    } catch {
+      console.error('[paymongo-webhook] Lifetime payment failed proof or atomic fulfillment')
+      return new Response('Lifetime payment could not be safely finalized', { status: 500 })
+    }
+  }
 
   // Multi-item basket payment: activate exactly the child orders recorded for this
   // server-created batch, never a client-supplied product list.
@@ -248,7 +284,7 @@ Deno.serve(async (req) => {
         childCodes.some((code: string, index: number) => code !== expectedCodes[index]) ||
         childOrders.some((order: any) => productTracks[order.product_code] !== order.track_id || order.currency !== 'PHP' ||
           order.license_term !== termsByCode[order.product_code] ||
-          Number(order.amount_php) !== termPrices[order.product_code]?.[termsByCode[order.product_code]]) ||
+          !isAcceptedStoredPrice(order.product_code, termsByCode[order.product_code], Number(order.amount_php))) ||
         childTotal !== Number(batch.amount_php)) {
       return new Response('Basket item list or total mismatch', { status: 400 })
     }
@@ -300,7 +336,7 @@ Deno.serve(async (req) => {
 
   const paymentAttrs = payment.attributes
   const singleTerm: LicenseTerm = order.license_term === 'week' || order.license_term === 'month' ? order.license_term : 'year'
-  if (Number(order.amount_php) !== termPrices[order.product_code]?.[singleTerm] ||
+  if (!isAcceptedStoredPrice(order.product_code, singleTerm, Number(order.amount_php)) ||
       paymentAttrs?.currency !== 'PHP' || Number(paymentAttrs?.amount) !== order.amount_php * 100) {
     return new Response('Payment amount mismatch', { status: 400 })
   }

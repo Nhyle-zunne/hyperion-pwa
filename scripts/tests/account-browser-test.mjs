@@ -1,4 +1,6 @@
+import { assertSquareCorners } from './square-corners-browser-helper.mjs'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { chromium } from 'playwright'
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
@@ -8,17 +10,41 @@ try {
   const editorPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
   const editorErrors = []
   const editorApiCalls = []
+  const editorSearchRequests = []
+  let fixtureBankRevision = 'a'.repeat(40)
+  const existingImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64')
+  const existingRef = { sha256: createHash('sha256').update(existingImage).digest('hex'), mime: 'image/png', placement: 'question', alt: 'Saved question image' }
+  let editorValidatedFiles = []
   editorPage.on('pageerror', error => editorErrors.push(error.message))
   await editorPage.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
   await editorPage.route('**/api/question-bank/admin', async route => {
     const body = route.request().postDataJSON()
     editorApiCalls.push(body.action)
-    const path = 'engine_mgt/em_c10.csv.enc'
+    if (body.action === 'media-upload') {
+      assert.equal(route.request().headers().authorization, 'Bearer fixture-token')
+      assert.equal(body.mime, 'image/webp')
+      uploadedImage = Buffer.from(body.base64, 'base64')
+      await uploadHeld
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+        track: body.track, mime: body.mime, bytes: uploadedImage.length,
+        sha256: createHash('sha256').update(uploadedImage).digest('hex'), source: 'github'
+      }) })
+    }
+    if (body.action === 'validate') editorValidatedFiles = body.files
+    const path = body.action === 'editor-load' ? body.path : 'engine_mgt/em_c10.csv.enc'
     const csvText = [
-      'No.,Question,A,B,C,D,Correct Answer,Explanation',
-      '1,Why is water treated?,Prevent corrosion,Improve color,Reduce speed,Increase noise,A,Prevent scale',
-      '2,What does cooling do?,Remove heat,Increase wear,Stop flow,Raise friction,A,Temperature control'
+      'No.,Question,A,B,C,D,Correct Answer,Explanation,HYPERION_MEDIA',
+      '1,Why is water treated?,Prevent corrosion,A deliberately long choice that still starts at one line and remains scrollable without manual shrinking. A deliberately long choice that still starts at one line.,Reduce speed,Increase noise,A,Prevent scale,',
+      '2,What does cooling do?,Remove heat,Increase wear,Stop flow,Raise friction,A,Temperature control,'+'\"'+JSON.stringify([existingRef]).replaceAll('\"','\"\"')+'\"',
+      ...Array.from({ length: 38 }, (_, index) => `${index+3},Extra synthetic question ${index+3}?,One,Two,Three,Four,A,,`)
     ].join('\r\n')
+    if (body.action === 'editor-search') {
+      editorSearchRequests.push(body)
+      assert.equal(body.query, 'cooling')
+      const engine = { path: 'engine_mgt/em_c10.csv.enc', ordinal: 2, questionText: 'What does cooling do?', track: 'ENGINE_MGT', competenceId: 'C10', part: null, isRetired: false }
+      const deck = { path: 'deck/oic_nw_c1.csv.enc', ordinal: 1, questionText: 'Cooling question in another track', track: 'DECK_OIC_NW', competenceId: 'C1', part: null, isRetired: false }
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ results: body.track ? [engine] : body.cursor ? [deck] : [engine], nextCursor: !body.track && !body.cursor ? 2 : null, truncated: false, bankRevision: fixtureBankRevision }) })
+    }
     const reply = body.action === 'inventory'
       ? { configured: true, assets: [
           { path: 'deck/oic_nw_c1.csv.enc', label: 'Deck OIC-NW · C1', track: 'DECK_OIC_NW', competenceId: 'C1', part: null, format: 'standard' },
@@ -28,21 +54,35 @@ try {
           { path, label: 'Engine Management · C10', track: 'ENGINE_MGT', competenceId: 'C10', part: null, format: 'standard' }
         ] }
       : body.action === 'editor-load'
-        ? { path, csvText, baseHead: 'a'.repeat(40) }
+        ? { path, csvText, baseHead: 'a'.repeat(40), bankRevision: fixtureBankRevision }
         : body.action === 'validate'
           ? { preview: { requestId: body.requestId, baseHead: 'a'.repeat(40), validationId: 'fixture-validation', files: [{ path, questionCount: 2, previousCount: 2, changed: 1, appended: 0, corrections: [] }] } }
           : { error: 'Synthetic fixture does not publish to GitHub.' }
     await route.fulfill({ status: body.action === 'publish' ? 400 : 200, contentType: 'application/json', body: JSON.stringify(reply) })
   })
+  let uploadedImage
+  let releaseUpload
+  const uploadHeld = new Promise(resolve => { releaseUpload = resolve })
+  // Admin uploads use the GitHub-backed Worker and published display reads use
+  // the same protected Worker media route as the reviewer.
+  await editorPage.route('**/api/question-bank/media?*', async route => {
+    const url = new URL(route.request().url())
+    const digest = url.searchParams.get('sha256')
+    const bytes = digest === existingRef.sha256 ? existingImage : uploadedImage
+    assert(bytes, 'Requested image was not uploaded in this fixture')
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), digest)
+    return route.fulfill({ contentType: url.searchParams.get('mime') || 'image/png',
+      headers: { 'X-Hyperion-Media-SHA256': digest }, body: bytes })
+  })
   await editorPage.goto(process.env.HYPERION_RECOVERY_TEST_URL + '?section=question-editor')
   await editorPage.getByRole('heading', { name: 'Edit, retire or restore questions' }).waitFor()
   const presets = editorPage.getByRole('group', { name: 'Choose examination track' })
-  assert.equal(await presets.locator('button[aria-pressed]').count(), 5, 'All five examination track presets are always available')
+  assert.equal(await presets.locator('button[aria-pressed]').count(), 6, 'All five examination track presets are always available')
   const combobox = editorPage.getByRole('combobox', { name: 'Search track, competence or question bank' })
   const gmdssPreset = presets.getByRole('button', { name: 'Filter GMDSS GOC question banks' })
   const deckPreset = presets.getByRole('button', { name: 'Filter Deck Management question banks' })
   const enginePreset = presets.getByRole('button', { name: 'Filter Engine Management question banks' })
-  const results = editorPage.locator('.admin-bank-picker__option')
+  const results = editorPage.locator('.admin-bank-picker__option:not(.admin-bank-picker__option--all)')
 
   // Clicking a track must never open the search box that the user left closed.
   assert.equal(await combobox.getAttribute('aria-expanded'), 'false', 'Search starts closed')
@@ -76,7 +116,7 @@ try {
 
   await combobox.fill('Engine C10')
   assert.equal(await results.count(), 1, 'Global text search still works')
-  await results.first().click()
+  await combobox.press('Enter')
   assert.equal(await editorPage.getByRole('button', { name: 'OPEN QUESTION BANK' }).isEnabled(), true, 'Selecting a competence enables Open')
   assert.equal(await combobox.getAttribute('aria-expanded'), 'false', 'Selecting a question bank closes the search')
   await deckPreset.click()
@@ -89,45 +129,200 @@ try {
   await results.first().click()
   await editorPage.getByRole('button', { name: 'OPEN QUESTION BANK' }).click()
   await editorPage.getByText('Question #1', { exact: true }).waitFor()
+  await editorPage.addStyleTag({ content: '#square-policy-probe { border-radius: 50% !important } #square-policy-probe::before { content: "probe"; border-radius: 99px !important }' })
+  await editorPage.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.id = 'square-policy-probe'
+    probe.style.borderRadius = '80px'
+    document.body.append(probe)
+  })
+  await assertSquareCorners(editorPage)
+  await editorPage.locator('#square-policy-probe').evaluate(el => el.remove())
+  const retirementCheckbox = editorPage.getByRole('checkbox', { name: 'Retired (exclude from new study sessions)' })
+  await retirementCheckbox.focus()
+  await editorPage.keyboard.press('Space')
+  assert.equal(await retirementCheckbox.isChecked(), true, 'Square checkbox keeps native keyboard selection')
+  await editorPage.emulateMedia({ forcedColors: 'active' })
+  assert.equal(await retirementCheckbox.evaluate(el => getComputedStyle(el, '::before').transform), 'matrix(1, 0, 0, 1, 0, 0)', 'Checked marker remains visible in forced colors')
+  await editorPage.emulateMedia({ forcedColors: 'none' })
+  await editorPage.keyboard.press('Space')
+  assert.equal(await retirementCheckbox.isChecked(), false, 'Square checkbox can be unchecked with the keyboard')
   const actions = editorPage.locator('.admin-qb-editor-actions')
   assert.equal(await actions.count(), 1, 'Both edit actions share a single, organized workflow bar')
-  const applyButton = actions.getByRole('button', { name: /APPLY QUESTION EDIT TO DRAFT/i })
-  const queueButton = actions.getByRole('button', { name: /ADD EDITED QUESTIONS TO PUBLISH QUEUE/i })
+  const queueButton = actions.locator('button.btn-primary')
   const actionFeedback = actions.locator('[role="status"], [role="alert"]')
-  await applyButton.click()
-  assert.match(await actionFeedback.innerText(), /no changes|change (a field|the question)/i, 'Unchanged question explains why applying had no effect near the button')
-  await queueButton.click()
-  assert.match(await actionFeedback.innerText(), /apply|no (applied )?edits/i, 'Queue explains missing applied edits instead of being silently disabled')
+  assert.equal(await actions.getByRole('button', { name: /APPLY QUESTION EDIT/i }).count(), 0, 'No separate apply action')
+  assert.equal(await queueButton.isDisabled(), true, 'Unchanged questions cannot be queued')
+  assert.equal(await queueButton.innerText(), 'No changes')
+  assert.equal(await editorPage.getByText('Website and Android updates', { exact: true }).count(), 0)
+  const imagePicker = editorPage.getByLabel('Attach question image', { exact: true })
+  const imageDescription = editorPage.getByLabel('Image description (optional)', { exact: true })
+  await imageDescription.waitFor()
+  assert.equal(await imageDescription.inputValue(), '', 'A description need not be supplied to attach a diagram')
+  await imagePicker.setInputFiles({ name: 'invalid.png', mimeType: 'image/png', buffer: Buffer.from('bad') })
+  await editorPage.getByRole('alert').filter({ hasText: /Choose a PNG, JPEG or WebP/ }).waitFor()
+  assert.equal(await editorPage.getByRole('button', { name: 'Choose image', exact: true }).isEnabled(), true, 'Upload failure remains visible and retryable')
+  const png = Buffer.from(await editorPage.evaluate(() => { const canvas = document.createElement('canvas'); canvas.width = 20; canvas.height = 20; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#167b40'; ctx.fillRect(0, 0, 20, 20); return canvas.toDataURL('image/png').split(',')[1] }), 'base64')
+  await imagePicker.setInputFiles({ name: 'engine-diagram.png', mimeType: 'image/png', buffer: png })
+  const imageProgress = editorPage.getByRole('progressbar', { name: 'Image upload progress' })
+  await imageProgress.waitFor()
+  await editorPage.waitForFunction(() => !!document.querySelector('progress[aria-label="Image upload progress"]'))
+  assert.equal(await editorPage.getByRole('button', { name: 'Uploading image…', exact: true }).isDisabled(), true)
+  assert.equal(await editorPage.getByText('1 image attached to this question’s draft.', { exact: false }).count(), 0, 'Sending bytes is not yet a verified attachment')
+  releaseUpload()
+  await editorPage.getByText('1 image attached to this question’s draft.', { exact: false }).waitFor({ timeout: 5000 }).catch(async error => { console.error(await editorPage.locator('body').innerText()); throw error })
+  const previewImage = editorPage.getByAltText('Diagram for question 1', { exact: true })
+  await previewImage.waitFor()
+  await editorPage.waitForFunction(() => [...document.querySelectorAll('img')].some(img => img.alt === 'Diagram for question 1' && img.complete && img.naturalWidth > 0))
+  await editorPage.getByTitle('Tap to enlarge diagram').click()
+  await editorPage.getByRole('dialog', { name: 'Enlarged question diagram' }).waitFor()
+  await editorPage.keyboard.press('Escape')
+  assert.equal(await imagePicker.isVisible(), false, 'Native reset text cannot falsely say No file chosen after upload')
+  assert.equal(await editorPage.getByRole('button', { name: 'Add another image', exact: true }).count(), 1)
+  assert(await editorPage.getByRole('button', { name: 'Add another image', exact: true }).evaluate(el => el.clientWidth < el.parentElement.clientWidth * .8), 'Image action does not stretch across the card')
+  assert.equal(await editorPage.getByText('Question · Diagram for question 1', { exact: false }).count(), 1, 'Blank description gets a valid default label')
+  await editorPage.getByRole('button', { name: 'Remove', exact: true }).click()
+  assert.equal(await editorPage.getByRole('button', { name: 'Choose image', exact: true }).count(), 1, 'Removing the last attachment restores choose state')
+  await imageDescription.fill('Cooling diagram')
+  await imagePicker.setInputFiles({ name: 'engine-diagram.png', mimeType: 'image/png', buffer: png })
+  await editorPage.getByText('Question · Cooling diagram', { exact: false }).waitFor()
+  await editorPage.getByLabel('Question text', { exact: true }).fill('')
   await editorPage.getByLabel('Explanation').fill('Better cooling explanation')
   await queueButton.click()
-  assert.match(await actionFeedback.innerText(), /apply.*(first|edit)/i, 'Unsaved form inputs cannot silently publish stale edited text')
-  await applyButton.click()
-  assert.match(await actionFeedback.innerText(), /saved.*draft/i, 'Applied edit confirms locally next to the button, not only at the top of the page')
-  assert.equal(await queueButton.isEnabled(), true)
-  await queueButton.click()
-  assert.match(await actionFeedback.innerText(), /queue/i, 'Queue action confirms locally near its button')
+  assert.match(await actionFeedback.innerText(), /queue/i, 'One click validates the form and stages the edited CSV')
   await editorPage.getByRole('heading', { name: 'Upload queue (1)' }).waitFor()
-  assert.equal(editorApiCalls.includes('publish'), false, 'Neither action publishes to the server')
-  // If editing continues after queuing, the previously staged file is stale.
+  assert.equal(editorApiCalls.includes('publish'), false, 'Staging never publishes')
+  assert.equal(await queueButton.isDisabled(), true, 'Already queued changes cannot be staged again')
+  assert.equal(await queueButton.innerText(), 'Saved to queue')
+  assert.equal(await actions.locator('..').getAttribute('class'), 'admin-qb-editor-sidebar')
   await editorPage.getByLabel('Explanation').fill('A second cooling explanation')
-  await applyButton.click()
-  assert.equal(await editorPage.getByRole('heading', { name: 'Upload queue (0)' }).count(), 1, 'New edits revoke stale previously queued editor bytes')
+  await editorPage.getByRole('heading', { name: 'Upload queue (0)' }).waitFor()
   await queueButton.click()
+  await editorPage.getByRole('heading', { name: 'Upload queue (1)' }).waitFor()
   await editorPage.getByRole('button', { name: 'VALIDATE BATCH', exact: true }).click()
   await editorPage.getByRole('heading', { name: 'Review before publishing' }).waitFor()
   assert.deepEqual(editorApiCalls.filter(a => a === 'validate'), ['validate'], 'Validation is a distinct deliberate step')
+  assert.match(editorValidatedFiles[0].content, /HYPERION_MEDIA/, 'Queued CSV includes attachment column')
+  assert.match(editorValidatedFiles[0].content, /1,,Prevent corrosion/, 'Question stem remains genuinely empty in the queued CSV')
+  assert.match(editorValidatedFiles[0].content, /Cooling diagram/, 'Uploaded image metadata survives apply, queue and validation')
   assert.equal(editorApiCalls.includes('publish'), false)
-  for (const width of [1531, 390]) {
+  for (const width of [1531, 768, 390, 320]) {
     await editorPage.setViewportSize({ width, height: 900 })
     const presetBounds = await presets.boundingBox()
     assert(presetBounds && presetBounds.x >= 0 && presetBounds.x + presetBounds.width <= width, 'Track presets fit viewport width')
-    const one = await actions.locator('.admin-qb-editor-action').first().boundingBox()
-    const two = await actions.locator('.admin-qb-editor-action').last().boundingBox()
-    assert(one && two)
-    assert(width > 800 ? Math.abs(one.y - two.y) < 5 && two.x > one.x : two.y > one.y + 15, 'Edit actions align side by side on desktop and stack on mobile')
+    const actionBounds = await queueButton.boundingBox()
+    assert(actionBounds && actionBounds.height <= 44 && actionBounds.width < width, 'Queue action stays compact')
+    if (width > 1000) assert(await editorPage.locator('.admin-qb-page').evaluate(el => el.clientWidth > 1000), 'Desktop editor uses the wide percentage layout')
+    if (width > 1000) {
+      const localSearch = editorPage.getByLabel('Find question by number or text', { exact: true })
+      await localSearch.fill('What does cooling')
+      assert((await editorPage.locator('.admin-qb-question-list').boundingBox()).height < 160, 'Filtered question lists shrink instead of leaving an empty box')
+      await localSearch.fill('')
+    }
+    const frame = await editorPage.getByTitle('Tap to enlarge diagram').boundingBox()
+    const controls = await editorPage.locator('.admin-qb-image-controls').boundingBox()
+    assert(frame && controls && Math.abs(frame.height - 220) < 2, 'Image previews use a consistent frame height')
+    const previewColumn = await editorPage.locator('.admin-qb-image-list').boundingBox()
+    assert(frame.width > previewColumn.width * .9, 'Remove controls cannot create a phantom preview column on phones')
+    assert(width >= 600 ? controls.x > frame.x + frame.width : controls.y > frame.y + frame.height, 'Image controls sit beside desktop previews and below phone previews')
+    const listBounds = await editorPage.locator('.admin-qb-question-list').boundingBox()
+    const sidebarActions = await actions.boundingBox()
+    assert(sidebarActions && listBounds && sidebarActions.y >= listBounds.y + listBounds.height && sidebarActions.y - listBounds.y - listBounds.height < 24, 'Queue actions immediately follow the question list')
+    const choiceA = editorPage.getByLabel('Choice A', { exact: true })
+    const choiceB = editorPage.getByLabel('Choice B', { exact: true })
+    const a = await choiceA.boundingBox(), b = await choiceB.boundingBox()
+    assert(a && b && a.height <= 38 && b.height <= 38, 'Both short and long choices start at a compact one-line height')
+    if (width > 1000) await editorPage.waitForFunction(() => { const form = document.querySelector('.admin-qb-question-form'), list = document.querySelector('.admin-qb-question-list'); return form && list && Math.abs(form.getBoundingClientRect().top - list.getBoundingClientRect().top) < 2 && list.getBoundingClientRect().height <= form.getBoundingClientRect().height + 2 })
+    assert(width >= 600 ? Math.abs(a.y - b.y) < 5 : b.y > a.y, 'Choices pair on wider screens and stack on phones')
+    const remove = editorPage.getByRole('button', { name: 'Remove', exact: true }).first()
+    assert.equal(await remove.evaluate(el => getComputedStyle(el).color), 'rgb(220, 38, 38)', 'Remove has red text')
     assert(await editorPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Admin editor fits available viewport width')
   }
   assert.deepEqual(editorErrors, [], 'No runtime errors in admin editor workflow')
+  await editorPage.getByRole('button', { name: /#2.*What does cooling do/ }).click()
+  await editorPage.getByAltText('Saved question image', { exact: true }).waitFor()
+  await editorPage.waitForFunction(() => [...document.querySelectorAll('img')].some(img => img.alt === 'Saved question image' && img.complete && img.naturalWidth > 0))
+  assert.equal(await editorPage.getByAltText('Cooling diagram', { exact: true }).count(), 0, 'Changing questions clears the previous image')
+  assert.equal(await imageProgress.count(), 0, 'Progress does not leak into the next question')
+  await editorPage.getByLabel('Choice B', { exact: true }).fill('A long choice that must remain fully editable. '.repeat(30))
+  const longChoice = editorPage.getByLabel('Choice B', { exact: true })
+  assert(await longChoice.evaluate(el => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === 'auto'), 'Long choices retain scrollable content within a compact field')
+  await editorPage.getByLabel('Choice A', { exact: true }).fill('')
+  await queueButton.click()
+  assert.match(await actionFeedback.innerText(), /valid choices/i, 'Invalid current edits are not queued')
+  assert.equal(await editorPage.getByRole('heading', { name: 'Upload queue (0)' }).count(), 1)
+  assert.equal(await editorPage.getByRole('heading', { name: 'Review before publishing' }).count(), 0, 'Typing revokes an earlier validation preview')
+  await actions.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  assert.equal(await editorPage.getByLabel('Choice A', { exact: true }).inputValue(), 'Remove heat')
+  await editorPage.getByLabel('Explanation', { exact: true }).fill('Second question update')
+  await queueButton.click()
+  await editorPage.getByRole('button', { name: 'VALIDATE BATCH', exact: true }).click()
+  await editorPage.getByRole('heading', { name: 'Review before publishing' }).waitFor()
+  assert.match(editorValidatedFiles[0].content, /A second cooling explanation/, 'Earlier question edits remain in the updated full-bank file')
+  assert.match(editorValidatedFiles[0].content, /Second question update/, 'The next question stages with one click')
+  assert.equal(editorApiCalls.includes('publish'), false)
+  await editorPage.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
+  assert.equal(await editorPage.getByRole('button', { name: 'Remove', exact: true }).first().evaluate(el => getComputedStyle(el).color), 'rgb(239, 68, 68)', 'Remove stays red in dark mode')
+  await editorPage.locator('.admin-qb-editor-layout').screenshot({ path: '/tmp/compact-editor-mobile.png', animations: 'disabled' })
+  await editorPage.setViewportSize({ width: 1531, height: 1000 })
+  await editorPage.evaluate(() => { document.documentElement.dataset.theme = 'light' })
+  await editorPage.locator('.admin-qb-editor-layout').screenshot({ path: '/tmp/compact-editor-desktop.png', animations: 'disabled' })
+  await presets.getByRole('button', { name: 'Search all tracks and competences', exact: true }).click()
+  const globalQuery = editorPage.getByRole('textbox', { name: 'Search questions across selected banks', exact: true })
+  await globalQuery.fill('cooling')
+  const searchesBefore = editorApiCalls.filter(action => action === 'editor-search').length
+  assert.equal(searchesBefore, 0, 'Typing does not scan banks or call Supabase')
+  await editorPage.getByRole('button', { name: 'Search questions', exact: true }).click()
+  await editorPage.getByRole('button', { name: /Cooling question in another track/ }).waitFor()
+  assert.equal(editorApiCalls.filter(action => action === 'editor-search').length, 2, 'All-track search follows bounded immutable pages')
+  await editorPage.getByRole('button', { name: /Cooling question in another track/ }).click()
+  await editorPage.getByText('Question #1', { exact: true }).waitFor()
+  assert.equal(await editorPage.getByLabel('Question text', { exact: true }).inputValue(), 'Why is water treated?', 'Search result opens its exact bank and ordinal')
+  await editorPage.getByLabel('Choice A', { exact: true }).fill('Unqueued change')
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  assert.equal(await editorPage.getByLabel('Choice A', { exact: true }).inputValue(), 'Unqueued change', 'Opening another result cannot discard current edits')
+  await actions.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await enginePreset.click()
+  await combobox.click()
+  await editorPage.getByRole('option', { name: /All competences/ }).click()
+  await globalQuery.fill('cooling')
+  await editorPage.getByRole('button', { name: 'Search questions', exact: true }).click()
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).waitFor()
+  assert.equal(editorSearchRequests.at(-1).track, 'ENGINE_MGT', 'All competences searches only the selected track')
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  await editorPage.getByText('Question #2', { exact: true }).waitFor()
+  assert.equal(await editorPage.getByLabel('Explanation', { exact: true }).inputValue(), 'Second question update', 'Returning to a staged bank preserves its queued edits')
+  fixtureBankRevision = 'b'.repeat(40)
+  await editorPage.getByRole('button', { name: 'Search questions', exact: true }).click()
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).waitFor()
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  await editorPage.getByRole('alert').filter({ hasText: /bank changed since your draft/i }).waitFor()
+  assert.equal(await editorPage.getByLabel('Explanation', { exact: true }).inputValue(), 'Second question update', 'A newer search revision cannot silently replace a queued draft')
+  await editorPage.getByRole('button', { name: 'Clear queue', exact: true }).click()
+  await actions.getByRole('button', { name: 'Discard bank draft', exact: true }).click()
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  await editorPage.getByText('Question #2', { exact: true }).waitFor()
+  assert.equal(await editorPage.getByLabel('Explanation', { exact: true }).inputValue(), 'Temperature control', 'Explicitly discarded drafts reopen from the current bank revision')
+  const loadedBeforeRevisionChange = editorApiCalls.filter(action => action === 'editor-load').length
+  fixtureBankRevision = 'c'.repeat(40)
+  await editorPage.getByRole('button', { name: 'Search questions', exact: true }).click()
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).waitFor()
+  const refreshedBank = editorPage.waitForResponse(response => response.url().endsWith('/api/question-bank/admin') && response.request().postDataJSON()?.action === 'editor-load')
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  await refreshedBank
+  assert.equal(editorApiCalls.filter(action => action === 'editor-load').length, loadedBeforeRevisionChange + 1, 'A clean same-bank editor reloads when search sees a newer revision')
+  await editorPage.setViewportSize({ width: 390, height: 900 })
+  await presets.getByRole('button', { name: 'Search all tracks and competences', exact: true }).click()
+  await globalQuery.fill('cooling')
+  await editorPage.getByRole('button', { name: 'Search questions', exact: true }).click()
+  await editorPage.getByRole('button', { name: /Cooling question in another track/ }).waitFor()
+  assert(await editorPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'All-track search fits a phone screen')
+  await editorPage.getByRole('button', { name: /What does cooling do/ }).click()
+  await editorPage.getByText('Question #2', { exact: true }).waitFor()
+  await editorPage.locator('.admin-qb-editor-layout').screenshot({ path: '/tmp/admin-all-tracks-mobile.png', animations: 'disabled' })
+  assert.deepEqual(editorErrors, [], 'No runtime errors after cross-bank searching and revision changes')
+  await assertSquareCorners(editorPage)
+  console.log('PASS: admin image upload, optional descriptions, removal, apply/queue metadata and responsive editor workflow')
   await editorPage.close()
 
   const page = await browser.newPage({ viewport: { width: 1531, height: 900 } })
@@ -278,7 +473,12 @@ try {
       const button = card.querySelector('button.btn-primary')?.getBoundingClientRect()
       return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, bottom: rect.bottom, buyButtonBottom: button?.bottom }
     }))
+    await assertSquareCorners(page)
     assert.equal(boxes.length, 5, 'All five track cards render')
+    const storeStyles = await page.locator('.account-product-card').first().evaluate(el => ({ radius: getComputedStyle(el).borderRadius, actionBg: getComputedStyle(el.querySelector('button.btn-primary')).backgroundColor }))
+    assert.equal(storeStyles.radius, '0px', 'Store cards share square corners with the purchase popup')
+    assert.equal(storeStyles.actionBg, 'rgb(20, 125, 67)', 'Store and popup use the same purchase action color')
+
     assert.equal(boxes.filter(box => Math.abs(box.y - boxes[0].y) < 2).length, expectedColumns, `Responsive store has ${expectedColumns} columns at ${width}px`)
     assert(boxes.every(box => box.width >= 140 && box.x >= 0 && box.x + box.width <= width + 1), `Store cards have usable widths and no horizontal overflow at ${width}px`)
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Bond Store has no horizontal scroll at ${width}px`)
@@ -302,8 +502,10 @@ try {
   assert(tabsAndProfile.shellWidth > 1450, 'Desktop account shell has enough width for readable track cards')
   const cards = page.locator('.account-product-card')
   assert.equal(await cards.count(), 5)
-  assert.equal(await cards.first().locator('.store-benefits-list li').count(), 9, 'Each card retains all nine premium features')
-  assert.equal(await cards.last().locator('.store-benefits-list li').count(), 9)
+  assert.equal(await cards.first().locator('.store-benefits-list li').count(), 10, 'Each card retains all ten premium features')
+  assert.equal(await cards.locator('.store-benefits-list li').count(), 50, 'All five store cards show ten features')
+  assert.equal(await cards.getByText('Use your license across multiple devices, including the official Hyperion Android app.').count(), 5, 'All store cards include the Android app benefit')
+  assert.equal(await cards.last().locator('.store-benefits-list li').count(), 10)
   assert.equal(await cards.first().locator('.product-art .store-banner-symbol').count(), 3, 'Operational cards use original anchor, track, and level symbols')
   assert.equal(await cards.nth(1).locator('.product-art .store-banner-symbol').count(), 2, 'GMDSS card uses original anchor and radio symbol')
   const asset = await page.request.get(new URL('/store-art/hyperion-banner-sprite.png', page.url()).href)
@@ -316,101 +518,79 @@ try {
     const cta = el.querySelector('button.btn-primary').getBoundingClientRect()
     return { top: r.top, bottom: r.bottom, width: r.width, listHeight: list.height, ctaBottom: cta.bottom, scroll: document.documentElement.scrollHeight, matrix: getComputedStyle(el).transform }
   })
-  const reveal = oicCard.getByRole('button', { name: 'See all 9 premium features' })
+  const reveal = oicCard.getByRole('button', { name: 'See all 10 premium features' })
   const collapse = oicCard.getByRole('button', { name: 'Show fewer features ↑' })
+  const gmdssCard = cards.nth(1)
   await page.mouse.move(0, 0)
   const baseCard = await readCard(oicCard)
+  const gmdssBefore = await readCard(gmdssCard)
   await oicCard.hover()
-  await page.waitForTimeout(400)
+  await page.waitForTimeout(120)
   const hover = await readCard(oicCard)
-  assert(hover.matrix !== 'none' && Number(hover.matrix.match(/^matrix\(([^,]+)/)?.[1]) > 1.02, 'Desktop hover lifts and enlarges the card')
-  assert(hover.width > baseCard.width + 28, 'Hovered card gains width for legibility')
-  assert(hover.listHeight <= baseCard.listHeight + 5, 'Hover does not reveal features by itself; See all has a meaningful action')
-  assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'A hovered card still advertises its collapsed features')
-  assert.equal(await page.locator('.store-benefits-popover').count(), 0, 'No dark popup covers account navigation')
-  // Switch between neighboring raised cards repeatedly. The old card must
-  // animate back from the same anchored layer instead of snapping to flow.
-  const gmdssCard = cards.nth(1)
-  const cardCenter = card => card.evaluate(el => {
-    const r = el.getBoundingClientRect()
-    return { x: r.left + r.width * .65, y: r.top + Math.min(48, r.height * .2) }
-  })
-  for (let switchIndex = 0; switchIndex < 3; switchIndex++) {
-    // Use direct pointer travel; locator.hover() waits for CSS stability and
-    // can consume the entire 320 ms exit transition before we inspect it.
-    const gmdssPoint = await cardCenter(gmdssCard)
-    await page.mouse.move(gmdssPoint.x, gmdssPoint.y, { steps: 3 })
-    await page.waitForTimeout(45)
-    assert.equal(await page.locator('.account-product-slot.is-hovered').count(), 1, 'Only the destination card is hovered')
-    assert.equal(await gmdssCard.locator('..').evaluate(el => el.classList.contains('is-hovered')), true, 'GMDSS activates during handoff')
-    assert.equal(await oicCard.locator('..').evaluate(el => getComputedStyle(el.querySelector('.account-product-card')).position), 'absolute', 'Exiting OIC card stays in an anchored layer during the exit animation')
-    await page.waitForTimeout(360)
-    assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', 'Old card releases its frozen grid height after settling')
-    assert.equal(await page.locator('.account-product-slot[data-store-lift="settling"]').count(), 0, 'No exiting card remains stuck after handoff')
-    const oicPoint = await cardCenter(oicCard)
-    await page.mouse.move(oicPoint.x, oicPoint.y, { steps: 3 })
-    await page.waitForTimeout(360)
-    assert.equal(await page.locator('.account-product-slot.is-hovered').count(), 1, 'Returning hover activates exactly one card')
-    assert.equal(await gmdssCard.locator('..').evaluate(el => el.style.height), '', 'Neighbor returns to normal grid flow after switching back')
-    const switched = await readCard(oicCard)
-    assert(switched.ctaBottom < 900 - 8 && switched.scroll <= baseCard.scroll + 1, 'Repeated card switches keep Buy Now visible without new scrolling')
+  assert.equal(hover.matrix, 'none', 'Bond Store does not animate, lift or scale on mouse hover')
+  assert(Math.abs(hover.width - baseCard.width) < 1 && Math.abs(hover.top - baseCard.top) < 1,
+    'Hover preserves the card footprint and position')
+  assert(hover.listHeight <= baseCard.listHeight + 2, 'Hover does not reveal premium features')
+  assert.equal(await page.locator('.account-product-slot.is-hovered,[data-store-lift]').count(), 0,
+    'Hover does not create animated popups or settling layers')
+  assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Features remain collapsed until clicked')
+
+  for (let index = 0; index < 3; index++) {
+    await gmdssCard.hover()
+    await oicCard.hover()
   }
-  await reveal.click()
-  await page.waitForTimeout(400)
-  const opened = await readCard(oicCard)
-  assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'Clicking See all explicitly expands nine features')
-  assert(opened.listHeight > hover.listHeight + 60, 'Click reveals all nine features inside the white card')
-  assert(opened.top < hover.top - 45, 'Clicked card grows upward from the original bottom edge')
-  assert(opened.ctaBottom < 900 - 8 && opened.ctaBottom <= baseCard.ctaBottom + 8, 'Buy Now remains visible and never shifts down when features open')
-  assert(opened.scroll <= baseCard.scroll + 1, 'Opening features adds no vertical page scrolling')
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(390)
-  assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Desktop See all auto-collapses on mouseleave instead of remaining stuck open')
-  assert((await readCard(oicCard)).listHeight <= baseCard.listHeight + 5, 'Mouseleave restores compact feature preview')
-  assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', 'Auto-collapse clears the frozen slot height')
-  assert.equal(await oicCard.locator('..').evaluate(el => el.dataset.storeLift ?? ''), '', 'Auto-collapse clears pending lift transitions')
-  // Show fewer must still work on desktop while the pointer remains over the card.
+  const gmdssAfter = await readCard(gmdssCard)
+  const switched = await readCard(oicCard)
+  assert(Math.abs(gmdssAfter.width - gmdssBefore.width) < 1,
+    'Repeated movement between cards cannot enlarge neighboring plans')
+  assert(Math.abs(switched.width - baseCard.width) < 1 && switched.matrix === 'none',
+    'Repeated hovering never transforms or freezes a card')
+  assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '',
+    'No hover handler freezes the grid slot height')
+
   await reveal.click()
   await page.waitForTimeout(340)
-  assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'Clicking See all again opens the full list')
+  const opened = await readCard(oicCard)
+  assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'See all explicitly expands benefits')
+  assert(opened.listHeight > baseCard.listHeight + 50, 'Click reveals the full feature list')
+  assert.equal(await oicCard.locator('.store-benefits-list li').count(), 10)
+  assert.equal(await oicCard.getByRole('button', { name: /BUY NOW|EXTEND LICENSE/ }).isVisible(), true,
+    'Buy Now remains part of the visible card after feature expansion')
+  assert.equal(opened.matrix, 'none', 'Expanding benefits does not trigger card scaling')
+  await page.mouse.move(0, 0)
+  assert.equal(await collapse.getAttribute('aria-expanded'), 'true',
+    'Moving the mouse out does not unexpectedly collapse a user-opened list')
   await collapse.click()
   await page.waitForTimeout(340)
-  assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Show fewer reverses expansion while hovered')
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(350)
-  assert((await readCard(oicCard)).listHeight <= baseCard.listHeight + 5, 'Show fewer restores compact state after leaving')
-  // Repeat to catch rapid reopen + mouse-out state bugs reported by the user.
+  assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Show fewer collapses benefits')
   for (let repeat = 0; repeat < 3; repeat++) {
     await reveal.click()
-    await page.waitForTimeout(350)
-    assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'Repeated See all clicks open the full feature list')
-    await page.mouse.move(0, 0)
-    await page.waitForTimeout(390)
-    assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Repeated desktop mouseleave automatically collapses features')
-    assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', 'No stuck frozen slot after repeated mouseleave')
+    await collapse.waitFor()
+    await collapse.click()
+    await reveal.waitFor()
+    assert.equal(await oicCard.locator('..').evaluate(el => el.dataset.storeLift ?? ''), '',
+      'Repeated toggles never create hover animation state')
   }
+
   for (const [width, height] of [[1366, 768], [1280, 768], [1531, 900]]) {
     await page.setViewportSize({ width, height })
-    await page.mouse.move(0, 0)
-    await page.waitForTimeout(80)
     await page.evaluate(() => window.scrollTo(0, 0))
     const compact = await readCard(oicCard)
     await oicCard.hover()
-    await page.waitForTimeout(360)
     const hoverOnly = await readCard(oicCard)
-    assert(hoverOnly.listHeight <= compact.listHeight + 5, `Hover keeps the benefits preview compact at ${width}×${height}`)
+    assert(Math.abs(hoverOnly.width - compact.width) < 1 && hoverOnly.matrix === 'none',
+      `Hover does not enlarge or animate at ${width}×${height}`)
     await reveal.click()
-    await page.waitForTimeout(400)
+    await page.waitForTimeout(340)
     const expanded = await readCard(oicCard)
-    assert(expanded.listHeight > compact.listHeight + 50, `Click reveals full benefits at ${width}×${height}`)
-    assert(expanded.ctaBottom < height - 8, `Buy Now stays on screen at ${width}×${height}`)
-    assert(expanded.ctaBottom <= compact.ctaBottom + 8, `Buy Now does not move down at ${width}×${height}`)
-    assert(expanded.scroll <= compact.scroll + 1, `Click expansion adds no scrolling at ${width}×${height}`)
-    await page.mouse.move(0, 0)
-    await page.waitForTimeout(390)
-    assert.equal(await reveal.getAttribute('aria-expanded'), 'false', `Desktop mouseleave closes features at ${width}×${height}`)
-    assert((await readCard(oicCard)).listHeight <= compact.listHeight + 5, `Compact state restored after mouseleave at ${width}×${height}`)
-    assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', `No frozen slot after mouseleave at ${width}×${height}`)
+    assert(expanded.listHeight > compact.listHeight + 5,
+      `Explicit See all still opens benefits at ${width}×${height}`)
+    assert.equal(await oicCard.getByRole('button', { name: /BUY NOW|EXTEND LICENSE/ }).isVisible(), true,
+      `Buy Now remains accessible at ${width}×${height}`)
+    await collapse.click()
+    await page.waitForTimeout(340)
+    assert.equal(await reveal.getAttribute('aria-expanded'), 'false',
+      `Show fewer works at ${width}×${height}`)
   }
   // Mobile uses normal document flow, but the tap must open and close reliably.
   await page.setViewportSize({ width: 390, height: 900 })
@@ -419,15 +599,15 @@ try {
   await reveal.click()
   await page.waitForTimeout(350)
   assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'Mobile tap expands the feature list')
-  assert.equal(await oicCard.locator('.store-benefits-list li').count(), 9, 'All nine features remain present on mobile')
+  assert.equal(await oicCard.locator('.store-benefits-list li').count(), 10, 'All ten features remain present on mobile')
   await collapse.click()
   await page.waitForTimeout(350)
   assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Mobile tap collapses the feature list')
   await page.setViewportSize({ width: 1531, height: 900 })
   await page.mouse.move(0, 0)
-  await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱20' }).click()
-  assert.equal(await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱20' }).getAttribute('aria-pressed'), 'true', 'Weekly selection remains functional')
-  assert((await oicCard.locator('.product-price').innerText()).includes('₱20'), 'Changing duration updates the track price')
+  await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱29' }).click()
+  assert.equal(await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱29' }).getAttribute('aria-pressed'), 'true', 'Weekly selection remains functional')
+  assert((await oicCard.locator('.product-price').innerText()).includes('₱29'), 'Changing duration updates the track price')
   await page.getByRole('button', { name: 'Shopping cart', exact: true }).waitFor()
   await page.getByRole('button', { name: 'My licenses', exact: true }).click()
   await page.getByRole('heading', { name: 'Active licenses', exact: true }).waitFor()
@@ -614,7 +794,14 @@ try {
   await historyPage.getByRole('button', { name: 'Refresh status', exact: true }).waitFor()
   await historyPage.evaluate(() => localStorage.setItem('fixture-hold-entitlements', 'yes'))
   await historyPage.getByRole('button', { name: 'Refresh status', exact: true }).click()
-  await historyPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'fixture-entitlements-held'))
+  await historyPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'fixture-entitlements-held')).catch(async error => {
+    const diagnostic = await historyPage.evaluate(() => ({
+      recentCalls: window.accountFixtureCalls.slice(-35),
+      pageText: document.body.innerText.slice(-1800)
+    }))
+    console.error('Account sync regression diagnostic:', JSON.stringify(diagnostic))
+    throw error
+  })
   await historyPage.evaluate(() => window.switchFixtureAccount())
   await historyPage.getByText('No orders yet', { exact: true }).waitFor()
   await historyPage.evaluate(() => window.releaseFixtureEntitlements())
@@ -647,12 +834,206 @@ try {
         assert(Math.abs(box.width - boxes[0].width) < .5 && Math.abs(box.height - boxes[0].height) < .5, 'Admin section buttons have equal sizes')
         assert(box.height >= 44 && box.fits, 'Admin section labels fit inside accessible touch targets')
       }
-      if (previousHeight !== null) assert(Math.abs(previousHeight - boxes[0].height) < .5, 'Changing admin sections preserves navigation height')
+      if (previousHeight !== null) assert(Math.abs(previousHeight - boxes[0].height) < .5, `Changing admin sections preserves navigation height at ${width}px ${label}: ${previousHeight} vs ${boxes[0].height}`)
       previousHeight = boxes[0].height
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Admin navigation fits at ${width}px`)
+      await assertSquareCorners(navigation)
       if (width === 390) await navigation.screenshot({ path: `admin-nav-${label.split(' ')[0].toLowerCase()}-390.png` })
     }
   }
+  // Mobile PWA regression: auth hydration may finish after a newer sign-in
+  // event; an older null getSession() must never make a signed-in account a guest.
+  const mobileAccountPage = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  await mobileAccountPage.route('**/*', route =>
+    ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  await mobileAccountPage.addInitScript(() => localStorage.setItem('fixture-hold-account-session', 'yes'))
+  await mobileAccountPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await mobileAccountPage.getByText('Checking your saved session').waitFor()
+  assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Slow session hydration must not show a false guest')
+  await mobileAccountPage.evaluate(() => window.emitFixtureAuth('SIGNED_IN'))
+  await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).waitFor()
+  await mobileAccountPage.evaluate(() => window.releaseFixtureHeldNullSession())
+  await mobileAccountPage.waitForTimeout(80)
+  assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Stale null auth results cannot overwrite newer SIGNED_IN')
+  assert.equal(await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).count(), 1)
+
+  // A verified local track lease remains visible without implying that an
+  // unavailable Google session is authenticated. Checkout stays auth-gated.
+  await mobileAccountPage.evaluate(() => {
+    localStorage.removeItem('fixture-hold-account-session')
+    localStorage.setItem('fixture-guest', 'yes')
+    window.setFixtureOfflineLicense(true)
+    window.emitFixtureAuth('SIGNED_OUT')
+  })
+  await mobileAccountPage.getByText('Valid offline license on this device').waitFor()
+  assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Valid offline license is not presented as a guest account')
+  for (const width of [390, 1280]) {
+    await mobileAccountPage.setViewportSize({ width, height: 844 })
+    assert.equal(await mobileAccountPage.getByRole('heading', { name: 'Saved Hyperion account' }).count(), 1,
+      'Verified account retains offline identity on mobile and desktop widths')
+  }
+  await mobileAccountPage.getByRole('button', { name: 'My licenses', exact: true }).click()
+  await mobileAccountPage.getByRole('heading', { name: 'My licenses · offline access' }).waitFor()
+  assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0,
+    'Offline licenses page is not replaced by the Bond Store guest view')
+  assert.equal(await mobileAccountPage.getByText(/license and study progress have not been cleared/).count(), 1)
+  assert.equal(await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).count(), 0, 'Account details remain protected without Auth')
+  await mobileAccountPage.context().setOffline(true)
+  await mobileAccountPage.getByRole('button', { name: 'Reconnect when online' }).waitFor()
+  assert.equal(await mobileAccountPage.getByRole('button', { name: 'Reconnect when online' }).isDisabled(), true)
+  await mobileAccountPage.context().setOffline(false)
+  await mobileAccountPage.getByRole('button', { name: 'Reconnect Google account' }).waitFor()
+  await mobileAccountPage.evaluate(() => {
+    localStorage.removeItem('fixture-guest')
+    window.emitFixtureAuth('SIGNED_IN')
+  })
+  await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).waitFor()
+  assert.equal(await mobileAccountPage.getByText('Valid offline license on this device').count(), 0, 'Restored Auth replaces the fallback immediately')
+  await mobileAccountPage.evaluate(() => {
+    window.setFixtureOfflineLicense(false)
+    window.emitFixtureAuth('SIGNED_OUT')
+  })
+  await mobileAccountPage.getByText('Guest visitor').waitFor()
+  assert.equal(await mobileAccountPage.getByText('Valid offline license on this device').count(), 0, 'Cleared local license cannot masquerade as saved access')
+  await mobileAccountPage.close()
+  console.log('PASS: account offline license across mobile/desktop widths, auth hydration, reconnect, and no false paid authentication')
+
+  const desktopOfflinePage = await browser.newPage({ viewport: { width: 1366, height: 850 } })
+  await desktopOfflinePage.route('**/*', route =>
+    ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  await desktopOfflinePage.addInitScript(() => {
+    localStorage.setItem('fixture-guest', 'yes')
+    localStorage.setItem('fixture-account-auth-failure', 'yes')
+  })
+  await desktopOfflinePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account-menu`)
+  await desktopOfflinePage.evaluate(() => window.setFixtureOfflineLicense(true))
+  const desktopMenu = desktopOfflinePage.locator('.desktop-account-popover')
+  await desktopOfflinePage.getByRole('button', { name: 'Account', exact: true }).hover()
+  await desktopMenu.getByText('Licensed account · Offline access').waitFor()
+  await desktopMenu.getByRole('link', { name: 'My Licenses' }).waitFor()
+  assert.equal(await desktopMenu.getByRole('link', { name: 'Orders' }).count(), 0,
+    'Offline lease never grants cloud order access')
+  assert.equal(await desktopMenu.getByRole('button', { name: 'Sign Out' }).count(), 0,
+    'Offline-only account is not falsely treated as a live Google session')
+  await desktopOfflinePage.evaluate(() => window.dispatchEvent(new Event('offline')))
+  const offlineReconnect = desktopMenu.getByRole('button', { name: 'Offline · Reconnect later' })
+  await offlineReconnect.waitFor()
+  assert.equal(await offlineReconnect.isDisabled(), true)
+  await desktopOfflinePage.evaluate(() => {
+    localStorage.removeItem('fixture-guest')
+    localStorage.removeItem('fixture-account-auth-failure')
+    window.emitFixtureAuth('SIGNED_IN')
+    window.dispatchEvent(new Event('online'))
+  })
+  await desktopMenu.getByRole('button', { name: 'Sign Out' }).waitFor()
+  await desktopMenu.getByRole('link', { name: 'Orders' }).waitFor()
+  await desktopOfflinePage.evaluate(() => {
+    localStorage.setItem('fixture-account-auth-failure', 'yes')
+    window.dispatchEvent(new Event('online'))
+  })
+  await desktopOfflinePage.waitForTimeout(80)
+  assert.equal(await desktopMenu.getByRole('button', { name: 'Sign Out' }).count(), 1,
+    'A failing token refresh cannot falsely sign out the desktop menu')
+  await desktopMenu.getByRole('button', { name: 'Sign Out' }).click()
+  const signOutCalls = await desktopOfflinePage.evaluate(() =>
+    window.accountFixtureCalls.filter(call => call.action === 'sign-out'))
+  assert.equal(signOutCalls.length, 1)
+  assert.deepEqual(signOutCalls[0].data, { scope: 'local' },
+    'User sign-out must not revoke Google sessions on other devices')
+  await desktopOfflinePage.getByText('Guest visitor').waitFor()
+  await desktopOfflinePage.close()
+  console.log('PASS: desktop menu offline licensed identity, token-refresh failure, owner isolation, and local-only sign-out')
+
+  // A website renewal remains purchasable and keeps the old term; Google
+  // Play-only access stays protected from overlapping website purchases.
+  const renewalPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
+  await renewalPage.addInitScript(() => localStorage.setItem('fixture-renewal-website', 'yes'))
+  await renewalPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await renewalPage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
+  const renewingCard = renewalPage.locator('.account-product-card').first()
+  const extendButton = renewingCard.getByRole('button', { name: 'EXTEND LICENSE' })
+  await extendButton.waitFor()
+  assert.equal(await extendButton.isEnabled(), true, 'A valid website license can be renewed before expiry')
+  assert.equal(await renewingCard.getByText('LICENSE ACTIVE').count(), 1)
+  const monthlyExtension = renewingCard.locator('.store-duration-option').nth(1)
+  await monthlyExtension.click()
+  assert.equal(await monthlyExtension.getAttribute('aria-pressed'), 'true', 'An active license can choose a new duration')
+  assert.match(await renewingCard.locator('.product-price').innerText(), /₱79/)
+  await renewingCard.getByRole('button', { name: 'EXTEND LICENSE' }).click()
+  await renewalPage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
+  await renewalPage.getByText('Extend existing license · remaining days are kept').waitFor()
+  await renewalPage.waitForFunction(() => {
+    const button = document.querySelector('.checkout-pay-button')
+    return button && !button.disabled
+  })
+  assert.equal(await renewalPage.getByRole('button', { name: 'Checkout', exact: true }).isEnabled(), true,
+    'Active website renewal proceeds to secure checkout without charging in the fixture')
+  assert.equal((await renewalPage.locator('.basket-summary').innerText()).includes('₱79'), true)
+  await renewalPage.close()
+
+  const playRenewalPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
+  await playRenewalPage.addInitScript(() => localStorage.setItem('fixture-renewal-play', 'yes'))
+  await playRenewalPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await playRenewalPage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
+  const playAction = playRenewalPage.locator('.account-product-card').first().getByRole('button', { name: 'GOOGLE PLAY ACTIVE' })
+  await playAction.waitFor()
+  assert.equal(await playAction.isDisabled(), true, 'Google Play subscription cannot be renewed from this PWA-only flow')
+  await playRenewalPage.close()
+  console.log('PASS: active website renewal CTA, term selection, enabled checkout, and Google Play-only protection')
+
+  // Lifetime checkout stays hidden unless the server explicitly enables sales.
+  // The fixture below never opens a PayMongo URL or moves real money.
+  const lifetimeDisabledPage = await browser.newPage()
+  await lifetimeDisabledPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await lifetimeDisabledPage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
+  assert.equal(await lifetimeDisabledPage.locator('section[aria-label="One-time Lifetime Access"]').count(), 0,
+    'Lifetime sales are absent when the server flag is disabled')
+  await lifetimeDisabledPage.close()
+
+  const lifetimePage = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  await lifetimePage.addInitScript(() => localStorage.setItem('fixture-lifetime-enabled', 'yes'))
+  await lifetimePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  const lifetimePanel = lifetimePage.locator('section[aria-label="One-time Lifetime Access"]')
+  await lifetimePanel.waitFor()
+  assert.equal(await lifetimePanel.getByRole('button', { name: 'BUY LIFETIME' }).count(), 5,
+    'Every track offers one independent one-time PayMongo purchase')
+  const lifetimeText = await lifetimePanel.innerText()
+  for (const amount of ['₱1,999', '₱2,499', '₱4,999']) {
+    assert(lifetimeText.includes(amount), 'Lifetime catalogue shows ' + amount)
+  }
+  await lifetimePanel.getByRole('button', { name: 'BUY LIFETIME' }).first().click()
+  await lifetimePage.getByText('This synthetic fixture never initiates a real payment.').waitFor()
+  assert.equal(await lifetimePage.locator('section[aria-label="One-time Lifetime Access"]').count(), 1,
+    'Rejected payment never navigates away or grants a license')
+
+  await lifetimePage.evaluate(() => localStorage.setItem('fixture-lifetime-pending', 'yes'))
+  await lifetimePage.reload()
+  await lifetimePanel.getByRole('button', { name: 'RESUME CHECKOUT' }).waitFor()
+  const cancelLifetime = lifetimePanel.getByRole('button', { name: 'Cancel checkout' })
+  await cancelLifetime.click()
+  await lifetimePage.getByText('PayMongo confirmed this Lifetime checkout was cancelled.', { exact: false }).waitFor()
+  await lifetimePanel.getByRole('button', { name: 'BUY LIFETIME' }).first().waitFor()
+  const lifetimeCancelCalls = await lifetimePage.evaluate(() =>
+    window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:cancel'))
+  assert.equal(lifetimeCancelCalls.length, 1, 'Cancellation calls the server, not a local-only flag')
+  await lifetimePage.close()
+  console.log('PASS: gated lifetime store prices, safe payment error, pending resume and verified cancellation')
+
+  await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=study-time`)
+  await page.getByRole('img', { name: /Study time breakdown by track/ }).waitFor()
+  for (const width of [320, 390, 1531]) {
+    await page.setViewportSize({ width, height: 900 })
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(theme => { document.documentElement.dataset.theme = theme }, theme)
+      await assertSquareCorners(page)
+      const proportions = await page.locator('.st-track-bar').evaluate(el => [...el.children].map(child => child.getBoundingClientRect().width / el.getBoundingClientRect().width))
+      assert.equal(proportions.length, 2)
+      assert(Math.abs(proportions[0] - .9) < .01 && Math.abs(proportions[1] - .1) < .01, 'Square study chart accurately represents 90% and 10% shares')
+      assert.deepEqual(await page.locator('.st-legend-row strong').allTextContents(), ['90%', '10%'])
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Square study chart fits the viewport')
+    }
+  }
+  await page.screenshot({ path: '/tmp/hyperion-square-study-time.png', fullPage: true })
   assert.deepEqual(errors, [])
   console.log('PASS: checkout/orders shared profile, profile edit/cancel, responsive placement, cart preservation, and isolated commerce effects')
 } finally {

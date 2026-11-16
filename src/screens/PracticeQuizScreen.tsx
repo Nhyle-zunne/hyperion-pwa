@@ -4,9 +4,11 @@ import SessionResults from '../components/SessionResults'
 import MaterialIcon from '../components/MaterialIcon'
 import { TRACK_LABELS } from '../lib/trackLabels'
 import KeywordQuestionText, { KeywordQuestionScope, KeywordChoiceText, KeywordAnswerChoice } from '../components/KeywordQuestionText'
+import QuestionImageGallery from '../components/QuestionImageGallery'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
+import { loadPracticeAutomations, normalizePracticeAutomations } from '../lib/practiceAutomations'
 import type { TrackId } from '../types/question'
 
 const TRACK_PARAM: Record<TrackId, string> = {
@@ -46,8 +48,8 @@ export default function PracticeQuizScreen() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [jumpNumber, setJumpNumber] = useState('')
   const autoAdvanceTimerRef = useRef<number | null>(null)
-  const [automations, setAutomations] = useState(() => { try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as {directAnswer:boolean;autoNextCorrect:boolean;autoNextWrong:boolean} } catch { return {directAnswer:false,autoNextCorrect:false,autoNextWrong:false} } })
-  useEffect(() => { const settings = (e: Event) => setAutomations((e as CustomEvent).detail); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
+  const [automations, setAutomations] = useState(loadPracticeAutomations)
+  useEffect(() => { const settings = (e: Event) => setAutomations(normalizePracticeAutomations((e as CustomEvent).detail)); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
   // Any manual navigation cancels an outstanding auto-advance. The timeout itself
   // also validates the session, index, question, and answer before moving forward.
   useEffect(() => {
@@ -206,7 +208,7 @@ export default function PracticeQuizScreen() {
 
     if (!shouldAutoAdvance) return
 
-    const delay = isCorrect ? 750 : 1200
+    const delay = isCorrect ? automations.delayCorrectMs : automations.delayWrongMs
     const timer = window.setTimeout(() => {
       if (autoAdvanceTimerRef.current !== timer) return
       autoAdvanceTimerRef.current = null
@@ -284,6 +286,7 @@ export default function PracticeQuizScreen() {
       <div className="card question-protected-card" style={{ marginBottom: '1rem' }}>
         <span className="question-watermark" aria-hidden="true">HYPERION MARITIME</span>
         <div className="question-protected-text" style={{ fontSize: 'calc(1.05rem * var(--quiz-text-scale))', lineHeight: 1.55 }}><KeywordQuestionText question={q} /></div>
+        <QuestionImageGallery question={q} placement="question" />
       </div>
 
       <div className="question-protected-options" style={{ display: 'grid', gap: '0.6rem' }}>
@@ -302,11 +305,12 @@ export default function PracticeQuizScreen() {
         })}
       </div>
 
-      {showFeedback && q.explanation && (
+      {showFeedback && (q.explanation || q.imageAttachments?.some(image => image.placement === 'explanation')) && (
         <div className="card question-protected-card" style={{ marginTop: '1rem', fontSize: 'calc(0.9rem * var(--quiz-text-scale))', color: 'var(--text-muted)' }}>
           <span className="question-watermark" aria-hidden="true">HYPERION MARITIME</span>
           <strong style={{ color: 'var(--text)' }}>Explanation</strong>
           <p style={{ marginTop: 4 }}>{q.explanation}</p>
+          <QuestionImageGallery question={q} placement="explanation" />
         </div>
       )}
 
