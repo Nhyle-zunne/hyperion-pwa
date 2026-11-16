@@ -153,11 +153,6 @@ export default function ManualPaymentScreen() {
       setMessage('Please add your full name in Your profile before submitting payment details.')
       return
     }
-    if (activeLicense) {
-      setIsError(true)
-      setMessage('This license is already active for your account. You do not need to purchase this track again.')
-      return
-    }
     if (pendingManualOrder || unresolvedPayMongoOrder) {
       setIsError(true)
       setMessage('There is already a pending payment for this track. Resolve it before submitting another payment.')
@@ -275,8 +270,7 @@ export default function ManualPaymentScreen() {
       : !product ? <section style={card}><h2 style={{ marginTop: 0 }}>Choose a reviewer track</h2><p className="manual-muted">The requested track could not be found. Return to Checkout and select the manual QR option when PayMongo checkout is unavailable.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/checkout')}>BACK TO CHECKOUT</button></section>
       : <>
         {message && <div role="status" style={{ ...card, borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', marginBottom: '1rem', lineHeight: 1.5 }}>{message}</div>}
-        {activeLicense ? <section style={{ ...card, borderColor: 'var(--success, #15803d)' }}><h2 style={{ marginTop: 0 }}>License already active</h2><p className="manual-muted">Your {product.label} license is already active{activeLicense.expires_at ? ` until ${new Date(activeLicense.expires_at).toLocaleDateString()}` : ''}.</p><button type="button" className="btn btn-outline" onClick={() => navigate('/account?tab=licenses')}>VIEW MY LICENSES</button></section>
-          : (manualSubmission || pendingManualOrder) ? <section style={{ ...card, borderColor: 'var(--border)' }}>
+        {(manualSubmission || pendingManualOrder) ? <section style={{ ...card, borderColor: 'var(--border)' }}>
             <h2 style={{ marginTop: 0 }}>Payment submitted · send payment proof</h2>
             <p className="manual-muted">Your manual payment details have been submitted. To help us verify the payment, send a clear screenshot or photo of your payment receipt to our Facebook page.</p>
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '.8rem', margin: '.85rem 0', background: 'var(--bg-elevated)' }}>
@@ -294,6 +288,7 @@ export default function ManualPaymentScreen() {
           : <div className="manual-grid">
             <section style={card}>
               <div className="manual-section-title"><div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>{product.label}</h2><p className="manual-muted" style={{ margin: '.25rem 0 0' }}>{licenseTerm === 'week' ? '7-day' : licenseTerm === 'month' ? '1-month' : '12-month'} reviewer license</p></div><strong style={{ fontSize: '1.25rem' }}>₱{licensePrice}</strong></div>
+              {activeLicense && <p className="manual-muted" role="status" style={{ margin: '.7rem 0 0', color: 'var(--success, #15803d)', fontWeight: 700 }}>License active until {activeLicense.expires_at ? new Date(activeLicense.expires_at).toLocaleDateString() : 'its verified expiry'}. After manual payment approval, your chosen term is added to that expiry without losing remaining days.</p>}
               <div className="manual-qr" style={{ marginTop: '1rem' }}>
                 <h3 style={{ margin: '0 0 .3rem', fontSize: '1rem' }}>QR Ph · MariBank / InstaPay</h3>
                 <p style={{ margin: '0 0 .75rem', color: '#4b5563', fontSize: '.85rem' }}>Scan this QR code using your bank or e-wallet app.</p>
