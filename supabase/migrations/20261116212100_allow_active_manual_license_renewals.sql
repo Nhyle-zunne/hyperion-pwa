@@ -18,6 +18,7 @@ declare
   v_expires_at timestamptz;
   v_term text;
   v_expected_price integer;
+  v_current_price integer;
   v_expected_track text;
   v_updated_id uuid;
   v_reuse_expiry boolean := false;
@@ -79,10 +80,21 @@ begin
     when 'engine_mgt' then case v_order.license_term when 'week' then 40 when 'month' then 100 when 'year' then 700 else null end
     else null end;
 
+  -- Updated storefront prices are canonical for new orders; previously
+  -- submitted payments at published legacy prices remain reviewable.
+  v_current_price := case v_order.product_code
+    when 'oic_nw' then case v_order.license_term when 'week' then 29 when 'month' then 79 when 'year' then 499 else null end
+    when 'gmdss' then case v_order.license_term when 'week' then 25 when 'month' then 59 when 'year' then 399 else null end
+    when 'engine_ew' then case v_order.license_term when 'week' then 29 when 'month' then 79 when 'year' then 499 else null end
+    when 'deck_mgt' then case v_order.license_term when 'week' then 59 when 'month' then 149 when 'year' then 999 else null end
+    when 'engine_mgt' then case v_order.license_term when 'week' then 59 when 'month' then 149 when 'year' then 999 else null end
+    else null end;
+
   if v_expected_track is null
      or v_order.track_id is distinct from v_expected_track
      or v_order.currency is distinct from 'PHP'
-     or v_order.amount_php is distinct from v_expected_price
+     or (v_order.amount_php is distinct from v_expected_price
+         and v_order.amount_php is distinct from v_current_price)
      or v_order.license_term not in ('week', 'month', 'year') then
     raise exception 'Manual payment order does not match the canonical product catalogue' using errcode = '23514';
   end if;
