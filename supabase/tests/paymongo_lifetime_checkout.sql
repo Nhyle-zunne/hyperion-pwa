@@ -134,6 +134,34 @@ begin
     raise exception 'Delayed paid webhook resurrected a refunded purchase';
   end if;
 
+  -- The signed refund may be delivered BEFORE a delayed paid webhook.
+  -- Record it, then verify the paid event cannot ever activate the receipt.
+  if public.revoke_paymongo_lifetime_checkout('pay_refund_before_paid') then
+    raise exception 'Unknown refund was falsely matched to an existing order';
+  end if;
+  insert into public.lifetime_orders (
+    user_id,product_code,track_id,amount_php,status,paymongo_livemode,
+    paymongo_checkout_session_id
+  ) values (
+    v_other,'engine_ew','ENGINE_OIC_EW',2499,'pending',false,'cs_refund_before_paid'
+  ) returning id into v_duplicate_order;
+  v_result := public.finalize_paymongo_lifetime_checkout(
+    v_duplicate_order,'cs_refund_before_paid','pay_refund_before_paid',
+    repeat('c',64),249900,'PHP',false
+  );
+  if v_result->>'status' <> 'refunded'
+     or (select status from public.lifetime_orders where id=v_duplicate_order) <> 'refunded'
+     or exists(select 1 from public.get_active_paid_track_entitlements(v_other,'ENGINE_OIC_EW')) then
+    raise exception 'Refund preceding paid webhook activated permanent access';
+  end if;
+  v_result := public.finalize_paymongo_lifetime_checkout(
+    v_duplicate_order,'cs_refund_before_paid','pay_refund_before_paid',
+    repeat('c',64),249900,'PHP',false
+  );
+  if v_result->>'status' <> 'refunded' then
+    raise exception 'Replayed paid webhook resurrected pre-refunded receipt';
+  end if;
+
   if exists(select 1 from public.get_active_paid_track_entitlements(v_other)) then
     raise exception 'Another account inherited lifetime access';
   end if;
@@ -161,6 +189,8 @@ begin
        'public.revoke_paymongo_lifetime_checkout(text)','EXECUTE')
     or pg_catalog.has_table_privilege('authenticated','public.lifetime_orders','INSERT')
     or pg_catalog.has_table_privilege('authenticated','public.lifetime_orders','UPDATE')
+    or pg_catalog.has_table_privilege('authenticated','public.lifetime_paymongo_refunds','INSERT')
+    or pg_catalog.has_table_privilege('authenticated','public.lifetime_paymongo_refunds','SELECT')
     or not pg_catalog.has_table_privilege('authenticated','public.lifetime_orders','SELECT')
   then raise exception 'Lifetime checkout exposed service-only write privileges';
   end if;
