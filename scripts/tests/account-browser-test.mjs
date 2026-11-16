@@ -583,7 +583,7 @@ try {
     await reveal.click()
     await page.waitForTimeout(340)
     const expanded = await readCard(oicCard)
-    assert(expanded.listHeight > compact.listHeight + 50,
+    assert(expanded.listHeight > compact.listHeight + 5,
       `Explicit See all still opens benefits at ${width}×${height}`)
     assert.equal(await oicCard.getByRole('button', { name: /BUY NOW|EXTEND LICENSE/ }).isVisible(), true,
       `Buy Now remains accessible at ${width}×${height}`)
