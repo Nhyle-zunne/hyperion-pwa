@@ -36,6 +36,17 @@ create unique index if not exists lifetime_orders_single_pending_per_track
 create index if not exists lifetime_orders_owner_history
   on public.lifetime_orders(user_id,created_at desc);
 
+-- Record signed PayMongo refunds before or after their corresponding paid
+-- webhook. A refund arriving first must permanently block that receipt from
+-- being activated when webhook delivery is out of order.
+create table if not exists public.lifetime_paymongo_refunds (
+  payment_id text primary key check (length(payment_id) between 12 and 255),
+  recorded_at timestamptz not null default now()
+);
+alter table public.lifetime_paymongo_refunds enable row level security;
+revoke all on public.lifetime_paymongo_refunds from public, anon, authenticated;
+grant select,insert on public.lifetime_paymongo_refunds to service_role;
+
 alter table public.lifetime_orders enable row level security;
 revoke all on public.lifetime_orders from public,anon,authenticated;
 grant select on public.lifetime_orders to authenticated;
@@ -59,11 +70,18 @@ declare
   v_existing text;
 begin
   if p_order_id is null or nullif(p_checkout_session_id,'') is null
-     or nullif(p_payment_id,'') is null or p_payment_ref_sha256 is null
+     or nullif(p_payment_id,'') is null or length(p_payment_id) > 255
+     or p_payment_ref_sha256 is null
      or p_payment_ref_sha256 !~ '^[a-f0-9]{64}$'
      or p_currency <> 'PHP' or p_amount_minor is null or p_livemode is null then
     raise exception 'Invalid lifetime payment proof' using errcode='22023';
   end if;
+
+  -- Refund and paid handlers lock the SAME payment ID before the order row.
+  -- This prevents a paid webhook from racing an earlier signed refund.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('paymongo_payment:' || p_payment_id,0)
+  );
 
   -- Serialize all verified lifetime payments for one account/track.
   select * into v_order from public.lifetime_orders
@@ -82,6 +100,24 @@ begin
       using errcode='23514';
   end if;
   if v_order.status = 'refunded' then
+    return pg_catalog.jsonb_build_object('status','refunded','orderId',v_order.id);
+  end if;
+
+  -- A properly signed refund can arrive before the paid checkout webhook.
+  -- Such a receipt must never activate (or reactivate) lifetime ownership.
+  if exists (select 1 from public.lifetime_paymongo_refunds
+             where payment_id = p_payment_id) then
+    if v_order.status = 'paid' then
+      perform public.record_verified_lifetime_entitlement(
+        v_order.user_id,v_order.product_code,'paymongo',p_payment_ref_sha256,'revoked'
+      );
+    end if;
+    update public.lifetime_orders set
+      status='refunded',paymongo_payment_id=p_payment_id,
+      payment_ref_sha256=p_payment_ref_sha256,
+      paid_at=coalesce(paid_at,pg_catalog.now()),
+      refunded_at=pg_catalog.now(),updated_at=pg_catalog.now()
+    where id=v_order.id;
     return pg_catalog.jsonb_build_object('status','refunded','orderId',v_order.id);
   end if;
   if v_order.status = 'paid' then
@@ -146,9 +182,14 @@ as $$
 declare
   v_order public.lifetime_orders%rowtype;
 begin
-  if nullif(p_payment_id,'') is null then
+  if nullif(p_payment_id,'') is null or length(p_payment_id) > 255 then
     raise exception 'Invalid refund reference' using errcode='22023';
   end if;
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('paymongo_payment:' || p_payment_id,0)
+  );
+  insert into public.lifetime_paymongo_refunds(payment_id)
+    values(p_payment_id) on conflict(payment_id) do nothing;
   select * into v_order from public.lifetime_orders
    where paymongo_payment_id=p_payment_id for update;
   if not found then return false; end if;
