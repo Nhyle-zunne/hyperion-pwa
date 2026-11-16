@@ -76,6 +76,11 @@ export const supabase = {
       select: (value: string) => { columns = value; return query },
       eq: (key: string, value: unknown) => { filters.push({ key, kind: 'eq', value }); return query },
       gt: (key: string, value: unknown) => { filters.push({ key, kind: 'gt', value }); return query },
+      not: (key: string, operator: string, value: unknown) => {
+        if (operator !== 'is' || value !== null) throw Error('Unsupported fixture NOT filter')
+        filters.push({ key, kind: 'not-null', value })
+        return query
+      },
       in: (key: string, value: unknown[]) => { filters.push({ key, kind: 'in', value }); return query },
       or: (value: string) => { cursor = value; return query },
       order: (key: string, { ascending }: { ascending: boolean }) => { ordering.push({ key, ascending }); return query },
@@ -94,7 +99,7 @@ export const supabase = {
           : table === 'entitlements' && websiteRenewal ? [{ ...fixtureLicense, order_id: null, license_term: 'week', renewed_at: null }]
           : table === 'google_play_entitlements' && playRenewal ? [{ ...fixtureLicense, updated_at: new Date().toISOString() }]
           : []
-        rows = rows.filter(row => filters.every(({ key, kind, value }) => kind === 'in' ? (value as unknown[]).includes(row[key]) : kind === 'gt' ? row[key] > value! : row[key] === value))
+        rows = rows.filter(row => filters.every(({ key, kind, value }) => kind === 'in' ? (value as unknown[]).includes(row[key]) : kind === 'gt' ? row[key] > value! : kind === 'not-null' ? row[key] !== null && row[key] !== undefined : row[key] === value))
         if (cursor) {
           const match = cursor.match(/^created_at\.lt\.([^,]+),and\(created_at\.eq\.([^,]+),id\.lt\.([^\)]+)\)$/)
           if (!match) throw Error('Invalid synthetic cursor')
