@@ -5,7 +5,8 @@ import {
   validatePaidLifetimeSession,
   lifetimePaymentSha256,
   finalizeVerifiedLifetimePayment,
-  refundedPaymentIdForEvent
+  refundedPaymentIdForEvent,
+  hasLifetimePaymongoWebhook
 } from '../functions/_shared/paymongoLifetime.ts'
 
 const order = {
@@ -119,3 +120,24 @@ Deno.test('refund notifications grant no rights and only successful refund revok
     attributes:{status:'succeeded',payment_id:'other'}
   }),null)
 })
+
+Deno.test('reuse configured PayMongo webhook only if signed paid and refund events are subscribed', () => {
+  const endpoint='https://evnjoezffghtrzqacwcj.supabase.co/functions/v1/paymongo-webhook'
+  const hook = {
+    type:'webhook',
+    attributes:{
+      url:endpoint,events:['checkout_session.payment.paid','payment.refund.updated'],
+      livemode:true,status:'enabled'
+    }
+  }
+  assert.equal(hasLifetimePaymongoWebhook([hook],endpoint,true),true)
+  assert.equal(hasLifetimePaymongoWebhook([hook],endpoint,false),false)
+  assert.equal(hasLifetimePaymongoWebhook([hook],endpoint+'/other',true),false)
+  assert.equal(hasLifetimePaymongoWebhook([{...hook,attributes:{...hook.attributes,status:'disabled'}}],endpoint,true),false)
+  assert.equal(hasLifetimePaymongoWebhook([{...hook,attributes:{...hook.attributes,events:['checkout_session.payment.paid']}}],endpoint,true),false)
+  assert.equal(hasLifetimePaymongoWebhook([{...hook,attributes:{...hook.attributes,events:['payment.refund.updated']}}],endpoint,true),false)
+  assert.equal(hasLifetimePaymongoWebhook([{...hook,attributes:{...hook.attributes,events:['checkout_session.payment.paid','payment.refunded']}}],endpoint,true),true)
+  assert.equal(hasLifetimePaymongoWebhook([hook], 'http://localhost:54321/webhook',true),false)
+  assert.equal(hasLifetimePaymongoWebhook([],endpoint,true),false)
+})
+
