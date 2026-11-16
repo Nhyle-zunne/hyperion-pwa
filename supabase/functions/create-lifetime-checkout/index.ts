@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { finalizeVerifiedLifetimePayment, lifetimeProduct } from '../_shared/paymongoLifetime.ts'
+import { finalizeVerifiedLifetimePayment, lifetimeProduct, hasLifetimePaymongoWebhook } from '../_shared/paymongoLifetime.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -18,8 +18,10 @@ function paymentConfiguration() {
     (mode === 'false' && key.startsWith('sk_test_'))
   return {
     key, mode, configured, isLive: mode === 'true',
+    // Reuse the working PayMongo checkout integration. The optional lifetime
+    // override permits emergency shutdown, never bypassing the webhook gate.
     enabled: configured && Deno.env.get('PAYMONGO_CHECKOUT_ENABLED') === 'true' &&
-      Deno.env.get('LIFETIME_PAYMONGO_ENABLED') === 'true'
+      Deno.env.get('LIFETIME_PAYMONGO_ENABLED') !== 'false'
   }
 }
 async function readProviderCheckout(key: string, id: string) {
@@ -41,6 +43,26 @@ function checkoutUrl(session: any): string | null {
   } catch { return null }
 }
 
+// Do not rely on a paid-event-only subscription for permanent licenses.
+// Provider webhooks must include completed refunds, in the correct mode.
+let webhookReadyUntil = 0
+async function lifetimeWebhookReady(key: string, isLive: boolean, supabaseUrl: string): Promise<boolean> {
+  if (Date.now() < webhookReadyUntil) return true
+  try {
+    const endpoint = new URL('/functions/v1/paymongo-webhook', supabaseUrl)
+    if (endpoint.protocol !== 'https:') return false
+    const response = await fetch('https://api.paymongo.com/v1/webhooks', {
+      headers: { Authorization: 'Basic ' + btoa(key + ':') },
+      signal: AbortSignal.timeout(8000)
+    })
+    if (!response.ok) return false
+    const payload = await response.json()
+    const valid = hasLifetimePaymongoWebhook(payload?.data, endpoint.toString(), isLive)
+    if (valid) webhookReadyUntil = Date.now() + 60000
+    return valid
+  } catch { return false }
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
@@ -57,8 +79,11 @@ Deno.serve(async req => {
   let body: { action?: unknown; productCode?: unknown; expectedTotalPhp?: unknown; orderId?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
   const config = paymentConfiguration()
-  if (body.action === 'status') return json({ enabled: config.enabled })
-  if (!config.enabled) return json({ error: 'Lifetime Access checkout is not enabled yet.' }, 503)
+  if (body.action === 'status') {
+    const enabled = config.enabled && await lifetimeWebhookReady(config.key, config.isLive, url)
+    return json({ enabled })
+  }
+  if (!config.configured) return json({ error: 'PayMongo checkout is not configured.' }, 503)
 
   const admin = createClient(url, service, { auth: { persistSession: false } })
   if (body.action === 'cancel') {
@@ -104,6 +129,9 @@ Deno.serve(async req => {
   }
 
   if (body.action !== 'create') return json({ error: 'Unsupported lifetime checkout action.' }, 400)
+  if (!config.enabled || !await lifetimeWebhookReady(config.key, config.isLive, url)) {
+    return json({ error: 'Lifetime Access requires a working PayMongo checkout and a live signed payment-and-refund webhook. No payment has been started.' }, 503)
+  }
   const product = lifetimeProduct(body.productCode)
   if (!product) return json({ error: 'Choose a valid Lifetime Access track.' }, 400)
   if (body.expectedTotalPhp !== product.amountPhp) {
