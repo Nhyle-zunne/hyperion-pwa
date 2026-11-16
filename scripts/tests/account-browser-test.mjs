@@ -816,7 +816,14 @@ try {
   await historyPage.getByRole('button', { name: 'Refresh status', exact: true }).waitFor()
   await historyPage.evaluate(() => localStorage.setItem('fixture-hold-entitlements', 'yes'))
   await historyPage.getByRole('button', { name: 'Refresh status', exact: true }).click()
-  await historyPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'fixture-entitlements-held'))
+  await historyPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'fixture-entitlements-held')).catch(async error => {
+    const diagnostic = await historyPage.evaluate(() => ({
+      recentCalls: window.accountFixtureCalls.slice(-35),
+      pageText: document.body.innerText.slice(-1800)
+    }))
+    console.error('Account sync regression diagnostic:', JSON.stringify(diagnostic))
+    throw error
+  })
   await historyPage.evaluate(() => window.switchFixtureAccount())
   await historyPage.getByText('No orders yet', { exact: true }).waitFor()
   await historyPage.evaluate(() => window.releaseFixtureEntitlements())
