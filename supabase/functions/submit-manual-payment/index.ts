@@ -77,8 +77,10 @@ Deno.serve(async req => {
   const licenseExpiry = activeLicense?.expires_at ? new Date(activeLicense.expires_at).getTime() : null
   const websiteActive = activeLicense?.status === 'active' && licenseExpiry !== null && licenseExpiry > Date.now()
   const playActive = !!activePlayLicense?.expires_at && new Date(activePlayLicense.expires_at).getTime() > Date.now()
-  if (websiteActive || playActive) {
-    return json({ error: 'This license is already active for your account. You do not need to purchase this track again.' }, 409)
+  // Website extensions are applied only after administrator verification.
+  // Do not sell an overlapping website term against a longer Google Play license.
+  if (playActive && (!websiteActive || new Date(activePlayLicense!.expires_at).getTime() > licenseExpiry!)) {
+    return json({ error: 'This track has an active Google Play subscription extending beyond website access. Manage it through Google Play to avoid overlapping payments.' }, 409)
   }
 
   const { data: failedPayMongoSessions, error: failedPayMongoError } = await admin.from('orders')
