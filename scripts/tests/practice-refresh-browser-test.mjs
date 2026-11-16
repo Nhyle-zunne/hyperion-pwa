@@ -158,6 +158,30 @@ try {
   await page.clock.fastForward(350)
   await secondQuestion.waitFor({ timeout: 4000 })
 
+  // Per-answer custom durations must override the defaults without changing
+  // the confirmation flow, including when a question is answered incorrectly.
+  await openAutomationFixture({
+    directAnswer: true, autoNextCorrect: true, autoNextWrong: false,
+    delayCorrectMs: 1200, delayWrongMs: 100
+  })
+  await selectCorrect()
+  await page.clock.fastForward(1000)
+  assert.equal(await firstQuestion.isVisible(), true,
+    'Custom correct-answer delay must not advance early')
+  await page.clock.fastForward(250)
+  await secondQuestion.waitFor({ timeout: 4000 })
+
+  await openAutomationFixture({
+    directAnswer: true, autoNextCorrect: false, autoNextWrong: true,
+    delayCorrectMs: 300, delayWrongMs: 1700
+  })
+  await selectWrong()
+  await page.clock.fastForward(1500)
+  assert.equal(await firstQuestion.isVisible(), true,
+    'Custom wrong-answer delay must not advance early')
+  await page.clock.fastForward(250)
+  await secondQuestion.waitFor({ timeout: 4000 })
+
   assert.deepEqual(errors, [], 'The all-track refresh fixture must not have browser exceptions')
   console.log('PASS: pinned hard refresh across ' + matrix.length + ' sessions from ' + tracks.length +
     ' track banks, every competence, free practice, drill, mock and GMDSS multipart; mismatches rejected without deletion.')

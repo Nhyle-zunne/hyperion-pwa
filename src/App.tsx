@@ -18,6 +18,12 @@ import TopLoadingIndicator from './components/TopLoadingIndicator'
 import ResultsProcessing from './components/ResultsProcessing'
 import { useUIStore } from './stores/uiStore'
 import { usePracticeStore } from './stores/practiceStore'
+import {
+  AUTO_NEXT_MIN_DELAY_MS, AUTO_NEXT_MAX_DELAY_MS, DEFAULT_PRACTICE_AUTOMATIONS,
+  PRACTICE_AUTOMATIONS_STORAGE_KEY, formatAutoNextDelayMs, loadPracticeAutomations,
+  normalizeAutoNextDelayMs, stepAutoNextDelayMs,
+  type PracticeAutomations
+} from './lib/practiceAutomations'
 import { supabase } from './lib/supabase'
 import { startLearningProgressSync } from './lib/progressSync'
 import { sessionRunnerPath } from './lib/sessionRunnerRoute'
@@ -143,14 +149,20 @@ export default function App() {
   const q = usePracticeStore((s) => s.questions[s.currentIndex])
   const [quickScanQuestion, setQuickScanQuestion] = useState<Question | null>(null)
   const [textScale, setTextScale] = useState(() => Number(localStorage.getItem('hyperion-question-text-scale')) || 100)
-  const [automations, setAutomations] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as { directAnswer: boolean; autoNextCorrect: boolean; autoNextWrong: boolean } }
-    catch { return { directAnswer: false, autoNextCorrect: false, autoNextWrong: false } }
-  })
+  const [automations, setAutomations] = useState(loadPracticeAutomations)
+  const persistAutomations = (updated: PracticeAutomations) => {
+    localStorage.setItem(PRACTICE_AUTOMATIONS_STORAGE_KEY, JSON.stringify(updated))
+    window.dispatchEvent(new CustomEvent('hyperion:practice-settings', { detail: updated }))
+  }
   const updateAutomation = (key: 'directAnswer' | 'autoNextCorrect' | 'autoNextWrong', value: boolean) => setAutomations(old => {
     const updated = { ...old, [key]: value }
-    localStorage.setItem('hyperion-practice-automations', JSON.stringify(updated))
-    window.dispatchEvent(new CustomEvent('hyperion:practice-settings', { detail: updated }))
+    persistAutomations(updated)
+    return updated
+  })
+  const updateAutoNextDelay = (key: 'delayCorrectMs' | 'delayWrongMs', delayMs: number) => setAutomations(old => {
+    const defaultDelay = DEFAULT_PRACTICE_AUTOMATIONS[key]
+    const updated = { ...old, [key]: normalizeAutoNextDelayMs(delayMs, defaultDelay) }
+    persistAutomations(updated)
     return updated
   })
 
@@ -625,6 +637,29 @@ export default function App() {
 {!isMockRunner && !isQuickScanViewer && <>
               <div style={{ padding: 12, fontWeight: 800, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>PRACTICE AUTOMATIONS</div>
               {([['directAnswer','Direct Answer','Confirm without Check button'],['autoNextCorrect','Auto-Next (Correct)','Advance when correct'],['autoNextWrong','Auto-Next (Wrong)','Advance when incorrect']] as const).map(([key,title,desc]) => <div key={key} style={{ width: '100%', padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: 'transparent', borderBottom: '1px solid var(--border)', color: 'var(--text)', textAlign: 'left' }}><span><strong>{title}</strong><small style={{ display: 'block', color: 'var(--text-muted)' }}>{desc}</small></span><button type="button" role="switch" aria-label={title} aria-checked={automations[key]} onClick={() => updateAutomation(key, !automations[key])} style={{ position: 'relative', width: 64, height: 30, flexShrink: 0, padding: 3, border: 0, borderRadius: 999, cursor: 'pointer', background: automations[key] ? '#16c60c' : '#d1d5db', transition: 'background 180ms ease', boxShadow: 'inset 0 1px 2px rgba(0,0,0,.14)' }}><span style={{ position: 'absolute', top: 3, left: automations[key] ? 37 : 3, width: 24, height: 24, borderRadius: '50%', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,.28)', transition: 'left 180ms ease' }} /><span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: automations[key] ? 'flex-start' : 'flex-end', padding: '0 8px', color: automations[key] ? '#ffffff' : '#374151', fontSize: 9, fontWeight: 900, pointerEvents: 'none' }}>{automations[key] ? 'ON' : 'OFF'}</span></button></div>)}
+              {([
+                ['delayCorrectMs', 'Correct Answer Delay'],
+                ['delayWrongMs', 'Wrong Answer Delay']
+              ] as const).map(([key, label]) => {
+                const delayMs = automations[key]
+                const defaultMs = DEFAULT_PRACTICE_AUTOMATIONS[key]
+                return <div key={key} style={{ padding: 12, borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <strong>{label}</strong>
+                    <strong style={{ color: 'var(--accent)' }}>{formatAutoNextDelayMs(delayMs)}</strong>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                    <button type="button" aria-label={'Decrease ' + label} disabled={delayMs <= AUTO_NEXT_MIN_DELAY_MS}
+                      onClick={() => updateAutoNextDelay(key, stepAutoNextDelayMs(delayMs, -1))}
+                      style={{ padding: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)', opacity: delayMs <= AUTO_NEXT_MIN_DELAY_MS ? .45 : 1 }}>−</button>
+                    <button type="button" aria-label={'Reset ' + label} onClick={() => updateAutoNextDelay(key, defaultMs)}
+                      style={{ padding: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)' }}>{formatAutoNextDelayMs(defaultMs)}</button>
+                    <button type="button" aria-label={'Increase ' + label} disabled={delayMs >= AUTO_NEXT_MAX_DELAY_MS}
+                      onClick={() => updateAutoNextDelay(key, stepAutoNextDelayMs(delayMs, 1))}
+                      style={{ padding: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)', opacity: delayMs >= AUTO_NEXT_MAX_DELAY_MS ? .45 : 1 }}>+</button>
+                  </div>
+                </div>
+              })}
               </>}
             </div>}
           </div>

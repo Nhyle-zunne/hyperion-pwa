@@ -8,6 +8,7 @@ import QuestionImageGallery from '../components/QuestionImageGallery'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePracticeStore } from '../stores/practiceStore'
+import { loadPracticeAutomations, normalizePracticeAutomations } from '../lib/practiceAutomations'
 import type { TrackId } from '../types/question'
 
 const TRACK_PARAM: Record<TrackId, string> = {
@@ -46,8 +47,8 @@ export default function PracticeQuizScreen() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [jumpNumber, setJumpNumber] = useState('')
   const autoAdvanceTimerRef = useRef<number | null>(null)
-  const [automations, setAutomations] = useState(() => { try { return JSON.parse(localStorage.getItem('hyperion-practice-automations') || '{"directAnswer":false,"autoNextCorrect":false,"autoNextWrong":false}') as {directAnswer:boolean;autoNextCorrect:boolean;autoNextWrong:boolean} } catch { return {directAnswer:false,autoNextCorrect:false,autoNextWrong:false} } })
-  useEffect(() => { const settings = (e: Event) => setAutomations((e as CustomEvent).detail); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
+  const [automations, setAutomations] = useState(loadPracticeAutomations)
+  useEffect(() => { const settings = (e: Event) => setAutomations(normalizePracticeAutomations((e as CustomEvent).detail)); const scale = (e: Event) => setTextScale((e as CustomEvent<number>).detail); window.addEventListener('hyperion:practice-settings', settings); window.addEventListener('hyperion:text-scale', scale); return () => { window.removeEventListener('hyperion:practice-settings', settings); window.removeEventListener('hyperion:text-scale', scale) } }, [])
   // Any manual navigation cancels an outstanding auto-advance. The timeout itself
   // also validates the session, index, question, and answer before moving forward.
   useEffect(() => {
@@ -205,7 +206,7 @@ export default function PracticeQuizScreen() {
 
     if (!shouldAutoAdvance) return
 
-    const delay = isCorrect ? 300 : 500
+    const delay = isCorrect ? automations.delayCorrectMs : automations.delayWrongMs
     const timer = window.setTimeout(() => {
       if (autoAdvanceTimerRef.current !== timer) return
       autoAdvanceTimerRef.current = null
