@@ -149,4 +149,24 @@ revoke all on function public.get_active_paid_track_entitlements(uuid,text)
 grant execute on function public.get_active_paid_track_entitlements(uuid,text)
   to service_role;
 
+-- Historical ownership is for saving student progress. It is distinct from
+-- current entitlement checks and includes receipts even after revocation.
+create or replace function public.get_learning_progress_owned_tracks(p_user_id uuid)
+returns table(track_id text)
+language sql
+stable
+security invoker
+set search_path = ''
+as $
+  select e.track_id::text from public.entitlements e where e.user_id=p_user_id
+  union
+  select g.track_id::text from public.google_play_entitlements g where g.user_id=p_user_id
+  union
+  select l.track_id::text from public.lifetime_entitlements l where l.user_id=p_user_id
+$;
+revoke all on function public.get_learning_progress_owned_tracks(uuid)
+  from public,anon,authenticated;
+grant execute on function public.get_learning_progress_owned_tracks(uuid)
+  to service_role;
+
 commit;
