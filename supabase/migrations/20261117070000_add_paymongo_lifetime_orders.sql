@@ -103,6 +103,17 @@ begin
     return pg_catalog.jsonb_build_object('status','refunded','orderId',v_order.id);
   end if;
 
+  -- An already-paid order cannot be re-bound to a distinct receipt, even
+  -- when that second payment is already refunded. Never revoke the first
+  -- owner's valid purchase because of another payment's refund.
+  if v_order.status = 'paid' and (
+    v_order.paymongo_payment_id is distinct from p_payment_id or
+    v_order.payment_ref_sha256 is distinct from p_payment_ref_sha256
+  ) then
+    raise exception 'A second payment needs manual reconciliation'
+      using errcode='23505';
+  end if;
+
   -- A properly signed refund can arrive before the paid checkout webhook.
   -- Such a receipt must never activate (or reactivate) lifetime ownership.
   if exists (select 1 from public.lifetime_paymongo_refunds
