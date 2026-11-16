@@ -959,6 +959,43 @@ try {
   await desktopOfflinePage.close()
   console.log('PASS: desktop menu offline licensed identity, token-refresh failure, owner isolation, and local-only sign-out')
 
+  // A website renewal remains purchasable and keeps the old term; Google
+  // Play-only access stays protected from overlapping website purchases.
+  const renewalPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
+  await renewalPage.addInitScript(() => localStorage.setItem('fixture-renewal-website', 'yes'))
+  await renewalPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await renewalPage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
+  const renewingCard = renewalPage.locator('.account-product-card').first()
+  const extendButton = renewingCard.getByRole('button', { name: 'EXTEND LICENSE' })
+  await extendButton.waitFor()
+  assert.equal(await extendButton.isEnabled(), true, 'A valid website license can be renewed before expiry')
+  assert.equal(await renewingCard.getByText('LICENSE ACTIVE').count(), 1)
+  const monthlyExtension = renewingCard.locator('.store-duration-option').nth(1)
+  await monthlyExtension.click()
+  assert.equal(await monthlyExtension.getAttribute('aria-pressed'), 'true', 'An active license can choose a new duration')
+  assert.match(await renewingCard.locator('.product-price').innerText(), /₱50/)
+  await renewingCard.getByRole('button', { name: 'EXTEND LICENSE' }).click()
+  await renewalPage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
+  await renewalPage.getByText('Extend existing license · remaining days are kept').waitFor()
+  await renewalPage.waitForFunction(() => {
+    const button = document.querySelector('.checkout-pay-button')
+    return button && !button.disabled
+  })
+  assert.equal(await renewalPage.getByRole('button', { name: 'Checkout', exact: true }).isEnabled(), true,
+    'Active website renewal proceeds to secure checkout without charging in the fixture')
+  assert.equal((await renewalPage.locator('.basket-summary').innerText()).includes('₱50'), true)
+  await renewalPage.close()
+
+  const playRenewalPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
+  await playRenewalPage.addInitScript(() => localStorage.setItem('fixture-renewal-play', 'yes'))
+  await playRenewalPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await playRenewalPage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
+  const playAction = playRenewalPage.locator('.account-product-card').first().getByRole('button', { name: 'GOOGLE PLAY ACTIVE' })
+  await playAction.waitFor()
+  assert.equal(await playAction.isDisabled(), true, 'Google Play subscription cannot be renewed from this PWA-only flow')
+  await playRenewalPage.close()
+  console.log('PASS: active website renewal CTA, term selection, enabled checkout, and Google Play-only protection')
+
   await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=study-time`)
   await page.getByRole('img', { name: /Study time breakdown by track/ }).waitFor()
   for (const width of [320, 390, 1531]) {
