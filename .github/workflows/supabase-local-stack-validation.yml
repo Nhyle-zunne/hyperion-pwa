@@ -51,6 +51,11 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/paymongo_price_rollout.sql
 
+      - name: Verify active website license extensions are atomic and idempotent
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/license_renewals.sql
+
       - name: Verify Google Play access controls and opt-in scheduler
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres

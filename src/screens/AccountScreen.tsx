@@ -923,7 +923,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 </div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>{item.source === 'google_play' ? 'Google Play subscription' : (item.license_term === 'week' ? 'Weekly' : item.license_term === 'month' ? 'Monthly' : 'Yearly') + ' website access'} · Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
                 <div role="status" style={{ marginTop: '.45rem', padding: '.55rem .7rem', borderRadius: 8, background: expiringSoon ? 'var(--bg-elevated)' : 'transparent', border: expiringSoon ? '1px solid var(--border)' : '1px solid transparent', color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--text-muted)', fontSize: '.84rem', fontWeight: expiringSoon ? 800 : 600 }}>
-                  {expiry.label}{expiringSoon ? ' · You can purchase access again after this license expires.' : ''}
+                  {expiry.label}{item.source === 'website' ? ' · Extend now to keep all remaining days.' : ''}
                 </div>
                 <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
                   <strong style={{ display: 'block', marginBottom: '.25rem' }}>{item.source === 'google_play' ? 'Subscription details' : 'Transaction details'}</strong>
@@ -975,12 +975,14 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           </> : <>
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
-                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Unlimited practice, mock exams, and offline study for your chosen track. Active licenses cannot be purchased again.</p></div>
+                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Unlimited practice, mock exams, and offline study for your chosen track. Active website licenses can be extended without losing remaining days.</p></div>
                 <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>WEEK · MONTH · YEAR ACCESS</span>
               </div>
               <div className="account-products-grid">
                 {PAID_PRODUCTS.map(item => {
-                  const isOwned = owned.some(license => license.product_code === item.code)
+                  const currentLicense = owned.find(license => license.product_code === item.code)
+                  const isOwned = Boolean(currentLicense)
+                  const isGooglePlayOwned = currentLicense?.source === 'google_play'
                   const basketItem = basket.find(entry => entry.code === item.code)
                   const inBasket = Boolean(basketItem)
                   const selectedTerm = selectedTerms[item.code]
@@ -1007,7 +1009,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                       <BondStoreCardContent
                         product={item}
                         term={selectedTerm}
-                        disabled={busy || isOwned || manualPending}
+                        disabled={busy || isGooglePlayOwned || manualPending}
                         onTermChange={newTerm => setSelectedTerms(old => ({ ...old, [item.code]: newTerm }))}
                         expanded={expandedStorePerks === item.code}
                         benefitsId={`store-benefits-${item.code}`}
@@ -1021,8 +1023,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                         }}
                       />
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
-                    <button type="button" className="btn btn-primary store-buy-button" disabled={busy || isOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)}>
-                      {isOwned ? 'LICENSE ACTIVE' : manualPending ? 'AWAITING REVIEW' : 'BUY NOW'}
+                    <button type="button" className="btn btn-primary store-buy-button" disabled={busy || isGooglePlayOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)}>
+                      {isGooglePlayOwned ? 'GOOGLE PLAY ACTIVE' : manualPending ? 'AWAITING REVIEW' : isOwned ? 'EXTEND LICENSE' : 'BUY NOW'}
                     </button>
 
                     </article>
