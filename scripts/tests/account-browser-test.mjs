@@ -973,7 +973,7 @@ try {
   const monthlyExtension = renewingCard.locator('.store-duration-option').nth(1)
   await monthlyExtension.click()
   assert.equal(await monthlyExtension.getAttribute('aria-pressed'), 'true', 'An active license can choose a new duration')
-  assert.match(await renewingCard.locator('.product-price').innerText(), /₱50/)
+  assert.match(await renewingCard.locator('.product-price').innerText(), /₱79/)
   await renewingCard.getByRole('button', { name: 'EXTEND LICENSE' }).click()
   await renewalPage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
   await renewalPage.getByText('Extend existing license · remaining days are kept').waitFor()
@@ -983,7 +983,7 @@ try {
   })
   assert.equal(await renewalPage.getByRole('button', { name: 'Checkout', exact: true }).isEnabled(), true,
     'Active website renewal proceeds to secure checkout without charging in the fixture')
-  assert.equal((await renewalPage.locator('.basket-summary').innerText()).includes('₱50'), true)
+  assert.equal((await renewalPage.locator('.basket-summary').innerText()).includes('₱79'), true)
   await renewalPage.close()
 
   const playRenewalPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
