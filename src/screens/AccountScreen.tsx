@@ -253,12 +253,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       return
     }
     const client = supabase
+    const ownerId = session.user.id
     let active = true
     const load = async () => {
       const [availability, pending] = await Promise.all([
         client.functions.invoke('create-lifetime-checkout', { body: { action: 'status' } }),
         client.from('lifetime_orders').select('id,product_code')
-          .eq('user_id', session.user.id).eq('status','pending').limit(10)
+          .eq('user_id', ownerId).eq('status','pending').limit(10)
       ])
       if (!active) return
       setLifetimeCheckoutEnabled(!availability.error && availability.data?.enabled === true)
