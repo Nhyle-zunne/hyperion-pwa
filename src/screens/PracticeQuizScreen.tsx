@@ -205,7 +205,7 @@ export default function PracticeQuizScreen() {
 
     if (!shouldAutoAdvance) return
 
-    const delay = isCorrect ? 750 : 1200
+    const delay = isCorrect ? 300 : 500
     const timer = window.setTimeout(() => {
       if (autoAdvanceTimerRef.current !== timer) return
       autoAdvanceTimerRef.current = null
