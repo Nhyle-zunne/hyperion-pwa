@@ -133,6 +133,16 @@ Deno.serve(async (req) => {
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 
+  // Never charge someone again for access they already own permanently.
+  // A failed entitlement read is not permission to proceed with a payment.
+  const { data: lifetimeRows, error: lifetimeError } = await admin.from('lifetime_entitlements')
+    .select('product_code').eq('user_id', user.id)
+    .eq('status', 'active').in('product_code', codes)
+  if (lifetimeError) return json({ error: 'Could not verify lifetime ownership. Please retry before paying.' }, 503)
+  if (lifetimeRows?.length) {
+    return json({ error: 'Lifetime Access is already owned for one or more selected tracks. Remove those tracks from your basket.' }, 409)
+  }
+
   // Preserve compatibility with an older single-track checkout already created before
   // basket checkout was introduced. Never open a second charge for that same product.
   if (codes.length === 1) {

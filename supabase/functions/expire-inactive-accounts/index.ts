@@ -116,6 +116,23 @@ Deno.serve(async req => {
       entitlements.push(...rows)
       if (playTableMissing || rows.length < PAGE_SIZE) break
     }
+    // Permanent owners must never be treated as inactive free accounts.
+    // If the lifetime table cannot be read, stop before deleting anyone.
+    const lifetimeUsers = new Set<string>()
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const result = await admin.from('lifetime_entitlements')
+        .select('user_id,status')
+        .in('user_id', userIds)
+        .eq('status', 'active')
+        .range(offset, offset + PAGE_SIZE - 1)
+      if (result.error) {
+        return json({ error: 'Could not verify lifetime ownership; no accounts were deleted in this batch.', processed: totalUsers - users.length }, 500)
+      }
+      const rows = (result.data || []) as { user_id: string; status: string }[]
+      rows.forEach(row => lifetimeUsers.add(row.user_id))
+      if (rows.length < PAGE_SIZE) break
+    }
+
     const entitlementMap = new Map<string, Entitlement[]>()
     for (const row of entitlements) {
       const group = entitlementMap.get(row.user_id) || []
@@ -170,6 +187,7 @@ Deno.serve(async req => {
       if (!idSet.has(user.id)) continue
       if (profileIsAdmin(user, adminEmails)) { skippedAdmin++; continue }
       if (adminAuditUsers.has(user.id)) { skippedAuditDependency++; continue }
+      if (lifetimeUsers.has(user.id)) { skippedActiveLicense++; continue }
 
       const userEntitlements = entitlementMap.get(user.id) || []
       const hasActiveLicense = userEntitlements.some(row =>

@@ -61,6 +61,9 @@ export default function OrdersPaymentHistoryScreen() {
   const [session, setSession] = useState<Session | null>(null)
   const [authLoaded, setAuthLoaded] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
+  const [lifetimeOrders, setLifetimeOrders] = useState<Array<{
+    id: string; product_code: string; amount_php: number; status: string; created_at: string; paid_at: string | null
+  }>>([])
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
@@ -78,6 +81,7 @@ export default function OrdersPaymentHistoryScreen() {
     statusRefresh.current = null
   }
   const visibleOrders = loadedOwner === session?.user.id ? orders : []
+  const visibleLifetime = loadedOwner === session?.user.id ? lifetimeOrders : []
   const [message, setMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState(false)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
@@ -124,8 +128,14 @@ export default function OrdersPaymentHistoryScreen() {
     const pending = more ? await fetchPendingOrders(client, owner)
       : rows.filter(row => row.status === 'pending' && row.payment_method === 'PayMongo Checkout')
     if (!isCurrent()) return null
+    const { data: lifetimeHistory, error: lifetimeError } = await client.from('lifetime_orders')
+      .select('id,product_code,amount_php,status,created_at,paid_at')
+      .eq('user_id', owner).order('created_at', { ascending: false }).limit(50)
+    if (!isCurrent()) return null
+    if (lifetimeError) throw new Error('Could not load one-time purchase history.')
     ordersRef.current = rows
     setOrders(rows)
+    setLifetimeOrders(lifetimeHistory ?? [])
     setPendingOrders(pending)
     setHasMore(more)
     setLoadedOwner(owner)
@@ -163,6 +173,7 @@ export default function OrdersPaymentHistoryScreen() {
 
   useEffect(() => {
     setOrders([])
+    setLifetimeOrders([])
     setPendingOrders([])
     setHasMore(false)
     setLoadingMore(false)
@@ -215,6 +226,29 @@ export default function OrdersPaymentHistoryScreen() {
           stillPending += 1
         } else if (typeof data?.error === 'string') {
           lastError = data.error
+        }
+      }
+      // One-time payments have their own order table; verify against PayMongo,
+      // not a browser redirect or the status of a timed subscription.
+      const { data: pendingLifetime, error: lifetimeError } = await supabase.from('lifetime_orders')
+        .select('id,product_code').eq('user_id', session.user.id)
+        .eq('status','pending').not('paymongo_checkout_session_id','is',null).limit(20)
+      if (lifetimeError) throw new Error('Could not check pending one-time payments.')
+      for (const purchase of pendingLifetime ?? []) {
+        if (!mounted.current || currentOwner.current !== session.user.id) return
+        const { data, error } = await supabase.functions.invoke('verify-lifetime-checkout', {
+          body: { orderId: purchase.id }
+        })
+        if (!mounted.current || currentOwner.current !== session.user.id) return
+        if (error) {
+          lastError = await readableError(error, 'Lifetime payment verification is temporarily unavailable.')
+        } else if (data?.status === 'paid') {
+          const name = PAID_PRODUCTS.find(p => p.code === purchase.product_code)?.label ?? purchase.product_code
+          activated.push(name + ' Lifetime Access')
+        } else if (data?.status === 'pending') {
+          stillPending++
+        } else if (data?.status === 'reconciliation_required') {
+          lastError = 'A one-time payment needs manual reconciliation. Do not pay again.'
         }
       }
       if (!await loadOrders()) return
@@ -333,6 +367,32 @@ export default function OrdersPaymentHistoryScreen() {
       </section>
       : <>
         {message && <div role="status" style={{ ...card, borderColor: errorMessage ? 'var(--danger, #dc2626)' : 'var(--border)', marginBottom: '1rem', lineHeight: 1.5 }}>{message}</div>}
+        {visibleLifetime.length > 0 && <section style={card} aria-label="One-time Lifetime Access purchases">
+          <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '.6rem' }}>
+            <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Lifetime Access purchases</h2>
+            <p className="orders-meta" style={{ margin: '.25rem 0 0' }}>One-time PayMongo orders, separate from subscriptions.</p>
+          </div>
+          {visibleLifetime.map(order => {
+            const product = PAID_PRODUCTS.find(item => item.code === order.product_code)
+            const paid = order.status === 'paid'
+            return <article className="orders-entry" key={order.id}>
+              <div className="orders-title-row">
+                <div style={{ minWidth: 0 }}>
+                  <strong>{product?.label ?? order.product_code} · Lifetime · ₱{order.amount_php.toLocaleString()}</strong>
+                  <div className="orders-meta">{new Date(order.paid_at || order.created_at).toLocaleString()} · PayMongo QR Ph</div>
+                </div>
+                <span className="orders-status" style={paid ? { color: 'var(--success, #15803d)' } : undefined}>
+                  {paid ? 'PAID · LIFETIME' : order.status === 'pending' ? 'AWAITING PAYMENT'
+                    : order.status === 'reconciliation_required' ? 'REVIEW REQUIRED'
+                    : order.status.toUpperCase()}
+                </span>
+              </div>
+              <div className="orders-meta" style={{ marginTop: '.45rem' }}>Order ID: {order.id}</div>
+              {order.status === 'pending' && <p className="orders-meta" style={{ margin: '.4rem 0 0' }}>Resume or cancel this checkout from Bond Store. Refresh status before paying again.</p>}
+              {order.status === 'refunded' && <p className="orders-meta" style={{ margin: '.4rem 0 0' }}>Lifetime access from this payment was revoked; saved study history is retained.</p>}
+            </article>
+          })}
+        </section>}
         <section style={card}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.75rem', flexWrap: 'wrap', paddingBottom: '.8rem', borderBottom: '1px solid var(--border)' }}>
             <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>All orders</h2><p style={{ color: 'var(--text-muted)', fontSize: '.82rem', margin: '.25rem 0 0' }}>{visibleOrders.length} {hasMore ? 'shown' : `record${visibleOrders.length === 1 ? '' : 's'}`} · newest first</p></div>

@@ -76,6 +76,11 @@ export const supabase = {
       select: (value: string) => { columns = value; return query },
       eq: (key: string, value: unknown) => { filters.push({ key, kind: 'eq', value }); return query },
       gt: (key: string, value: unknown) => { filters.push({ key, kind: 'gt', value }); return query },
+      not: (key: string, operator: string, value: unknown) => {
+        if (operator !== 'is' || value !== null) throw Error('Unsupported fixture NOT filter')
+        filters.push({ key, kind: 'not-null', value })
+        return query
+      },
       in: (key: string, value: unknown[]) => { filters.push({ key, kind: 'in', value }); return query },
       or: (value: string) => { cursor = value; return query },
       order: (key: string, { ascending }: { ascending: boolean }) => { ordering.push({ key, ascending }); return query },
@@ -91,10 +96,15 @@ export const supabase = {
           expires_at: new Date(Date.now() + 5 * 86400_000).toISOString(),
         }
         let rows: Record<string, any>[] = table === 'orders' ? fixtureOrders().map(row => ({ ...row, user_id: user.id }))
+          : table === 'lifetime_orders' && user.id === '11111111-1111-4111-8111-111111111111'
+            && localStorage.getItem('fixture-lifetime-pending') === 'yes'
+              ? [{id:'88888888-8888-4888-8888-888888888888',user_id:user.id,product_code:'gmdss',
+                  amount_php:1999,status:'pending',created_at:new Date().toISOString(),paid_at:null,
+                  paymongo_checkout_session_id:'cs_fixture_lifetime'}]
           : table === 'entitlements' && websiteRenewal ? [{ ...fixtureLicense, order_id: null, license_term: 'week', renewed_at: null }]
           : table === 'google_play_entitlements' && playRenewal ? [{ ...fixtureLicense, updated_at: new Date().toISOString() }]
           : []
-        rows = rows.filter(row => filters.every(({ key, kind, value }) => kind === 'in' ? (value as unknown[]).includes(row[key]) : kind === 'gt' ? row[key] > value! : row[key] === value))
+        rows = rows.filter(row => filters.every(({ key, kind, value }) => kind === 'in' ? (value as unknown[]).includes(row[key]) : kind === 'gt' ? row[key] > value! : kind === 'not-null' ? row[key] !== null && row[key] !== undefined : row[key] === value))
         if (cursor) {
           const match = cursor.match(/^created_at\.lt\.([^,]+),and\(created_at\.eq\.([^,]+),id\.lt\.([^\)]+)\)$/)
           if (!match) throw Error('Invalid synthetic cursor')
@@ -132,6 +142,16 @@ export const supabase = {
       }
       if (name === 'admin-payment-review') return { data: { isAdmin: false }, error: null }
       if (name === 'create-checkout' && request.body?.action === 'status') return { data: { action: 'status', enabled: true }, error: null }
+      if (name === 'create-lifetime-checkout' && request.body?.action === 'status') {
+        return {data:{enabled:localStorage.getItem('fixture-lifetime-enabled') === 'yes'},error:null}
+      }
+      if (name === 'create-lifetime-checkout' && request.body?.action === 'cancel') {
+        localStorage.removeItem('fixture-lifetime-pending')
+        return {data:{status:'cancelled',orderId:request.body?.orderId},error:null}
+      }
+      if (name === 'create-lifetime-checkout' && request.body?.action === 'create') {
+        return {data:{error:'This synthetic fixture never initiates a real payment.'},error:null}
+      }
       return { data: { entitlements: [] }, error: null }
     },
   },

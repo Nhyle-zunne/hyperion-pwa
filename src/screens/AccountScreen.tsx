@@ -26,7 +26,7 @@ type Order = {
   paid_at: string | null
   checkout_batch_id: string | null
 }
-type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' }
+type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' | 'lifetime'; lifetimeProvider?: 'paymongo' | 'google_play' }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
 // Owner-bound in-memory display cache for this browser session. These rows are
@@ -141,6 +141,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>(() => Object.fromEntries(PAID_PRODUCTS.map(item => [item.code, basket.find(entry => entry.code === item.code)?.term ?? 'year'])) as Record<PaidTrack, LicenseTerm>)
   const [expandedStorePerks, setExpandedStorePerks] = useState<PaidTrack | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
+  const [lifetimeCheckoutEnabled, setLifetimeCheckoutEnabled] = useState(false)
+  const [pendingLifetimeOrders, setPendingLifetimeOrders] = useState<Array<{id: string; product_code: string}>>([])
+  const [lifetimeRefreshRevision, setLifetimeRefreshRevision] = useState(0)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
   const entitlementExpiryRevision = useLicenseStore(s => s.entitlementExpiryRevision)
   useEffect(() => {
@@ -183,6 +186,79 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     navigate('/checkout')
   }
   const clearBasketItems = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
+
+  // Lifetime checkout is separate from the timed subscription basket.
+  // Only the server can enable it or calculate the actual charged amount.
+  useEffect(() => {
+    if (!session?.user.id || isLayout || !supabase) {
+      setLifetimeCheckoutEnabled(false)
+      setPendingLifetimeOrders([])
+      return
+    }
+    const client = supabase
+    const ownerId = session.user.id
+    let active = true
+    const load = async () => {
+      const [availability, pending] = await Promise.all([
+        client.functions.invoke('create-lifetime-checkout', { body: { action: 'status' } }),
+        client.from('lifetime_orders').select('id,product_code')
+          .eq('user_id', ownerId).eq('status','pending').limit(10)
+      ])
+      if (!active) return
+      setLifetimeCheckoutEnabled(!availability.error && availability.data?.enabled === true)
+      setPendingLifetimeOrders(pending.error ? [] : pending.data ?? [])
+    }
+    void load()
+    return () => { active = false }
+  }, [session?.user.id, lifetimeRefreshRevision, isLayout])
+
+  const buyLifetime = async (code: PaidTrack) => {
+    if (!supabase || !session) {
+      setMessage('Sign in with Google to buy Lifetime Access for your account.')
+      return
+    }
+    const product = PAID_PRODUCTS.find(item => item.code === code)
+    if (!product || busy || !lifetimeCheckoutEnabled) return
+    setBusy(true)
+    setMessage('Preparing your secure one-time PayMongo checkout…')
+    try {
+      const { data, error } = await supabase.functions.invoke('create-lifetime-checkout', {
+        body: { action: 'create', productCode: code, expectedTotalPhp: product.lifetimePrice }
+      })
+      if (error || data?.error) throw new Error((await edgeFunctionErrorMessage(error)) || data?.error || 'Unable to prepare lifetime checkout.')
+      if (data.status === 'paid') {
+        await refreshAccount(false, true)
+        setLifetimeRefreshRevision(v => v + 1)
+        setMessage('Payment confirmed. Lifetime Access is active for ' + product.label + '.')
+        return
+      }
+      const target = typeof data?.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
+      if (!target || target.protocol !== 'https:' || target.hostname !== 'checkout.paymongo.com') {
+        throw new Error('PayMongo did not return a trusted checkout link.')
+      }
+      window.location.assign(target.toString())
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Lifetime checkout could not be opened. Try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const cancelLifetimeCheckout = async (orderId: string) => {
+    if (!supabase || busy) return
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('create-lifetime-checkout', {
+        body: { action: 'cancel', orderId }
+      })
+      if (error || data?.status !== 'cancelled') {
+        throw new Error((await edgeFunctionErrorMessage(error)) || data?.error || 'PayMongo did not confirm cancellation.')
+      }
+      setLifetimeRefreshRevision(v => v + 1)
+      setMessage('PayMongo confirmed this Lifetime checkout was cancelled. No Lifetime license was added.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not safely cancel the checkout.')
+    } finally { setBusy(false) }
+  }
 
   useEffect(() => {
     const client = supabase
@@ -320,12 +396,15 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       return
     }
     const orderColumns = 'id,product_code,license_term,amount_php,status,payment_reference,payment_method,customer_name,customer_company,customer_school,created_at,paid_at,checkout_batch_id'
-    const [entitlements, playEntitlements, orderResult] = await Promise.all([
+    const [entitlements, playEntitlements, lifetimeEntitlements, orderResult] = await Promise.all([
       supabase.from('entitlements')
         .select('product_code,order_id,license_term,status,granted_at,expires_at,renewed_at')
         .eq('user_id', session.user.id),
       supabase.from('google_play_entitlements')
         .select('product_code,status,granted_at,expires_at,updated_at')
+        .eq('user_id', session.user.id),
+      supabase.from('lifetime_entitlements')
+        .select('product_code,provider,status,purchased_at,revoked_at')
         .eq('user_id', session.user.id),
       supabase.from('orders')
         .select(orderColumns)
@@ -337,7 +416,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     // The Google Play table is optional until its backend migration is released.
     // Ignore only PostgREST's exact missing-table/schema-cache response.
     const playTableMissing = isMissingGooglePlayEntitlementsTable(playEntitlements.error)
-    const entitlementError = entitlements.error || (playTableMissing ? null : playEntitlements.error)
+    const entitlementError = entitlements.error || (playTableMissing ? null : playEntitlements.error) || lifetimeEntitlements.error
     const mergeNow = Date.now()
     const fetchedEntitlements: OwnedTrack[] = [
       ...((entitlements.data ?? []) as Omit<OwnedTrack, 'source'>[]).map(row => ({ ...row, source: 'website' as const })),
@@ -350,6 +429,17 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
         expires_at: row.expires_at,
         renewed_at: row.updated_at,
         source: 'google_play' as const,
+      }))),
+      ...((lifetimeEntitlements.data ?? []).map(row => ({
+        product_code: row.product_code,
+        order_id: null,
+        license_term: null,
+        status: row.status,
+        granted_at: row.purchased_at,
+        expires_at: '9999-12-31T23:59:59Z',
+        renewed_at: row.revoked_at,
+        source: 'lifetime' as const,
+        lifetimeProvider: row.provider as 'paymongo' | 'google_play',
       })))
     ]
     // Preserve the last known license display during network outages, then re-evaluate expiry locally.
@@ -462,6 +552,45 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     void checkPayment()
     return () => { cancelled = true }
   }, [session?.user.id, params, isLayout])
+  // The return URL is informational; only the authenticated verifier can grant access.
+  useEffect(() => {
+    if (isLayout || !session || !supabase) return
+    const state = params.get('lifetime_payment')
+    const orderId = params.get('lifetime_order_id')
+    if (!state) return
+    let active = true
+    if (state === 'cancelled') {
+      setMessage('You returned from PayMongo without confirming payment. Resume or safely cancel the pending Lifetime checkout below.')
+      setLifetimeRefreshRevision(v => v + 1)
+      return
+    }
+    if (state !== 'success' || !orderId) return
+    setMessage('Checking your one-time payment directly with PayMongo…')
+    const client = supabase
+    const verify = async () => {
+      let lastError = ''
+      for (let attempt = 0; attempt < 5 && active; attempt++) {
+        const { data, error } = await client.functions.invoke('verify-lifetime-checkout', { body: { orderId } })
+        if (!active) return
+        if (!error && data?.status === 'paid') {
+          await refreshAccount(false, true)
+          setLifetimeRefreshRevision(v => v + 1)
+          if (active) setMessage('Lifetime payment confirmed. Your purchased track has been unlocked permanently for the supported lifetime of Hyperion.')
+          return
+        }
+        if (data?.status === 'refunded' || data?.status === 'reconciliation_required') {
+          setMessage('PayMongo payment requires account support review. Do not pay again.')
+          return
+        }
+        lastError = (await edgeFunctionErrorMessage(error)) || data?.error || data?.message || 'Payment confirmation is pending.'
+        if (attempt < 4) await new Promise(resolve => window.setTimeout(resolve, 1500))
+      }
+      if (active) setMessage(lastError + ' Do not pay twice. Refresh the Lifetime checkout status or contact support.')
+    }
+    void verify()
+    return () => { active = false }
+  }, [session?.user.id, params, isLayout])
+
   const signInWithGoogle = async () => {
     if (!supabase) {
       setMessage('Sign-in is temporarily unavailable. Please try again later.')
@@ -822,7 +951,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                     <div key={item.code} style={{ padding: '.75rem 0', borderBottom: '1px solid var(--border)' }}>
                       <strong>✓ {item.label}</strong>
                       <div style={{ color: 'var(--text-muted)', fontSize: '.86rem', marginTop: '.25rem' }}>
-                        ACTIVE · Valid until {new Date(offlineSnapshot.trackExpiries[item.trackLabel as keyof typeof offlineSnapshot.trackExpiries]!).toLocaleString()}
+                        {new Date(offlineSnapshot.trackExpiries[item.trackLabel as keyof typeof offlineSnapshot.trackExpiries]!).getUTCFullYear() >= 9999
+                          ? 'LIFETIME ACCESS · No subscription renewal'
+                          : 'ACTIVE · Valid until ' + new Date(offlineSnapshot.trackExpiries[item.trackLabel as keyof typeof offlineSnapshot.trackExpiries]!).toLocaleString()}
                       </div>
                     </div>)
               ) : <p role="status">Verifying saved license details on this device…</p>}
@@ -833,7 +964,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           ) : session && accountTab === 'licenses' ? <>
           <section style={card}>
             <div className="account-panel-title">
-              <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR SUBSCRIPTIONS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
+              <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR LICENSES</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
                 <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
                 <button type="button" className="btn btn-outline" style={{ padding: '.35rem .7rem', minHeight: 38, fontSize: '.78rem' }}
@@ -845,19 +976,26 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             {owned.length ? owned.map(item => {
               const transaction = orders.find(order => order.id === item.order_id)
               const expiry = licenseExpiryDetails(item.expires_at)
-              const expiringSoon = expiry.daysRemaining !== null && expiry.daysRemaining <= 7
+              const lifetime = item.source === 'lifetime'
+              const expiringSoon = !lifetime && expiry.daysRemaining !== null && expiry.daysRemaining <= 7
               return <div key={item.product_code} style={{ padding: '.9rem 0', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <strong>✓ {PAID_PRODUCTS.find(p => p.code === item.product_code)?.label ?? item.product_code}</strong>
-                  <span style={{ color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 850 }}>{expiringSoon ? 'EXPIRING SOON' : 'ACTIVE'}</span>
+                  <span style={{ color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 850 }}>{lifetime ? 'LIFETIME' : expiringSoon ? 'EXPIRING SOON' : 'ACTIVE'}</span>
                 </div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>{item.source === 'google_play' ? 'Google Play subscription' : (item.license_term === 'week' ? 'Weekly' : item.license_term === 'month' ? 'Monthly' : 'Yearly') + ' website access'} · Valid until {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable'}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>{lifetime
+                    ? 'Lifetime access · ' + (item.lifetimeProvider === 'google_play' ? 'Google Play one-time purchase' : 'Website one-time purchase') + ' · No renewal'
+                    : (item.source === 'google_play' ? 'Google Play subscription' : (item.license_term === 'week' ? 'Weekly' : item.license_term === 'month' ? 'Monthly' : 'Yearly') + ' website access') + ' · Valid until ' + (item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable')}</div>
                 <div role="status" style={{ marginTop: '.45rem', padding: '.55rem .7rem', borderRadius: 8, background: expiringSoon ? 'var(--bg-elevated)' : 'transparent', border: expiringSoon ? '1px solid var(--border)' : '1px solid transparent', color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--text-muted)', fontSize: '.84rem', fontWeight: expiringSoon ? 800 : 600 }}>
-                  {expiry.label}{item.source === 'website' ? ' · Extend now to keep all remaining days.' : ''}
+                  {lifetime ? 'Access for the supported lifetime of Hyperion, including future question-bank updates.' : expiry.label}{item.source === 'website' ? ' · Extend now to keep all remaining days.' : ''}
                 </div>
                 <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
                   <strong style={{ display: 'block', marginBottom: '.25rem' }}>{item.source === 'google_play' ? 'Subscription details' : 'Transaction details'}</strong>
-                  {transaction ? <>
+                  {lifetime ? <>
+                    <div>Purchase: One-time, non-renewing</div>
+                    <div>Source: {item.lifetimeProvider === 'google_play' ? 'Google Play' : 'PayMongo'}</div>
+                    <div>Purchased: {new Date(item.granted_at).toLocaleString()}</div>
+                  </> : transaction ? <>
                     {transaction.customer_name && <div>Customer name: {transaction.customer_name}</div>}
                     <div>Access duration: {transaction.license_term === 'week' ? 'Weekly' : transaction.license_term === 'month' ? 'Monthly' : 'Yearly'}</div>
                     <div>Amount paid: ₱{transaction.amount_php}</div>
@@ -893,7 +1031,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   <span style={{ color: revoked ? 'var(--danger, #b91c1c)' : 'var(--text-muted)', fontSize: '.8rem', fontWeight: 850 }}>{revoked ? (item.source === 'google_play' ? 'INACTIVE' : 'REVOKED') : 'EXPIRED'}</span>
                 </div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '.88rem', marginTop: '.3rem' }}>
-                  {revoked ? (item.source === 'google_play' ? 'Google Play no longer reports this subscription as active.' : 'Access was revoked by an administrator.') : item.expires_at ? `Access ended on ${new Date(item.expires_at).toLocaleDateString()}.` : 'No valid expiry date is recorded.'}
+                  {revoked ? (item.source === 'lifetime' ? 'This one-time purchase was revoked or refunded.' : item.source === 'google_play' ? 'Google Play no longer reports this subscription as active.' : 'Access was revoked by an administrator.') : item.expires_at ? `Access ended on ${new Date(item.expires_at).toLocaleDateString()}.` : 'No valid expiry date is recorded.'}
                 </div>
                 {transaction && <div style={{ marginTop: '.5rem', color: 'var(--text-muted)', fontSize: '.82rem' }}>
                   {transaction.amount_php > 0 ? `Last recorded purchase: ₱${transaction.amount_php} · ` : ''}{new Date(transaction.paid_at || transaction.created_at).toLocaleDateString()}
@@ -942,6 +1080,36 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 Features unlock only for the purchased track during its active license. Offline review requires downloading that track, and cross-device progress uses the same Google account.
               </p>
             </section>
+            {lifetimeCheckoutEnabled && <section style={{ ...card, marginTop: '1rem' }} aria-label="One-time Lifetime Access">
+              <div className="account-panel-title">
+                <div>
+                  <div style={{ color: 'var(--accent)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>ONE-TIME PAYMENT</div>
+                  <h3 style={{ margin: '.25rem 0 0' }}>Lifetime Access</h3>
+                  <p style={{ margin: '.35rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.5 }}>
+                    Pay once for your chosen track, including future question-bank updates while Hyperion operates. No renewal.
+                    If you have an auto-renewing Google Play subscription, cancel it separately to avoid further charges.
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gap: '.5rem' }}>
+                {PAID_PRODUCTS.map(product => {
+                  const alreadyLifetime = owned.some(item => item.product_code === product.code && item.source === 'lifetime')
+                  const pendingLifetime = pendingLifetimeOrders.find(item => item.product_code === product.code)
+                  return <div key={product.code} style={{ display: 'flex', gap: '.6rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', border: '1px solid var(--border)', padding: '.65rem' }}>
+                    <div style={{ minWidth: 0 }}><strong>{product.label}</strong><div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>₱{product.lifetimePrice.toLocaleString()} · One time</div></div>
+                    <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
+                      <button className="btn btn-outline" type="button" disabled={busy || alreadyLifetime || !session}
+                        onClick={() => void buyLifetime(product.code)}>
+                        {alreadyLifetime ? 'LIFETIME OWNED' : pendingLifetime ? 'RESUME CHECKOUT' : 'BUY LIFETIME'}
+                      </button>
+                      {pendingLifetime && <button className="btn btn-outline" type="button" disabled={busy}
+                        onClick={() => void cancelLifetimeCheckout(pendingLifetime.id)}>Cancel checkout</button>}
+                    </div>
+                  </div>
+                })}
+              </div>
+              <p style={{ fontSize: '.76rem', color: 'var(--text-muted)', marginTop: '.65rem' }}>Secure QR Ph checkout through PayMongo. The purchase becomes active only after PayMongo confirms the payment.</p>
+            </section>}
 
 
           </>}
