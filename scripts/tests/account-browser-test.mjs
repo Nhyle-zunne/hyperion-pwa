@@ -520,99 +520,77 @@ try {
   })
   const reveal = oicCard.getByRole('button', { name: 'See all 10 premium features' })
   const collapse = oicCard.getByRole('button', { name: 'Show fewer features ↑' })
+  const gmdssCard = cards.nth(1)
   await page.mouse.move(0, 0)
   const baseCard = await readCard(oicCard)
+  const gmdssBefore = await readCard(gmdssCard)
   await oicCard.hover()
-  await page.waitForTimeout(400)
+  await page.waitForTimeout(120)
   const hover = await readCard(oicCard)
-  assert(hover.matrix !== 'none' && Number(hover.matrix.match(/^matrix\(([^,]+)/)?.[1]) > 1.02, 'Desktop hover lifts and enlarges the card')
-  assert(hover.width > baseCard.width + 28, 'Hovered card gains width for legibility')
-  assert(hover.listHeight <= baseCard.listHeight + 5, 'Hover does not reveal features by itself; See all has a meaningful action')
-  assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'A hovered card still advertises its collapsed features')
-  assert.equal(await page.locator('.store-benefits-popover').count(), 0, 'No dark popup covers account navigation')
-  // Switch between neighboring raised cards repeatedly. The old card must
-  // animate back from the same anchored layer instead of snapping to flow.
-  const gmdssCard = cards.nth(1)
-  const cardCenter = card => card.evaluate(el => {
-    const r = el.getBoundingClientRect()
-    return { x: r.left + r.width * .65, y: r.top + Math.min(48, r.height * .2) }
-  })
-  for (let switchIndex = 0; switchIndex < 3; switchIndex++) {
-    // Use direct pointer travel; locator.hover() waits for CSS stability and
-    // can consume the entire 320 ms exit transition before we inspect it.
-    const gmdssPoint = await cardCenter(gmdssCard)
-    await page.mouse.move(gmdssPoint.x, gmdssPoint.y, { steps: 3 })
-    await page.waitForTimeout(45)
-    assert.equal(await page.locator('.account-product-slot.is-hovered').count(), 1, 'Only the destination card is hovered')
-    assert.equal(await gmdssCard.locator('..').evaluate(el => el.classList.contains('is-hovered')), true, 'GMDSS activates during handoff')
-    assert.equal(await oicCard.locator('..').evaluate(el => getComputedStyle(el.querySelector('.account-product-card')).position), 'absolute', 'Exiting OIC card stays in an anchored layer during the exit animation')
-    await page.waitForTimeout(360)
-    assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', 'Old card releases its frozen grid height after settling')
-    assert.equal(await page.locator('.account-product-slot[data-store-lift="settling"]').count(), 0, 'No exiting card remains stuck after handoff')
-    const oicPoint = await cardCenter(oicCard)
-    await page.mouse.move(oicPoint.x, oicPoint.y, { steps: 3 })
-    await page.waitForTimeout(360)
-    assert.equal(await page.locator('.account-product-slot.is-hovered').count(), 1, 'Returning hover activates exactly one card')
-    assert.equal(await gmdssCard.locator('..').evaluate(el => el.style.height), '', 'Neighbor returns to normal grid flow after switching back')
-    const switched = await readCard(oicCard)
-    assert(switched.ctaBottom < 900 - 8 && switched.scroll <= baseCard.scroll + 1, 'Repeated card switches keep Buy Now visible without new scrolling')
+  assert.equal(hover.matrix, 'none', 'Bond Store does not animate, lift or scale on mouse hover')
+  assert(Math.abs(hover.width - baseCard.width) < 1 && Math.abs(hover.top - baseCard.top) < 1,
+    'Hover preserves the card footprint and position')
+  assert(hover.listHeight <= baseCard.listHeight + 2, 'Hover does not reveal premium features')
+  assert.equal(await page.locator('.account-product-slot.is-hovered,[data-store-lift]').count(), 0,
+    'Hover does not create animated popups or settling layers')
+  assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Features remain collapsed until clicked')
+
+  for (let index = 0; index < 3; index++) {
+    await gmdssCard.hover()
+    await oicCard.hover()
   }
-  await reveal.click()
-  await page.waitForTimeout(400)
-  const opened = await readCard(oicCard)
-  assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'Clicking See all explicitly expands ten features')
-  assert(opened.listHeight > hover.listHeight + 60, 'Click reveals all ten features inside the white card')
-  assert(opened.top < hover.top - 45, 'Clicked card grows upward from the original bottom edge')
-  assert(opened.ctaBottom < 900 - 8 && opened.ctaBottom <= baseCard.ctaBottom + 8, 'Buy Now remains visible and never shifts down when features open')
-  assert(opened.scroll <= baseCard.scroll + 1, 'Opening features adds no vertical page scrolling')
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(390)
-  assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Desktop See all auto-collapses on mouseleave instead of remaining stuck open')
-  assert((await readCard(oicCard)).listHeight <= baseCard.listHeight + 5, 'Mouseleave restores compact feature preview')
-  assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', 'Auto-collapse clears the frozen slot height')
-  assert.equal(await oicCard.locator('..').evaluate(el => el.dataset.storeLift ?? ''), '', 'Auto-collapse clears pending lift transitions')
-  // Show fewer must still work on desktop while the pointer remains over the card.
+  const gmdssAfter = await readCard(gmdssCard)
+  const switched = await readCard(oicCard)
+  assert(Math.abs(gmdssAfter.width - gmdssBefore.width) < 1,
+    'Repeated movement between cards cannot enlarge neighboring plans')
+  assert(Math.abs(switched.width - baseCard.width) < 1 && switched.matrix === 'none',
+    'Repeated hovering never transforms or freezes a card')
+  assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '',
+    'No hover handler freezes the grid slot height')
+
   await reveal.click()
   await page.waitForTimeout(340)
-  assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'Clicking See all again opens the full list')
+  const opened = await readCard(oicCard)
+  assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'See all explicitly expands benefits')
+  assert(opened.listHeight > baseCard.listHeight + 50, 'Click reveals the full feature list')
+  assert.equal(await oicCard.locator('.store-benefits-list li').count(), 10)
+  assert.equal(await oicCard.getByRole('button', { name: /BUY NOW|EXTEND LICENSE/ }).isVisible(), true,
+    'Buy Now remains part of the visible card after feature expansion')
+  assert.equal(opened.matrix, 'none', 'Expanding benefits does not trigger card scaling')
+  await page.mouse.move(0, 0)
+  assert.equal(await collapse.getAttribute('aria-expanded'), 'true',
+    'Moving the mouse out does not unexpectedly collapse a user-opened list')
   await collapse.click()
   await page.waitForTimeout(340)
-  assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Show fewer reverses expansion while hovered')
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(350)
-  assert((await readCard(oicCard)).listHeight <= baseCard.listHeight + 5, 'Show fewer restores compact state after leaving')
-  // Repeat to catch rapid reopen + mouse-out state bugs reported by the user.
+  assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Show fewer collapses benefits')
   for (let repeat = 0; repeat < 3; repeat++) {
     await reveal.click()
-    await page.waitForTimeout(350)
-    assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'Repeated See all clicks open the full feature list')
-    await page.mouse.move(0, 0)
-    await page.waitForTimeout(390)
-    assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Repeated desktop mouseleave automatically collapses features')
-    assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', 'No stuck frozen slot after repeated mouseleave')
+    await collapse.waitFor()
+    await collapse.click()
+    await reveal.waitFor()
+    assert.equal(await oicCard.locator('..').evaluate(el => el.dataset.storeLift ?? ''), '',
+      'Repeated toggles never create hover animation state')
   }
+
   for (const [width, height] of [[1366, 768], [1280, 768], [1531, 900]]) {
     await page.setViewportSize({ width, height })
-    await page.mouse.move(0, 0)
-    await page.waitForTimeout(80)
     await page.evaluate(() => window.scrollTo(0, 0))
     const compact = await readCard(oicCard)
     await oicCard.hover()
-    await page.waitForTimeout(360)
     const hoverOnly = await readCard(oicCard)
-    assert(hoverOnly.listHeight <= compact.listHeight + 5, `Hover keeps the benefits preview compact at ${width}×${height}`)
+    assert(Math.abs(hoverOnly.width - compact.width) < 1 && hoverOnly.matrix === 'none',
+      `Hover does not enlarge or animate at ${width}×${height}`)
     await reveal.click()
-    await page.waitForTimeout(400)
+    await page.waitForTimeout(340)
     const expanded = await readCard(oicCard)
-    assert(expanded.listHeight > compact.listHeight + 50, `Click reveals full benefits at ${width}×${height}`)
-    assert(expanded.ctaBottom < height - 8, `Buy Now stays on screen at ${width}×${height}`)
-    assert(expanded.ctaBottom <= compact.ctaBottom + 8, `Buy Now does not move down at ${width}×${height}`)
-    assert(expanded.scroll <= compact.scroll + 1, `Click expansion adds no scrolling at ${width}×${height}`)
-    await page.mouse.move(0, 0)
-    await page.waitForTimeout(390)
-    assert.equal(await reveal.getAttribute('aria-expanded'), 'false', `Desktop mouseleave closes features at ${width}×${height}`)
-    assert((await readCard(oicCard)).listHeight <= compact.listHeight + 5, `Compact state restored after mouseleave at ${width}×${height}`)
-    assert.equal(await oicCard.locator('..').evaluate(el => el.style.height), '', `No frozen slot after mouseleave at ${width}×${height}`)
+    assert(expanded.listHeight > compact.listHeight + 5,
+      `Explicit See all still opens benefits at ${width}×${height}`)
+    assert.equal(await oicCard.getByRole('button', { name: /BUY NOW|EXTEND LICENSE/ }).isVisible(), true,
+      `Buy Now remains accessible at ${width}×${height}`)
+    await collapse.click()
+    await page.waitForTimeout(340)
+    assert.equal(await reveal.getAttribute('aria-expanded'), 'false',
+      `Show fewer works at ${width}×${height}`)
   }
   // Mobile uses normal document flow, but the tap must open and close reliably.
   await page.setViewportSize({ width: 390, height: 900 })
