@@ -134,8 +134,8 @@ try {
   }
   const firstQuestion = page.getByText('Automation first question?', { exact: true })
   const secondQuestion = page.getByText('Automation second question?', { exact: true })
-  const selectCorrect = () => page.getByRole('button', { name: /^A\\.\\s*Port$/ }).click()
-  const selectWrong = () => page.getByRole('button', { name: /^B\\.\\s*Starboard$/ }).click()
+  const selectCorrect = () => page.getByRole('button', { name: /Port$/ }).click()
+  const selectWrong = () => page.getByRole('button', { name: /Starboard$/ }).click()
 
   await openAutomationFixture({ directAnswer: true, autoNextCorrect: true, autoNextWrong: false })
   await selectCorrect()
