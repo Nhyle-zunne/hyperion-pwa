@@ -1,4 +1,4 @@
-import { createContext, Fragment, useContext, useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import type { Question } from '../types/question'
 import { useKeywordSettings } from '../stores/keywordSettings'
 import { readEncryptedPersistedValue, writeEncryptedPersistedValue } from '../lib/encryptedPersistStorage'
@@ -38,7 +38,9 @@ function KeywordSession({ question, choices, enabled, children, onEditingChange 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const { id, track, questionText: text } = question
-  useEffect(() => { onEditingChange?.(editing); return () => onEditingChange?.(false) }, [editing, onEditingChange])
+  // Block answer controls before the editing UI paints; a passive effect
+  // briefly leaves Check Answer enabled while the choices become editable.
+  useLayoutEffect(() => { onEditingChange?.(editing); return () => onEditingChange?.(false) }, [editing, onEditingChange])
   useEffect(() => {
     if (!enabled) return
     let active = true
