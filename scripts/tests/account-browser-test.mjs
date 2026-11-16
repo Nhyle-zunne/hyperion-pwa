@@ -1003,6 +1003,44 @@ try {
   await playRenewalPage.close()
   console.log('PASS: active website renewal CTA, term selection, enabled checkout, and Google Play-only protection')
 
+  // Lifetime checkout stays hidden unless the server explicitly enables sales.
+  // The fixture below never opens a PayMongo URL or moves real money.
+  const lifetimeDisabledPage = await browser.newPage()
+  await lifetimeDisabledPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await lifetimeDisabledPage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
+  assert.equal(await lifetimeDisabledPage.locator('section[aria-label="One-time Lifetime Access"]').count(), 0,
+    'Lifetime sales are absent when the server flag is disabled')
+  await lifetimeDisabledPage.close()
+
+  const lifetimePage = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  await lifetimePage.addInitScript(() => localStorage.setItem('fixture-lifetime-enabled', 'yes'))
+  await lifetimePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  const lifetimePanel = lifetimePage.locator('section[aria-label="One-time Lifetime Access"]')
+  await lifetimePanel.waitFor()
+  assert.equal(await lifetimePanel.getByRole('button', { name: 'BUY LIFETIME' }).count(), 5,
+    'Every track offers one independent one-time PayMongo purchase')
+  const lifetimeText = await lifetimePanel.innerText()
+  for (const amount of ['₱1,999', '₱2,499', '₱4,999']) {
+    assert(lifetimeText.includes(amount), 'Lifetime catalogue shows ' + amount)
+  }
+  await lifetimePanel.getByRole('button', { name: 'BUY LIFETIME' }).first().click()
+  await lifetimePage.getByText('This synthetic fixture never initiates a real payment.').waitFor()
+  assert.equal(await lifetimePage.locator('section[aria-label="One-time Lifetime Access"]').count(), 1,
+    'Rejected payment never navigates away or grants a license')
+
+  await lifetimePage.evaluate(() => localStorage.setItem('fixture-lifetime-pending', 'yes'))
+  await lifetimePage.reload()
+  await lifetimePanel.getByRole('button', { name: 'RESUME CHECKOUT' }).waitFor()
+  const cancelLifetime = lifetimePanel.getByRole('button', { name: 'Cancel checkout' })
+  await cancelLifetime.click()
+  await lifetimePage.getByText('PayMongo confirmed this Lifetime checkout was cancelled.', { exact: false }).waitFor()
+  await lifetimePanel.getByRole('button', { name: 'BUY LIFETIME' }).first().waitFor()
+  const lifetimeCancelCalls = await lifetimePage.evaluate(() =>
+    window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:cancel'))
+  assert.equal(lifetimeCancelCalls.length, 1, 'Cancellation calls the server, not a local-only flag')
+  await lifetimePage.close()
+  console.log('PASS: gated lifetime store prices, safe payment error, pending resume and verified cancellation')
+
   await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=study-time`)
   await page.getByRole('img', { name: /Study time breakdown by track/ }).waitFor()
   for (const width of [320, 390, 1531]) {
