@@ -61,6 +61,13 @@ Deno.serve(async req => {
   if (!customerName) return json({ error: 'Please add your full name to your account before submitting payment details.' }, 400)
 
   const admin = createClient(url, service, { auth: { persistSession: false } })
+  // Lifetime owners must never be asked to transfer money for another term.
+  const { data: lifetime, error: lifetimeError } = await admin.from('lifetime_entitlements')
+    .select('id').eq('user_id', user.id).eq('product_code', code)
+    .eq('status', 'active').limit(1)
+  if (lifetimeError) return json({ error: 'Could not verify Lifetime Access ownership. Please retry.' }, 503)
+  if (lifetime?.length) return json({ error: 'Lifetime Access is already owned for this track; no further payment is needed.' }, 409)
+
   const [activeLicenseResult, activePlayResult] = await Promise.all([
     admin.from('entitlements')
       .select('id,expires_at,status').eq('user_id', user.id).eq('product_code', code).eq('status', 'active').maybeSingle(),
