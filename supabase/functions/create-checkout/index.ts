@@ -251,8 +251,12 @@ Deno.serve(async (req) => {
       Number.isFinite(Date.parse(website.data.expires_at)) && new Date(website.data.expires_at).getTime() > Date.now()
     const activePlay = !playTableMissing && play.data?.status === 'active' && play.data.expires_at &&
       Number.isFinite(Date.parse(play.data.expires_at)) && new Date(play.data.expires_at).getTime() > Date.now()
-    if (activeWebsite || activePlay) {
-      return json({ error: `${products[code].name} is already active for your account. You do not need to purchase it again.` }, 409)
+    // Website renewals extend the current expiry in the payment finalizer. A
+    // Google Play term extending beyond website access must stay managed in
+    // Google Play until cross-store renewal accounting is supported.
+    if (activePlay && (!activeWebsite ||
+        Date.parse(play.data!.expires_at) > Date.parse(website.data!.expires_at))) {
+      return json({ error: `${products[code].name} has a Google Play subscription lasting beyond your website license. Manage that subscription in Google Play to avoid overlapping access.` }, 409)
     }
   }
 
