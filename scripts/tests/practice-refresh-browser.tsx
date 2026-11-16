@@ -13,7 +13,7 @@ import { saveSessionSnapshot, type SessionSnapshot } from '../../src/lib/session
 import type { Question, TrackId } from '../../src/types/question'
 import '../../src/index.css'
 
-const oicId = 'refresh-oic-c1', gmdssId = 'refresh-gmdss-all'
+const oicId = 'refresh-oic-c1', gmdssId = 'refresh-gmdss-all', automationId = 'refresh-automation'
 setLocalProgressIdentity(null)
 markLocalProgressReady(null)
 useLicenseStore.setState({
@@ -113,10 +113,20 @@ function Fixture() {
     })
     navigate('/scripts/tests/practice-refresh-browser.html?resume=' + encodeURIComponent(oicId))
   }
+  const seedAutomation = () => {
+    const snapshot = makeSnapshot(automationId, 'DECK_OIC_NW', 'C1', 'Automation first question?')
+    snapshot.questions.push(makeQuestion('DECK_OIC_NW', 'automation-second-question', 'Automation second question?'))
+    usePracticeStore.setState({
+      ...snapshot, loading: false, error: null,
+      finishing: false, completionError: null
+    })
+    navigate('/scripts/tests/practice-refresh-browser.html?resume=' + automationId)
+  }
   // Match the production route wrapper. Its entry animation must never
   // become the containing block for fixed quiz overlays or navigation.
   return <div className="route-transition">
     <button type="button" onClick={() => { void seed() }}>Start OIC-NW C1 fixture</button>
+    <button type="button" onClick={seedAutomation}>Start practice automation fixture</button>
     {isMock ? <MockExamRunner /> : <PracticeQuizScreen />}
   </div>
 }
