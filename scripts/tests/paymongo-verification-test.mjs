@@ -9,6 +9,15 @@ const require = createRequire(import.meta.url)
 const owner='11111111-1111-4111-8111-111111111111', other='22222222-2222-4222-8222-222222222222'
 const reference='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const compile=name=>ts.transpileModule(readFileSync(new URL('../../supabase/functions/'+name+'/index.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText
+// The signed webhook shares strict one-time payment proof rules with its
+// authenticated verifier. Load the new TS helper into the synthetic VM rather
+// than letting this test escape into Node module resolution.
+const lifetimeExports = {}
+const lifetimeSource = readFileSync(new URL('../../supabase/functions/_shared/paymongoLifetime.ts',import.meta.url),'utf8')
+vm.runInNewContext(ts.transpileModule(lifetimeSource,{
+  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+}).outputText,{exports:lifetimeExports,crypto:webcrypto,TextEncoder})
+
 const originalFetch=globalThis.fetch
 const flush=async()=>{for(let i=0;i<40;i++)await Promise.resolve()}
 function fixture(batch=false, priceSchedule='legacy') {
@@ -52,7 +61,7 @@ function fixture(batch=false, priceSchedule='legacy') {
   const env={SUPABASE_URL:'http://fixture.invalid',SUPABASE_ANON_KEY:'fixture-anon',SUPABASE_SERVICE_ROLE_KEY:'fixture-service',PAYMONGO_SECRET_KEY:'sk_test_fixture',PAYMONGO_EXPECT_LIVEMODE:'false',PAYMONGO_TEST_WEBHOOK_SECRET:'whsec_fixture'}
   const handlers={}
   for(const name of ['verify-checkout','paymongo-webhook']) {
-    const context={require:name=>name==='../_shared/paymentPrices.mjs'?{isAcceptedStoredPrice}:require(name.replace('npm:','').replace('@2','')),exports:{},Deno:{env:{get:key=>env[key]},serve:fn=>{handlers[name]=fn}},fetch:fetchMock,Request,Response,Headers,TextEncoder,TextDecoder,Blob,URL,crypto:webcrypto,btoa,console:{info(){},warn(){},error(){}},performance:{now:()=>state.time},AbortSignal:{timeout:ms=>{state.timeoutMs=ms;if(!state.timeout)return AbortSignal.timeout(ms);const controller=new AbortController();setTimeout(()=>controller.abort(Error('Synthetic timeout')),0);return controller.signal}},setTimeout,clearTimeout}
+    const context={require:name=>name==='../_shared/paymentPrices.mjs'?{isAcceptedStoredPrice}:name==='../_shared/paymongoLifetime.ts'?lifetimeExports:require(name.replace('npm:','').replace('@2','')),exports:{},Deno:{env:{get:key=>env[key]},serve:fn=>{handlers[name]=fn}},fetch:fetchMock,Request,Response,Headers,TextEncoder,TextDecoder,Blob,URL,crypto:webcrypto,btoa,console:{info(){},warn(){},error(){}},performance:{now:()=>state.time},AbortSignal:{timeout:ms=>{state.timeoutMs=ms;if(!state.timeout)return AbortSignal.timeout(ms);const controller=new AbortController();setTimeout(()=>controller.abort(Error('Synthetic timeout')),0);return controller.signal}},setTimeout,clearTimeout}
     vm.runInNewContext(compile(name),context)
   }
   const verify=()=>handlers['verify-checkout'](new Request('http://fixture.invalid/verify-checkout',{method:'POST',headers:{Authorization:'Bearer fixture','Content-Type':'application/json'},body:JSON.stringify({orderId:reference})}))
