@@ -15,6 +15,26 @@ export function lifetimeProduct(code: unknown) {
     : null
 }
 
+// Confirm that the existing PayMongo webhook covers both successful checkout
+// and completed refunds before making a one-time irreversible product payable.
+// PayMongo's webhook-list response is server-only and must never be logged.
+export function hasLifetimePaymongoWebhook(
+  resources: unknown, endpoint: string, expectedLivemode: boolean
+): boolean {
+  if (!Array.isArray(resources) || !endpoint.startsWith('https://')) return false
+  return resources.some((entry: any) => {
+    const attrs = entry?.attributes
+    const events = attrs?.events
+    return entry?.type === 'webhook' &&
+      attrs?.status === 'enabled' &&
+      attrs?.livemode === expectedLivemode &&
+      attrs?.url === endpoint &&
+      Array.isArray(events) &&
+      events.includes('checkout_session.payment.paid') &&
+      (events.includes('payment.refunded') || events.includes('payment.refund.updated'))
+  })
+}
+
 export type LifetimeOrder = {
   id: string
   user_id: string
