@@ -194,11 +194,11 @@ begin
   select pg_catalog.pg_get_functiondef(
     'public.finalize_paymongo_checkout(uuid,text,text,text,text,bigint,text,text,text)'::regprocedure
   ) into definition;
-  if definition is null or pg_catalog.position(marker in definition)=0
+  if definition is null or pg_catalog.strpos(definition,marker)=0
      or pg_catalog.position('hyperion-paymongo-payment:' in definition)=0 then
     raise exception 'Expected transaction-serialized PayMongo finalizer not found';
   end if;
-  if pg_catalog.position(guard in definition)>0 then return; end if;
+  if pg_catalog.strpos(definition,guard)>0 then return; end if;
   execute pg_catalog.replace(definition,marker,guard || marker);
 end $migration$;
 commit;
