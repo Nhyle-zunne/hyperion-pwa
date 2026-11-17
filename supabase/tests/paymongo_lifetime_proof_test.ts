@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   lifetimeProduct,
   lifetimeProducts,
+  isAcceptedLifetimeOrderAmount,
   validatePaidLifetimeSession,
   lifetimePaymentSha256,
   finalizeVerifiedLifetimePayment,
@@ -20,7 +21,7 @@ const order = {
   paymongo_livemode: false,
   paymongo_checkout_session_id: 'cs_123'
 }
-const paidSession = () => ({
+const paidSession = (amountMinor = 59900) => ({
   id: 'cs_123',
   attributes: {
     reference_number: order.id,
@@ -33,7 +34,7 @@ const paidSession = () => ({
     },
     payments: [{
       id: 'pay_lifetime123456',
-      attributes: { status: 'paid', currency: 'PHP', amount: 59900 }
+      attributes: { status: 'paid', currency: 'PHP', amount: amountMinor }
     }]
   }
 })
@@ -44,6 +45,17 @@ Deno.test('one-time catalogue has five separate tracks with agreed PayMongo pric
     Object.fromEntries(Object.entries(lifetimeProducts).map(([key,value]) => [key,value.amountPhp])),
     {gmdss:599,oic_nw:999,engine_ew:999,deck_mgt:1999,engine_mgt:1999}
   )
+  for (const [code, current, historical] of [
+    ['gmdss', 599, 1999],
+    ['oic_nw', 999, 2499],
+    ['engine_ew', 999, 2499],
+    ['deck_mgt', 1999, 4999],
+    ['engine_mgt', 1999, 4999]
+  ] as const) {
+    assert.equal(isAcceptedLifetimeOrderAmount(code, current), true)
+    assert.equal(isAcceptedLifetimeOrderAmount(code, historical), true)
+    assert.equal(isAcceptedLifetimeOrderAmount(code, current - 1), false)
+  }
   assert.equal(lifetimeProduct('all_access'), null)
   assert.equal(lifetimeProduct('__proto__'), null)
 })
@@ -72,6 +84,11 @@ Deno.test('only one exact paid and owner-bound QR Ph checkout grants lifetime pr
     assert.equal(validatePaidLifetimeSession(fake,order,false),null)
   }
   assert.equal(validatePaidLifetimeSession(paidSession(),{...order,user_id:'different'},false),null)
+  assert.deepEqual(
+    validatePaidLifetimeSession(paidSession(199900),{...order,amount_php:1999},false),
+    {sessionId:'cs_123',paymentId:'pay_lifetime123456',amountMinor:199900,currency:'PHP',livemode:false}
+  )
+  assert.equal(validatePaidLifetimeSession(paidSession(),{...order,amount_php:1999},false),null)
   assert.equal(validatePaidLifetimeSession(paidSession(),{...order,amount_php:25},false),null)
   assert.equal(validatePaidLifetimeSession(paidSession(),{...order,track_id:'DECK_MGT'},false),null)
   assert.equal(validatePaidLifetimeSession(paidSession(),order,true),null)
