@@ -186,6 +186,21 @@ begin
    where user_id=v_owner and product_code='gmdss';
   if v_granted <> 1 then raise exception 'Payment retries created duplicate ownership rows'; end if;
 
+  -- Historical receipts are retained, but newly created orders cannot use
+  -- the retired price even when the product and track match.
+  insert into public.lifetime_orders (
+    user_id,product_code,track_id,amount_php,status,paymongo_livemode,created_at
+  ) values (
+    v_other,'engine_ew','ENGINE_OIC_EW',2499,'cancelled',false,
+    timestamptz '2026-11-17 01:00:00+00'
+  );
+  begin
+    insert into public.lifetime_orders (
+      user_id,product_code,track_id,amount_php,status,paymongo_livemode
+    ) values (v_other,'engine_ew','ENGINE_OIC_EW',2499,'pending',false);
+    raise exception 'Retired Lifetime price was accepted for a new checkout';
+  exception when sqlstate '23514' then null; end;
+
   -- Server price/track checks reject unsupported SKUs even if a buggy Edge
   -- caller attempts to insert them.
   begin
