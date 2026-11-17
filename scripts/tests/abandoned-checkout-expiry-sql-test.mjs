@@ -55,9 +55,9 @@ try {
     [id(7),owner,'pending',old(34),'PayMongo Checkout','cs_batch']
   )
 
-  // Before this migration exists, a 31-minute pending order stays too_young (red baseline).
-  const migration = await readFile(migrationPath, 'utf8').catch(() => '')
-  if (migration) await db.exec(migration)
+  // Apply the exact migration that changes the original 12-hour RPC.
+  const migration = await readFile(migrationPath, 'utf8')
+  await db.exec(migration)
 
   await db.exec('set role service_role')
   assert.equal((await run(id(1),'cs_29')).status,'too_young','29-minute checkout remains payable')
