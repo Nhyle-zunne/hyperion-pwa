@@ -229,6 +229,33 @@ Deno.serve(async (req: Request) => {
 
   // Pub/Sub test messages and unrelated apps should be acknowledged, not retried forever.
   if (notification?.testNotification || notification?.packageName !== PACKAGE_NAME) return respond(204)
+
+  // Non-consumable refunds and cancelled one-time products must revoke Lifetime
+  // access independently of recurring subscription callbacks. Pub/Sub push
+  // identity has already been verified. A void may arrive before receipt linking.
+  const voided = notification?.voidedPurchaseNotification
+  const cancelledOneTime = notification?.oneTimeProductNotification?.notificationType === 2
+  if (voided?.productType === 2 || cancelledOneTime) {
+    const isFullVoid = voided?.productType === 2 && voided?.refundType === 1
+    if (!isFullVoid && !cancelledOneTime) return respond(204)
+    const purchaseToken = cancelledOneTime
+      ? notification?.oneTimeProductNotification?.purchaseToken
+      : voided?.purchaseToken
+    if (typeof purchaseToken !== 'string' || purchaseToken.length < 6 || purchaseToken.length > 4096)
+      return respond(400, { error: 'Invalid one-time purchase token.' })
+    const admin = createClient(url, service, { auth: { persistSession: false } })
+    const { data, error } = await admin.rpc('record_voided_google_play_lifetime', {
+      p_purchase_ref_sha256: await sha256Hex(purchaseToken)
+    })
+    if (error || data !== true) {
+      console.error('google_play_lifetime_voided_record_failed')
+      return respond(503, { error: 'Could not reconcile the Google Play one-time purchase.' })
+    }
+    return respond(204)
+  }
+  // New one-time purchases are linked only by an authenticated Android account.
+  if (notification?.oneTimeProductNotification) return respond(204)
+
   const token = notification?.subscriptionNotification?.purchaseToken
   const notificationType = typeof notification?.subscriptionNotification?.notificationType === 'number'
     ? notification.subscriptionNotification.notificationType
