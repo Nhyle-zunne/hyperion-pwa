@@ -26,7 +26,7 @@ try {
     "create function public.finalize_paymongo_checkout(p_checkout_reference uuid,p_checkout_session_id text,p_payment_id text,p_payment_method text,p_currency text,p_amount_minor bigint,p_customer_name text default null,p_customer_company text default null,p_customer_school text default null) returns jsonb language plpgsql security definer as $fn$ begin perform pg_advisory_xact_lock(hashtextextended('hyperion-paymongo-payment:' || p_payment_id,0));\n  -- A checkout session reference can identify either a basket batch or a legacy\n  return jsonb_build_object('status','paid'); end $fn$;"
   ].join('\n'))
   const migration = await readFile(new URL(
-    '../../supabase/migrations/20261117084500_record_paymongo_fixed_term_refunds.sql',import.meta.url
+    '../../supabase/migrations/20261117005740_record_paymongo_fixed_term_refunds.sql',import.meta.url
   ),'utf8')
   await db.exec(migration)
   await db.exec('set role service_role')
