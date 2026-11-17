@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     if (!supabaseUrl || !serviceKey) return new Response('Refund verification service unavailable', { status: 503 })
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
-    const { error: refundError } = await admin.rpc('revoke_paymongo_lifetime_checkout', {
+    const { data: lifetimeMatched, error: refundError } = await admin.rpc('revoke_paymongo_lifetime_checkout', {
       p_payment_id: paymentId
     })
     if (refundError) {
@@ -179,7 +179,28 @@ Deno.serve(async (req) => {
       }))
       return new Response('Could not reconcile lifetime refund', { status: 500 })
     }
-    return Response.json({ received: true, lifetimeRefundChecked: true })
+    if (lifetimeMatched === true) return Response.json({ received: true, lifetimeRefundChecked: true })
+
+    // The same correctly signed refund event also covers existing prepaid
+    // website terms. The database atomically revokes only an unambiguous grant;
+    // paid renewals/manual extensions are preserved for expiry reconciliation.
+    const { data: timedResult, error: timedError } = await admin.rpc('revoke_paymongo_fixed_term_checkout', {
+      p_payment_id: paymentId
+    })
+    if (timedError || !timedResult || typeof timedResult.status !== 'string') {
+      console.error('[paymongo-webhook] Atomic fixed-term refund reconciliation failed', JSON.stringify({
+        code: timedError?.code || 'invalid_result'
+      }))
+      return new Response('Could not reconcile fixed-term refund', { status: 500 })
+    }
+    if (timedResult.status === 'reconciliation_required') {
+      console.warn('[paymongo-webhook] Refunded fixed-term extension requires expiry reconciliation')
+    }
+    return Response.json({
+      received: true,
+      fixedTermRefundChecked: true,
+      reconciliationRequired: timedResult.status === 'reconciliation_required'
+    })
   }
   if (eventType !== 'checkout_session.payment.paid') return Response.json({ received: true })
 
