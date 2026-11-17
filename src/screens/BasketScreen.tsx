@@ -281,7 +281,7 @@ function TimedBasketScreen() {
     : paymongoCheckoutEnabled === false ? selectedItems.map(({ code, term }) => ({ code, term })) : []
   const showManualPaymentFallback = manualPaymentItems.length > 0 &&
     (paymongoCheckoutEnabled === false || (isError && manualFallbackItems.length > 0))
-  const pendingLifetimeOrders = lifetimePending?.owner === session?.user.id ? lifetimePending.orders : []
+  const pendingLifetimeOrders = session?.user.id && lifetimePending?.owner === session.user.id ? lifetimePending.orders : []
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
   const pendingCheckoutGroups = useMemo(() => {
     const groups = new Map<string, Order[]>()
