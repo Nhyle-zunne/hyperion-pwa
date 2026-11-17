@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { PGlite } from '@electric-sql/pglite'
 
 const db = new PGlite()
-const migrationPath = new URL('../../supabase/migrations/20261117120000_expire_abandoned_checkout_after_30_minutes.sql', import.meta.url)
+const migrationPath = new URL('../../supabase/migrations/20261117121008_expire_abandoned_checkout_after_30_minutes.sql', import.meta.url)
 const priorPath = new URL('../../supabase/migrations/20261028093640_schedule_12_hour_abandoned_paymongo_checkout_cleanup.sql', import.meta.url)
 const owner = '11111111-1111-4111-8111-111111111111'
 const id = number => 'aaaaaaaa-aaaa-4aaa-8aaa-' + String(number).padStart(12, '0')
