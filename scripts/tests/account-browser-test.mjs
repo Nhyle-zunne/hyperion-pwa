@@ -504,7 +504,12 @@ try {
   assert.equal(await cards.count(), 5)
   assert.equal(await cards.first().locator('.store-benefits-list li').count(), 11, 'Each card retains all eleven premium features')
   assert.equal(await cards.locator('.store-benefits-list li').count(), 55, 'All five store cards show eleven features')
-  assert.equal(await cards.getByText('Use your license across multiple devices, including the official Hyperion Android app.').count(), 5, 'All store cards include the Android app benefit')
+  for (const track of ['Deck OIC-NW', 'Engine OIC-EW', 'GMDSS GOC', 'Deck Management', 'Engine Management']) {
+    assert.equal(await cards.getByText(`Full ${track} question bank`).count(), 1,
+      `${track} uses relevant question-bank benefit text`)
+    assert.equal(await cards.getByText(`Use your ${track} license on Hyperion web and Android`).count(), 1,
+      `${track} advertises the matching cross-platform license`)
+  }
   assert.equal(await cards.last().locator('.store-benefits-list li').count(), 11)
   assert.equal(await cards.first().locator('.product-art .store-banner-symbol').count(), 3, 'Operational cards use original anchor, track, and level symbols')
   assert.equal(await cards.nth(1).locator('.product-art .store-banner-symbol').count(), 2, 'GMDSS card uses original anchor and radio symbol')
