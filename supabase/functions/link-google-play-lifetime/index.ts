@@ -146,16 +146,28 @@ Deno.serve(async req => {
       return reply({ error: 'Google Play has not confirmed this non-consumable purchase.' }, 409)
     }
     const admin = createClient(url, service, { auth: { persistSession: false } })
+    const receiptHash = await sha256Hex(token)
     const { data, error } = await admin.rpc('link_verified_google_play_lifetime', {
       p_user_id: user.id,
       p_product_code: productCode,
-      p_purchase_ref_sha256: await sha256Hex(token)
+      p_purchase_ref_sha256: receiptHash
     })
     if (error) {
       if (error.code === '23505') return reply({ error: 'This Google Play purchase is linked to another account or track.' }, 409)
       throw new Error('Could not securely store this verified purchase.')
     }
     if (data !== true) return reply({ error: 'This Google Play purchase has already been voided.' }, 409)
+    // The shared lifetime receipt table also supports administrator revocation.
+    // A replay of a previously revoked receipt must not report active access.
+    const { data: grant, error: grantError } = await admin.from('lifetime_entitlements')
+      .select('status')
+      .eq('provider', 'google_play')
+      .eq('purchase_ref_sha256', receiptHash)
+      .eq('user_id', user.id)
+      .eq('product_code', productCode)
+      .maybeSingle()
+    if (grantError || grant?.status !== 'active')
+      return reply({ error: 'This Google Play Lifetime receipt is no longer active.' }, 409)
     return reply({ linked: true, active: true, productCode })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Google Play verification failed.'
