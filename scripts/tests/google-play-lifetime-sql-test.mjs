@@ -24,6 +24,7 @@ try {
     'create role authenticated;',
     'create role service_role bypassrls;',
     'create schema auth;',
+    'create function auth.uid() returns uuid language sql stable as $ select null::uuid $;',
     'create table auth.users(id uuid primary key);',
     "insert into auth.users(id) values('"+owner+"'),('"+other+"');",
     'create table public.entitlements (user_id uuid,track_id text,status text,expires_at timestamptz);',
