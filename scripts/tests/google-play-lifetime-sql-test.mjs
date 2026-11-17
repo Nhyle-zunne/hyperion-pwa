@@ -33,7 +33,7 @@ try {
   ].join('\n'))
   for (const name of [
     '20261116230813_add_lifetime_entitlement_foundation.sql',
-    '20261117015000_verify_google_play_lifetime_receipts.sql'
+    '20261117014902_verify_google_play_lifetime_receipts.sql'
   ]) {
     const contents = await readFile(new URL('../../supabase/migrations/' + name,import.meta.url),'utf8')
     await db.exec(contents)
