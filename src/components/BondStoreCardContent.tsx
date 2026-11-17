@@ -1,15 +1,11 @@
 import type { MouseEvent } from 'react'
 import { LICENSE_TERMS, priceForTerm } from '../lib/supabase'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
+import { storeAccessBenefit } from '../lib/storeAccessBenefit'
 import './BondStoreCardContent.css'
 
 // Single Bond Store visual/content source shared by the five store cards and
 // all track-specific locked-feature purchase popups.
-export function storeAccessBenefit(term: LicenseTerm, lifetimeSelected: boolean): string {
-  if (lifetimeSelected) return 'No expiration'
-  return term === 'week' ? '1 week unlimited access' : term === 'month' ? '1 month unlimited access' : '1 year unlimited access'
-}
-
 export const BOND_STORE_FEATURES = [
   'Unlimited practice sessions',
   'Unlimited timed mock exams',
