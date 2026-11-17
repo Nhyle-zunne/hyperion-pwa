@@ -581,10 +581,13 @@ try {
     assert(Math.abs(hoverOnly.width - compact.width) < 1 && hoverOnly.matrix === 'none',
       `Hover does not enlarge or animate at ${width}×${height}`)
     await reveal.click()
-    await page.waitForTimeout(340)
+    await page.waitForFunction(previousHeight => {
+      const list = document.querySelector('.account-product-card .store-benefits-list')
+      return Boolean(list && list.getBoundingClientRect().height > previousHeight + 5)
+    }, compact.listHeight)
     const expanded = await readCard(oicCard)
     assert(expanded.listHeight > compact.listHeight + 5,
-      `Explicit See all still opens benefits at ${width}×${height}`)
+      `Explicit See all opens benefits at ${width}×${height} (before=${compact.listHeight}, after=${expanded.listHeight})`)
     assert.equal(await oicCard.getByRole('button', { name: /BUY NOW|EXTEND LICENSE/ }).isVisible(), true,
       `Buy Now remains accessible at ${width}×${height}`)
     await collapse.click()
