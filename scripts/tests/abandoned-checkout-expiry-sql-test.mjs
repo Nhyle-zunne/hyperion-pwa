@@ -24,7 +24,8 @@ try {
     "insert into cron.job values(4,'hyperion-expire-abandoned-paymongo-checkouts','*/30 * * * *','select net.http_post(...)');",
     'create function cron.alter_job(job_id bigint,schedule text) returns void language plpgsql as $$begin update cron.job set schedule=alter_job.schedule where jobid=alter_job.job_id;end$$;',
     'create table public.checkout_batches(id uuid primary key,user_id uuid,status text not null,created_at timestamptz not null,payment_method text,paymongo_checkout_session_id text);',
-    'create table public.orders(id uuid primary key,user_id uuid,status text not null,created_at timestamptz not null,payment_method text,paymongo_checkout_session_id text,checkout_batch_id uuid);'
+    'create table public.orders(id uuid primary key,user_id uuid,status text not null,created_at timestamptz not null,payment_method text,paymongo_checkout_session_id text,checkout_batch_id uuid);',
+    'grant select on public.orders,public.checkout_batches to service_role;grant usage on schema cron to service_role;grant select on cron.job to service_role;'
   ].join('\n'))
   const priorSql = await readFile(priorPath, 'utf8')
   const functionStart = priorSql.indexOf('create or replace function public.mark_abandoned_paymongo_checkout_failed')
