@@ -110,8 +110,8 @@ Deno.serve(async (req) => {
   if (tokenCheck.error || tokenCheck.data !== true) return json({ error: 'Unauthorized scheduled job.' }, 401)
 
   const basicAuth = 'Basic ' + btoa(paymongoKey + ':')
-  const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
-  const summary = { checked: 0, failed: 0, paidFinalized: 0, processing: 0, deferred: 0 }
+  const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  const summary = { checked: 0, expired: 0, paidFinalized: 0, processing: 0, deferred: 0 }
 
   async function readSession(sessionId: string): Promise<CheckoutSession | null> {
     try {
@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
     return true
   }
 
-  async function markFailed(record: CheckoutRecord, isBatch: boolean) {
+  async function markExpired(record: CheckoutRecord, isBatch: boolean) {
     const result = await admin.rpc('mark_abandoned_paymongo_checkout_failed', {
       p_checkout_reference: record.id,
       p_checkout_session_id: record.paymongo_checkout_session_id,
@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
       console.error('[expire-abandoned-checkouts] Failed to update expired checkout', JSON.stringify({ isBatch, code: result.error.code }))
       return false
     }
-    if (result.data?.status === 'failed') return true
+    if (result.data?.status === 'cancelled') return true
     if (result.data?.status === 'already_paid') {
       console.info('[expire-abandoned-checkouts] Checkout became paid during cleanup; preserved paid status')
       return false
@@ -234,7 +234,7 @@ Deno.serve(async (req) => {
       summary.deferred += 1
       return
     }
-    if (await markFailed(record, isBatch)) summary.failed += 1
+    if (await markExpired(record, isBatch)) summary.expired += 1
     else summary.deferred += 1
   }
 
