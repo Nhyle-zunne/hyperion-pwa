@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { storeAccessBenefit } from '../src/lib/storeAccessBenefit.ts';
 import { termPrices, legacyTermPrices, isAcceptedStoredPrice } from '../supabase/functions/_shared/paymentPrices.mjs';
 import { readFile } from 'node:fs/promises';
 import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
@@ -952,11 +953,13 @@ assert.ok(
   'Track purchase dialog is mounted globally so it survives the OAuth callback return to practice'
 );
 assert.ok(bondStoreCardContent.includes('storeAccessBenefit(term, showLifetimeOffer && lifetimeSelected)') &&
-  bondStoreCardContent.includes('See all 11 premium features') &&
-  bondStoreCardContent.includes('No expiration') &&
-  bondStoreCardContent.includes('1 week unlimited access') &&
-  bondStoreCardContent.includes('1 month unlimited access') &&
-  bondStoreCardContent.includes('1 year unlimited access'), 'Each Bond Store access selection includes its own duration benefit');
+  bondStoreCardContent.includes('See all 11 premium features'), 'Both PWA plan selectors render the duration benefit in the premium features list');
+assert.equal(storeAccessBenefit('week', false), '1 week unlimited access');
+assert.equal(storeAccessBenefit('month', false), '1 month unlimited access');
+assert.equal(storeAccessBenefit('year', false), '1 year unlimited access');
+for (const term of ['week', 'month', 'year']) {
+  assert.equal(storeAccessBenefit(term, true), 'No expiration', 'Lifetime copy overrides the last selected subscription term');
+}
 assert.ok(basketScreen.includes("className=\"basket-back-link\" onClick={() => navigate('/account?tab=payments')}"), 'Checkout back link explicitly opens Bond Store, not My Licenses');
 assert.ok(
   // Pricing, artwork and plan selectors are now a single shared source
