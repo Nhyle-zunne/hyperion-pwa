@@ -21,31 +21,31 @@ begin
     user_id,product_code,track_id,amount_php,status,paymongo_livemode,
     paymongo_checkout_session_id
   ) values (
-    v_owner,'gmdss','GMDSS_GOC',1999,'pending',false,'cs_lifetime_test_1'
+    v_owner,'gmdss','GMDSS_GOC',599,'pending',false,'cs_lifetime_test_1'
   ) returning id into v_order;
 
   -- The provider amount/mode/session is never sourced from browser inputs.
   begin
     perform public.finalize_paymongo_lifetime_checkout(
-      v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,199800,'PHP',false
+      v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,59800,'PHP',false
     );
     raise exception 'Wrong PHP amount was accepted';
   exception when sqlstate '23514' then null; end;
   begin
     perform public.finalize_paymongo_lifetime_checkout(
-      v_order,'cs_wrong','pay_lifetime_test_1',v_ref1,199900,'PHP',false
+      v_order,'cs_wrong','pay_lifetime_test_1',v_ref1,59900,'PHP',false
     );
     raise exception 'Wrong session was accepted';
   exception when sqlstate '23514' then null; end;
   begin
     perform public.finalize_paymongo_lifetime_checkout(
-      v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,199900,'USD',false
+      v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,59900,'USD',false
     );
     raise exception 'Wrong currency was accepted';
   exception when sqlstate '22023' then null; end;
   begin
     perform public.finalize_paymongo_lifetime_checkout(
-      v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,199900,'PHP',true
+      v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,59900,'PHP',true
     );
     raise exception 'Wrong live/test mode was accepted';
   exception when sqlstate '23514' then null; end;
@@ -56,7 +56,7 @@ begin
   end if;
 
   v_result := public.finalize_paymongo_lifetime_checkout(
-    v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,199900,'PHP',false
+    v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,59900,'PHP',false
   );
   if v_result->>'status' <> 'paid' or v_result->>'duplicate' <> 'false'
     or (select status from public.lifetime_orders where id=v_order) <> 'paid'
@@ -67,7 +67,7 @@ begin
   end if;
 
   v_result := public.finalize_paymongo_lifetime_checkout(
-    v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,199900,'PHP',false
+    v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,59900,'PHP',false
   );
   if v_result->>'duplicate' <> 'true' then
     raise exception 'Duplicate webhook was not recognized';
@@ -75,7 +75,7 @@ begin
 
   begin
     perform public.finalize_paymongo_lifetime_checkout(
-      v_order,'cs_lifetime_test_1','pay_second_different',v_ref2,199900,'PHP',false
+      v_order,'cs_lifetime_test_1','pay_second_different',v_ref2,59900,'PHP',false
     );
     raise exception 'Second paid receipt was accepted on same checkout';
   exception when sqlstate '23505' then null; end;
@@ -87,7 +87,7 @@ begin
   end if;
   begin
     perform public.finalize_paymongo_lifetime_checkout(
-      v_order,'cs_lifetime_test_1','pay_second_different',v_ref2,199900,'PHP',false
+      v_order,'cs_lifetime_test_1','pay_second_different',v_ref2,59900,'PHP',false
     );
     raise exception 'A refunded second payment overwrote the original receipt';
   exception when sqlstate '23505' then null; end;
@@ -103,18 +103,18 @@ begin
     user_id,product_code,track_id,amount_php,status,paymongo_livemode,
     paymongo_checkout_session_id
   ) values(
-    v_owner,'gmdss','GMDSS_GOC',1999,'pending',false,'cs_lifetime_test_2'
+    v_owner,'gmdss','GMDSS_GOC',599,'pending',false,'cs_lifetime_test_2'
   ) returning id into v_duplicate_order;
 
   begin
     insert into public.lifetime_orders(
       user_id,product_code,track_id,amount_php,status,paymongo_livemode
-    ) values (v_owner,'gmdss','GMDSS_GOC',1999,'pending',false);
+    ) values (v_owner,'gmdss','GMDSS_GOC',599,'pending',false);
     raise exception 'Concurrent duplicate pending checkout accepted';
   exception when sqlstate '23505' then null; end;
 
   v_result := public.finalize_paymongo_lifetime_checkout(
-    v_duplicate_order,'cs_lifetime_test_2','pay_lifetime_test_2',v_ref2,199900,'PHP',false
+    v_duplicate_order,'cs_lifetime_test_2','pay_lifetime_test_2',v_ref2,59900,'PHP',false
   );
   if v_result->>'status'<>'reconciliation_required' then
     raise exception 'Double charge was not marked for reconciliation';
@@ -143,7 +143,7 @@ begin
     raise exception 'Repeat refund was not idempotent';
   end if;
   v_result := public.finalize_paymongo_lifetime_checkout(
-    v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,199900,'PHP',false
+    v_order,'cs_lifetime_test_1','pay_lifetime_test_1',v_ref1,59900,'PHP',false
   );
   if v_result->>'status' <> 'refunded' or exists(
     select 1 from public.get_active_paid_track_entitlements(v_owner,'GMDSS_GOC')
@@ -160,11 +160,11 @@ begin
     user_id,product_code,track_id,amount_php,status,paymongo_livemode,
     paymongo_checkout_session_id
   ) values (
-    v_other,'engine_ew','ENGINE_OIC_EW',2499,'pending',false,'cs_refund_before_paid'
+    v_other,'engine_ew','ENGINE_OIC_EW',999,'pending',false,'cs_refund_before_paid'
   ) returning id into v_duplicate_order;
   v_result := public.finalize_paymongo_lifetime_checkout(
     v_duplicate_order,'cs_refund_before_paid','pay_refund_before_paid',
-    repeat('c',64),249900,'PHP',false
+    repeat('c',64),99900,'PHP',false
   );
   if v_result->>'status' <> 'refunded'
      or (select status from public.lifetime_orders where id=v_duplicate_order) <> 'refunded'
@@ -173,7 +173,7 @@ begin
   end if;
   v_result := public.finalize_paymongo_lifetime_checkout(
     v_duplicate_order,'cs_refund_before_paid','pay_refund_before_paid',
-    repeat('c',64),249900,'PHP',false
+    repeat('c',64),99900,'PHP',false
   );
   if v_result->>'status' <> 'refunded' then
     raise exception 'Replayed paid webhook resurrected pre-refunded receipt';
