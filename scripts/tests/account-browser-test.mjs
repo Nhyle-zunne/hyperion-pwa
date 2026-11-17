@@ -981,66 +981,104 @@ try {
   await playRenewalPage.close()
   console.log('PASS: active website renewal CTA, term selection, enabled checkout, and Google Play-only protection')
 
-  // Synthetic fixture: selecting the fourth option stays inside its track card.
-  // PayMongo readiness blocks ONLY Lifetime checkout; ordinary plans still work.
+  // The fourth option is a one-time product in the SAME card. The initial
+  // button opens Hyperion Checkout; only confirming there can create a
+  // provider session. Subscription checkout remains a separate path.
   const lifetimeDisabledPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
-  await lifetimeDisabledPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await lifetimeDisabledPage.goto(process.env.HYPERION_RECOVERY_TEST_URL + '?section=account')
   await lifetimeDisabledPage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
   const disabledCards = lifetimeDisabledPage.locator('.account-product-card')
   assert.equal(await disabledCards.count(), 5)
   assert.equal(await disabledCards.locator('.store-duration-option').count(), 20,
     'Weekly, Monthly, Yearly and Lifetime are selectable within each card')
-  assert.equal(await lifetimeDisabledPage.locator('section[aria-label="One-time Lifetime Access"]').count(), 0,
-    'Lifetime plans do not appear in a separate duplicated section')
+  assert.equal(await lifetimeDisabledPage.locator('section[aria-label="One-time Lifetime Access"]').count(), 0)
   const disabledCard = disabledCards.first()
   const lifetimeOption = disabledCard.getByRole('button', { name: /Deck OIC-NW Lifetime ₱2,499 one-time payment/ })
   await lifetimeOption.click()
   assert.equal(await lifetimeOption.getAttribute('aria-pressed'), 'true')
   assert.match(await disabledCard.locator('.product-price').innerText(), /₱2,499.*one-time/)
-  const unavailableAction = disabledCard.getByRole('button', { name: 'CHECKOUT UNAVAILABLE' })
+  assert.equal(await disabledCard.getByText('NO EXPIRATION', { exact: true }).count(), 1)
+  const unavailableAction = disabledCard.getByRole('button', { name: 'BUY NOW' })
   assert.equal(await unavailableAction.isDisabled(), true,
-    'Lifetime checkout remains blocked when payment-and-refund readiness fails')
+    'Checkout readiness still prevents an unverified Lifetime payment')
   assert.match(await disabledCard.locator('.store-lifetime-note').innerText(), /PayMongo payment and refund verification/)
   await disabledCard.getByRole('button', { name: 'Deck OIC-NW Monthly ₱79' }).click()
   assert.equal(await lifetimeOption.getAttribute('aria-pressed'), 'false')
   assert.match(await disabledCard.locator('.product-price').innerText(), /₱79.*month/)
   assert.equal(await disabledCard.getByRole('button', { name: 'BUY NOW' }).isEnabled(), true,
-    'Switching back to a subscription restores its original working checkout')
+    'Subscriptions retain their existing checkout when Lifetime is unavailable')
   await lifetimeDisabledPage.close()
 
   const lifetimePage = await browser.newPage({ viewport: { width: 390, height: 844 } })
   await lifetimePage.addInitScript(() => localStorage.setItem('fixture-lifetime-enabled', 'yes'))
-  await lifetimePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await lifetimePage.goto(process.env.HYPERION_RECOVERY_TEST_URL + '?section=account')
   const lifetimeCards = lifetimePage.locator('.account-product-card')
   await lifetimeCards.first().waitFor()
   assert.equal(await lifetimeCards.count(), 5)
-  const lifetimeLabels = await lifetimeCards.locator('.store-duration-option').allTextContents()
-  for (const amount of ['₱1,999', '₱2,499', '₱4,999']) {
-    assert(lifetimeLabels.some(label => label.includes(amount)), 'Lifetime catalogue displays ' + amount)
+  const lifetimeTracks = [
+    { index: 0, label: 'Deck OIC-NW', amount: 2499 },
+    { index: 1, label: 'GMDSS GOC', amount: 1999 },
+    { index: 2, label: 'Engine OIC-EW', amount: 2499 },
+    { index: 3, label: 'Deck Management', amount: 4999 },
+    { index: 4, label: 'Engine Management', amount: 4999 }
+  ]
+  for (const { index, label, amount } of lifetimeTracks) {
+    const card = lifetimePage.locator('.account-product-card').nth(index)
+    await card.getByRole('button', { name: new RegExp(label + ' Lifetime') }).click()
+    await card.getByText('NO EXPIRATION', { exact: true }).waitFor()
+    assert.equal(await card.locator('.store-lifetime-note').count(), 0,
+      'The outdated one-time PayMongo note is removed')
+    const before = await lifetimePage.evaluate(() =>
+      window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').length)
+    const storeButton = card.getByRole('button', { name: 'BUY NOW', exact: true })
+    assert.equal(await storeButton.isEnabled(), true)
+    await storeButton.click()
+    await lifetimePage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
+    const selected = lifetimePage.locator('.lifetime-checkout-item')
+    assert.match(await selected.innerText(), new RegExp(label))
+    assert.match(await selected.innerText(), new RegExp('₱' + amount.toLocaleString()))
+    assert.match(await selected.innerText(), /No expiration/)
+    const total = lifetimePage.locator('.lifetime-checkout-total')
+    assert.match(await total.innerText(), new RegExp('₱' + amount.toLocaleString()))
+    assert.equal(await lifetimePage.evaluate(() =>
+      window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').length), before,
+      'Navigating to Checkout never creates a PayMongo payment session')
+    await lifetimePage.getByRole('button', { name: '← Back to Bond Store' }).click()
+    await lifetimePage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
   }
-  await lifetimeCards.first().getByRole('button', { name: /Deck OIC-NW Lifetime ₱2,499/ }).click()
-  const buyLifetime = lifetimeCards.first().getByRole('button', { name: 'BUY LIFETIME' })
-  await buyLifetime.waitFor()
-  assert.equal(await buyLifetime.isEnabled(), true, 'Verified readiness enables the existing one-time checkout action')
-  await buyLifetime.click()
+
+  const engineCard = lifetimePage.locator('.account-product-card').nth(2)
+  await engineCard.getByRole('button', { name: /Engine OIC-EW Lifetime/ }).click()
+  await engineCard.getByRole('button', { name: 'BUY NOW' }).click()
+  await lifetimePage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
+  const checkoutButton = lifetimePage.getByRole('button', { name: 'Checkout', exact: true })
+  await checkoutButton.waitFor()
+  assert.equal(await checkoutButton.isEnabled(), true)
+  assert(await lifetimePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    'Lifetime Checkout fits mobile without horizontal overflow')
+  await checkoutButton.click()
   await lifetimePage.getByText('This synthetic fixture never initiates a real payment.').waitFor()
-  assert.equal(await lifetimeCards.count(), 5, 'A rejected checkout leaves the existing store cards intact')
+  const lifetimeCreateCalls = await lifetimePage.evaluate(() =>
+    window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').map(call => call.data))
+  assert.equal(lifetimeCreateCalls.length, 1, 'Only Checkout confirmation starts the selected one-time purchase')
+  assert.equal(lifetimeCreateCalls[0].productCode, 'engine_ew')
+  assert.equal(lifetimeCreateCalls[0].expectedTotalPhp, 2499,
+    'The checkout sends the matching track and amount; the server remains authoritative')
+  await lifetimePage.getByRole('button', { name: '← Back to Bond Store' }).click()
 
   await lifetimePage.evaluate(() => localStorage.setItem('fixture-lifetime-pending', 'yes'))
   await lifetimePage.reload()
   const lifetimeGmdssCard = lifetimePage.locator('.account-product-card').nth(1)
   await lifetimeGmdssCard.getByRole('button', { name: /GMDSS GOC Lifetime ₱1,999/ }).click()
-  await lifetimeGmdssCard.getByRole('button', { name: 'RESUME CHECKOUT' }).waitFor()
+  await lifetimeGmdssCard.getByRole('button', { name: 'BUY NOW' }).waitFor()
   await lifetimeGmdssCard.getByRole('button', { name: 'Cancel pending Lifetime checkout' }).click()
   await lifetimePage.getByText('PayMongo confirmed this Lifetime checkout was cancelled.', { exact: false }).waitFor()
-  await lifetimeGmdssCard.getByRole('button', { name: 'BUY LIFETIME' }).waitFor()
+  await lifetimeGmdssCard.getByText('NO EXPIRATION', { exact: true }).waitFor()
   const lifetimeCancelCalls = await lifetimePage.evaluate(() =>
     window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:cancel'))
   assert.equal(lifetimeCancelCalls.length, 1, 'Cancellation still goes through the existing server verifier')
-  assert(await lifetimePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-    'The inline Lifetime selector fits the mobile Bond Store without horizontal overflow')
   await lifetimePage.close()
-  console.log('PASS: four inline Bond Store terms, Lifetime checkout gate, active QR Ph flow and pending cancellation')
+  console.log('PASS: all five Lifetime cards open Checkout, accurate amounts, no premature charge, protected payment and pending cancellation')
 
   await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=study-time`)
   await page.getByRole('img', { name: /Study time breakdown by track/ }).waitFor()
