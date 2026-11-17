@@ -577,6 +577,15 @@ try {
       'Repeated toggles never create hover animation state')
   }
 
+  // Earlier toggle repetitions can leave the collapse transition mid-flight.
+  // Wait for the baseline to settle before measuring expansion at each width.
+  await page.waitForFunction(() => {
+    const card = document.querySelector('.account-product-card')
+    const list = card?.querySelector('.store-benefits-list')
+    const collapsedLimit = 3.55 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+    return Boolean(card && list && !card.classList.contains('perks-expanded') &&
+      list.getBoundingClientRect().height <= collapsedLimit + 2)
+  })
   for (const [width, height] of [[1366, 768], [1280, 768], [1531, 900]]) {
     await page.setViewportSize({ width, height })
     await page.evaluate(() => window.scrollTo(0, 0))
