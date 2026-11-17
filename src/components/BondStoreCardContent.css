@@ -11,6 +11,8 @@
 .bond-store-card .store-plan-title{margin:0;font-size:.94rem;min-height:2.3em;line-height:1.2;font-weight:650;overflow-wrap:anywhere}
 .bond-store-card .product-price{font-size:clamp(1.2rem,1.4vw,1.48rem);font-weight:750;line-height:1.1;color:var(--text);margin:.4rem 0 .55rem;font-variant-numeric:tabular-nums}
 .bond-store-card .product-price span{font-size:.68rem;color:var(--text-muted);font-weight:650}
+.bond-store-card .store-lifetime-link{display:inline-block;align-self:flex-start;margin:-.24rem 0 .48rem;color:var(--accent);font-size:.69rem;font-weight:700;text-underline-offset:2px}
+.bond-store-card .store-lifetime-link:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .bond-store-card .store-duration-label{color:var(--text-muted);font-size:.61rem;font-weight:700;letter-spacing:.04em}
 .bond-store-card .store-duration-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.25rem;margin:.35rem 0 .65rem}
 .bond-store-card .store-duration-option{min-width:0;min-height:40px;border:1px solid var(--border);border-radius:var(--store-control-radius);padding:.3rem .1rem;background:transparent;color:var(--text);font-size:.66rem;line-height:1.15;font-weight:650;cursor:pointer}
