@@ -1028,12 +1028,12 @@ try {
 
   await lifetimePage.evaluate(() => localStorage.setItem('fixture-lifetime-pending', 'yes'))
   await lifetimePage.reload()
-  const gmdssCard = lifetimePage.locator('.account-product-card').nth(1)
-  await gmdssCard.getByRole('button', { name: /GMDSS GOC Lifetime ₱1,999/ }).click()
-  await gmdssCard.getByRole('button', { name: 'RESUME CHECKOUT' }).waitFor()
-  await gmdssCard.getByRole('button', { name: 'Cancel pending Lifetime checkout' }).click()
+  const lifetimeGmdssCard = lifetimePage.locator('.account-product-card').nth(1)
+  await lifetimeGmdssCard.getByRole('button', { name: /GMDSS GOC Lifetime ₱1,999/ }).click()
+  await lifetimeGmdssCard.getByRole('button', { name: 'RESUME CHECKOUT' }).waitFor()
+  await lifetimeGmdssCard.getByRole('button', { name: 'Cancel pending Lifetime checkout' }).click()
   await lifetimePage.getByText('PayMongo confirmed this Lifetime checkout was cancelled.', { exact: false }).waitFor()
-  await gmdssCard.getByRole('button', { name: 'BUY LIFETIME' }).waitFor()
+  await lifetimeGmdssCard.getByRole('button', { name: 'BUY LIFETIME' }).waitFor()
   const lifetimeCancelCalls = await lifetimePage.evaluate(() =>
     window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:cancel'))
   assert.equal(lifetimeCancelCalls.length, 1, 'Cancellation still goes through the existing server verifier')
