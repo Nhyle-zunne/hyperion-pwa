@@ -1,24 +1,11 @@
 import type { MouseEvent } from 'react'
 import { LICENSE_TERMS, priceForTerm } from '../lib/supabase'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
-import { storeAccessBenefit } from '../lib/storeAccessBenefit'
+import { storeAccessBenefit, storePremiumFeaturesForTrack } from '../lib/storeAccessBenefit'
 import './BondStoreCardContent.css'
 
 // Single Bond Store visual/content source shared by the five store cards and
 // all track-specific locked-feature purchase popups.
-export const BOND_STORE_FEATURES = [
-  'Unlimited practice sessions',
-  'Unlimited timed mock exams',
-  'Full question bank for your licensed track',
-  'Custom drills and question ranges',
-  'Quick Scan Mode',
-  'Mistakes Notebook and bookmarks',
-  'Full-text question search',
-  'Offline review after downloading',
-  'Study history and cross-device progress sync',
-  'Use your license across multiple devices, including the official Hyperion Android app.',
-] as const
-
 const STORE_TRACK_CAPTIONS: Record<PaidTrack, string> = {
   oic_nw: 'DECK · OPERATIONAL',
   engine_ew: 'ENGINE · OPERATIONAL',
@@ -123,7 +110,7 @@ export default function BondStoreCardContent({
     <div className="store-feature-highlight">✦ Full reviewer access</div>
     <ul className="store-benefits-list" id={benefitsId} aria-label={`Premium features for ${product.label}`}>
       <li>{storeAccessBenefit(term, showLifetimeOffer && lifetimeSelected)}</li>
-      {BOND_STORE_FEATURES.map(feature => <li key={feature}>{feature}</li>)}
+      {storePremiumFeaturesForTrack(product.code).map(feature => <li key={feature}>{feature}</li>)}
     </ul>
     {!showAllBenefits && onToggleBenefits && <button
       type="button" className="store-benefits-toggle" aria-controls={benefitsId}
