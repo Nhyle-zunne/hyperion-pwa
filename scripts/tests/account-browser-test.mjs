@@ -981,13 +981,21 @@ try {
   await playRenewalPage.close()
   console.log('PASS: active website renewal CTA, term selection, enabled checkout, and Google Play-only protection')
 
-  // Lifetime checkout stays hidden unless the server explicitly enables sales.
-  // The fixture below never opens a PayMongo URL or moves real money.
+  // Every track advertises the approved Lifetime price, even when the PayMongo
+  // readiness check fails. Checkout remains disabled; no real money is moved.
   const lifetimeDisabledPage = await browser.newPage()
   await lifetimeDisabledPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
   await lifetimeDisabledPage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
-  assert.equal(await lifetimeDisabledPage.locator('section[aria-label="One-time Lifetime Access"]').count(), 0,
-    'Lifetime sales are absent when the server flag is disabled')
+  const disabledLifetimePanel = lifetimeDisabledPage.locator('section[aria-label="One-time Lifetime Access"]')
+  await disabledLifetimePanel.waitFor()
+  assert.equal(await lifetimeDisabledPage.locator('.account-product-card .store-lifetime-link').count(), 5,
+    'Every Bond Store card links to its one-time Lifetime price')
+  assert.equal(await disabledLifetimePanel.getByRole('button', { name: 'CHECKOUT UNAVAILABLE' }).count(), 5,
+    'All five Lifetime checkouts are visibly disabled until PayMongo is ready')
+  assert.equal(await disabledLifetimePanel.getByRole('button', { name: 'CHECKOUT UNAVAILABLE' }).first().isDisabled(), true,
+    'A failed readiness check never starts a PayMongo payment')
+  assert.match(await disabledLifetimePanel.innerText(), /payment and refund verification is incomplete/,
+    'The disabled storefront explains why Lifetime cannot be bought yet')
   await lifetimeDisabledPage.close()
 
   const lifetimePage = await browser.newPage({ viewport: { width: 390, height: 844 } })
