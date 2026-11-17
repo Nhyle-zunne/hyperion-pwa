@@ -195,7 +195,7 @@ begin
     'public.finalize_paymongo_checkout(uuid,text,text,text,text,bigint,text,text,text)'::regprocedure
   ) into definition;
   if definition is null or pg_catalog.strpos(definition,marker)=0
-     or pg_catalog.position('hyperion-paymongo-payment:' in definition)=0 then
+     or pg_catalog.strpos(definition,'hyperion-paymongo-payment:')=0 then
     raise exception 'Expected transaction-serialized PayMongo finalizer not found';
   end if;
   if pg_catalog.strpos(definition,guard)>0 then return; end if;
