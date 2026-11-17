@@ -8,6 +8,7 @@ import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { priceForTerm, termLabel } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 import AccountSectionTabs from '../components/AccountSectionTabs'
+import LifetimeCheckoutScreen from './LifetimeCheckoutScreen'
 
 type Order = {
   id: string
@@ -68,6 +69,11 @@ async function edgeError(error: unknown): Promise<string> {
 }
 
 export default function BasketScreen() {
+  const [params] = useSearchParams()
+  return params.has('lifetime_product') ? <LifetimeCheckoutScreen /> : <TimedBasketScreen />
+}
+
+function TimedBasketScreen() {
   const navigate = useNavigate()
   const location = useLocation()
   const [params] = useSearchParams()
