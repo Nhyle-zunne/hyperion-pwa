@@ -61,3 +61,19 @@ export async function fetchPendingOrders(client: OrderClient, owner: string): Pr
     after = last
   }
 }
+
+export type PendingLifetimeOrder = {
+  id: string
+  product_code: string
+  amount_php: number
+}
+
+export async function fetchPendingLifetimeOrders(client: OrderClient, owner: string): Promise<PendingLifetimeOrder[]> {
+  const { data, error } = await client.from('lifetime_orders')
+    .select('id,product_code,amount_php')
+    .eq('user_id', owner)
+    .eq('status', 'pending')
+    .limit(10)
+  if (error) throw new Error('Unable to check pending Lifetime payments. Please refresh your checkout.')
+  return (data ?? []) as PendingLifetimeOrder[]
+}

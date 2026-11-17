@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { fetchOrderPage, fetchPendingOrders, ORDER_PAGE_SIZE } from '../../src/lib/orderHistoryRequests.ts'
+import { fetchOrderPage, fetchPendingOrders, fetchPendingLifetimeOrders, ORDER_PAGE_SIZE } from '../../src/lib/orderHistoryRequests.ts'
 const owner = '11111111-1111-4111-8111-111111111111'
 const rows = Array.from({ length: 61 }, (_, i) => ({
   id: `00000000-0000-4000-8000-${String(999 - i).padStart(12, '0')}`,
@@ -62,3 +62,33 @@ await assert.rejects(fetchOrderPage(client, owner), /Unable to load/)
 await assert.rejects(fetchPendingOrders(client, owner), /Unable to check/)
 await assert.rejects(fetchOrderPage(client, owner, { id: 'bad,or', created_at: 'invalid' }), /Invalid order/)
 console.log('PASS: small order pages, cursor ties/inserts, full history access, narrow pending checks, ownership and query failures')
+
+const lifetimeRows = [
+  { id: 'lifetime-one', user_id: owner, status: 'pending', product_code: 'gmdss', amount_php: 599 },
+  { id: 'lifetime-paid', user_id: owner, status: 'paid', product_code: 'oic_nw', amount_php: 999 },
+  { id: 'lifetime-other-user', user_id: 'other-user', status: 'pending', product_code: 'engine_mgt', amount_php: 1999 },
+]
+const lifetimeRequests = []
+const lifetimeClient = { from(table) {
+  assert.equal(table, 'lifetime_orders', 'Lifetime resume reads its dedicated order table')
+  const request = { filters: [] }; lifetimeRequests.push(request)
+  const query = {
+    select(columns) { request.columns = columns; return query },
+    eq(key, value) { request.filters.push([key, value]); return query },
+    limit(value) { request.limit = value; return query },
+    then(resolve) {
+      const result = lifetimeRows.filter(row => request.filters.every(([key, value]) => row[key] === value))
+        .slice(0, request.limit).map(row => Object.fromEntries(request.columns.split(',').map(col => [col, row[col]])))
+      return Promise.resolve({ data: fail ? null : result, error: fail ? new Error('Synthetic error') : null }).then(resolve)
+    },
+  }
+  return query
+} }
+fail = false
+const lifetimePending = await fetchPendingLifetimeOrders(lifetimeClient, owner)
+assert.deepEqual(lifetimePending, [{ id: 'lifetime-one', product_code: 'gmdss', amount_php: 599 }], 'Only own pending Lifetime orders are resumable at their stored amounts')
+assert.deepEqual(lifetimeRequests[0].filters, [['user_id', owner], ['status', 'pending']], 'Lifetime checkout discovery is owner-scoped and pending-only')
+assert.equal(lifetimeRequests[0].limit, 10, 'Lifetime checkout discovery is bounded to the per-track catalogue')
+assert.equal(lifetimeRequests[0].columns, 'id,product_code,amount_php', 'Only checkout display fields are fetched')
+fail = true
+await assert.rejects(fetchPendingLifetimeOrders(lifetimeClient, owner), /Unable to check pending Lifetime/)

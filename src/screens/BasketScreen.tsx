@@ -9,6 +9,8 @@ import { priceForTerm, termLabel } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import LifetimeCheckoutScreen from './LifetimeCheckoutScreen'
+import { fetchPendingLifetimeOrders } from '../lib/orderHistoryRequests'
+import type { PendingLifetimeOrder } from '../lib/orderHistoryRequests'
 
 type Order = {
   id: string
@@ -83,6 +85,7 @@ function TimedBasketScreen() {
     return requested ? [requested] : savedBasket()
   })
   const [orders, setOrders] = useState<Order[]>([])
+  const [lifetimePending, setLifetimePending] = useState<{ owner: string; orders: PendingLifetimeOrder[] } | null>(null)
   const [ownedCodes, setOwnedCodes] = useState<PaidTrack[]>([])
   const [busy, setBusy] = useState(false)
   const [busyCheckoutId, setBusyCheckoutId] = useState<string | null>(null)
@@ -207,10 +210,11 @@ function TimedBasketScreen() {
   const refreshData = async () => {
     if (!supabase || !session?.user.id) {
       setOrders([])
+      setLifetimePending(null)
       setOwnedCodes([])
       return
     }
-    const [orderResult, entitlementResult] = await Promise.all([
+    const [orderResult, entitlementResult, lifetimeOrders] = await Promise.all([
       supabase.from('orders')
         .select('id,product_code,license_term,amount_php,status,payment_method,created_at,checkout_batch_id')
         .eq('user_id', session.user.id)
@@ -220,11 +224,13 @@ function TimedBasketScreen() {
         .select('product_code')
         .eq('user_id', session.user.id)
         .eq('status', 'active')
-        .gt('expires_at', new Date().toISOString())
+        .gt('expires_at', new Date().toISOString()),
+      fetchPendingLifetimeOrders(supabase, session.user.id)
     ])
     if (orderResult.error) throw new Error('Unable to load your order history. Please refresh the page.')
     if (entitlementResult.error) throw new Error('Unable to check your active licenses. Please refresh the page.')
     setOrders((orderResult.data ?? []) as Order[])
+    setLifetimePending({ owner: session.user.id, orders: lifetimeOrders })
     setOwnedCodes((entitlementResult.data ?? [])
       .map(row => row.product_code as PaidTrack)
       .filter(code => PAID_PRODUCTS.some(item => item.code === code)))
@@ -242,6 +248,7 @@ function TimedBasketScreen() {
       })
     } else {
       setOrders([])
+      setLifetimePending(null)
       setOwnedCodes([])
     }
     return () => { active = false }
@@ -274,6 +281,7 @@ function TimedBasketScreen() {
     : paymongoCheckoutEnabled === false ? selectedItems.map(({ code, term }) => ({ code, term })) : []
   const showManualPaymentFallback = manualPaymentItems.length > 0 &&
     (paymongoCheckoutEnabled === false || (isError && manualFallbackItems.length > 0))
+  const pendingLifetimeOrders = session?.user.id && lifetimePending?.owner === session.user.id ? lifetimePending.orders : []
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
   const pendingCheckoutGroups = useMemo(() => {
     const groups = new Map<string, Order[]>()
@@ -528,6 +536,83 @@ function TimedBasketScreen() {
   const cancelCheckout = async (groupId: string, groupItems: BasketItem[]) =>
     withPageLoading('Checking checkout cancellation', () => cancelCheckoutInternal(groupId, groupItems))
 
+  const resumeLifetimeCheckoutInternal = async (order: PendingLifetimeOrder) => {
+    if (!supabase || !session) return
+    const product = PAID_PRODUCTS.find(item => item.code === order.product_code)
+    if (!product) {
+      setIsError(true)
+      setMessage('This Lifetime order has an unknown track. Contact Hyperion support.')
+      return
+    }
+    setBusy(true)
+    setBusyCheckoutId(order.id)
+    setIsError(false)
+    setCheckoutUrlFallback(null)
+    setMessage('Resuming the existing Lifetime checkout…')
+    try {
+      // The server reuses the owner's pending order and validates the provider session.
+      const { data, error } = await supabase.functions.invoke('create-lifetime-checkout', {
+        body: { action: 'create', productCode: product.code, expectedTotalPhp: product.lifetimePrice }
+      })
+      if (error) throw new Error(await edgeError(error))
+      if (typeof data?.error === 'string') throw new Error(data.error)
+      if (data?.status === 'paid') {
+        await refreshData()
+        setMessage('Lifetime payment confirmed. Your license has been activated.')
+        return
+      }
+      // Do not turn a stale Resume action into a different new purchase.
+      if (data?.status !== 'pending' || data.orderId !== order.id) {
+        throw new Error('This Lifetime checkout changed. Refresh payment status before trying again.')
+      }
+      const target = typeof data.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
+      if (!target || target.protocol !== 'https:' || target.hostname !== 'checkout.paymongo.com') {
+        throw new Error('PayMongo did not return a trusted checkout link.')
+      }
+      setCheckoutUrlFallback(target.toString())
+      window.location.assign(target.toString())
+    } catch (error) {
+      setIsError(true)
+      setMessage(await edgeError(error))
+      await refreshData().catch(() => undefined)
+    } finally {
+      setBusy(false)
+      setBusyCheckoutId(null)
+    }
+  }
+
+  const resumeLifetimeCheckout = async (order: PendingLifetimeOrder) =>
+    withPageLoading('Resuming Lifetime checkout', () => resumeLifetimeCheckoutInternal(order))
+
+  const cancelLifetimeCheckoutInternal = async (orderId: string) => {
+    if (!supabase || !session) return
+    setBusy(true)
+    setBusyCheckoutId(orderId)
+    setIsError(false)
+    setMessage('Checking with PayMongo before cancelling this Lifetime checkout…')
+    try {
+      const { data, error } = await supabase.functions.invoke('create-lifetime-checkout', {
+        body: { action: 'cancel', orderId }
+      })
+      if (error) throw new Error(await edgeError(error))
+      if (data?.status !== 'cancelled') {
+        throw new Error(data?.error || 'PayMongo has not confirmed cancellation. Do not start another payment.')
+      }
+      await refreshData()
+      setMessage('Lifetime checkout cancelled. No license was added.')
+    } catch (error) {
+      setIsError(true)
+      setMessage(await edgeError(error))
+      await refreshData().catch(() => undefined)
+    } finally {
+      setBusy(false)
+      setBusyCheckoutId(null)
+    }
+  }
+
+  const cancelLifetimeCheckout = async (orderId: string) =>
+    withPageLoading('Checking Lifetime cancellation', () => cancelLifetimeCheckoutInternal(orderId))
+
   const refreshStatusInternal = async () => {
     if (!supabase || !session) return
     setBusy(true)
@@ -535,6 +620,7 @@ function TimedBasketScreen() {
     setMessage('Refreshing payment status from PayMongo…')
     try {
       const checkoutIds = [...new Set(pendingPayMongoOrders.map(order => order.checkout_batch_id || order.id))]
+      const lifetimeIds = pendingLifetimeOrders.map(order => order.id)
       let activated: string[] = []
       for (const id of checkoutIds) {
         const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId: id } })
@@ -549,11 +635,26 @@ function TimedBasketScreen() {
           setMessage(data.error)
         }
       }
+      for (const id of lifetimeIds) {
+        const { data, error } = await supabase.functions.invoke('verify-lifetime-checkout', { body: { orderId: id } })
+        if (error) throw new Error(await edgeError(error))
+        if (data?.status === 'paid') {
+          const order = pendingLifetimeOrders.find(item => item.id === id)
+          const label = PAID_PRODUCTS.find(item => item.code === order?.product_code)?.label ?? order?.product_code ?? 'Reviewer'
+          activated.push(label + ' Lifetime Access')
+        } else if (data?.status === 'pending') {
+          setMessage(data.message || 'PayMongo has not confirmed this Lifetime checkout as paid yet.')
+        } else if (data?.status === 'reconciliation_required') {
+          setMessage('A Lifetime payment needs support review. Do not pay again.')
+        } else if (data?.error) {
+          setMessage(data.error)
+        }
+      }
       await refreshData()
       if (activated.length) {
         setIsError(false)
         setMessage(`Payment confirmed. Activated: ${[...new Set(activated)].join(', ')}.`)
-      } else if (!checkoutIds.length) {
+      } else if (!checkoutIds.length && !lifetimeIds.length) {
         setMessage('You have no pending PayMongo checkouts.')
       }
     } catch (error) {
@@ -757,9 +858,9 @@ function TimedBasketScreen() {
         </div>}
       </div>}
 
-      {pendingCheckoutGroups.length > 0 && <section className="basket-pending-card" style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
+      {(pendingCheckoutGroups.length + pendingLifetimeOrders.length) > 0 && <section className="basket-pending-card" style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
         <div className="basket-pending-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Resume the same payment or cancel it safely. Don’t start a second payment for the same items.</p></div>
+          <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length + pendingLifetimeOrders.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Resume the same payment or cancel it safely. Don’t start a second payment for the same items.</p></div>
           <button type="button" className="btn btn-outline basket-pending-refresh" disabled={busy} onClick={() => void refreshStatus()}>{busy ? 'Checking…' : 'Refresh payment status'}</button>
         </div>
         {pendingCheckoutGroups.map(group => <div className="basket-row basket-pending-row" key={group.id}>
@@ -770,6 +871,21 @@ function TimedBasketScreen() {
           <div className="basket-action-row basket-pending-actions">
             <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void checkout(group.items)}>RESUME CHECKOUT</button>
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelCheckout(group.id, group.items)} style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busyCheckoutId === group.id ? 'CHECKING…' : 'CANCEL'}</button>
+          </div>
+        </div>)}
+        {pendingLifetimeOrders.map(order => <div className="basket-row basket-pending-row" key={order.id}>
+          <div className="basket-pending-detail" style={{ minWidth: 0 }}>
+            <strong>{PAID_PRODUCTS.find(item => item.code === order.product_code)?.label ?? order.product_code} (Lifetime Access)</strong>
+            <div className="basket-muted" style={{ marginTop: '.25rem' }}>One-time payment · ₱{Number(order.amount_php).toLocaleString('en-PH')}</div>
+          </div>
+          <div className="basket-action-row basket-pending-actions">
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void resumeLifetimeCheckout(order)}>
+              {busyCheckoutId === order.id ? 'CHECKING…' : 'RESUME CHECKOUT'}
+            </button>
+            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelLifetimeCheckout(order.id)}
+              style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>
+              {busyCheckoutId === order.id ? 'CHECKING…' : 'CANCEL'}
+            </button>
           </div>
         </div>)}
       </section>}

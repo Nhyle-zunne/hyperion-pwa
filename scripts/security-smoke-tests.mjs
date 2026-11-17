@@ -222,6 +222,17 @@ assert.ok(basketScreen.includes("body: { action: 'status' }"), 'Basket loads che
 assert.ok(basketScreen.includes('paymongoCheckoutEnabled !== true'), 'Checkout handler fails closed until server availability is confirmed');
 assert.ok(basketScreen.includes('paymongoCheckoutEnabled === true ? <button'), 'PayMongo button is only rendered when the server says checkout is enabled');
 assert.ok(basketScreen.includes('showManualPaymentFallback'), 'Basket exposes manual payment fallback when checkout is disabled');
+assert.ok(basketScreen.includes('fetchPendingLifetimeOrders(supabase, session.user.id)') &&
+  basketScreen.includes('pendingLifetimeOrders.map(order =>') &&
+  basketScreen.includes('RESUME CHECKOUT') &&
+  basketScreen.includes('Lifetime Access)'), 'Pending Lifetime purchases appear alongside existing timed Resume Checkout controls');
+assert.ok(basketScreen.includes("functions.invoke('create-lifetime-checkout'") &&
+  basketScreen.includes("action: 'create', productCode: product.code, expectedTotalPhp: product.lifetimePrice") &&
+  basketScreen.includes('data.orderId !== order.id') &&
+  basketScreen.includes("target.hostname !== 'checkout.paymongo.com'"), 'Lifetime resume reuses server-owned price, original order identity and trusted PayMongo checkout URL');
+assert.ok(basketScreen.includes("action: 'cancel', orderId") &&
+  basketScreen.includes("functions.invoke('verify-lifetime-checkout'") &&
+  basketScreen.includes("await refreshData()"), 'Lifetime cancel and status refresh use existing provider-verified payment handlers');
 
 assert.match(accountScreen, /queryParams:\s*\{\s*prompt:\s*'select_account'/, 'Google OAuth always prompts the user to choose an account');
 assert.ok(accountScreen.includes('setDeletionSuccess(true)'), 'Successful account deletion opens a visible success dialog');
