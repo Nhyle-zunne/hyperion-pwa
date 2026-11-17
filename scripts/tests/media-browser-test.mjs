@@ -231,7 +231,7 @@ try {
     await page.getByText('An active license for OIC-NW OPERATIONAL TRACK is required.', { exact: false }).waitFor()
     assert.equal(await page.getByRole('button', { name: 'START OFFICIAL TIMED MOCK EXAM' }).count(), 0, 'Revocation immediately gates the mock screen')
   })
-  await scenario('Bond Store popup shares exact banner artwork, ten benefits and plan controls across tracks', async ({ page, open }) => {
+  await scenario('Bond Store popup shares exact banner artwork, eleven benefits and plan controls across tracks', async ({ page, open }) => {
     await open('hub')
     await page.evaluate(() => window.hubFixture.setLicenses([]))
     const tracks = [
@@ -260,20 +260,23 @@ try {
       const logoStyle = await dialog.locator('.store-banner-symbol').first().evaluate(el => getComputedStyle(el).backgroundImage)
       assert(logoStyle.includes('/store-art/hyperion-banner-sprite.png'), label + ' points to the identical Bond Store sprite asset')
       assert((await dialog.locator('.product-art').innerText()).includes(caption), label + ' uses the matching category caption')
-      assert.equal(await dialog.locator('.store-benefits-list li').count(), 10, label + ' contains all ten Bond Store premium benefits')
+      assert.equal(await dialog.locator('.store-benefits-list li').count(), 11, label + ' contains all eleven Bond Store premium benefits')
       assert(await dialog.getByText('Use your license across multiple devices, including the official Hyperion Android app.').count() === 1, 'Cross-device benefit is visible in purchase popup for ' + label)
-      assert.equal(await dialog.locator('.store-benefits-toggle').count(), 0, label + ' popup shows all ten premium features without an expand button')
+      assert.equal(await dialog.locator('.store-benefits-toggle').count(), 0, label + ' popup shows all eleven premium features without an expand button')
       const listState = await dialog.locator('.store-benefits-list').evaluate(el => ({ overflow: getComputedStyle(el).overflowY, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }))
       assert.equal(listState.overflow, 'visible', label + ' list is not clipped by the default collapsed height')
-      assert(listState.scrollHeight <= listState.clientHeight + 2, label + ' all ten benefit rows occupy their full height')
+      assert(listState.scrollHeight <= listState.clientHeight + 2, label + ' all eleven benefit rows occupy their full height')
       for (const [i, duration] of ['Weekly', 'Monthly', 'Yearly'].entries()) {
         const option = dialog.getByRole('button', { name: label + ' ' + duration + ' ₱' + prices[i] })
         await option.click()
         assert.equal(await option.getAttribute('aria-pressed'), 'true', duration + ' selection tracks on ' + label)
         assert((await dialog.locator('.product-price').innerText()).includes('₱' + prices[i]), duration + ' price matches Bond Store on ' + label)
+        assert.equal(await dialog.locator('.store-benefits-list li').first().innerText(),
+          ['1 week unlimited access', '1 month unlimited access', '1 year unlimited access'][i],
+          duration + ' displays its matching first premium feature for ' + label)
       }
       const benefitsHeight = await dialog.locator('.store-benefits-list').evaluate(el => el.getBoundingClientRect().height)
-      assert(benefitsHeight > 100, 'All ten benefits are visible by default inside ' + label)
+      assert(benefitsHeight > 100, 'All eleven benefits are visible by default inside ' + label)
       await dialog.getByRole('button', { name: 'Close purchase dialog' }).click()
       await dialog.waitFor({ state: 'hidden' })
     }
@@ -305,8 +308,8 @@ try {
 
       const bounds = await buy.boundingBox()
       assert(bounds && bounds.y >= 0 && bounds.y + bounds.height <= height + 1, 'Buy Now is within viewport at ' + width)
-      assert(await buy.isVisible(), 'CTA remains available with all ten visible by default at ' + width)
-      // Verify ALL ten features can be read, not merely present in the DOM.
+      assert(await buy.isVisible(), 'CTA remains available with all eleven visible by default at ' + width)
+      // Verify ALL eleven features can be read, not merely present in the DOM.
       const details = dialog.locator('.track-purchase-details-scroll')
       const features = dialog.locator('.store-benefits-list')
       assert.equal(await details.count(), 1, 'Feature content has its own scroll viewport at ' + width)
@@ -314,27 +317,27 @@ try {
         const css = getComputedStyle(el)
         return { overflow: css.overflowY, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }
       })
-      assert.equal(expandedList.overflow, 'visible', 'Default ten-feature list never hides overflowing text at ' + width)
-      assert(expandedList.scrollHeight <= expandedList.clientHeight + 2, 'All ten features fit their own list without expanding at ' + width)
+      assert.equal(expandedList.overflow, 'visible', 'Default eleven-feature list never hides overflowing text at ' + width)
+      assert(expandedList.scrollHeight <= expandedList.clientHeight + 2, 'All eleven features fit their own list without expanding at ' + width)
       const lastFeature = features.locator('li').last()
-      assert.equal(await features.locator('li').nth(8).innerText(), 'Study history and cross-device progress sync')
+      assert.equal(await features.locator('li').nth(9).innerText(), 'Study history and cross-device progress sync')
       assert.equal(await lastFeature.innerText(), 'Use your license across multiple devices, including the official Hyperion Android app.')
       await lastFeature.scrollIntoViewIfNeeded()
       const view = await details.boundingBox()
       const last = await lastFeature.boundingBox()
       const action = await dialog.locator('.track-purchase-actions').boundingBox()
       assert(view && last && action && last.y >= view.y - 2 && last.y + last.height <= view.y + view.height + 2,
-        'The tenth feature is readable after scrolling within the modal at ' + width)
-      assert(last.y + last.height <= action.y + 2, 'Sticky Buy Now never covers the tenth feature at ' + width)
+        'The eleventh feature is readable after scrolling within the modal at ' + width)
+      assert(last.y + last.height <= action.y + 2, 'Sticky Buy Now never covers the eleventh feature at ' + width)
       assert.equal(await dialog.locator('.store-benefits-toggle').count(), 0, 'No show-more interaction is required at ' + width)
       if (height >= 800) {
         const detailsState = await details.evaluate(el => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }))
         assert(detailsState.scrollHeight <= detailsState.clientHeight + 2,
-          'All plan details and ten features should fit without scrolling at ' + width + '×' + height)
+          'All plan details and eleven features should fit without scrolling at ' + width + '×' + height)
       }
       const visibleBuy = await buy.boundingBox()
       assert(visibleBuy && visibleBuy.y >= 0 && visibleBuy.y + visibleBuy.height <= height + 1,
-        'Buy Now stays on screen after checking all ten features at ' + width)
+        'Buy Now stays on screen after checking all eleven features at ' + width)
       await dialog.screenshot({ path: `/tmp/hyperion-purchase-${width}.png`, animations: 'disabled' })
       if (width === 390 || width === 1280) {
         await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
