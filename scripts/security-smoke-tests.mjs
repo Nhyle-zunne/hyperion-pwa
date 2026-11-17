@@ -79,7 +79,7 @@ const [
   read('../.github/workflows/pwa-build.yml')
 ]);
 
-const abandonedCheckoutExpiryMigration = await read('../supabase/migrations/20261117120000_expire_abandoned_checkout_after_30_minutes.sql');
+const abandonedCheckoutExpiryMigration = await read('../supabase/migrations/20261117121008_expire_abandoned_checkout_after_30_minutes.sql');
 const trackPurchaseDialog = await read('../src/components/TrackPurchaseDialog.tsx');
 const bondStoreCardContent = await read('../src/components/BondStoreCardContent.tsx');
 const bondStoreCardStyles = await read('../src/components/BondStoreCardContent.css');
