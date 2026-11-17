@@ -213,36 +213,11 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     return () => { active = false }
   }, [session?.user.id, lifetimeRefreshRevision, isLayout])
 
-  const buyLifetime = async (code: PaidTrack) => {
-    if (!supabase || !session) {
-      setMessage('Sign in with Google to buy Lifetime Access for your account.')
-      return
-    }
-    const product = PAID_PRODUCTS.find(item => item.code === code)
-    if (!product || busy || !lifetimeCheckoutEnabled) return
-    setBusy(true)
-    setMessage('Preparing your secure one-time PayMongo checkout…')
-    try {
-      const { data, error } = await supabase.functions.invoke('create-lifetime-checkout', {
-        body: { action: 'create', productCode: code, expectedTotalPhp: product.lifetimePrice }
-      })
-      if (error || data?.error) throw new Error((await edgeFunctionErrorMessage(error)) || data?.error || 'Unable to prepare lifetime checkout.')
-      if (data.status === 'paid') {
-        await refreshAccount(false, true)
-        setLifetimeRefreshRevision(v => v + 1)
-        setMessage('Payment confirmed. Lifetime Access is active for ' + product.label + '.')
-        return
-      }
-      const target = typeof data?.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
-      if (!target || target.protocol !== 'https:' || target.hostname !== 'checkout.paymongo.com') {
-        throw new Error('PayMongo did not return a trusted checkout link.')
-      }
-      window.location.assign(target.toString())
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Lifetime checkout could not be opened. Try again.')
-    } finally {
-      setBusy(false)
-    }
+  const buyLifetime = (code: PaidTrack) => {
+    if (!PAID_PRODUCTS.some(product => product.code === code)) return
+    // Open Hyperion's own review-and-pay page first. The user starts the
+    // existing verified PayMongo Lifetime checkout from that page.
+    navigate(`/checkout?lifetime_product=${encodeURIComponent(code)}`)
   }
   const cancelLifetimeCheckout = async (orderId: string) => {
     if (!supabase || busy) return
@@ -1079,21 +1054,19 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                         onToggleBenefits={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}
                       />
                     <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : !isLifetime && inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>
-                      {alreadyLifetime ? '✓ LIFETIME OWNED' : isLifetime ? (pendingLifetime ? 'LIFETIME CHECKOUT OPEN' : 'ONE-TIME ACCESS') : isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}
+                      {alreadyLifetime ? '✓ LIFETIME OWNED' : isLifetime ? (pendingLifetime ? 'LIFETIME CHECKOUT OPEN' : 'NO EXPIRATION') : isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}
                     </span>
                     <button type="button" className="btn btn-primary store-buy-button"
-                      disabled={busy || alreadyLifetime || (isLifetime ? (!session || !lifetimeCheckoutEnabled) : (isGooglePlayOwned || manualPending))}
-                      onClick={() => isLifetime ? void buyLifetime(item.code) : buyNow(item.code, selectedTerm)}>
+                      disabled={busy || alreadyLifetime || (isLifetime ? (Boolean(session) && !lifetimeCheckoutEnabled) : (isGooglePlayOwned || manualPending))}
+                      onClick={() => isLifetime ? buyLifetime(item.code) : buyNow(item.code, selectedTerm)}>
                       {alreadyLifetime ? 'LIFETIME OWNED' : isLifetime
-                        ? !lifetimeCheckoutEnabled ? 'CHECKOUT UNAVAILABLE' : pendingLifetime ? 'RESUME CHECKOUT' : 'BUY LIFETIME'
+                        ? 'BUY NOW'
                         : isGooglePlayOwned ? 'GOOGLE PLAY ACTIVE' : manualPending ? 'AWAITING REVIEW' : isOwned ? 'EXTEND LICENSE' : 'BUY NOW'}
                     </button>
                     {isLifetime && !alreadyLifetime && <>
-                      <p className="store-lifetime-note" role={!lifetimeCheckoutEnabled ? 'status' : undefined}>
-                        {!session ? 'Sign in with Google to check Lifetime checkout availability.'
-                          : !lifetimeCheckoutEnabled ? 'Lifetime checkout is paused until PayMongo payment and refund verification is ready. Subscriptions remain available.'
-                          : 'One-time PayMongo QR Ph payment. No renewal. Cancel any existing auto-renewing subscription separately.'}
-                      </p>
+                      {session && !lifetimeCheckoutEnabled && <p className="store-lifetime-note" role="status">
+                        Lifetime checkout is paused until PayMongo payment and refund verification is ready. Subscriptions remain available.
+                      </p>}
                       {pendingLifetime && <button type="button" className="btn btn-outline store-lifetime-cancel" disabled={busy}
                         onClick={() => void cancelLifetimeCheckout(pendingLifetime.id)}>Cancel pending Lifetime checkout</button>}
                     </>}
