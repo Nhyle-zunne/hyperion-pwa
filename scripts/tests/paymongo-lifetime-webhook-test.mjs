@@ -28,7 +28,7 @@ function fixture() {
   }
   const order = {
     id:orderId,user_id:owner,product_code:'gmdss',track_id:'GMDSS_GOC',
-    amount_php:1999,currency:'PHP',status:'pending',
+    amount_php:599,currency:'PHP',status:'pending',
     paymongo_checkout_session_id:sessionId,paymongo_livemode:false
   }
   const session = () => ({
@@ -43,7 +43,7 @@ function fixture() {
         id:paymentId,
         attributes:{
           status:'paid',currency:'PHP',
-          amount:state.wrongAmount?1:199900
+          amount:state.wrongAmount?1:59900
         }
       }]:[]
     }
@@ -80,7 +80,7 @@ function fixture() {
       const body=await req.json()
       assert.equal(body.p_order_id,orderId)
       assert.equal(body.p_payment_id,paymentId)
-      assert.equal(body.p_amount_minor,199900)
+      assert.equal(body.p_amount_minor,59900)
       assert.equal(body.p_currency,'PHP')
       if(state.status==='refunded') return json({status:'refunded',orderId})
       const duplicate=state.status==='paid'
