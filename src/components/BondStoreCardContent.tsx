@@ -50,6 +50,7 @@ type Product = {
   weeklyPrice: number
   monthlyPrice: number
   annualPrice: number
+  lifetimePrice?: number
 }
 
 interface Props {
@@ -60,13 +61,14 @@ interface Props {
   expanded?: boolean
   onToggleBenefits?: (event: MouseEvent<HTMLButtonElement>) => void
   showAllBenefits?: boolean
+  showLifetimeOffer?: boolean
   benefitsId: string
   headingId?: string
   headingLevel?: 'h2' | 'h3'
 }
 
 export default function BondStoreCardContent({
-  product, term, onTermChange, disabled = false, expanded = false, onToggleBenefits, showAllBenefits = false, benefitsId,
+  product, term, onTermChange, disabled = false, expanded = false, onToggleBenefits, showAllBenefits = false, showLifetimeOffer = false, benefitsId,
   headingId, headingLevel = 'h3',
 }: Props) {
   const title = headingLevel === 'h2'
@@ -84,6 +86,11 @@ export default function BondStoreCardContent({
     </div>
     {title}
     <div className="product-price">₱{priceForTerm(product, term)}<span> / {term}</span></div>
+    {showLifetimeOffer && product.lifetimePrice != null && <a
+      className="store-lifetime-link"
+      href="#lifetime-access"
+      aria-label={`View ${product.label} Lifetime Access for ₱${product.lifetimePrice.toLocaleString()}, one-time payment`}
+    >Lifetime ₱{product.lifetimePrice.toLocaleString()} · one-time payment</a>}
     <div className="store-duration-label">CHOOSE DURATION</div>
     <div className="store-duration-options" role="group" aria-label={`Choose access duration for ${product.label}`}>
       {LICENSE_TERMS.map(option => {
