@@ -951,6 +951,13 @@ assert.ok(
   app.includes("import TrackPurchaseDialog from './components/TrackPurchaseDialog'") && app.includes('<TrackPurchaseDialog />'),
   'Track purchase dialog is mounted globally so it survives the OAuth callback return to practice'
 );
+assert.ok(bondStoreCardContent.includes('storeAccessBenefit(term, showLifetimeOffer && lifetimeSelected)') &&
+  bondStoreCardContent.includes('See all 11 premium features') &&
+  bondStoreCardContent.includes('No expiration') &&
+  bondStoreCardContent.includes('1 week unlimited access') &&
+  bondStoreCardContent.includes('1 month unlimited access') &&
+  bondStoreCardContent.includes('1 year unlimited access'), 'Each Bond Store access selection includes its own duration benefit');
+assert.ok(basketScreen.includes("className=\"basket-back-link\" onClick={() => navigate('/account?tab=payments')}"), 'Checkout back link explicitly opens Bond Store, not My Licenses');
 assert.ok(
   // Pricing, artwork and plan selectors are now a single shared source
   // rendered by both the Bond Store and the purchase popup.
