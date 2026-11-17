@@ -1,11 +1,11 @@
 // Authoritative one-time catalogue. Subscription prices are intentionally
 // separate, and a browser-supplied price never determines the charge.
 export const lifetimeProducts = {
-  gmdss: { track: 'GMDSS_GOC', label: 'GMDSS GOC', amountPhp: 1999 },
-  oic_nw: { track: 'DECK_OIC_NW', label: 'Deck OIC-NW', amountPhp: 2499 },
-  engine_ew: { track: 'ENGINE_OIC_EW', label: 'Engine OIC-EW', amountPhp: 2499 },
-  deck_mgt: { track: 'DECK_MGT', label: 'Deck Management', amountPhp: 4999 },
-  engine_mgt: { track: 'ENGINE_MGT', label: 'Engine Management', amountPhp: 4999 }
+  gmdss: { track: 'GMDSS_GOC', label: 'GMDSS GOC', amountPhp: 599 },
+  oic_nw: { track: 'DECK_OIC_NW', label: 'Deck OIC-NW', amountPhp: 999 },
+  engine_ew: { track: 'ENGINE_OIC_EW', label: 'Engine OIC-EW', amountPhp: 999 },
+  deck_mgt: { track: 'DECK_MGT', label: 'Deck Management', amountPhp: 1999 },
+  engine_mgt: { track: 'ENGINE_MGT', label: 'Engine Management', amountPhp: 1999 }
 } as const
 
 export type LifetimeProductCode = keyof typeof lifetimeProducts
