@@ -993,10 +993,10 @@ try {
     'Weekly, Monthly, Yearly and Lifetime are selectable within each card')
   assert.equal(await lifetimeDisabledPage.locator('section[aria-label="One-time Lifetime Access"]').count(), 0)
   const disabledCard = disabledCards.first()
-  const lifetimeOption = disabledCard.getByRole('button', { name: /Deck OIC-NW Lifetime ₱2,499 one-time payment/ })
+  const lifetimeOption = disabledCard.getByRole('button', { name: /Deck OIC-NW Lifetime ₱999 one-time payment/ })
   await lifetimeOption.click()
   assert.equal(await lifetimeOption.getAttribute('aria-pressed'), 'true')
-  assert.match(await disabledCard.locator('.product-price').innerText(), /₱2,499.*one-time/)
+  assert.match(await disabledCard.locator('.product-price').innerText(), /₱999.*one-time/)
   assert.equal(await disabledCard.getByText('NO EXPIRATION', { exact: true }).count(), 1)
   const unavailableAction = disabledCard.getByRole('button', { name: 'BUY NOW' })
   assert.equal(await unavailableAction.isDisabled(), true,
@@ -1016,11 +1016,11 @@ try {
   await lifetimeCards.first().waitFor()
   assert.equal(await lifetimeCards.count(), 5)
   const lifetimeTracks = [
-    { index: 0, label: 'Deck OIC-NW', amount: 2499 },
-    { index: 1, label: 'GMDSS GOC', amount: 1999 },
-    { index: 2, label: 'Engine OIC-EW', amount: 2499 },
-    { index: 3, label: 'Deck Management', amount: 4999 },
-    { index: 4, label: 'Engine Management', amount: 4999 }
+    { index: 0, label: 'Deck OIC-NW', amount: 999 },
+    { index: 1, label: 'GMDSS GOC', amount: 599 },
+    { index: 2, label: 'Engine OIC-EW', amount: 999 },
+    { index: 3, label: 'Deck Management', amount: 1999 },
+    { index: 4, label: 'Engine Management', amount: 1999 }
   ]
   for (const { index, label, amount } of lifetimeTracks) {
     const card = lifetimePage.locator('.account-product-card').nth(index)
@@ -1062,14 +1062,14 @@ try {
     window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').map(call => call.data))
   assert.equal(lifetimeCreateCalls.length, 1, 'Only Checkout confirmation starts the selected one-time purchase')
   assert.equal(lifetimeCreateCalls[0].productCode, 'engine_ew')
-  assert.equal(lifetimeCreateCalls[0].expectedTotalPhp, 2499,
+  assert.equal(lifetimeCreateCalls[0].expectedTotalPhp, 999,
     'The checkout sends the matching track and amount; the server remains authoritative')
   await lifetimePage.getByRole('button', { name: '← Back to Bond Store' }).click()
 
   await lifetimePage.evaluate(() => localStorage.setItem('fixture-lifetime-pending', 'yes'))
   await lifetimePage.reload()
   const lifetimeGmdssCard = lifetimePage.locator('.account-product-card').nth(1)
-  await lifetimeGmdssCard.getByRole('button', { name: /GMDSS GOC Lifetime ₱1,999/ }).click()
+  await lifetimeGmdssCard.getByRole('button', { name: /GMDSS GOC Lifetime ₱599/ }).click()
   await lifetimeGmdssCard.getByRole('button', { name: 'BUY NOW' }).waitFor()
   await lifetimeGmdssCard.getByRole('button', { name: 'Cancel pending Lifetime checkout' }).click()
   await lifetimePage.getByText('PayMongo confirmed this Lifetime checkout was cancelled.', { exact: false }).waitFor()

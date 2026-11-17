@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   lifetimeProduct,
   lifetimeProducts,
+  isAcceptedLifetimeOrderAmount,
   validatePaidLifetimeSession,
   lifetimePaymentSha256,
   finalizeVerifiedLifetimePayment,
@@ -14,13 +15,13 @@ const order = {
   user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   product_code: 'gmdss',
   track_id: 'GMDSS_GOC',
-  amount_php: 1999,
+  amount_php: 599,
   currency: 'PHP',
   status: 'pending',
   paymongo_livemode: false,
   paymongo_checkout_session_id: 'cs_123'
 }
-const paidSession = () => ({
+const paidSession = (amountMinor = 59900) => ({
   id: 'cs_123',
   attributes: {
     reference_number: order.id,
@@ -33,7 +34,7 @@ const paidSession = () => ({
     },
     payments: [{
       id: 'pay_lifetime123456',
-      attributes: { status: 'paid', currency: 'PHP', amount: 199900 }
+      attributes: { status: 'paid', currency: 'PHP', amount: amountMinor }
     }]
   }
 })
@@ -42,15 +43,26 @@ Deno.test('one-time catalogue has five separate tracks with agreed PayMongo pric
   assert.deepEqual(Object.keys(lifetimeProducts).sort(), ['deck_mgt','engine_ew','engine_mgt','gmdss','oic_nw'])
   assert.deepEqual(
     Object.fromEntries(Object.entries(lifetimeProducts).map(([key,value]) => [key,value.amountPhp])),
-    {gmdss:1999,oic_nw:2499,engine_ew:2499,deck_mgt:4999,engine_mgt:4999}
+    {gmdss:599,oic_nw:999,engine_ew:999,deck_mgt:1999,engine_mgt:1999}
   )
+  for (const [code, current, historical] of [
+    ['gmdss', 599, 1999],
+    ['oic_nw', 999, 2499],
+    ['engine_ew', 999, 2499],
+    ['deck_mgt', 1999, 4999],
+    ['engine_mgt', 1999, 4999]
+  ] as const) {
+    assert.equal(isAcceptedLifetimeOrderAmount(code, current), true)
+    assert.equal(isAcceptedLifetimeOrderAmount(code, historical), true)
+    assert.equal(isAcceptedLifetimeOrderAmount(code, current - 1), false)
+  }
   assert.equal(lifetimeProduct('all_access'), null)
   assert.equal(lifetimeProduct('__proto__'), null)
 })
 
 Deno.test('only one exact paid and owner-bound QR Ph checkout grants lifetime proof', () => {
   assert.deepEqual(validatePaidLifetimeSession(paidSession(),order,false),{
-    sessionId:'cs_123',paymentId:'pay_lifetime123456',amountMinor:199900,currency:'PHP',livemode:false
+    sessionId:'cs_123',paymentId:'pay_lifetime123456',amountMinor:59900,currency:'PHP',livemode:false
   })
   const mutations: Array<(x: any) => void> = [
     x => { x.id = 'cs_else' },
@@ -62,7 +74,7 @@ Deno.test('only one exact paid and owner-bound QR Ph checkout grants lifetime pr
     x => { x.attributes.metadata.product_code = 'oic_nw' },
     x => { x.attributes.payments[0].attributes.status = 'processing' },
     x => { x.attributes.payments[0].attributes.currency = 'USD' },
-    x => { x.attributes.payments[0].attributes.amount = 199901 },
+    x => { x.attributes.payments[0].attributes.amount = 59901 },
     x => { x.attributes.payments.push(x.attributes.payments[0]) },
     x => { x.attributes.payments[0].id = 'invalid' }
   ]
@@ -72,6 +84,11 @@ Deno.test('only one exact paid and owner-bound QR Ph checkout grants lifetime pr
     assert.equal(validatePaidLifetimeSession(fake,order,false),null)
   }
   assert.equal(validatePaidLifetimeSession(paidSession(),{...order,user_id:'different'},false),null)
+  assert.deepEqual(
+    validatePaidLifetimeSession(paidSession(199900),{...order,amount_php:1999},false),
+    {sessionId:'cs_123',paymentId:'pay_lifetime123456',amountMinor:199900,currency:'PHP',livemode:false}
+  )
+  assert.equal(validatePaidLifetimeSession(paidSession(),{...order,amount_php:1999},false),null)
   assert.equal(validatePaidLifetimeSession(paidSession(),{...order,amount_php:25},false),null)
   assert.equal(validatePaidLifetimeSession(paidSession(),{...order,track_id:'DECK_MGT'},false),null)
   assert.equal(validatePaidLifetimeSession(paidSession(),order,true),null)
@@ -87,7 +104,7 @@ Deno.test('verified amount and hashed receipt alone are sent to atomic service-o
       assert.equal(args.p_checkout_session_id,'cs_123')
       assert.equal(args.p_payment_id,'pay_lifetime123456')
       assert.equal(args.p_payment_ref_sha256,await lifetimePaymentSha256('pay_lifetime123456'))
-      assert.equal(args.p_amount_minor,199900)
+      assert.equal(args.p_amount_minor,59900)
       assert.equal(args.p_currency,'PHP')
       assert.equal(args.p_livemode,false)
       return {data:{status:'paid',orderId:order.id,productCode:'gmdss'},error:null}

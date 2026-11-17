@@ -1,12 +1,23 @@
 // Authoritative one-time catalogue. Subscription prices are intentionally
 // separate, and a browser-supplied price never determines the charge.
 export const lifetimeProducts = {
-  gmdss: { track: 'GMDSS_GOC', label: 'GMDSS GOC', amountPhp: 1999 },
-  oic_nw: { track: 'DECK_OIC_NW', label: 'Deck OIC-NW', amountPhp: 2499 },
-  engine_ew: { track: 'ENGINE_OIC_EW', label: 'Engine OIC-EW', amountPhp: 2499 },
-  deck_mgt: { track: 'DECK_MGT', label: 'Deck Management', amountPhp: 4999 },
-  engine_mgt: { track: 'ENGINE_MGT', label: 'Engine Management', amountPhp: 4999 }
+  gmdss: { track: 'GMDSS_GOC', label: 'GMDSS GOC', amountPhp: 599 },
+  oic_nw: { track: 'DECK_OIC_NW', label: 'Deck OIC-NW', amountPhp: 999 },
+  engine_ew: { track: 'ENGINE_OIC_EW', label: 'Engine OIC-EW', amountPhp: 999 },
+  deck_mgt: { track: 'DECK_MGT', label: 'Deck Management', amountPhp: 1999 },
+  engine_mgt: { track: 'ENGINE_MGT', label: 'Engine Management', amountPhp: 1999 }
 } as const
+
+// Previously created checkout receipts remain valid at their original prices.
+// New checkouts always use lifetimeProducts; the database limits legacy rows
+// to orders created before the price-change cutoff.
+const originalLifetimePrices: Record<keyof typeof lifetimeProducts, number> = {
+  gmdss: 1999, oic_nw: 2499, engine_ew: 2499, deck_mgt: 4999, engine_mgt: 4999
+}
+export function isAcceptedLifetimeOrderAmount(code: keyof typeof lifetimeProducts, amount: number): boolean {
+  return Number.isSafeInteger(amount) &&
+    (amount === lifetimeProducts[code].amountPhp || amount === originalLifetimePrices[code])
+}
 
 export type LifetimeProductCode = keyof typeof lifetimeProducts
 export function lifetimeProduct(code: unknown) {
@@ -66,7 +77,7 @@ export function validatePaidLifetimeSession(
   const metadata = attrs?.metadata
   if (!product || !order.paymongo_checkout_session_id ||
       order.track_id !== product.track ||
-      order.amount_php !== product.amountPhp ||
+      !isAcceptedLifetimeOrderAmount(product.code, order.amount_php) ||
       order.currency !== 'PHP' ||
       order.paymongo_livemode !== expectedLivemode ||
       session?.id !== order.paymongo_checkout_session_id ||
@@ -87,7 +98,7 @@ export function validatePaidLifetimeSession(
   if (typeof payment.id !== 'string' || !/^pay_[A-Za-z0-9_-]{6,}$/.test(payment.id) ||
       proof?.currency !== 'PHP' ||
       !Number.isSafeInteger(Number(proof?.amount)) ||
-      Number(proof.amount) !== product.amountPhp * 100) return null
+      Number(proof.amount) !== order.amount_php * 100) return null
   return {
     sessionId: session.id,
     paymentId: payment.id,

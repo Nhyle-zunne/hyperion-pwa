@@ -159,7 +159,7 @@ Deno.serve(async req => {
   }
   if (order.amount_php !== product.amountPhp || order.track_id !== product.track ||
       order.currency !== 'PHP' || order.paymongo_livemode !== config.isLive) {
-    return json({ error: 'An open checkout has different details. Contact support before paying again.' }, 409)
+    return json({ error: 'This pending checkout uses a previous price. Cancel the pending checkout on this page to start a new purchase at the updated price.' }, 409)
   }
   if (order.paymongo_checkout_session_id) {
     try {
