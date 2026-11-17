@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { storeAccessBenefit, storePremiumFeaturesForTrack } from '../src/lib/storeAccessBenefit.ts';
 import { termPrices, legacyTermPrices, isAcceptedStoredPrice } from '../supabase/functions/_shared/paymentPrices.mjs';
 import { readFile } from 'node:fs/promises';
 import { nextExpiryRefreshDelay, MAX_EXPIRY_REFRESH_TIMEOUT_MS } from '../src/lib/entitlementExpiryScheduler.mjs';
@@ -962,12 +963,33 @@ assert.ok(
   app.includes("import TrackPurchaseDialog from './components/TrackPurchaseDialog'") && app.includes('<TrackPurchaseDialog />'),
   'Track purchase dialog is mounted globally so it survives the OAuth callback return to practice'
 );
+assert.ok(bondStoreCardContent.includes('storeAccessBenefit(term, showLifetimeOffer && lifetimeSelected)') &&
+  bondStoreCardContent.includes('See all 11 premium features'), 'Both PWA plan selectors render the duration benefit in the premium features list');
+assert.equal(storeAccessBenefit('week', false), '1 week unlimited access');
+assert.equal(storeAccessBenefit('month', false), '1 month unlimited access');
+assert.equal(storeAccessBenefit('year', false), '1 year unlimited access');
+for (const term of ['week', 'month', 'year']) {
+  assert.equal(storeAccessBenefit(term, true), 'No expiration', 'Lifetime copy overrides the last selected subscription term');
+}
+for (const [code, name] of [
+  ['oic_nw', 'Deck OIC-NW'], ['engine_ew', 'Engine OIC-EW'],
+  ['gmdss', 'GMDSS GOC'], ['deck_mgt', 'Deck Management'], ['engine_mgt', 'Engine Management'],
+]) {
+  const benefits = storePremiumFeaturesForTrack(code);
+  assert.equal(benefits.length, 10, 'All paid tracks preserve the same ten licensed tools');
+  assert.equal(new Set(benefits).size, 10, 'Every benefit must be distinct');
+  assert(benefits.every(text => text.includes(name) || text.includes('drills and question ranges')),
+    'Every premium benefit describes the selected track');
+}
+const perTrackFeatures = ['oic_nw', 'engine_ew', 'gmdss', 'deck_mgt', 'engine_mgt'].map(storePremiumFeaturesForTrack);
+assert.equal(new Set(perTrackFeatures.map(features => features.join('|'))).size, 5, 'Feature copy is unique across all five tracks');
+assert.ok(basketScreen.includes("className=\"basket-back-link\" onClick={() => navigate('/account?tab=payments')}"), 'Checkout back link explicitly opens Bond Store, not My Licenses');
 assert.ok(
   // Pricing, artwork and plan selectors are now a single shared source
   // rendered by both the Bond Store and the purchase popup.
   bondStoreCardContent.includes('LICENSE_TERMS') &&
   bondStoreCardContent.includes('priceForTerm(product, term)') &&
-  bondStoreCardContent.includes('BOND_STORE_FEATURES.map') &&
+  bondStoreCardContent.includes('storePremiumFeaturesForTrack(product.code).map') &&
   bondStoreCardStyles.includes('/store-art/hyperion-banner-sprite.png') &&
   accountScreen.includes('<BondStoreCardContent') &&
   trackPurchaseDialog.includes('<BondStoreCardContent') &&

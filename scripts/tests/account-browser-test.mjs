@@ -502,10 +502,15 @@ try {
   assert(tabsAndProfile.shellWidth > 1450, 'Desktop account shell has enough width for readable track cards')
   const cards = page.locator('.account-product-card')
   assert.equal(await cards.count(), 5)
-  assert.equal(await cards.first().locator('.store-benefits-list li').count(), 10, 'Each card retains all ten premium features')
-  assert.equal(await cards.locator('.store-benefits-list li').count(), 50, 'All five store cards show ten features')
-  assert.equal(await cards.getByText('Use your license across multiple devices, including the official Hyperion Android app.').count(), 5, 'All store cards include the Android app benefit')
-  assert.equal(await cards.last().locator('.store-benefits-list li').count(), 10)
+  assert.equal(await cards.first().locator('.store-benefits-list li').count(), 11, 'Each card retains all eleven premium features')
+  assert.equal(await cards.locator('.store-benefits-list li').count(), 55, 'All five store cards show eleven features')
+  for (const track of ['Deck OIC-NW', 'Engine OIC-EW', 'GMDSS GOC', 'Deck Management', 'Engine Management']) {
+    assert.equal(await cards.getByText(`Full ${track} question bank`).count(), 1,
+      `${track} uses relevant question-bank benefit text`)
+    assert.equal(await cards.getByText(`Use your ${track} license on Hyperion web and Android`).count(), 1,
+      `${track} advertises the matching cross-platform license`)
+  }
+  assert.equal(await cards.last().locator('.store-benefits-list li').count(), 11)
   assert.equal(await cards.first().locator('.product-art .store-banner-symbol').count(), 3, 'Operational cards use original anchor, track, and level symbols')
   assert.equal(await cards.nth(1).locator('.product-art .store-banner-symbol').count(), 2, 'GMDSS card uses original anchor and radio symbol')
   const asset = await page.request.get(new URL('/store-art/hyperion-banner-sprite.png', page.url()).href)
@@ -518,7 +523,7 @@ try {
     const cta = el.querySelector('button.btn-primary').getBoundingClientRect()
     return { top: r.top, bottom: r.bottom, width: r.width, listHeight: list.height, ctaBottom: cta.bottom, scroll: document.documentElement.scrollHeight, matrix: getComputedStyle(el).transform }
   })
-  const reveal = oicCard.getByRole('button', { name: 'See all 10 premium features' })
+  const reveal = oicCard.getByRole('button', { name: 'See all 11 premium features' })
   const collapse = oicCard.getByRole('button', { name: 'Show fewer features ↑' })
   const gmdssCard = cards.nth(1)
   await page.mouse.move(0, 0)
@@ -553,7 +558,7 @@ try {
   const opened = await readCard(oicCard)
   assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'See all explicitly expands benefits')
   assert(opened.listHeight > baseCard.listHeight + 50, 'Click reveals the full feature list')
-  assert.equal(await oicCard.locator('.store-benefits-list li').count(), 10)
+  assert.equal(await oicCard.locator('.store-benefits-list li').count(), 11)
   assert.equal(await oicCard.getByRole('button', { name: /BUY NOW|EXTEND LICENSE/ }).isVisible(), true,
     'Buy Now remains part of the visible card after feature expansion')
   assert.equal(opened.matrix, 'none', 'Expanding benefits does not trigger card scaling')
@@ -572,6 +577,15 @@ try {
       'Repeated toggles never create hover animation state')
   }
 
+  // Earlier toggle repetitions can leave the collapse transition mid-flight.
+  // Wait for the baseline to settle before measuring expansion at each width.
+  await page.waitForFunction(() => {
+    const card = document.querySelector('.account-product-card')
+    const list = card?.querySelector('.store-benefits-list')
+    const collapsedLimit = 3.55 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+    return Boolean(card && list && !card.classList.contains('perks-expanded') &&
+      list.getBoundingClientRect().height <= collapsedLimit + 2)
+  })
   for (const [width, height] of [[1366, 768], [1280, 768], [1531, 900]]) {
     await page.setViewportSize({ width, height })
     await page.evaluate(() => window.scrollTo(0, 0))
@@ -581,10 +595,13 @@ try {
     assert(Math.abs(hoverOnly.width - compact.width) < 1 && hoverOnly.matrix === 'none',
       `Hover does not enlarge or animate at ${width}×${height}`)
     await reveal.click()
-    await page.waitForTimeout(340)
+    await page.waitForFunction(previousHeight => {
+      const list = document.querySelector('.account-product-card .store-benefits-list')
+      return Boolean(list && list.getBoundingClientRect().height > previousHeight + 5)
+    }, compact.listHeight)
     const expanded = await readCard(oicCard)
     assert(expanded.listHeight > compact.listHeight + 5,
-      `Explicit See all still opens benefits at ${width}×${height}`)
+      `Explicit See all opens benefits at ${width}×${height} (before=${compact.listHeight}, after=${expanded.listHeight})`)
     assert.equal(await oicCard.getByRole('button', { name: /BUY NOW|EXTEND LICENSE/ }).isVisible(), true,
       `Buy Now remains accessible at ${width}×${height}`)
     await collapse.click()
@@ -599,7 +616,7 @@ try {
   await reveal.click()
   await page.waitForTimeout(350)
   assert.equal(await collapse.getAttribute('aria-expanded'), 'true', 'Mobile tap expands the feature list')
-  assert.equal(await oicCard.locator('.store-benefits-list li').count(), 10, 'All ten features remain present on mobile')
+  assert.equal(await oicCard.locator('.store-benefits-list li').count(), 11, 'All eleven features remain present on mobile')
   await collapse.click()
   await page.waitForTimeout(350)
   assert.equal(await reveal.getAttribute('aria-expanded'), 'false', 'Mobile tap collapses the feature list')
@@ -608,6 +625,12 @@ try {
   await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱29' }).click()
   assert.equal(await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱29' }).getAttribute('aria-pressed'), 'true', 'Weekly selection remains functional')
   assert((await oicCard.locator('.product-price').innerText()).includes('₱29'), 'Changing duration updates the track price')
+  assert.equal(await oicCard.locator('.store-benefits-list li').first().innerText(), '1 week unlimited access',
+    'Selecting Weekly updates the first premium feature')
+  await oicCard.getByRole('button', { name: 'Deck OIC-NW Lifetime ₱999 one-time payment' }).click()
+  assert.equal(await oicCard.locator('.store-benefits-list li').first().innerText(), 'No expiration',
+    'Selecting Lifetime changes the premium feature without dropping shared benefits')
+  await oicCard.getByRole('button', { name: 'Deck OIC-NW Weekly ₱29' }).click()
   await page.getByRole('button', { name: 'Shopping cart', exact: true }).waitFor()
   await page.getByRole('button', { name: 'My licenses', exact: true }).click()
   await page.getByRole('heading', { name: 'Active licenses', exact: true }).waitFor()
