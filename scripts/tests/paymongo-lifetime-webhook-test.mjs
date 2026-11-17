@@ -24,7 +24,7 @@ vm.runInNewContext(compiled(proofSource),{
 function fixture() {
   const state = {
     currentOwner:owner,paid:false,wrongAmount:false,wrongMetadata:false,
-    status:'pending',grants:0,refunds:0,dbCalls:0,providerReads:0
+    status:'pending',grants:0,refunds:0,timedRefunds:0,lifetimeOrderExists:true,dbCalls:0,providerReads:0
   }
   const order = {
     id:orderId,user_id:owner,product_code:'gmdss',track_id:'GMDSS_GOC',
@@ -91,9 +91,16 @@ function fixture() {
     if(url.pathname.endsWith('/rpc/revoke_paymongo_lifetime_checkout')) {
       const body=await req.json()
       assert.equal(body.p_payment_id,paymentId)
+      if(!state.lifetimeOrderExists)return json(false)
       if(state.status!=='refunded')state.refunds++
       state.status='refunded'
       return json(true)
+    }
+    if(url.pathname.endsWith('/rpc/revoke_paymongo_fixed_term_checkout')) {
+      const body=await req.json()
+      assert.equal(body.p_payment_id,paymentId)
+      if(state.timedRefunds===0)state.timedRefunds++
+      return json({status:'refunded',matched:true,revokedTracks:1})
     }
     throw Error('Unexpected synthetic endpoint '+url.pathname)
   }
@@ -192,7 +199,23 @@ try {
   assert.equal(f.state.refunds,1,'Refund replays are idempotent')
   assert.equal((await f.signed('checkout_session.payment.paid',f.session())).status,200)
   assert.equal(f.state.grants,1,'Late paid webhook cannot resurrect refunded ownership')
-  console.log('PASS: lifetime provider verification, signed webhook, owner isolation, refunds, and replay')
+  assert.equal(f.state.timedRefunds,0,'Lifetime refund never touches fixed-term subscriptions')
+
+  f=fixture()
+  f.state.lifetimeOrderExists=false
+  assert.equal((await f.signed('payment.refunded',{id:paymentId,attributes:{status:'refunded'}},true)).status,401)
+  assert.equal(f.state.timedRefunds,0,'Forged fixed-term refund cannot revoke')
+  assert.equal((await f.signed('payment.refund.updated',{
+    attributes:{status:'pending',payment_id:paymentId}
+  })).status,200)
+  assert.equal(f.state.timedRefunds,0,'Pending fixed-term refund cannot revoke')
+  assert.equal((await f.signed('payment.refund.updated',{
+    attributes:{status:'succeeded',payment_id:paymentId}
+  })).status,200)
+  assert.equal(f.state.timedRefunds,1,'Signed succeeded refund reaches fixed-term reconciliation')
+  assert.equal((await f.signed('payment.refunded',{id:paymentId,attributes:{status:'refunded'}})).status,200)
+  assert.equal(f.state.timedRefunds,1,'Fixed-term refund repeats do not revoke again')
+  console.log('PASS: lifetime and fixed-term signed refunds, mode/signature safeguards and replay')
 } finally {
   globalThis.fetch=originalFetch
 }
