@@ -139,6 +139,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [inactiveLicenses, setInactiveLicenses] = useState<OwnedTrack[]>([])
   const [renewalGraceUntil, setRenewalGraceUntil] = useState<string | null>(null)
   const [selectedTerms, setSelectedTerms] = useState<Record<PaidTrack, LicenseTerm>>(() => Object.fromEntries(PAID_PRODUCTS.map(item => [item.code, basket.find(entry => entry.code === item.code)?.term ?? 'year'])) as Record<PaidTrack, LicenseTerm>)
+  const [selectedLifetime, setSelectedLifetime] = useState<Partial<Record<PaidTrack, boolean>>>({})
   const [expandedStorePerks, setExpandedStorePerks] = useState<PaidTrack | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [lifetimeCheckoutEnabled, setLifetimeCheckoutEnabled] = useState(false)
@@ -1051,6 +1052,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   const currentLicense = owned.find(license => license.product_code === item.code)
                   const isOwned = Boolean(currentLicense)
                   const isGooglePlayOwned = currentLicense?.source === 'google_play'
+                  const alreadyLifetime = owned.some(license => license.product_code === item.code && license.source === 'lifetime')
+                  const isLifetime = selectedLifetime[item.code] === true
+                  const pendingLifetime = pendingLifetimeOrders.find(order => order.product_code === item.code)
                   const basketItem = basket.find(entry => entry.code === item.code)
                   const inBasket = Boolean(basketItem)
                   const selectedTerm = selectedTerms[item.code]
@@ -1061,17 +1065,38 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                       <BondStoreCardContent
                         product={item}
                         showLifetimeOffer
+                        lifetimeSelected={isLifetime}
+                        onLifetimeSelect={() => setSelectedLifetime(old => ({ ...old, [item.code]: true }))}
                         term={selectedTerm}
-                        disabled={busy || isGooglePlayOwned || manualPending}
-                        onTermChange={newTerm => setSelectedTerms(old => ({ ...old, [item.code]: newTerm }))}
+                        disabled={busy || alreadyLifetime}
+                        termOptionsDisabled={isGooglePlayOwned || manualPending}
+                        onTermChange={newTerm => {
+                          setSelectedTerms(old => ({ ...old, [item.code]: newTerm }))
+                          setSelectedLifetime(old => ({ ...old, [item.code]: false }))
+                        }}
                         expanded={expandedStorePerks === item.code}
                         benefitsId={`store-benefits-${item.code}`}
                         onToggleBenefits={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}
                       />
-                    <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>{isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}</span>
-                    <button type="button" className="btn btn-primary store-buy-button" disabled={busy || isGooglePlayOwned || manualPending} onClick={() => buyNow(item.code, selectedTerm)}>
-                      {isGooglePlayOwned ? 'GOOGLE PLAY ACTIVE' : manualPending ? 'AWAITING REVIEW' : isOwned ? 'EXTEND LICENSE' : 'BUY NOW'}
+                    <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : !isLifetime && inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>
+                      {alreadyLifetime ? '✓ LIFETIME OWNED' : isLifetime ? (pendingLifetime ? 'LIFETIME CHECKOUT OPEN' : 'ONE-TIME ACCESS') : isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}
+                    </span>
+                    <button type="button" className="btn btn-primary store-buy-button"
+                      disabled={busy || alreadyLifetime || (isLifetime ? (!session || !lifetimeCheckoutEnabled) : (isGooglePlayOwned || manualPending))}
+                      onClick={() => isLifetime ? void buyLifetime(item.code) : buyNow(item.code, selectedTerm)}>
+                      {alreadyLifetime ? 'LIFETIME OWNED' : isLifetime
+                        ? !lifetimeCheckoutEnabled ? 'CHECKOUT UNAVAILABLE' : pendingLifetime ? 'RESUME CHECKOUT' : 'BUY LIFETIME'
+                        : isGooglePlayOwned ? 'GOOGLE PLAY ACTIVE' : manualPending ? 'AWAITING REVIEW' : isOwned ? 'EXTEND LICENSE' : 'BUY NOW'}
                     </button>
+                    {isLifetime && !alreadyLifetime && <>
+                      <p className="store-lifetime-note" role={!lifetimeCheckoutEnabled ? 'status' : undefined}>
+                        {!session ? 'Sign in with Google to check Lifetime checkout availability.'
+                          : !lifetimeCheckoutEnabled ? 'Lifetime checkout is paused until PayMongo payment and refund verification is ready. Subscriptions remain available.'
+                          : 'One-time PayMongo QR Ph payment. No renewal. Cancel any existing auto-renewing subscription separately.'}
+                      </p>
+                      {pendingLifetime && <button type="button" className="btn btn-outline store-lifetime-cancel" disabled={busy}
+                        onClick={() => void cancelLifetimeCheckout(pendingLifetime.id)}>Cancel pending Lifetime checkout</button>}
+                    </>}
 
                     </article>
                   </div>
@@ -1081,39 +1106,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 Features unlock only for the purchased track during its active license. Offline review requires downloading that track, and cross-device progress uses the same Google account.
               </p>
             </section>
-            <section id="lifetime-access" style={{ ...card, marginTop: '1rem' }} aria-label="One-time Lifetime Access">
-              <div className="account-panel-title">
-                <div>
-                  <div style={{ color: 'var(--accent)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>ONE-TIME PAYMENT</div>
-                  <h3 style={{ margin: '.25rem 0 0' }}>Lifetime Access</h3>
-                  <p style={{ margin: '.35rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem', lineHeight: 1.5 }}>
-                    Pay once for your chosen track, including future question-bank updates while Hyperion operates. No renewal.
-                    If you have an auto-renewing Google Play subscription, cancel it separately to avoid further charges.
-                  </p>
-                </div>
-              </div>
-              {!lifetimeCheckoutEnabled && <p role="status" style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>
-                {session ? 'Lifetime checkout is temporarily unavailable while PayMongo payment and refund verification is incomplete. Weekly, monthly and yearly plans remain available.' : 'Sign in with Google to check Lifetime checkout availability.'}
-              </p>}
-              <div style={{ display: 'grid', gap: '.5rem' }}>
-                {PAID_PRODUCTS.map(product => {
-                  const alreadyLifetime = owned.some(item => item.product_code === product.code && item.source === 'lifetime')
-                  const pendingLifetime = pendingLifetimeOrders.find(item => item.product_code === product.code)
-                  return <div key={product.code} style={{ display: 'flex', gap: '.6rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', border: '1px solid var(--border)', padding: '.65rem' }}>
-                    <div style={{ minWidth: 0 }}><strong>{product.label}</strong><div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>₱{product.lifetimePrice.toLocaleString()} · One time</div></div>
-                    <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
-                      <button className="btn btn-outline" type="button" disabled={busy || alreadyLifetime || !session || !lifetimeCheckoutEnabled}
-                        onClick={() => void buyLifetime(product.code)}>
-                        {alreadyLifetime ? 'LIFETIME OWNED' : !lifetimeCheckoutEnabled ? 'CHECKOUT UNAVAILABLE' : pendingLifetime ? 'RESUME CHECKOUT' : 'BUY LIFETIME'}
-                      </button>
-                      {pendingLifetime && <button className="btn btn-outline" type="button" disabled={busy}
-                        onClick={() => void cancelLifetimeCheckout(pendingLifetime.id)}>Cancel checkout</button>}
-                    </div>
-                  </div>
-                })}
-              </div>
-              <p style={{ fontSize: '.76rem', color: 'var(--text-muted)', marginTop: '.65rem' }}>Secure QR Ph checkout through PayMongo. The purchase becomes active only after PayMongo confirms the payment.</p>
-            </section>
+
 
 
           </>}
