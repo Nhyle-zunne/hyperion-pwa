@@ -1044,7 +1044,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
                 <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Unlimited practice, mock exams, and offline study for your chosen track. Active website licenses can be extended without losing remaining days.</p></div>
-                <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>WEEK · MONTH · YEAR ACCESS</span>
+                <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>WEEK · MONTH · YEAR · LIFETIME</span>
               </div>
               <div className="account-products-grid">
                 {PAID_PRODUCTS.map(item => {
@@ -1060,6 +1060,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                     <article className={`account-product-card bond-store-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} aria-label={`${item.label} reviewer plan`}>
                       <BondStoreCardContent
                         product={item}
+                        showLifetimeOffer
                         term={selectedTerm}
                         disabled={busy || isGooglePlayOwned || manualPending}
                         onTermChange={newTerm => setSelectedTerms(old => ({ ...old, [item.code]: newTerm }))}
@@ -1080,7 +1081,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 Features unlock only for the purchased track during its active license. Offline review requires downloading that track, and cross-device progress uses the same Google account.
               </p>
             </section>
-            {lifetimeCheckoutEnabled && <section style={{ ...card, marginTop: '1rem' }} aria-label="One-time Lifetime Access">
+            <section id="lifetime-access" style={{ ...card, marginTop: '1rem' }} aria-label="One-time Lifetime Access">
               <div className="account-panel-title">
                 <div>
                   <div style={{ color: 'var(--accent)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.12em' }}>ONE-TIME PAYMENT</div>
@@ -1091,6 +1092,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   </p>
                 </div>
               </div>
+              {!lifetimeCheckoutEnabled && <p role="status" style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>
+                {session ? 'Lifetime checkout is temporarily unavailable while PayMongo payment and refund verification is incomplete. Weekly, monthly and yearly plans remain available.' : 'Sign in with Google to check Lifetime checkout availability.'}
+              </p>}
               <div style={{ display: 'grid', gap: '.5rem' }}>
                 {PAID_PRODUCTS.map(product => {
                   const alreadyLifetime = owned.some(item => item.product_code === product.code && item.source === 'lifetime')
@@ -1098,9 +1102,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   return <div key={product.code} style={{ display: 'flex', gap: '.6rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', border: '1px solid var(--border)', padding: '.65rem' }}>
                     <div style={{ minWidth: 0 }}><strong>{product.label}</strong><div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>₱{product.lifetimePrice.toLocaleString()} · One time</div></div>
                     <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
-                      <button className="btn btn-outline" type="button" disabled={busy || alreadyLifetime || !session}
+                      <button className="btn btn-outline" type="button" disabled={busy || alreadyLifetime || !session || !lifetimeCheckoutEnabled}
                         onClick={() => void buyLifetime(product.code)}>
-                        {alreadyLifetime ? 'LIFETIME OWNED' : pendingLifetime ? 'RESUME CHECKOUT' : 'BUY LIFETIME'}
+                        {alreadyLifetime ? 'LIFETIME OWNED' : !lifetimeCheckoutEnabled ? 'CHECKOUT UNAVAILABLE' : pendingLifetime ? 'RESUME CHECKOUT' : 'BUY LIFETIME'}
                       </button>
                       {pendingLifetime && <button className="btn btn-outline" type="button" disabled={busy}
                         onClick={() => void cancelLifetimeCheckout(pendingLifetime.id)}>Cancel checkout</button>}
@@ -1109,7 +1113,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 })}
               </div>
               <p style={{ fontSize: '.76rem', color: 'var(--text-muted)', marginTop: '.65rem' }}>Secure QR Ph checkout through PayMongo. The purchase becomes active only after PayMongo confirms the payment.</p>
-            </section>}
+            </section>
 
 
           </>}
