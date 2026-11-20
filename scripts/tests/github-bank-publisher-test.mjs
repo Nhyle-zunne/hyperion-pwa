@@ -116,3 +116,42 @@ assert.throws(()=>validateQuestionChanges(path,scans,scannedCsv([otherScan,image
   'different image-only questions must not be silently swapped')
 assert.equal(validateQuestionChanges(path,scans,scannedCsv([{...imageRef,sha256:'c'.repeat(64)},otherScan])).changed,1,
   'correcting a single diagram in place remains supported')
+
+for (const deckPath of [c1,c2]) {
+  const legacyHeader='No,Question,A,B,C,D,Ans\n'
+  const legacyOld=legacyHeader+'1,Legacy?,One,Two,Three,Four,A,Existing legacy explanation'
+  const legacyUpload=legacyHeader+'1,Legacy?,One,Two,Three,Four,A'
+  assert.equal(toSearchQuestions(deckPath,reconcileC1Explanations(legacyOld,legacyUpload,deckPath).text)[0].explanation,'Existing legacy explanation')
+  for (const extra of ['HYPERION_MEDIA','HYPERION_STATUS']) {
+    const value=extra==='HYPERION_MEDIA'?encodeCell(JSON.stringify([imageRef])):'RETIRED'
+    const input=`No,Question,A,B,C,D,Ans,${extra}\n1,Original?,One,Two,Three,Four,A,${value}`
+    const upload=input.replace('Original?','Corrected?')
+    const result=reconcileC1Explanations(input,upload,deckPath)
+    const parsed=toSearchQuestions(deckPath,result.text)[0]
+    assert.match(result.text,/Ans,Explanation,HYPERION_/,'metadata must be shifted behind an explanation column')
+    assert.equal(parsed.explanation,'')
+    if(extra==='HYPERION_MEDIA') assert.deepEqual(parsed.imageAttachments,[imageRef])
+    else assert.equal(parsed.isRetired,true)
+    assert.doesNotThrow(()=>validateQuestionChanges(deckPath,input,result.text))
+  }
+  const both=`No,Question,A,B,C,D,Ans,HYPERION_STATUS,HYPERION_MEDIA\n1,Original?,One,Two,Three,Four,A,RETIRED,${encodeCell(JSON.stringify([imageRef]))}`
+  const bothResult=reconcileC1Explanations(both,both.replace('Original?','Corrected?'),deckPath)
+  assert.equal(toSearchQuestions(deckPath,bothResult.text)[0].isRetired,true)
+  assert.deepEqual(toSearchQuestions(deckPath,bothResult.text)[0].imageAttachments,[imageRef])
+  const headerWithMedia='No,Question,A,B,C,D,Ans,Explanation,HYPERION_MEDIA\n'
+  const imageRow=(prompt,explanation,ref)=>`1,${prompt},One,Two,Three,Four,A,${explanation},${encodeCell(JSON.stringify([ref]))}`
+  const blankOld=headerWithMedia+imageRow('','Old explanation',imageRef)
+  const blankSame=headerWithMedia+imageRow('','',imageRef)
+  assert.equal(toSearchQuestions(deckPath,reconcileC1Explanations(blankOld,blankSame,deckPath).text)[0].explanation,'Old explanation')
+  const blankChanged=headerWithMedia+imageRow('','Old explanation',otherScan)
+  const changedResult=reconcileC1Explanations(blankOld,blankChanged,deckPath)
+  assert.equal(toSearchQuestions(deckPath,changedResult.text)[0].explanation,'')
+  assert.deepEqual(toSearchQuestions(deckPath,changedResult.text)[0].imageAttachments,[otherScan])
+  const textOld=headerWithMedia+imageRow('What is shown?','Old explanation',imageRef)
+  const textChanged=headerWithMedia+imageRow('What is shown?','',otherScan)
+  assert.equal(toSearchQuestions(deckPath,reconcileC1Explanations(textOld,textChanged,deckPath).text)[0].explanation,'')
+  const copiedTextChanged=headerWithMedia+imageRow('What is shown?','Old explanation',otherScan)
+  assert.equal(toSearchQuestions(deckPath,reconcileC1Explanations(textOld,copiedTextChanged,deckPath).text)[0].explanation,'')
+  assert.throws(()=>reconcileC1Explanations('No,Question,A,B,C,D,Ans,Unknown\n1,Q?,One,Two,Three,Four,A,x',
+    'No,Question,A,B,C,D,Ans,Unknown\n1,Q?,One,Two,Three,Four,A,x',deckPath),/layout|column/i)
+}
