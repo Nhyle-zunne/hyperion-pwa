@@ -117,7 +117,7 @@ assert.throws(()=>validateQuestionChanges(path,scans,scannedCsv([otherScan,image
 assert.equal(validateQuestionChanges(path,scans,scannedCsv([{...imageRef,sha256:'c'.repeat(64)},otherScan])).changed,1,
   'correcting a single diagram in place remains supported')
 
-for (const deckPath of [c1,c2]) {
+for (const deckPath of [c1,c2,'deck/oic_nw_c3.csv.enc']) {
   const legacyHeader='No,Question,A,B,C,D,Ans\n'
   const legacyOld=legacyHeader+'1,Legacy?,One,Two,Three,Four,A,Existing legacy explanation'
   const legacyUpload=legacyHeader+'1,Legacy?,One,Two,Three,Four,A'
@@ -155,3 +155,28 @@ for (const deckPath of [c1,c2]) {
   assert.throws(()=>reconcileC1Explanations('No,Question,A,B,C,D,Ans,Unknown\n1,Q?,One,Two,Three,Four,A,x',
     'No,Question,A,B,C,D,Ans,Unknown\n1,Q?,One,Two,Three,Four,A,x',deckPath),/layout|column/i)
 }
+
+// C3 legacy malformed answer rows contain shifted choices in the eighth cell.
+// Their positions still count, but those cells must never enter reconciliation.
+const c3='deck/oic_nw_c3.csv.enc'
+const malformedC3Rows=[
+  '297,Legacy radar scan?,North,South,East,West,shifted answer,shifted eighth cell,extra field,A',
+  '428,Legacy radar plot?,North,South,East,West,,shifted eighth cell,extra field,B'
+]
+const oldC3=[header,row(1,'Valid radar question?','A','Valid radar rationale'),...malformedC3Rows,row(429,'Last radar question?','4','Last radar rationale')].join('\n')
+const uploadedC3=[header,row(1,'Valid radar question?','A',''),...malformedC3Rows,row(429,'Last radar question?','4','')].join('\n')
+const preservedC3=reconcileC1Explanations(oldC3,uploadedC3,c3)
+assert.equal(preservedC3.preserved,2)
+assert.equal(preservedC3.cleared,0)
+assert.deepEqual(preservedC3.text.split(/\r?\n/).slice(2,4),malformedC3Rows,'Explanation-only publication leaves both malformed raw rows intact')
+for(const [oldAnswer,newAnswer] of [['bad','bad'],['bad','A'],['A','bad'],['',''],['5','5']]) {
+  const before=header+'\n'+row(1,'Radar? ',oldAnswer,'Shifted legacy cell')
+  const omitted=header+'\n'+row(1,'Radar? ',newAnswer,'')
+  assert.equal(reconcileC1Explanations(before,omitted,c3).preserved,0,'C3 never inherits an eighth cell when either answer key is invalid')
+  const changed=header+'\n'+row(1,'Changed radar?',newAnswer,'Shifted legacy cell')
+  assert.equal(reconcileC1Explanations(before,changed,c3).text,changed,'C3 never clears an eighth cell when either answer key is invalid')
+}
+const emptyChoiceBefore=header+'\n'+row(1,'Radar?','B','Shifted cell',['North','','East','West'])
+const emptyChoiceUpload=emptyChoiceBefore.replace('Shifted cell','')
+assert.equal(reconcileC1Explanations(emptyChoiceBefore,emptyChoiceUpload,c3).preserved,0,'C3 answer must point to a populated choice')
+console.log('PASS: C3 valid explanations reconcile without interpreting malformed legacy answer rows.')
