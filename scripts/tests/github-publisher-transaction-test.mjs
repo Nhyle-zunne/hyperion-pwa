@@ -6,7 +6,7 @@ import { createBankWorker } from '../../worker/index.ts'
 import { decryptToText, deriveKeyBytes, toSearchQuestions } from '../../supabase/functions/_shared/bankCodec.ts'
 import { GITHUB_BANK_ROOT, GITHUB_BANK_MANIFEST, GITHUB_BANK_RELEASE, GITHUB_BANK_FILES, githubAssetPath } from '../../supabase/functions/_shared/githubBankSource.ts'
 const manifest=JSON.parse(await readFile('supabase/functions/_shared/github-bank-manifest.json','utf8'))
-const path='deck/oic_nw_c1.csv.enc'
+const path=process.env.HYPERION_TEST_BANK || 'deck/oic_nw_c1.csv.enc'
 const text='No,Question,A,B,C,D,Ans,Explanation\n1,First synthetic question?,Port,Starboard,Ahead,Astern,A,Existing answer rationale one\n2,Second synthetic question?,Port,Starboard,Ahead,Astern,A,Existing answer rationale two\n'
 const iv=crypto.getRandomValues(new Uint8Array(12)), key=await crypto.subtle.importKey('raw',deriveKeyBytes(),'AES-GCM',false,['encrypt','decrypt']), encrypted=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(text)))
 const original=new Uint8Array(12+encrypted.length);original.set(iv);original.set(encrypted,12)

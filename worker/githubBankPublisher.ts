@@ -10,9 +10,10 @@ export type PublishInput = { files: BankUpload[]; requestId: string; expectedHea
 const allowed = new Set(GITHUB_BANK_FILES.map(file => file.path))
 const encoder = new TextEncoder()
 const C1_EXPLANATION_PATH = 'deck/oic_nw_c1.csv.enc'
+const EXPLANATION_PATHS = new Set([C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc'])
 
 /**
- * Preserve an existing OIC-NW C1 explanation only when the question, all four
+ * Preserve an existing OIC-NW C1 or C2 explanation only when the question, all four
  * choice cells, and the keyed answer are byte-for-byte unchanged. A new bank
  * upload may intentionally omit explanations; never replace those with blanks.
  *
@@ -21,31 +22,56 @@ const C1_EXPLANATION_PATH = 'deck/oic_nw_c1.csv.enc'
  * slot, never fuzzy text matches: near-duplicate navigation questions often
  * have distinct answers and must not borrow each other's explanations.
  */
-export function reconcileC1Explanations(before: string, uploaded: string) {
-  const parse = (text: string) => {
+export function reconcileQuestionExplanations(before: string, uploaded: string, path = C1_EXPLANATION_PATH) {
+  const parse = (text: string, normalize: boolean) => {
     const rows = parseCsvText(text)
-    const questions = rows.filter(row => {
+    const found = rows.slice(0, 15).findIndex(row => {
+      const joined = row.map(cell => cell.trim().toLowerCase()).join('|')
+      return (joined.includes('question') && (joined.includes('correct') || joined.includes('|a|')))
+        || (row[0]?.trim().toLowerCase() === 'no.' && row[1]?.trim().toLowerCase() === 'question')
+    })
+    const headerIndex = found < 0 ? 0 : found
+    const header = rows[headerIndex] || []
+    const marker = (header[7] || '').trim().toUpperCase()
+    const metadataFirst = marker === 'HYPERION_MEDIA' || marker === 'HYPERION_STATUS'
+    if ((header.length > 7 && marker !== 'EXPLANATION' && !metadataFirst)
+        || header.slice(8).some(cell => cell.trim().toUpperCase() === 'EXPLANATION')
+        || ['HYPERION_MEDIA', 'HYPERION_STATUS'].some(name => header.filter(cell => cell.trim().toUpperCase() === name).length > 1)) {
+      throw new PublisherError('The CSV explanation column layout is ambiguous; explanations were not changed.', 409)
+    }
+    if (normalize && metadataFirst) {
+      for (const row of rows.slice(headerIndex)) row.splice(7, 0, row === header ? 'Explanation' : '')
+    }
+    const mediaColumn = header.findIndex(cell => cell.trim().toUpperCase() === 'HYPERION_MEDIA')
+    const questions = rows.slice(headerIndex + 1).filter(row => {
       const number = (row[0] || '').trim()
       const choices = row.slice(2, 6).map(choice => (choice || '').trim())
+      const question = (row[1] || '').trim()
+      const imagePrompt = mediaColumn >= 0 && parseQuestionImageRefs(row[mediaColumn] || '').some(ref => ref.placement === 'question')
       return row.length >= 7 && /^[0-9]+$/.test(number) && Number(number) > 0
-        && !!(row[1] || '').trim() && (row[1] || '').trim().toLowerCase() !== 'question'
+        && (!!question || imagePrompt) && question.toLowerCase() !== 'question'
         && choices.filter(Boolean).length >= 2
-        && !choices.every((choice, i) => choice === ['A', 'B', 'C', 'D'][i])
+        && !(!!question && choices.every((choice, i) => choice === ['A', 'B', 'C', 'D'][i]))
     })
-    return { rows, questions }
+    return { rows, questions, header, mediaColumn, hasExplanation: header.length === 7 || marker === 'EXPLANATION' || (normalize && metadataFirst), normalized: normalize && metadataFirst }
   }
-  const original = parse(before), next = parse(uploaded)
+  const original = parse(before, false), next = parse(uploaded, true)
   // Never guess how raw CSV slots correspond to the server's actual questions.
-  if (original.questions.length !== toSearchQuestions(C1_EXPLANATION_PATH, before).length
-      || next.questions.length !== toSearchQuestions(C1_EXPLANATION_PATH, uploaded).length) {
-    throw new PublisherError('The C1 CSV layout could not be reconciled safely; explanations were not changed.', 409)
+  if (original.questions.length !== toSearchQuestions(path, before).length
+      || next.questions.length !== toSearchQuestions(path, uploaded).length) {
+    throw new PublisherError('The CSV layout could not be reconciled safely; explanations were not changed.', 409)
   }
   let preserved = 0, cleared = 0
+  const promptImages = (row: string[], column: number) => JSON.stringify(column < 0 ? [] :
+    parseQuestionImageRefs(row[column] || '').filter(ref => ref.placement === 'question')
+      .map(ref => [ref.sha256, ref.mime, ref.placement]))
   for (let i = 0; i < Math.min(original.questions.length, next.questions.length); i++) {
     const oldRow = original.questions[i], newRow = next.questions[i]
-    const oldExplanation = oldRow[7] || '', supplied = newRow[7] || ''
+    const oldExplanation = original.hasExplanation ? oldRow[7] || '' : '', supplied = next.hasExplanation ? newRow[7] || '' : ''
     const unchanged = [1, 2, 3, 4, 5, 6].every(column => (oldRow[column] || '') === (newRow[column] || ''))
+      && promptImages(oldRow, original.mediaColumn) === promptImages(newRow, next.mediaColumn)
     if (unchanged && !supplied.trim() && oldExplanation.trim()) {
+      if (!next.hasExplanation) next.header[7] = 'Explanation'
       newRow[7] = oldExplanation
       preserved++
     } else if (!unchanged && oldExplanation.trim() && supplied.trim() === oldExplanation.trim()) {
@@ -55,11 +81,14 @@ export function reconcileC1Explanations(before: string, uploaded: string) {
   }
   const encodeCell = (value: string) => /[",\r\n]/.test(value)
     ? '"' + value.replace(/"/g, '""') + '"' : value
-  const text = preserved || cleared
+  const text = preserved || cleared || next.normalized
     ? next.rows.map(row => row.map(encodeCell).join(',')).join('\r\n')
     : uploaded
   return { text, preserved, cleared }
 }
+
+// Existing C1 consumers and tests retain their original entry point.
+export const reconcileC1Explanations = reconcileQuestionExplanations
 
 export function validateQuestionChanges(path: string, before: string, after: string) {
   if (!allowed.has(path)) throw new PublisherError('Unsupported question-bank destination path.')
@@ -217,14 +246,14 @@ async function prepare(input: PublishInput, fetcher: typeof fetch, token: string
     let oldText: string
     try { oldText = await decryptToText(old) } catch { throw new PublisherError('The current encrypted GitHub bank could not be validated.', 409) }
     let explanationsPreserved = 0, staleExplanationsCleared = 0
-    if (file.path === C1_EXPLANATION_PATH) {
-      const reconciled = reconcileC1Explanations(oldText, file.text)
+    if (EXPLANATION_PATHS.has(file.path)) {
+      const reconciled = reconcileQuestionExplanations(oldText, file.text, file.path)
       explanationsPreserved = reconciled.preserved
       staleExplanationsCleared = reconciled.cleared
       if (reconciled.text !== file.text) {
         file.text = reconciled.text
         file.bytes = await encrypt(file.text)
-        if (file.bytes.length > 1048576) throw new PublisherError('Reconciled C1 CSV exceeds the 1 MiB encrypted file limit.')
+        if (file.bytes.length > 1048576) throw new PublisherError('Reconciled question CSV exceeds the 1 MiB encrypted file limit.')
       }
     }
     summaries.push({
