@@ -7,13 +7,14 @@ import { decryptToText, deriveKeyBytes, toSearchQuestions } from '../../supabase
 import { GITHUB_BANK_ROOT, GITHUB_BANK_MANIFEST, GITHUB_BANK_RELEASE, GITHUB_BANK_FILES, githubAssetPath } from '../../supabase/functions/_shared/githubBankSource.ts'
 const manifest=JSON.parse(await readFile('supabase/functions/_shared/github-bank-manifest.json','utf8'))
 const path=process.env.HYPERION_TEST_BANK || 'deck/oic_nw_c1.csv.enc'
-const text='No,Question,A,B,C,D,Ans,Explanation\n1,First synthetic question?,Port,Starboard,Ahead,Astern,A,Existing answer rationale one\n2,Second synthetic question?,Port,Starboard,Ahead,Astern,A,Existing answer rationale two\n'
+const malformedC3Rows=path==='deck/oic_nw_c3.csv.enc'?'297,Legacy scan?,Port,Starboard,Ahead,Astern,invalid answer,shifted eighth cell,extra field,A\n428,Legacy plot?,Port,Starboard,Ahead,Astern,,shifted eighth cell,extra field,B\n':''
+const text='No,Question,A,B,C,D,Ans,Explanation\n1,First synthetic question?,Port,Starboard,Ahead,Astern,A,Existing answer rationale one\n2,Second synthetic question?,Port,Starboard,Ahead,Astern,A,Existing answer rationale two\n'+malformedC3Rows
 const iv=crypto.getRandomValues(new Uint8Array(12)), key=await crypto.subtle.importKey('raw',deriveKeyBytes(),'AES-GCM',false,['encrypt','decrypt']), encrypted=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(text)))
 const original=new Uint8Array(12+encrypted.length);original.set(iv);original.set(encrypted,12)
 const hash=async value=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',typeof value==='string'?new TextEncoder().encode(value):value))].map(x=>x.toString(16).padStart(2,'0')).join('')
 Object.assign(manifest.files.find(file=>file.path===path),{bytes:original.length,sha256:await hash(original)})
 const initialPointer={version:1,revision:'0'.repeat(40),manifestSha256:await hash(JSON.stringify(manifest)),publishedAt:'2026-11-03T00:00:00Z',publicationId:'fixture-initial',inputDigest:'f'.repeat(64)}
-const next='No,Question,A,B,C,D,Ans,Explanation\n1,First synthetic question?,Port,Starboard,Ahead,Astern,A,\n2,Second synthetic question?,Port,Starboard,Ahead,Astern,A,\n999999,Publisher synthetic append question?,Port,Starboard,Ahead,Astern,A,\n'
+const next='No,Question,A,B,C,D,Ans,Explanation\n1,First synthetic question?,Port,Starboard,Ahead,Astern,A,\n2,Second synthetic question?,Port,Starboard,Ahead,Astern,A,\n'+malformedC3Rows+'999999,Publisher synthetic append question?,Port,Starboard,Ahead,Astern,A,\n'
 const input={requestId:'synthetic-publish-123',files:[{path,format:'csv',content:next}]}
 function repository({race=false,lostResponse=false,unselectedCorrupt=false}={}){
  let bankEntries=[], blobContents=[], head='1'.repeat(40),posts=0,sourceReads=0,stagedManifest='',pointer=null,blobBytes=null,treeCalls=0,commitCalls=0,admin=true
@@ -51,6 +52,10 @@ function repository({race=false,lostResponse=false,unselectedCorrupt=false}={}){
 const repo=repository();const preview=await validateGithubBatch(input,repo.fetcher,'synthetic-server-token');assert.equal(repo.posts,0,'Validation never writes GitHub');assert.equal(preview.files[0].appended,1)
 const publish={...input,expectedHead:preview.baseHead,validationId:preview.validationId}
 const result=await publishGithubBatch(publish,repo.fetcher,'synthetic-server-token');assert.equal(repo.head,result.commit);assert.equal(repo.pointer.revision,result.revision);const publishedQuestions=toSearchQuestions(path,await decryptToText(repo.blobBytes));assert.equal(publishedQuestions.length,preview.files[0].questionCount);assert.deepEqual(publishedQuestions.slice(0,2).map(q=>q.explanation),['Existing answer rationale one','Existing answer rationale two']);assert.equal(preview.files[0].explanationsPreserved,2)
+if(malformedC3Rows) {
+ const publishedCsv=await decryptToText(repo.blobBytes)
+ for(const rawRow of malformedC3Rows.trim().split('\n')) assert.ok(publishedCsv.split(/\r?\n/).includes(rawRow),'C3 publication preserves malformed legacy rows verbatim')
+}
 assert.notEqual(repo.blobBytes.toString('utf8'),next,'GitHub stores encrypted data, never raw CSV')
 const posts=repo.posts;assert.equal((await publishGithubBatch(publish,repo.fetcher,'synthetic-server-token')).alreadyPublished,true);assert.equal(repo.posts,posts)
 const raced=repository({race:true});const rp=await validateGithubBatch(input,raced.fetcher,'synthetic-server-token');await assert.rejects(()=>publishGithubBatch({...input,expectedHead:rp.baseHead,validationId:rp.validationId},raced.fetcher,'synthetic-server-token'),/branch changed/i);assert.equal(raced.head,'c'.repeat(40))
@@ -66,7 +71,11 @@ console.log('PASS: validation-only preview, encrypted atomic publication, non-fo
 const png = new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,0,0,0,0,0])
 const imageRef={sha256:await hash(png),mime:'image/png',placement:'question',alt:'Synthetic diagram'}
 const mediaCell='"'+JSON.stringify([imageRef]).replaceAll('"','""')+'"'
-const imageCsv=next.trim().split('\n').map((row,index)=>row+','+(index===0?'HYPERION_MEDIA':index===1?mediaCell:'')).join('\n')
+const imageCsv=next.trim().split('\n').map((row,index)=>{
+ const cells=row.split(',')
+ cells.splice(8,0,index===0?'HYPERION_MEDIA':index===1?mediaCell:'')
+ return cells.join(',')
+}).join('\n')
 const imageInput={...input,requestId:'synthetic-with-images',files:[{path,format:'csv',content:imageCsv}]}
 const imageRepo=repository(), imagePreview=await validateGithubBatch(imageInput,imageRepo.fetcher,'synthetic-server-token')
 assert.equal(imageRepo.posts,0)

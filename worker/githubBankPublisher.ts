@@ -10,10 +10,11 @@ export type PublishInput = { files: BankUpload[]; requestId: string; expectedHea
 const allowed = new Set(GITHUB_BANK_FILES.map(file => file.path))
 const encoder = new TextEncoder()
 const C1_EXPLANATION_PATH = 'deck/oic_nw_c1.csv.enc'
-const EXPLANATION_PATHS = new Set([C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc'])
+const C3_EXPLANATION_PATH = 'deck/oic_nw_c3.csv.enc'
+const EXPLANATION_PATHS = new Set([C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc', C3_EXPLANATION_PATH])
 
 /**
- * Preserve an existing OIC-NW C1 or C2 explanation only when the question, all four
+ * Preserve an existing OIC-NW C1, C2 or C3 explanation only when the question, all four
  * choice cells, and the keyed answer are byte-for-byte unchanged. A new bank
  * upload may intentionally omit explanations; never replace those with blanks.
  *
@@ -65,8 +66,16 @@ export function reconcileQuestionExplanations(before: string, uploaded: string, 
   const promptImages = (row: string[], column: number) => JSON.stringify(column < 0 ? [] :
     parseQuestionImageRefs(row[column] || '').filter(ref => ref.placement === 'question')
       .map(ref => [ref.sha256, ref.mime, ref.placement]))
+  const hasValidAnswer = (row: string[]) => {
+    const answer = (row[6] || '').trim().toUpperCase()
+    if (!/^[A-D1-4]$/.test(answer)) return false
+    const index = /^[1-4]$/.test(answer) ? Number(answer) - 1 : 'ABCD'.indexOf(answer)
+    return !!(row[index + 2] || '').trim()
+  }
   for (let i = 0; i < Math.min(original.questions.length, next.questions.length); i++) {
     const oldRow = original.questions[i], newRow = next.questions[i]
+    // Legacy C3 rows 297/428 have shifted fields; their eighth cell is not an explanation.
+    if (path === C3_EXPLANATION_PATH && (!hasValidAnswer(oldRow) || !hasValidAnswer(newRow))) continue
     const oldExplanation = original.hasExplanation ? oldRow[7] || '' : '', supplied = next.hasExplanation ? newRow[7] || '' : ''
     const unchanged = [1, 2, 3, 4, 5, 6].every(column => (oldRow[column] || '') === (newRow[column] || ''))
       && promptImages(oldRow, original.mediaColumn) === promptImages(newRow, next.mediaColumn)
