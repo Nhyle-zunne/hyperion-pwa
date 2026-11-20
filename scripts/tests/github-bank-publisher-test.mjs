@@ -98,6 +98,12 @@ assert.deepEqual(reconciled.map(q=>[q.questionText,q.options,q.correctAnswerInde
 const changedOptions=[header,row(1,'What is the compass error?','A','Compare true and compass bearings.',['North','South','Southeast','West']),...newC1.split('\n').slice(2)].join('\n')
 assert.equal(toSearchQuestions(c1,reconcileC1Explanations(oldC1,changedOptions).text)[0].explanation,'','changed choices must never retain a copied old explanation')
 assert.equal(reconcileC1Explanations(oldC1,oldC1).preserved,0,'explicit unchanged explanations stay untouched')
+const c2='deck/oic_nw_c2.csv.enc'
+const checkedC2=reconcileC1Explanations(oldC1,newC1,c2)
+assert.deepEqual(toSearchQuestions(c2,checkedC2.text).map(q=>q.explanation),[
+ 'Compare true and compass bearings.', '', '', 'Wind pushes the vessel sideways.'
+], 'C2 must preserve only exact matching slots and clear copied stale explanations')
+assert.deepEqual(toSearchQuestions(c2,checkedC2.text).map(q=>q.correctAnswerIndex),[0,1,1,2])
 
 console.log('PASS: question positions and C1 explanations are preserved; accidental image removal and malformed media are rejected; explicit image removal and legacy banks remain supported.')
 

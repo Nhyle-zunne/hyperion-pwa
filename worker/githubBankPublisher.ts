@@ -10,9 +10,10 @@ export type PublishInput = { files: BankUpload[]; requestId: string; expectedHea
 const allowed = new Set(GITHUB_BANK_FILES.map(file => file.path))
 const encoder = new TextEncoder()
 const C1_EXPLANATION_PATH = 'deck/oic_nw_c1.csv.enc'
+const EXPLANATION_PATHS = new Set([C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc'])
 
 /**
- * Preserve an existing OIC-NW C1 explanation only when the question, all four
+ * Preserve an existing OIC-NW C1 or C2 explanation only when the question, all four
  * choice cells, and the keyed answer are byte-for-byte unchanged. A new bank
  * upload may intentionally omit explanations; never replace those with blanks.
  *
@@ -21,7 +22,7 @@ const C1_EXPLANATION_PATH = 'deck/oic_nw_c1.csv.enc'
  * slot, never fuzzy text matches: near-duplicate navigation questions often
  * have distinct answers and must not borrow each other's explanations.
  */
-export function reconcileC1Explanations(before: string, uploaded: string) {
+export function reconcileC1Explanations(before: string, uploaded: string, path = C1_EXPLANATION_PATH) {
   const parse = (text: string) => {
     const rows = parseCsvText(text)
     const questions = rows.filter(row => {
@@ -36,9 +37,9 @@ export function reconcileC1Explanations(before: string, uploaded: string) {
   }
   const original = parse(before), next = parse(uploaded)
   // Never guess how raw CSV slots correspond to the server's actual questions.
-  if (original.questions.length !== toSearchQuestions(C1_EXPLANATION_PATH, before).length
-      || next.questions.length !== toSearchQuestions(C1_EXPLANATION_PATH, uploaded).length) {
-    throw new PublisherError('The C1 CSV layout could not be reconciled safely; explanations were not changed.', 409)
+  if (original.questions.length !== toSearchQuestions(path, before).length
+      || next.questions.length !== toSearchQuestions(path, uploaded).length) {
+    throw new PublisherError('The CSV layout could not be reconciled safely; explanations were not changed.', 409)
   }
   let preserved = 0, cleared = 0
   for (let i = 0; i < Math.min(original.questions.length, next.questions.length); i++) {
@@ -217,14 +218,14 @@ async function prepare(input: PublishInput, fetcher: typeof fetch, token: string
     let oldText: string
     try { oldText = await decryptToText(old) } catch { throw new PublisherError('The current encrypted GitHub bank could not be validated.', 409) }
     let explanationsPreserved = 0, staleExplanationsCleared = 0
-    if (file.path === C1_EXPLANATION_PATH) {
-      const reconciled = reconcileC1Explanations(oldText, file.text)
+    if (EXPLANATION_PATHS.has(file.path)) {
+      const reconciled = reconcileC1Explanations(oldText, file.text, file.path)
       explanationsPreserved = reconciled.preserved
       staleExplanationsCleared = reconciled.cleared
       if (reconciled.text !== file.text) {
         file.text = reconciled.text
         file.bytes = await encrypt(file.text)
-        if (file.bytes.length > 1048576) throw new PublisherError('Reconciled C1 CSV exceeds the 1 MiB encrypted file limit.')
+        if (file.bytes.length > 1048576) throw new PublisherError('Reconciled question CSV exceeds the 1 MiB encrypted file limit.')
       }
     }
     summaries.push({
