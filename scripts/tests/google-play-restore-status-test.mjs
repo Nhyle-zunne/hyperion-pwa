@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { publicSubscriptionStatus } from '../../supabase/functions/google-play-subscription-status/verification.ts'
+import { createRestoreRateLimiter } from '../../supabase/functions/google-play-subscription-status/rate-limit.ts'
 
 test('restored annual Play subscriptions use the real expiry and base plan', () => {
   const snapshot = publicSubscriptionStatus({
@@ -41,6 +42,20 @@ test('only valid Hyperion track products and finite dates are returned', () => {
   assert.equal(publicSubscriptionStatus({ lineItems: [] }, 1).active, false)
 })
 
+test('multi-track and legacy All Access purchases stay separate and recognized', () => {
+  const status = publicSubscriptionStatus({
+    subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE',
+    lineItems: [
+      { productId: 'hyperion_oic_nw_pass', expiryTime: '2027-12-01T00:00:00Z' },
+      { productId: 'hyperion_engine_oic_ew_pass', expiryTime: '2027-12-01T00:00:00Z' },
+      { productId: 'hyperion_all_access_pass', expiryTime: '2027-12-01T00:00:00Z' }
+    ]
+  }, 1)
+  assert.deepEqual(status.items.map(item => item.productId), [
+    'hyperion_oic_nw_pass', 'hyperion_engine_oic_ew_pass', 'hyperion_all_access_pass'
+  ])
+})
+
 test('anonymous restore endpoint is read-only and never exposes or links purchase owners', async () => {
   const source = await readFile(new URL('../../supabase/functions/google-play-subscription-status/index.ts', import.meta.url), 'utf8')
   const config = await readFile(new URL('../../supabase/config.toml', import.meta.url), 'utf8')
@@ -50,4 +65,19 @@ test('anonymous restore endpoint is read-only and never exposes or links purchas
   assert.match(source, /GOOGLE_PLAY_SERVICE_ACCOUNT_JSON/)
   assert.doesNotMatch(source, /createClient\(|SUPABASE_SERVICE_ROLE_KEY|\.rpc\(|\.upsert\(|\.insert\(/)
   assert.doesNotMatch(source, /externalAccountIdentifiers|obfuscatedExternalAccountId|linkedPurchaseToken/)
+})
+
+test('anonymous verification is capped per source, per isolate and in flight', () => {
+  const limiter = createRestoreRateLimiter({ perSource: 2, global: 3, windowMs: 60_000, concurrent: 1 })
+  assert.equal(limiter.allow('ip-1', 10_000), true)
+  assert.equal(limiter.allow('ip-1', 10_000), false, 'Only one in-flight Google API lookup per configured limit')
+  limiter.finish()
+  assert.equal(limiter.allow('ip-1', 10_000), true)
+  limiter.finish()
+  assert.equal(limiter.allow('ip-1', 10_000), false, 'Same source exhausted its quota')
+  assert.equal(limiter.allow('ip-2', 10_000), true)
+  limiter.finish()
+  assert.equal(limiter.allow('ip-3', 10_000), false, 'Isolate budget is exhausted across spoofed IPs')
+  assert.equal(limiter.allow('ip-1', 80_000), true, 'Expired limits reset')
+  limiter.finish()
 })

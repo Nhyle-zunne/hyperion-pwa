@@ -1,10 +1,12 @@
 import { publicSubscriptionStatus } from './verification.ts'
+import { createRestoreRateLimiter } from './rate-limit.ts'
 
 // This endpoint is intentionally read-only. The BillingClient purchase token proves
 // possession of a Play purchase, but never authorizes linking it to a Hyperion user.
 // Account-linked entitlements still require the authenticated link function.
 const PACKAGE_NAME = 'com.nhyle.hyperionmaritime'
 let cachedAccessToken: { value: string; expiresAt: number } | null = null
+const restoreRateLimit = createRestoreRateLimiter()
 
 function reply(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -109,26 +111,34 @@ async function verifySubscription(purchaseToken: string) {
 
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return reply(405, { error: 'Method not allowed' })
-  let purchaseToken = ''
+  // Per-source headers may vary by gateway. The independent isolate-wide budget
+  // bounds bursts even if a caller spoofs its forwarded address.
+  const source = (req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for')?.split(',')[0] || '').trim().slice(0, 64)
+  if (!restoreRateLimit.allow(source, Date.now())) return reply(429, { error: 'Too many restore attempts. Please try again shortly.' })
   try {
-    const body = JSON.parse(await readBodyLimited(req)) as Record<string, unknown>
-    purchaseToken = typeof body.purchaseToken === 'string' ? body.purchaseToken.trim() : ''
-  } catch {
-    return reply(400, { error: 'Invalid request' })
-  }
-  if (purchaseToken.length < 6 || purchaseToken.length > 4096 || purchaseToken.startsWith('mock_sandbox_sub_token_')) {
-    return reply(400, { error: 'Invalid purchase token' })
-  }
+    let purchaseToken = ''
+    try {
+      const body = JSON.parse(await readBodyLimited(req)) as Record<string, unknown>
+      purchaseToken = typeof body.purchaseToken === 'string' ? body.purchaseToken.trim() : ''
+    } catch {
+      return reply(400, { error: 'Invalid request' })
+    }
+    if (purchaseToken.length < 6 || purchaseToken.length > 4096 || purchaseToken.startsWith('mock_sandbox_sub_token_')) {
+      return reply(400, { error: 'Invalid purchase token' })
+    }
 
-  try {
-    const google = await verifySubscription(purchaseToken)
-    if (!google) return reply(404, { error: 'Purchase not found' })
-    const status = publicSubscriptionStatus(google, Date.now())
-    if (!status.items.length) return reply(404, { error: 'Purchase not found' })
-    return reply(200, status)
-  } catch {
-    // No purchase tokens, credential values or Google account metadata in logs/responses.
-    console.error('google_play_restore_verification_unavailable')
-    return reply(503, { error: 'Google Play verification temporarily unavailable' })
+    try {
+      const google = await verifySubscription(purchaseToken)
+      if (!google) return reply(404, { error: 'Purchase not found' })
+      const status = publicSubscriptionStatus(google, Date.now())
+      if (!status.items.length) return reply(404, { error: 'Purchase not found' })
+      return reply(200, status)
+    } catch {
+      // No purchase tokens, credential values or Google account metadata in logs/responses.
+      console.error('google_play_restore_verification_unavailable')
+      return reply(503, { error: 'Google Play verification temporarily unavailable' })
+    }
+  } finally {
+    restoreRateLimit.finish()
   }
 })
