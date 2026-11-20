@@ -48,6 +48,9 @@ verify_jwt = true
 [functions.link-google-play-subscription]
 verify_jwt = true
 
+[functions.google-play-subscription-status]
+verify_jwt = false
+
 [functions.google-play-rtdn]
 verify_jwt = false
 
