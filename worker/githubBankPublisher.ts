@@ -22,7 +22,7 @@ const EXPLANATION_PATHS = new Set([C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc'
  * slot, never fuzzy text matches: near-duplicate navigation questions often
  * have distinct answers and must not borrow each other's explanations.
  */
-export function reconcileC1Explanations(before: string, uploaded: string, path = C1_EXPLANATION_PATH) {
+export function reconcileQuestionExplanations(before: string, uploaded: string, path = C1_EXPLANATION_PATH) {
   const parse = (text: string) => {
     const rows = parseCsvText(text)
     const questions = rows.filter(row => {
@@ -61,6 +61,9 @@ export function reconcileC1Explanations(before: string, uploaded: string, path =
     : uploaded
   return { text, preserved, cleared }
 }
+
+// Existing C1 consumers and tests retain their original entry point.
+export const reconcileC1Explanations = reconcileQuestionExplanations
 
 export function validateQuestionChanges(path: string, before: string, after: string) {
   if (!allowed.has(path)) throw new PublisherError('Unsupported question-bank destination path.')
@@ -219,7 +222,7 @@ async function prepare(input: PublishInput, fetcher: typeof fetch, token: string
     try { oldText = await decryptToText(old) } catch { throw new PublisherError('The current encrypted GitHub bank could not be validated.', 409) }
     let explanationsPreserved = 0, staleExplanationsCleared = 0
     if (EXPLANATION_PATHS.has(file.path)) {
-      const reconciled = reconcileC1Explanations(oldText, file.text, file.path)
+      const reconciled = reconcileQuestionExplanations(oldText, file.text, file.path)
       explanationsPreserved = reconciled.preserved
       staleExplanationsCleared = reconciled.cleared
       if (reconciled.text !== file.text) {
