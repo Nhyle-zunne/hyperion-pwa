@@ -185,10 +185,9 @@ export default function AdminLicensesScreen() {
     color: status === 'active' ? 'var(--success, #15803d)' : status === 'revoked' ? 'var(--danger, #b91c1c)' : 'var(--text-muted)',
     background: 'var(--bg-elevated)', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.03em'
   })
-  const grant = async (user: ManagedUser, track: typeof TRACKS[number]) => {
+  const grant = async (user: ManagedUser, track: typeof TRACKS[number], term: LicenseTerm) => {
     const key = user.id + ':' + track.code
     const license = user.licenses[track.code]
-    const term = terms[key] || 'month'
     const lifetime = term === 'lifetime'
     const extend = license.status === 'active' && license.license_term !== 'lifetime'
     const prompt = lifetime
@@ -391,7 +390,10 @@ export default function AdminLicensesScreen() {
                 {TRACKS.map(track => {
                   const license = user.licenses[track.code]
                   const key = user.id + ':' + track.code
-                  const term = terms[key] || 'month'
+                  const grantOptions = license.has_manual_lifetime
+                    ? TERM_OPTIONS.filter(option => option.value !== 'lifetime')
+                    : TERM_OPTIONS
+                  const term = grantOptions.find(option => option.value === terms[key])?.value ?? 'month'
                   const busy = busyKey === key
                   return <div key={track.code} className="admin-license-tile">
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
@@ -405,14 +407,14 @@ export default function AdminLicensesScreen() {
                     </div>
                     <label style={{ display: 'block', fontSize: '.72rem', fontWeight: 800, color: 'var(--text-muted)' }}>DURATION TO GRANT
                       <select value={term} onChange={event => setTerms(old => ({ ...old, [key]: event.target.value as LicenseTerm }))} style={{ ...field, marginBottom: '.55rem' }}>
-                        {TERM_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        {grantOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                       </select>
                     </label>
                     <label style={{ display: 'block', fontSize: '.72rem', fontWeight: 800, color: 'var(--text-muted)' }}>ADMIN NOTE (OPTIONAL)
                       <input value={notes[key] || ''} onChange={event => setNotes(old => ({ ...old, [key]: event.target.value }))} placeholder="Reason for manual change" style={field} />
                     </label>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: '.65rem' }}>
-                      <button type="button" className="btn btn-primary" disabled={!!busyKey || (term === 'lifetime' && license.has_manual_lifetime)} onClick={() => void grant(user, track)} style={{ flex: '1 1 145px', fontSize: '.72rem' }}>{busy ? 'SAVING…' : term === 'lifetime' ? 'GRANT LIFETIME' : license.status === 'active' && license.license_term !== 'lifetime' ? 'EXTEND LICENSE' : 'ACTIVATE LICENSE'}</button>
+                      <button type="button" className="btn btn-primary" disabled={!!busyKey} onClick={() => void grant(user, track, term)} style={{ flex: '1 1 145px', fontSize: '.72rem' }}>{busy ? 'SAVING…' : term === 'lifetime' ? 'GRANT LIFETIME' : license.status === 'active' && license.license_term !== 'lifetime' ? 'EXTEND LICENSE' : 'ACTIVATE LICENSE'}</button>
                       {(license.has_revocable_website ?? (license.exists && license.status !== 'revoked')) && !license.has_active_google_play && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track)} style={{ flex: '1 1 95px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE</button>}
                       {license.has_manual_lifetime && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track, true)} style={{ flex: '1 1 145px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE LIFETIME GRANT</button>}
                       {license.has_purchased_lifetime && <div style={{ flexBasis: '100%', color: 'var(--text-muted)', fontSize: '.72rem' }}>This track also has access from a lifetime purchase.</div>}
