@@ -12,11 +12,11 @@ const encoder = new TextEncoder()
 const C1_EXPLANATION_PATH = 'deck/oic_nw_c1.csv.enc'
 const C3_EXPLANATION_PATH = 'deck/oic_nw_c3.csv.enc'
 const EXPLANATION_PATHS = new Set([
-  C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc', C3_EXPLANATION_PATH, 'deck/oic_nw_c4.csv.enc'
+  C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc', C3_EXPLANATION_PATH, 'deck/oic_nw_c4.csv.enc', 'deck/oic_nw_c5.csv.enc'
 ])
 
 /**
- * Preserve an existing OIC-NW C1–C4 explanation only when the question, all four
+ * Preserve an existing OIC-NW C1–C5 explanation only when the question, all four
  * choice cells, and the keyed answer are byte-for-byte unchanged. A new bank
  * upload may intentionally omit explanations; never replace those with blanks.
  *
@@ -43,7 +43,10 @@ export function reconcileQuestionExplanations(before: string, uploaded: string, 
       throw new PublisherError('The CSV explanation column layout is ambiguous; explanations were not changed.', 409)
     }
     if (normalize && metadataFirst) {
-      for (const row of rows.slice(headerIndex)) row.splice(7, 0, row === header ? 'Explanation' : '')
+      for (const row of rows.slice(headerIndex)) {
+        // Keep incomplete legacy records outside the question parser.
+        if (row.length >= 7) row.splice(7, 0, row === header ? 'Explanation' : '')
+      }
     }
     const mediaColumn = header.findIndex(cell => cell.trim().toUpperCase() === 'HYPERION_MEDIA')
     const questions = rows.slice(headerIndex + 1).filter(row => {
