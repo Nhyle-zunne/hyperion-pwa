@@ -5,7 +5,7 @@ import GooglePlayBadge from './GooglePlayBadge'
 import DesktopInstallBadge from './DesktopInstallBadge'
 import { getManualInstallInstructions, useInstallPrompt } from '../hooks/useInstallPrompt'
 
-const FB = 'https://www.facebook.com/hyperionbynhyle/'
+const FB = 'https://www.facebook.com/HyperionMaritime/'
 
 export default function AppDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate()
