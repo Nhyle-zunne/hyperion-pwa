@@ -180,3 +180,20 @@ const emptyChoiceBefore=header+'\n'+row(1,'Radar?','B','Shifted cell',['North','
 const emptyChoiceUpload=emptyChoiceBefore.replace('Shifted cell','')
 assert.equal(reconcileC1Explanations(emptyChoiceBefore,emptyChoiceUpload,c3).preserved,0,'C3 answer must point to a populated choice')
 console.log('PASS: C3 valid explanations reconcile without interpreting malformed legacy answer rows.')
+
+const c5 = 'deck/oic_nw_c5.csv.enc'
+const shortLegacyRow = '117,Incomplete legacy question?,Port,Starboard,Ahead,A'
+const c5Before = [
+  'No,Question,A,B,C,D,Ans,Explanation',
+  '116,Valid question?,Port,Starboard,Ahead,Astern,A,Existing explanation',
+  shortLegacyRow
+].join('\n')
+const c5Upload = [
+  'No,Question,A,B,C,D,Ans,HYPERION_STATUS',
+  '116,Valid question?,Port,Starboard,Ahead,Astern,A,RETIRED',
+  shortLegacyRow
+].join('\n')
+const c5Result = reconcileC1Explanations(c5Before, c5Upload, c5)
+assert.equal(c5Result.preserved, 1)
+assert.equal(c5Result.text.split(/\r?\n/).at(-1), shortLegacyRow)
+assert.equal(toSearchQuestions(c5, c5Result.text).length, 1)
