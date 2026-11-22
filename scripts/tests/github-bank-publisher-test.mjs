@@ -117,7 +117,7 @@ assert.throws(()=>validateQuestionChanges(path,scans,scannedCsv([otherScan,image
 assert.equal(validateQuestionChanges(path,scans,scannedCsv([{...imageRef,sha256:'c'.repeat(64)},otherScan])).changed,1,
   'correcting a single diagram in place remains supported')
 
-for (const deckPath of [c1,c2,'deck/oic_nw_c3.csv.enc']) {
+for (const deckPath of [c1,c2,'deck/oic_nw_c3.csv.enc','deck/oic_nw_c4.csv.enc']) {
   const legacyHeader='No,Question,A,B,C,D,Ans\n'
   const legacyOld=legacyHeader+'1,Legacy?,One,Two,Three,Four,A,Existing legacy explanation'
   const legacyUpload=legacyHeader+'1,Legacy?,One,Two,Three,Four,A'

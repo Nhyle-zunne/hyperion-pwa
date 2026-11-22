@@ -70,6 +70,7 @@ jobs:
           node scripts/tests/github-publisher-transaction-test.mjs
           HYPERION_TEST_BANK=deck/oic_nw_c2.csv.enc node scripts/tests/github-publisher-transaction-test.mjs
           HYPERION_TEST_BANK=deck/oic_nw_c3.csv.enc node scripts/tests/github-publisher-transaction-test.mjs
+          HYPERION_TEST_BANK=deck/oic_nw_c4.csv.enc node scripts/tests/github-publisher-transaction-test.mjs
           node scripts/tests/question-media-build.test.ts
           node scripts/tests/question-media-bundler.test.ts
           node scripts/tests/question-media-delivery.test.ts

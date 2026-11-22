@@ -11,10 +11,12 @@ const allowed = new Set(GITHUB_BANK_FILES.map(file => file.path))
 const encoder = new TextEncoder()
 const C1_EXPLANATION_PATH = 'deck/oic_nw_c1.csv.enc'
 const C3_EXPLANATION_PATH = 'deck/oic_nw_c3.csv.enc'
-const EXPLANATION_PATHS = new Set([C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc', C3_EXPLANATION_PATH])
+const EXPLANATION_PATHS = new Set([
+  C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc', C3_EXPLANATION_PATH, 'deck/oic_nw_c4.csv.enc'
+])
 
 /**
- * Preserve an existing OIC-NW C1, C2 or C3 explanation only when the question, all four
+ * Preserve an existing OIC-NW C1–C4 explanation only when the question, all four
  * choice cells, and the keyed answer are byte-for-byte unchanged. A new bank
  * upload may intentionally omit explanations; never replace those with blanks.
  *
