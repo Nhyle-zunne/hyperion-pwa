@@ -26,7 +26,7 @@ type Order = {
   paid_at: string | null
   checkout_batch_id: string | null
 }
-type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' | 'lifetime'; lifetimeProvider?: 'paymongo' | 'google_play' }
+type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' | 'lifetime'; lifetimeProvider?: 'paymongo' | 'google_play' | 'admin' }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
 // Owner-bound in-memory display cache for this browser session. These rows are
@@ -415,7 +415,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
         expires_at: '9999-12-31T23:59:59Z',
         renewed_at: row.revoked_at,
         source: 'lifetime' as const,
-        lifetimeProvider: row.provider as 'paymongo' | 'google_play',
+        lifetimeProvider: row.provider as OwnedTrack['lifetimeProvider'],
       })))
     ]
     // Preserve the last known license display during network outages, then re-evaluate expiry locally.
@@ -953,6 +953,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
               const transaction = orders.find(order => order.id === item.order_id)
               const expiry = licenseExpiryDetails(item.expires_at)
               const lifetime = item.source === 'lifetime'
+              const adminGrant = lifetime && item.lifetimeProvider === 'admin'
               const expiringSoon = !lifetime && expiry.daysRemaining !== null && expiry.daysRemaining <= 7
               return <div key={item.product_code} style={{ padding: '.9rem 0', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -960,14 +961,14 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   <span style={{ color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--success, #15803d)', fontSize: '.82rem', fontWeight: 850 }}>{lifetime ? 'LIFETIME' : expiringSoon ? 'EXPIRING SOON' : 'ACTIVE'}</span>
                 </div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '.9rem', marginTop: '.35rem' }}>{lifetime
-                    ? 'Lifetime access · ' + (item.lifetimeProvider === 'google_play' ? 'Google Play one-time purchase' : 'Website one-time purchase') + ' · No renewal'
+                    ? 'Lifetime access · ' + (adminGrant ? 'Admin grant' : item.lifetimeProvider === 'google_play' ? 'Google Play one-time purchase' : 'Website one-time purchase') + ' · No renewal'
                     : (item.source === 'google_play' ? 'Google Play subscription' : (item.license_term === 'week' ? 'Weekly' : item.license_term === 'month' ? 'Monthly' : 'Yearly') + ' website access') + ' · Valid until ' + (item.expires_at ? new Date(item.expires_at).toLocaleDateString() : 'date unavailable')}</div>
                 <div role="status" style={{ marginTop: '.45rem', padding: '.55rem .7rem', borderRadius: 8, background: expiringSoon ? 'var(--bg-elevated)' : 'transparent', border: expiringSoon ? '1px solid var(--border)' : '1px solid transparent', color: expiringSoon ? 'var(--warning, #c2410c)' : 'var(--text-muted)', fontSize: '.84rem', fontWeight: expiringSoon ? 800 : 600 }}>
                   {lifetime ? 'Access for the supported lifetime of Hyperion, including future question-bank updates.' : expiry.label}{item.source === 'website' ? ' · Extend now to keep all remaining days.' : ''}
                 </div>
                 <div style={{ marginTop: '.75rem', padding: '.75rem', borderRadius: 8, background: 'var(--bg-elevated)', lineHeight: 1.6 }}>
-                  <strong style={{ display: 'block', marginBottom: '.25rem' }}>{item.source === 'google_play' ? 'Subscription details' : 'Transaction details'}</strong>
-                  {lifetime ? <>
+                  <strong style={{ display: 'block', marginBottom: '.25rem' }}>{item.source === 'google_play' ? 'Subscription details' : adminGrant ? 'Grant details' : 'Transaction details'}</strong>
+                  {adminGrant ? <div>Granted: {new Date(item.granted_at).toLocaleString()}</div> : lifetime ? <>
                     <div>Purchase: One-time, non-renewing</div>
                     <div>Source: {item.lifetimeProvider === 'google_play' ? 'Google Play' : 'PayMongo'}</div>
                     <div>Purchased: {new Date(item.granted_at).toLocaleString()}</div>
@@ -1007,7 +1008,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   <span style={{ color: revoked ? 'var(--danger, #b91c1c)' : 'var(--text-muted)', fontSize: '.8rem', fontWeight: 850 }}>{revoked ? (item.source === 'google_play' ? 'INACTIVE' : 'REVOKED') : 'EXPIRED'}</span>
                 </div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '.88rem', marginTop: '.3rem' }}>
-                  {revoked ? (item.source === 'lifetime' ? 'This one-time purchase was revoked or refunded.' : item.source === 'google_play' ? 'Google Play no longer reports this subscription as active.' : 'Access was revoked by an administrator.') : item.expires_at ? `Access ended on ${new Date(item.expires_at).toLocaleDateString()}.` : 'No valid expiry date is recorded.'}
+                  {revoked ? (item.source === 'lifetime' && item.lifetimeProvider !== 'admin' ? 'This one-time purchase was revoked or refunded.' : item.source === 'google_play' ? 'Google Play no longer reports this subscription as active.' : 'Access was revoked by an administrator.') : item.expires_at ? `Access ended on ${new Date(item.expires_at).toLocaleDateString()}.` : 'No valid expiry date is recorded.'}
                 </div>
                 {transaction && <div style={{ marginTop: '.5rem', color: 'var(--text-muted)', fontSize: '.82rem' }}>
                   {transaction.amount_php > 0 ? `Last recorded purchase: ₱${transaction.amount_php} · ` : ''}{new Date(transaction.paid_at || transaction.created_at).toLocaleDateString()}

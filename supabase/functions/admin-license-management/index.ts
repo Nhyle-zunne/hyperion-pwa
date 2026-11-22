@@ -58,7 +58,8 @@ function expiryForTerm(base: Date, term: LicenseTerm) {
 }
 function effectiveStatus(row: any, now = Date.now()): 'active' | 'expired' | 'revoked' {
   if (row.status === 'revoked') return 'revoked'
-  // Every paid license is a fixed term; missing or invalid expiry is not unlimited access.
+  if (row.license_term === 'lifetime' && row.status === 'active') return 'active'
+  // Fixed-term licenses require a valid expiry.
   if (!row.expires_at) return 'expired'
   const expiry = Date.parse(row.expires_at)
   if (!Number.isFinite(expiry) || expiry <= now) return 'expired'
@@ -97,7 +98,10 @@ Deno.serve(async req => {
   if (!allowed.includes(user.email.toLowerCase())) return json(req, { error: 'Admin access denied.' }, 403)
 
   let body: { action?: string; userId?: string; productCode?: string; term?: string; note?: string; compact?: boolean }
-  try { body = await req.json() } catch { return json(req, { error: 'Invalid request body.' }, 400) }
+  try {
+    body = await req.json()
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Invalid request body')
+  } catch { return json(req, { error: 'Invalid request body.' }, 400) }
   const admin = createClient(url, service, { auth: { persistSession: false } })
 
   if (body.action === 'list') {
@@ -141,6 +145,23 @@ Deno.serve(async req => {
       if (playTableMissing || rows.length < 1000) break
     }
 
+    for (let offset = 0; ; offset += 1000) {
+      const result = await admin.from('lifetime_entitlements')
+        .select('id,user_id,product_code,track_id,provider,status,purchased_at')
+        .order('id').range(offset, offset + 999)
+      if (result.error) return json(req, { error: 'Could not load lifetime license statuses.' }, 500)
+      const rows = result.data || []
+      entitlements.push(...rows.map(row => ({
+        ...row,
+        source: row.provider === 'admin' ? 'admin_lifetime' : row.provider + '_lifetime',
+        license_term: 'lifetime',
+        granted_at: row.purchased_at,
+        expires_at: null,
+        order_id: null
+      })))
+      if (rows.length < 1000) break
+    }
+
     // Load last real website activity and payment/admin dependencies in bounded account batches.
     const activityByUser = new Map<string, string>()
     const pendingPaymentUsers = new Set<string>()
@@ -179,9 +200,17 @@ Deno.serve(async req => {
       const licenses = byUser.get(row.user_id)!
       const previous = licenses.get(row.product_code)
       const rowActive = effectiveStatus(row, retentionNow) === 'active'
+      const hasManualLifetime = previous?.has_manual_lifetime === true || (row.source === 'admin_lifetime' && rowActive)
+      const hasPurchasedLifetime = previous?.has_purchased_lifetime === true ||
+        (row.license_term === 'lifetime' && row.source !== 'admin_lifetime' && rowActive)
+      const hasRevocableWebsite = previous?.has_revocable_website === true ||
+        (row.source === 'website' && row.status !== 'revoked')
       if (!previous) {
         licenses.set(row.product_code, {
           ...row,
+          has_manual_lifetime: hasManualLifetime,
+          has_purchased_lifetime: hasPurchasedLifetime,
+          has_revocable_website: hasRevocableWebsite,
           has_active_google_play: row.source === 'google_play' && rowActive
         })
         continue
@@ -194,13 +223,18 @@ Deno.serve(async req => {
         ...String(row.source || 'website').split('+')
       ])
       const mergedSource = Array.from(allSources).sort().join('+')
+      const rankExpiry = (license: any) => license.license_term === 'lifetime' && license.status === 'active'
+        ? Infinity : (Date.parse(license.expires_at || '') || 0)
       const preferredRow = (rowActive && !previousActive) ||
-        (rowActive === previousActive && Date.parse(row.expires_at || '') > Date.parse(previous.expires_at || ''))
+        (rowActive === previousActive && rankExpiry(row) > rankExpiry(previous))
         ? row
         : previous
       licenses.set(row.product_code, {
         ...preferredRow,
         source: mergedSource,
+        has_manual_lifetime: hasManualLifetime,
+        has_purchased_lifetime: hasPurchasedLifetime,
+        has_revocable_website: hasRevocableWebsite,
         has_active_google_play: hasActiveGooglePlay
       })
     }
@@ -219,6 +253,9 @@ Deno.serve(async req => {
           status: effectiveStatus(row, now), license_term: row.license_term,
           granted_at: row.granted_at, expires_at: row.expires_at, order_id: row.order_id,
           source: row.source || 'website',
+          has_manual_lifetime: row.has_manual_lifetime === true,
+          has_purchased_lifetime: row.has_purchased_lifetime === true,
+          has_revocable_website: row.has_revocable_website === true,
           has_active_google_play: row.has_active_google_play === true
         }]
       }))
@@ -299,13 +336,21 @@ Deno.serve(async req => {
   const product = PRODUCT_MAP[body.productCode as ProductCode]
   const userResult = await admin.auth.admin.getUserById(body.userId)
   if (userResult.error || !userResult.data.user) return json(req, { error: 'Account not found.' }, 404)
+  const note = String(body.note || '').trim().slice(0, 1000) || null
+  if (body.term === 'lifetime') {
+    const { data: changed, error } = await admin.rpc('set_admin_lifetime_entitlement', {
+      p_user_id: body.userId, p_product_code: product.code, p_active: body.action === 'grant',
+      p_admin_user_id: user.id, p_admin_email: user.email, p_note: note
+    })
+    if (error) return json(req, { error: 'Could not update this lifetime license.' }, 500)
+    return json(req, { ok: true, changed, status: body.action === 'grant' ? 'active' : 'revoked', expiresAt: null })
+  }
   const { data: existing, error: existingError } = await admin.from('entitlements')
     .select('id,user_id,product_code,track_id,order_id,status,license_term,granted_at,expires_at,renewed_at')
     .eq('user_id', body.userId).eq('product_code', product.code).maybeSingle()
   if (existingError) return json(req, { error: 'Could not check the current license.' }, 500)
   const priorStatus = existing ? effectiveStatus(existing) : 'none'
   const priorExpiry = existing?.expires_at || null
-  const note = String(body.note || '').trim().slice(0, 1000) || null
   const now = new Date()
   const nowIso = now.toISOString()
 
