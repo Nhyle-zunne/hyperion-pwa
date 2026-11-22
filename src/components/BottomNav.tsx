@@ -9,7 +9,7 @@ const items = [
   { to: '/history', label: 'History', icon: '📊' },
   { to: '/account', label: 'Account', icon: '👤' }
 ]
-const FB = 'https://www.facebook.com/hyperionbynhyle/'
+const FB = 'https://www.facebook.com/HyperionMaritime/'
 
 export default function BottomNav() {
   const [drawerOpen, setDrawerOpen] = useState(false)
