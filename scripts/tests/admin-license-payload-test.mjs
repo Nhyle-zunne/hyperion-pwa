@@ -82,24 +82,41 @@ try {
   const restored = compact.users.map(hydrate)
   assert.deepEqual(JSON.parse(JSON.stringify(restored)), legacy.users, 'Compact data restores the complete legacy UI state, counts, filters, and action inputs')
   assert.deepEqual(JSON.parse(JSON.stringify(legacy.users.map(hydrate))), legacy.users, 'Updated UI accepts old backend responses')
-  let hook = 0, storedUsers
+  let hook = 0, storedUsers, editorUser
   const loads = [], calls = []
   const react = {
-    useState: initial => { const index = hook++; return [initial, value => { if (index === 0) storedUsers = value }] },
-    useCallback: fn => fn, useMemo: fn => fn(), useEffect: fn => fn()
+    useState: initial => {
+      const index = hook++
+      const editorState = { 0: [editorUser], 1: userId, 8: { [userId + ':oic_nw']: 'lifetime' }, 11: false, 12: true }
+      return [editorUser && index in editorState ? editorState[index] : initial, value => { if (index === 0) storedUsers = value }]
+    },
+    useCallback: fn => fn, useMemo: fn => fn(), useEffect: fn => { if (!editorUser) fn() }
   }
   const mounted = { exports: {}, require: name => {
     if (name === 'react') return react
-    if (name === 'react/jsx-runtime') return { jsx: () => null, jsxs: () => null }
+    if (name === 'react/jsx-runtime') return require(name)
+    if (name === 'react-dom') return { createPortal: children => children }
+    if (name.endsWith('/AdminNavigation')) return { default: () => null }
     if (name.endsWith('/pageLoading')) return { withPageLoading: (_label, fn) => { const task = fn(); loads.push(task); return task } }
     if (name.endsWith('/supabase')) return { supabase: { functions: { invoke: async (_name, options) => { calls.push(options.body); return { data: compact, error: null } } } } }
     return {}
-  }, console }
+  }, console, document: { body: {} } }
   vm.runInNewContext(compile('src/screens/AdminLicensesScreen.tsx'), mounted)
   mounted.exports.default()
   await Promise.all(loads)
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ action: 'list', compact: true }], 'The screen opts in on initial and subsequent loads')
   assert.deepEqual(JSON.parse(JSON.stringify(storedUsers)), legacy.users, 'The screen stores hydrated records before rendering controls')
+  const renderLicenseEditor = user => {
+    hook = 0
+    editorUser = user
+    return require('react-dom/server').renderToStaticMarkup(mounted.exports.default())
+      .split('class="admin-license-tile"')[1]
+  }
+  const activeEditor = renderLicenseEditor(restored[0])
+  assert.doesNotMatch(activeEditor, />GRANT LIFETIME<|<option value="lifetime"/)
+  assert.match(activeEditor, />REVOKE LIFETIME GRANT</)
+  assert.match(activeEditor, /<option value="month" selected="">1 Month<\/option>/)
+  editorUser = null
   for (const value of [false, 'true', 1]) {
     assert.equal(Object.keys((await (await send({ action: 'list', compact: value })).json()).users[1].licenses).length, 5, 'Only boolean true opts in')
   }
@@ -119,6 +136,12 @@ try {
   assert.equal(afterRevoke.has_manual_lifetime, false)
   assert.equal(afterRevoke.has_purchased_lifetime, true)
   assert.equal(afterRevoke.status, 'active')
+  const revokedEditor = renderLicenseEditor(hydrate({
+    ...restored[0], licenses: { ...restored[0].licenses, oic_nw: afterRevoke }
+  }))
+  assert.match(revokedEditor, />GRANT LIFETIME</)
+  assert.doesNotMatch(revokedEditor, />REVOKE LIFETIME GRANT</)
+  editorUser = null
   assert.equal((await send({ action: 'grant', userId, productCode: 'oic_nw', term: 'lifetime', note: 'Test grant' })).status, 200)
   assert.deepEqual(manualChanges, [
     { p_user_id: userId, p_product_code: 'oic_nw', p_active: false, p_admin_user_id: 'admin-fixture', p_admin_email: adminEmail, p_note: null },
