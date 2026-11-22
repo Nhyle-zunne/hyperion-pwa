@@ -30,7 +30,7 @@ function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
 }
 
 const paymentMethod = 'QR Ph (MariBank / InstaPay)'
-const facebookPage = 'https://www.facebook.com/hyperionbynhyle'
+const facebookPage = 'https://www.facebook.com/HyperionMaritime/'
 const qrPhImage = '/qr-ph.png'
 
 async function edgeMessage(error: unknown, fallback: string): Promise<string> {

@@ -8,7 +8,7 @@ import InstallPrompt from '../components/InstallPrompt'
 import type { TrackId } from '../types/question'
 import { getPublicQuestionCountByTrack } from '../lib/questionBank'
 
-const FB = 'https://www.facebook.com/hyperionbynhyle/'
+const FB = 'https://www.facebook.com/HyperionMaritime/'
 
 /**
  * Android parity: Material Filled icon vectors used by TrackSelectionScreen.kt.
@@ -282,7 +282,7 @@ export default function TrackSelectionScreen() {
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>OFFICIAL PAGE & SUPPORT</div>
           <div className="qcount" style={{ fontSize: '1.35rem' }}>FACEBOOK</div>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>UPDATES & INQUIRIES</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>@hyperionbynhyle</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>@HyperionMaritime</div>
           <div style={{ marginTop: 'auto', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>VISIT PAGE</span>
             <span style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--accent)', color: 'var(--btn-primary-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>→</span>
