@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
 
 type ProductCode = 'oic_nw' | 'gmdss' | 'engine_ew' | 'deck_mgt' | 'engine_mgt'
-type LicenseTerm = 'week' | 'month' | 'year'
+type LicenseTerm = 'week' | 'month' | 'year' | 'lifetime'
 type LicenseStatus = 'active' | 'expired' | 'revoked' | 'none'
 type LicenseRecord = {
   product_code: ProductCode
@@ -18,6 +18,9 @@ type LicenseRecord = {
   order_id: string | null
   source?: string
   has_active_google_play?: boolean
+  has_manual_lifetime?: boolean
+  has_purchased_lifetime?: boolean
+  has_revocable_website?: boolean
 }
 type ManagedUser = {
   id: string
@@ -64,9 +67,14 @@ export function hydrateManagedUser(user: Omit<ManagedUser, 'licenses'> & { licen
 const TERM_OPTIONS: { value: LicenseTerm; label: string }[] = [
   { value: 'week', label: '1 Week' },
   { value: 'month', label: '1 Month' },
-  { value: 'year', label: '1 Year' }
+  { value: 'year', label: '1 Year' },
+  { value: 'lifetime', label: 'Lifetime' }
 ]
-const TERM_LABEL: Record<LicenseTerm, string> = { week: 'Weekly', month: 'Monthly', year: 'Yearly' }
+const TERM_LABEL: Record<LicenseTerm, string> = { week: 'Weekly', month: 'Monthly', year: 'Yearly', lifetime: 'Lifetime' }
+const SOURCE_LABEL: Record<string, string> = {
+  website: 'Website/Admin', google_play: 'Google Play', admin_lifetime: 'Admin lifetime',
+  google_play_lifetime: 'Google Play lifetime', paymongo_lifetime: 'Website lifetime'
+}
 const STATUS_LABEL: Record<LicenseStatus, string> = { active: 'ACTIVE', expired: 'EXPIRED', revoked: 'REVOKED', none: 'NOT LICENSED' }
 function dateLabel(value: string | null) {
   if (!value) return 'No expiry recorded'
@@ -181,14 +189,17 @@ export default function AdminLicensesScreen() {
     const key = user.id + ':' + track.code
     const license = user.licenses[track.code]
     const term = terms[key] || 'month'
-    const verb = license.status === 'active' ? 'extend' : 'activate'
-    const baseText = license.status === 'active' ? 'The new term will be added after the current expiry date.' : 'The selected term will begin now.'
-    if (!window.confirm(verb.toUpperCase() + ' ' + track.label + ' for ' + user.email + ' for ' + TERM_LABEL[term] + '? ' + baseText)) return
+    const lifetime = term === 'lifetime'
+    const extend = license.status === 'active' && license.license_term !== 'lifetime'
+    const prompt = lifetime
+      ? 'Grant lifetime access to ' + track.label + ' for ' + user.email + '?'
+      : (extend ? 'Extend ' : 'Activate ') + track.label + ' for ' + user.email + ' (' + TERM_LABEL[term] + ')?'
+    if (!window.confirm(prompt)) return
     setBusyKey(key)
     setMessage('')
     try {
       const result = await withPageLoading('Updating license', () => call({ action: 'grant', userId: user.id, productCode: track.code, term, note: notes[key] || '' }))
-      setMessage(track.label + ' license updated for ' + user.email + '. Expires ' + dateLabel(result.expiresAt) + (result.warning ? ' Warning: ' + result.warning : ''))
+      setMessage(track.label + ' license updated for ' + user.email + '. ' + (lifetime ? 'Lifetime access.' : 'Expires ' + dateLabel(result.expiresAt)) + (result.warning ? ' Warning: ' + result.warning : ''))
       await load()
     } catch (error) {
       setMessage(safeMessage(error))
@@ -196,14 +207,14 @@ export default function AdminLicensesScreen() {
       setBusyKey('')
     }
   }
-  const revoke = async (user: ManagedUser, track: typeof TRACKS[number]) => {
+  const revoke = async (user: ManagedUser, track: typeof TRACKS[number], lifetime = false) => {
     const key = user.id + ':' + track.code
-    if (!window.confirm('Revoke ' + track.label + ' access for ' + user.email + '? The payment record will not be changed.')) return
+    if (!window.confirm('Revoke ' + (lifetime ? 'the manual lifetime grant for ' : 'the website license for ') + track.label + ' for ' + user.email + '?')) return
     setBusyKey(key)
     setMessage('')
     try {
-      const result = await withPageLoading('Revoking license', () => call({ action: 'revoke', userId: user.id, productCode: track.code, note: notes[key] || '' }))
-      setMessage(track.label + ' access revoked for ' + user.email + (result.warning ? ' Warning: ' + result.warning : ''))
+      const result = await withPageLoading('Revoking license', () => call({ action: 'revoke', userId: user.id, productCode: track.code, ...(lifetime ? { term: 'lifetime' } : {}), note: notes[key] || '' }))
+      setMessage(track.label + (lifetime ? ' manual lifetime grant revoked for ' : ' website license revoked for ') + user.email + (result.warning ? ' Warning: ' + result.warning : ''))
       await load()
     } catch (error) {
       setMessage(safeMessage(error))
@@ -388,9 +399,9 @@ export default function AdminLicensesScreen() {
                       <span style={statusStyle(license.status)}>{STATUS_LABEL[license.status]}</span>
                     </div>
                     <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', lineHeight: 1.45, margin: '.45rem 0' }}>
-                      {license.source ? (license.source.split('+').map(source => source === 'google_play' ? 'Google Play' : source === 'website' ? 'Website/Admin' : source).join(' + ') + ' · ') : ''}
+                      {license.source ? (license.source.split('+').map(source => SOURCE_LABEL[source] || source).join(' + ') + ' · ') : ''}
                       {license.license_term ? TERM_LABEL[license.license_term] + ' · ' : ''}
-                      {license.exists ? (license.expires_at ? 'Expires ' + dateLabel(license.expires_at) : 'No expiry recorded') : 'No license record'}
+                      {license.exists ? (license.license_term === 'lifetime' ? 'No expiry' : license.expires_at ? 'Expires ' + dateLabel(license.expires_at) : 'No expiry recorded') : 'No license record'}
                     </div>
                     <label style={{ display: 'block', fontSize: '.72rem', fontWeight: 800, color: 'var(--text-muted)' }}>DURATION TO GRANT
                       <select value={term} onChange={event => setTerms(old => ({ ...old, [key]: event.target.value as LicenseTerm }))} style={{ ...field, marginBottom: '.55rem' }}>
@@ -401,8 +412,10 @@ export default function AdminLicensesScreen() {
                       <input value={notes[key] || ''} onChange={event => setNotes(old => ({ ...old, [key]: event.target.value }))} placeholder="Reason for manual change" style={field} />
                     </label>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: '.65rem' }}>
-                      <button type="button" className="btn btn-primary" disabled={!!busyKey} onClick={() => void grant(user, track)} style={{ flex: '1 1 145px', fontSize: '.72rem' }}>{busy ? 'SAVING…' : license.status === 'active' ? 'EXTEND LICENSE' : 'ACTIVATE LICENSE'}</button>
-                      {license.exists && license.status !== 'revoked' && !license.has_active_google_play && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track)} style={{ flex: '1 1 95px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE</button>}
+                      <button type="button" className="btn btn-primary" disabled={!!busyKey || (term === 'lifetime' && license.has_manual_lifetime)} onClick={() => void grant(user, track)} style={{ flex: '1 1 145px', fontSize: '.72rem' }}>{busy ? 'SAVING…' : term === 'lifetime' ? 'GRANT LIFETIME' : license.status === 'active' && license.license_term !== 'lifetime' ? 'EXTEND LICENSE' : 'ACTIVATE LICENSE'}</button>
+                      {(license.has_revocable_website ?? (license.exists && license.status !== 'revoked')) && !license.has_active_google_play && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track)} style={{ flex: '1 1 95px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE</button>}
+                      {license.has_manual_lifetime && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track, true)} style={{ flex: '1 1 145px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE LIFETIME GRANT</button>}
+                      {license.has_purchased_lifetime && <div style={{ flexBasis: '100%', color: 'var(--text-muted)', fontSize: '.72rem' }}>This track also has access from a lifetime purchase.</div>}
                       {license.has_active_google_play && <div style={{ flexBasis: '100%', color: 'var(--text-muted)', fontSize: '.72rem', lineHeight: 1.4 }}>Google Play access is verified server-side. Cancel or revoke the subscription through Google Play; access remains until its verified entitlement ends.</div>}
                     </div>
                   </div>

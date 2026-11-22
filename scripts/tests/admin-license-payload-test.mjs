@@ -16,6 +16,11 @@ const accounts = Array.from({ length: 12 }, (_, i) => ({ id: i ? 'free-' + i : u
 const row = (product_code, status, expires_at) => ({ id: product_code, user_id: userId, product_code, track_id: product_code, status, expires_at, license_term: 'month', granted_at: '2025-01-01T00:00:00Z', renewed_at: null, order_id: null })
 const website = [row('oic_nw', 'active', '2099-01-01T00:00:00Z'), row('gmdss', 'active', '2025-01-01T00:00:00Z'), row('engine_ew', 'revoked', '2099-01-01T00:00:00Z'), row('deck_mgt', 'active', null)]
 const play = [{ ...row('oic_nw', 'active', '2099-02-01T00:00:00Z'), updated_at: '2025-01-01T00:00:00Z' }]
+const lifetime = ['admin', 'paymongo'].map(provider => ({
+  id: provider, user_id: userId, product_code: 'oic_nw', track_id: 'DECK_OIC_NW',
+  provider, status: 'active', purchased_at: '2025-01-01T00:00:00Z'
+}))
+const manualChanges = []
 let email = adminEmail, authFails = false, dbReads = 0, authReads = 0, writes = 0, handler
 const originalFetch = globalThis.fetch
 globalThis.fetch = async (input, init) => {
@@ -26,9 +31,16 @@ globalThis.fetch = async (input, init) => {
     return authFails ? json({ message: 'Invalid token' }, 401) : json({ id: 'admin-fixture', email })
   }
   dbReads++
+  if (url.pathname.endsWith('/rpc/set_admin_lifetime_entitlement') && req.method === 'POST') {
+    const change = await req.json()
+    manualChanges.push(change)
+    lifetime[0].status = change.p_active ? 'active' : 'revoked'
+    return json(true)
+  }
   if (req.method !== 'GET') { writes++; throw new Error('Unexpected mutation') }
   if (url.pathname === '/auth/v1/admin/users/' + userId) return json({ user: accounts[0] })
   if (url.pathname === '/auth/v1/admin/users') return json({ users: accounts, aud: 'authenticated' })
+  if (url.pathname.endsWith('/lifetime_entitlements')) return json(lifetime)
   if (url.pathname.endsWith('/google_play_entitlements')) return json(play)
   if (url.pathname.endsWith('/entitlements')) return json(url.searchParams.has('product_code') ? website[0] : website)
   if (url.pathname.endsWith('/license_admin_audit') || url.pathname.endsWith('/user_activity') || url.pathname.endsWith('/orders') || url.pathname.endsWith('/checkout_batches')) return json([])
@@ -55,7 +67,12 @@ try {
   assert.equal(Object.keys(compact.users[1].licenses).length, 0)
   assert.equal(Object.keys(compact.users[0].licenses).length, 4, 'Expired and revoked records remain present')
   assert.equal(compact.users[0].licenses.oic_nw.has_active_google_play, true)
-  assert.equal(compact.users[0].licenses.oic_nw.source, 'google_play+website')
+  assert.equal(compact.users[0].licenses.oic_nw.source, 'admin_lifetime+google_play+paymongo_lifetime+website')
+  assert.equal(compact.users[0].licenses.oic_nw.license_term, 'lifetime')
+  assert.equal(compact.users[0].licenses.oic_nw.expires_at, null)
+  assert.equal(compact.users[0].licenses.oic_nw.has_manual_lifetime, true)
+  assert.equal(compact.users[0].licenses.oic_nw.has_purchased_lifetime, true)
+  assert.equal(compact.users[0].licenses.oic_nw.has_revocable_website, true)
   assert.deepEqual(codes.map(code => legacy.users[0].licenses[code].status), ['active', 'expired', 'revoked', 'expired', 'none'])
   assert.ok(Buffer.byteLength(compactText) < Buffer.byteLength(legacyText) * 0.5, 'Sparse accounts reduce uncompressed response bytes by over 50%')
   const ui = { exports: {}, require: () => ({}), console }
@@ -97,10 +114,21 @@ try {
     assert.equal((await send({ action: 'list' }, { 'Accept-Encoding': encoding })).headers.get('Content-Encoding'), null, 'Respect encoding negotiation: ' + encoding)
   }
   assert.equal((await send({ action: 'revoke', userId, productCode: 'oic_nw', compact: true })).status, 409, 'Google Play still protects active access from revocation')
+  assert.equal((await send({ action: 'revoke', userId, productCode: 'oic_nw', term: 'lifetime' })).status, 200)
+  const afterRevoke = (await (await send({ action: 'list', compact: true })).json()).users[0].licenses.oic_nw
+  assert.equal(afterRevoke.has_manual_lifetime, false)
+  assert.equal(afterRevoke.has_purchased_lifetime, true)
+  assert.equal(afterRevoke.status, 'active')
+  assert.equal((await send({ action: 'grant', userId, productCode: 'oic_nw', term: 'lifetime', note: 'Test grant' })).status, 200)
+  assert.deepEqual(manualChanges, [
+    { p_user_id: userId, p_product_code: 'oic_nw', p_active: false, p_admin_user_id: 'admin-fixture', p_admin_email: adminEmail, p_note: null },
+    { p_user_id: userId, p_product_code: 'oic_nw', p_active: true, p_admin_user_id: 'admin-fixture', p_admin_email: adminEmail, p_note: 'Test grant' },
+  ])
   assert.equal(writes, 0)
   const readsBeforeDenied = dbReads
   email = 'member@fixture.invalid'
   assert.equal((await send({ action: 'list', compact: true })).status, 403)
+  assert.equal((await send({ action: 'grant', userId, productCode: 'oic_nw', term: 'lifetime' })).status, 403)
   authFails = true
   assert.equal((await send({ action: 'list', compact: true })).status, 401)
   assert.equal(dbReads, readsBeforeDenied, 'Denied requests never read privileged account data')
