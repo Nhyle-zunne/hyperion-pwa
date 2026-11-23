@@ -2,6 +2,7 @@ import { assertSquareCorners } from './square-corners-browser-helper.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { chromium } from 'playwright'
+import { PWA_PURCHASES_PAUSED, PWA_PURCHASE_PAUSE_NOTICE } from '../../src/lib/pwaPurchaseAvailability.ts'
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
 try {
@@ -665,7 +666,9 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Shopping cart', exact: true }).count(), 0, 'Basket alias also hides the floating cart')
   await page.setViewportSize({ width: 390, height: 900 })
   const checkout = page.getByRole('button', { name: 'Checkout', exact: true })
-  await page.waitForFunction(() => { const button = document.querySelector('.checkout-pay-button'); return button && !button.disabled })
+  await page.locator('.checkout-pay-button').waitFor()
+  assert.equal(await checkout.isDisabled(), PWA_PURCHASES_PAUSED,
+    'Selected checkout follows the temporary purchase availability policy')
   await page.getByRole('button', { name: 'Remove', exact: true }).click()
   await page.getByText('Your checkout is empty', { exact: true }).waitFor()
   assert.equal(await checkout.isDisabled(), true, 'Empty checkout cannot be activated')
@@ -676,8 +679,9 @@ try {
   assert.equal(await checkout.evaluate(button => getComputedStyle(button).cursor), 'not-allowed', 'Empty checkout does not show an active pointer')
   await page.screenshot({ path: 'account-empty-checkout-390.png', fullPage: true })
   await page.goto(process.env.HYPERION_RECOVERY_TEST_URL)
-  await page.waitForFunction(() => { const button = document.querySelector('.checkout-pay-button'); return button && !button.disabled })
-  assert.equal(await checkout.isEnabled(), true, 'Selecting a track enables checkout again')
+  await page.locator('.checkout-pay-button').waitFor()
+  assert.equal(await checkout.isEnabled(), !PWA_PURCHASES_PAUSED,
+    'Selecting a track only enables checkout when website payments are available')
   await page.waitForFunction(() => !document.querySelector('.hyperion-top-loader.is-visible'))
   await page.evaluate(() => {
     window.finishFirstLoading = window.beginFixtureLoading('Loading preview')
@@ -967,8 +971,8 @@ try {
   await desktopOfflinePage.close()
   console.log('PASS: desktop menu offline licensed identity, token-refresh failure, owner isolation, and local-only sign-out')
 
-  // A website renewal remains purchasable and keeps the old term; Google
-  // Play-only access stays protected from overlapping website purchases.
+  // A website renewal keeps the old term, but the temporary pause must
+  // prevent a new payment. Google Play-only access stays protected.
   const renewalPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
   await renewalPage.addInitScript(() => localStorage.setItem('fixture-renewal-website', 'yes'))
   await renewalPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
@@ -976,22 +980,30 @@ try {
   const renewingCard = renewalPage.locator('.account-product-card').first()
   const extendButton = renewingCard.getByRole('button', { name: 'EXTEND LICENSE' })
   await extendButton.waitFor()
-  assert.equal(await extendButton.isEnabled(), true, 'A valid website license can be renewed before expiry')
+  assert.equal(await extendButton.isEnabled(), !PWA_PURCHASES_PAUSED,
+    'Website extensions only open checkout when purchases are available')
   assert.equal(await renewingCard.getByText('LICENSE ACTIVE').count(), 1)
   const monthlyExtension = renewingCard.locator('.store-duration-option').nth(1)
   await monthlyExtension.click()
   assert.equal(await monthlyExtension.getAttribute('aria-pressed'), 'true', 'An active license can choose a new duration')
   assert.match(await renewingCard.locator('.product-price').innerText(), /₱79/)
-  await renewingCard.getByRole('button', { name: 'EXTEND LICENSE' }).click()
-  await renewalPage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
-  await renewalPage.getByText('Extend existing license · remaining days are kept').waitFor()
-  await renewalPage.waitForFunction(() => {
-    const button = document.querySelector('.checkout-pay-button')
-    return button && !button.disabled
-  })
-  assert.equal(await renewalPage.getByRole('button', { name: 'Checkout', exact: true }).isEnabled(), true,
-    'Active website renewal proceeds to secure checkout without charging in the fixture')
-  assert.equal((await renewalPage.locator('.basket-summary').innerText()).includes('₱79'), true)
+  if (PWA_PURCHASES_PAUSED) {
+    assert.equal(await renewalPage.getByText(PWA_PURCHASE_PAUSE_NOTICE).count(), 1)
+    await extendButton.evaluate(button => button.click())
+    assert.equal(await renewalPage.getByRole('heading', { name: 'Checkout', exact: true }).count(), 0,
+      'Even programmatic clicks cannot start a website extension during the pause')
+  } else {
+    await extendButton.click()
+    await renewalPage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
+    await renewalPage.getByText('Extend existing license · remaining days are kept').waitFor()
+    await renewalPage.waitForFunction(() => {
+      const button = document.querySelector('.checkout-pay-button')
+      return button && !button.disabled
+    })
+    assert.equal(await renewalPage.getByRole('button', { name: 'Checkout', exact: true }).isEnabled(), true,
+      'Active website renewal proceeds to secure checkout without charging in the fixture')
+    assert.equal((await renewalPage.locator('.basket-summary').innerText()).includes('₱79'), true)
+  }
   await renewalPage.close()
 
   const playRenewalPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })
@@ -1002,7 +1014,7 @@ try {
   await playAction.waitFor()
   assert.equal(await playAction.isDisabled(), true, 'Google Play subscription cannot be renewed from this PWA-only flow')
   await playRenewalPage.close()
-  console.log('PASS: active website renewal CTA, term selection, enabled checkout, and Google Play-only protection')
+  console.log('PASS: website extension availability, term selection, and Google Play-only protection')
 
   // The fourth option is a one-time product in the SAME card. The initial
   // button opens Hyperion Checkout; only confirming there can create a
@@ -1024,12 +1036,17 @@ try {
   const unavailableAction = disabledCard.getByRole('button', { name: 'BUY NOW' })
   assert.equal(await unavailableAction.isDisabled(), true,
     'Checkout readiness still prevents an unverified Lifetime payment')
-  assert.match(await disabledCard.locator('.store-lifetime-note').innerText(), /PayMongo payment and refund verification/)
+  if (PWA_PURCHASES_PAUSED) {
+    assert.equal(await disabledCard.locator('.store-lifetime-note').count(), 0,
+      'General purchase pause replaces the old Lifetime-only restriction notice')
+  } else {
+    assert.match(await disabledCard.locator('.store-lifetime-note').innerText(), /PayMongo payment and refund verification/)
+  }
   await disabledCard.getByRole('button', { name: 'Deck OIC-NW Monthly ₱79' }).click()
   assert.equal(await lifetimeOption.getAttribute('aria-pressed'), 'false')
   assert.match(await disabledCard.locator('.product-price').innerText(), /₱79.*month/)
-  assert.equal(await disabledCard.getByRole('button', { name: 'BUY NOW' }).isEnabled(), true,
-    'Subscriptions retain their existing checkout when Lifetime is unavailable')
+  assert.equal(await disabledCard.getByRole('button', { name: 'BUY NOW' }).isEnabled(), !PWA_PURCHASES_PAUSED,
+    'Subscriptions also respect the temporary website-wide purchase pause')
   await lifetimeDisabledPage.close()
 
   const lifetimePage = await browser.newPage({ viewport: { width: 390, height: 844 } })
@@ -1054,7 +1071,16 @@ try {
     const before = await lifetimePage.evaluate(() =>
       window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').length)
     const storeButton = card.getByRole('button', { name: 'BUY NOW', exact: true })
-    assert.equal(await storeButton.isEnabled(), true)
+    assert.equal(await storeButton.isEnabled(), !PWA_PURCHASES_PAUSED,
+      'Lifetime BUY NOW respects the website payment pause for ' + label)
+    if (PWA_PURCHASES_PAUSED) {
+      await storeButton.evaluate(button => button.click())
+      assert.equal(await lifetimePage.getByRole('heading', { name: 'Checkout', exact: true }).count(), 0)
+      assert.equal(await lifetimePage.evaluate(() =>
+        window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').length), before,
+      'A paused Lifetime card cannot create a PayMongo checkout')
+      continue
+    }
     await storeButton.click()
     await lifetimePage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
     const selected = lifetimePage.locator('.lifetime-checkout-item')
@@ -1070,24 +1096,42 @@ try {
     await lifetimePage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
   }
 
-  const engineCard = lifetimePage.locator('.account-product-card').nth(2)
-  await engineCard.getByRole('button', { name: /Engine OIC-EW Lifetime/ }).click()
-  await engineCard.getByRole('button', { name: 'BUY NOW' }).click()
-  await lifetimePage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
-  const checkoutButton = lifetimePage.getByRole('button', { name: 'Checkout', exact: true })
-  await checkoutButton.waitFor()
-  assert.equal(await checkoutButton.isEnabled(), true)
-  assert(await lifetimePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-    'Lifetime Checkout fits mobile without horizontal overflow')
-  await checkoutButton.click()
-  await lifetimePage.getByText('This synthetic fixture never initiates a real payment.').waitFor()
-  const lifetimeCreateCalls = await lifetimePage.evaluate(() =>
-    window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').map(call => call.data))
-  assert.equal(lifetimeCreateCalls.length, 1, 'Only Checkout confirmation starts the selected one-time purchase')
-  assert.equal(lifetimeCreateCalls[0].productCode, 'engine_ew')
-  assert.equal(lifetimeCreateCalls[0].expectedTotalPhp, 999,
-    'The checkout sends the matching track and amount; the server remains authoritative')
-  await lifetimePage.getByRole('button', { name: '← Back to Bond Store' }).click()
+  if (PWA_PURCHASES_PAUSED) {
+    // A direct checkout link must not bypass the disabled Bond Store button.
+    const directCheckoutPage = await browser.newPage({ viewport: { width: 390, height: 844 } })
+    await directCheckoutPage.addInitScript(() => localStorage.setItem('fixture-lifetime-enabled', 'yes'))
+    await directCheckoutPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=lifetime`)
+    await directCheckoutPage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
+    const checkoutButton = directCheckoutPage.getByRole('button', { name: 'Checkout', exact: true })
+    assert.equal(await checkoutButton.isDisabled(), true, 'Direct Lifetime Checkout is disabled during the pause')
+    assert.equal(await directCheckoutPage.getByText(PWA_PURCHASE_PAUSE_NOTICE).count() > 0, true)
+    assert(await directCheckoutPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      'Paused Lifetime Checkout still fits mobile')
+    await checkoutButton.evaluate(button => button.click())
+    const lifetimeCreateCalls = await directCheckoutPage.evaluate(() =>
+      window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create'))
+    assert.equal(lifetimeCreateCalls.length, 0, 'A direct checkout link cannot start a paused payment')
+    await directCheckoutPage.close()
+  } else {
+    const engineCard = lifetimePage.locator('.account-product-card').nth(2)
+    await engineCard.getByRole('button', { name: /Engine OIC-EW Lifetime/ }).click()
+    await engineCard.getByRole('button', { name: 'BUY NOW' }).click()
+    await lifetimePage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
+    const checkoutButton = lifetimePage.getByRole('button', { name: 'Checkout', exact: true })
+    await checkoutButton.waitFor()
+    assert.equal(await checkoutButton.isEnabled(), true)
+    assert(await lifetimePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      'Lifetime Checkout fits mobile without horizontal overflow')
+    await checkoutButton.click()
+    await lifetimePage.getByText('This synthetic fixture never initiates a real payment.').waitFor()
+    const lifetimeCreateCalls = await lifetimePage.evaluate(() =>
+      window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').map(call => call.data))
+    assert.equal(lifetimeCreateCalls.length, 1, 'Only Checkout confirmation starts the selected one-time purchase')
+    assert.equal(lifetimeCreateCalls[0].productCode, 'engine_ew')
+    assert.equal(lifetimeCreateCalls[0].expectedTotalPhp, 999,
+      'The checkout sends the matching track and amount; the server remains authoritative')
+    await lifetimePage.getByRole('button', { name: '← Back to Bond Store' }).click()
+  }
 
   await lifetimePage.evaluate(() => localStorage.setItem('fixture-lifetime-pending', 'yes'))
   await lifetimePage.reload()
@@ -1101,7 +1145,7 @@ try {
     window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:cancel'))
   assert.equal(lifetimeCancelCalls.length, 1, 'Cancellation still goes through the existing server verifier')
   await lifetimePage.close()
-  console.log('PASS: all five Lifetime cards open Checkout, accurate amounts, no premature charge, protected payment and pending cancellation')
+  console.log('PASS: all five Lifetime cards, pause policy, protected checkout, and pending cancellation')
 
   await page.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=study-time`)
   await page.getByRole('img', { name: /Study time breakdown by track/ }).waitFor()

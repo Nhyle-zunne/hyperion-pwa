@@ -2,6 +2,7 @@ import { assertSquareCorners } from './square-corners-browser-helper.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { chromium } from 'playwright'
+import { PWA_PURCHASES_PAUSED, PWA_PURCHASE_PAUSE_NOTICE } from '../../src/lib/pwaPurchaseAvailability.ts'
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
 const failures = []
 const base = process.env.HYPERION_MEDIA_TEST_URL || process.env.HYPERION_RECOVERY_TEST_URL
@@ -354,11 +355,18 @@ try {
     await page.getByRole('button', { name: 'UNLOCK FULL REVIEWER' }).click()
     const dialog = page.getByRole('dialog', { name: 'Deck OIC-NW' })
     await dialog.getByRole('button', { name: 'Deck OIC-NW Monthly ₱79' }).click()
-    await dialog.getByRole('button', { name: 'BUY NOW' }).click()
-    await page.getByTestId('hub-destination').waitFor()
-    assert.equal(await page.getByTestId('hub-destination').innerText(), '/checkout?buy_product=oic_nw&buy_term=month')
-    const basket = await page.evaluate(() => JSON.parse(localStorage.getItem('hyperion-account-basket-v1') || '[]'))
-    assert.deepEqual(basket, [{ code: 'oic_nw', term: 'month' }], 'Popup checkout retains selected product and price term')
+    const dialogBuy = dialog.getByRole('button', { name: 'BUY NOW' })
+    if (PWA_PURCHASES_PAUSED) {
+      assert.equal(await dialogBuy.isDisabled(), true, 'Paused popup cannot open checkout')
+      assert.equal(await dialog.getByText(PWA_PURCHASE_PAUSE_NOTICE).count(), 1)
+      assert.equal(await page.getByTestId('hub-destination').count(), 0, 'Paused purchase does not navigate')
+    } else {
+      await dialogBuy.click()
+      await page.getByTestId('hub-destination').waitFor()
+      assert.equal(await page.getByTestId('hub-destination').innerText(), '/checkout?buy_product=oic_nw&buy_term=month')
+      const basket = await page.evaluate(() => JSON.parse(localStorage.getItem('hyperion-account-basket-v1') || '[]'))
+      assert.deepEqual(basket, [{ code: 'oic_nw', term: 'month' }], 'Popup checkout retains selected product and price term')
+    }
   })
   await scenario('Transient download has Retry, accessible portal zoom and Escape focus return', async ({ page, open, transient }) => {
     transient(); await open('gallery')
