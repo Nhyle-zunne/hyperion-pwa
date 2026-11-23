@@ -419,4 +419,4 @@ function toSearchQuestions(path: string, text: string): Record<string, unknown>[
     difficulty: difficulty(i + 1)
   }));
 }
-export { SOURCE_ASSETS, decryptToText, sampleFreeCsv, toSearchQuestions, trackForPath, sourceInfo, deriveKeyBytes, validQuestionCount, QUESTION_COUNT_ALGORITHM_VERSION };
+export { SOURCE_ASSETS, decryptToText, sampleFreeCsv, toSearchQuestions, trackForPath, sourceInfo, deriveKeyBytes, validQuestionCount, validStandardRows, QUESTION_COUNT_ALGORITHM_VERSION };

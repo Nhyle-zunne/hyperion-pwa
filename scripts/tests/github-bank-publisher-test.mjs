@@ -197,3 +197,18 @@ const c5Result = reconcileC1Explanations(c5Before, c5Upload, c5)
 assert.equal(c5Result.preserved, 1)
 assert.equal(c5Result.text.split(/\r?\n/).at(-1), shortLegacyRow)
 assert.equal(toSearchQuestions(c5, c5Result.text).length, 1)
+
+const c7 = 'deck/oic_nw_c7.csv.enc'
+const numberedDeckHeader = 'No,Question,A,B,C,D,Ans,Explanation'
+const numberedDeckRows = [
+  '1,First question?,Port,Starboard,Ahead,Astern,A,First rationale',
+  '1,Duplicate slot?,Port,Starboard,Ahead,Astern,B,',
+  '534,Outside the numbered range?,Port,Starboard,Ahead,Astern,D,',
+  '2,Second question?,Port,Starboard,Ahead,Astern,C,Second rationale'
+]
+const numberedDeckBefore = [numberedDeckHeader, ...numberedDeckRows].join('\n')
+const numberedDeckUpload = numberedDeckBefore.replace('First rationale', '').replace('Second rationale', '')
+const numberedDeckResult = reconcileC1Explanations(numberedDeckBefore, numberedDeckUpload, c7)
+assert.equal(numberedDeckResult.preserved, 2)
+assert.deepEqual(toSearchQuestions(c7, numberedDeckResult.text).map(q => q.explanation), ['First rationale', 'Second rationale'])
+assert.deepEqual(numberedDeckResult.text.split(/\r?\n/).slice(2, 4), numberedDeckRows.slice(1, 3))

@@ -18,7 +18,7 @@ const original=new Uint8Array(12+encrypted.length);original.set(iv);original.set
 const hash=async value=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',typeof value==='string'?new TextEncoder().encode(value):value))].map(x=>x.toString(16).padStart(2,'0')).join('')
 Object.assign(manifest.files.find(file=>file.path===path),{bytes:original.length,sha256:await hash(original)})
 const initialPointer={version:1,revision:'0'.repeat(40),manifestSha256:await hash(JSON.stringify(manifest)),publishedAt:'2026-11-03T00:00:00Z',publicationId:'fixture-initial',inputDigest:'f'.repeat(64)}
-const next='No,Question,A,B,C,D,Ans,Explanation\n1,First synthetic question?,Port,Starboard,Ahead,Astern,A,\n2,Second synthetic question?,Port,Starboard,Ahead,Astern,A,\n'+malformedRows+'999999,Publisher synthetic append question?,Port,Starboard,Ahead,Astern,A,\n'
+const next='No,Question,A,B,C,D,Ans,Explanation\n1,First synthetic question?,Port,Starboard,Ahead,Astern,A,\n2,Second synthetic question?,Port,Starboard,Ahead,Astern,A,\n'+malformedRows+'429,Publisher synthetic append question?,Port,Starboard,Ahead,Astern,A,\n'
 const input={requestId:'synthetic-publish-123',files:[{path,format:'csv',content:next}]}
 function repository({race=false,lostResponse=false,unselectedCorrupt=false}={}){
  let bankEntries=[], blobContents=[], head='1'.repeat(40),posts=0,sourceReads=0,stagedManifest='',pointer=null,blobBytes=null,treeCalls=0,commitCalls=0,admin=true
