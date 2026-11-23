@@ -367,11 +367,20 @@ try {
     }
     assert.equal(await page.getByRole('button', { name: 'Shopping cart', exact: true }).count(), 0, 'Checkout has no floating cart')
     if (width === 390) {
-      const action = page.locator('.basket-checkout-action.is-payable')
-      assert.equal(await action.evaluate(el => getComputedStyle(el).position), 'fixed', 'Mobile checkout total and payment action dock above the bottom navigation')
+      const action = page.locator('.basket-checkout-action')
       assert.equal(await page.getByRole('button', { name: 'Checkout', exact: true }).count(), 1, 'Mobile shows exactly one checkout button')
-      const checkoutRect = await action.boundingBox()
-      assert(checkoutRect && checkoutRect.y >= 0 && Math.abs(checkoutRect.y + checkoutRect.height - (900 - 72)) <= 4, `Mobile checkout bar must be anchored 72px above the viewport bottom, not halfway up content: ${JSON.stringify(checkoutRect)}`)
+      if (PWA_PURCHASES_PAUSED) {
+        assert.equal(await action.evaluate(el => getComputedStyle(el).position), 'static',
+          'Paused checkout does not dock a disabled payment bar over the mobile content')
+        assert.equal(await action.getByRole('button', { name: 'Checkout', exact: true }).isDisabled(), true)
+        assert.equal(await page.locator('.basket-checkout-action.is-payable').count(), 0)
+      } else {
+        assert.equal(await action.evaluate(el => getComputedStyle(el).position), 'fixed',
+          'Mobile checkout total and payment action dock above the bottom navigation')
+        const checkoutRect = await action.boundingBox()
+        assert(checkoutRect && checkoutRect.y >= 0 && Math.abs(checkoutRect.y + checkoutRect.height - (900 - 72)) <= 4,
+          `Mobile checkout bar must be anchored 72px above the viewport bottom, not halfway up content: ${JSON.stringify(checkoutRect)}`)
+      }
       assert.equal(await page.locator('.route-transition').evaluate(el => getComputedStyle(el).transform), 'none', 'Mobile checkout must not inherit an animated transform containing block that traps fixed payment controls')
       assert((await page.locator('.basket-selected-card').boundingBox()).y < 220, 'Selected tracks appear near the top without redundant profile and tabs')
     }
