@@ -11,6 +11,7 @@ import AccountSectionTabs from '../components/AccountSectionTabs'
 import LifetimeCheckoutScreen from './LifetimeCheckoutScreen'
 import { fetchPendingLifetimeOrders } from '../lib/orderHistoryRequests'
 import type { PendingLifetimeOrder } from '../lib/orderHistoryRequests'
+import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 
 type Order = {
   id: string
@@ -440,6 +441,10 @@ function TimedBasketScreen() {
   }, [session?.user.id, params])
 
   const checkoutInternal = async (requestedItems: BasketItem[] = basket) => {
+    if (!canPerformPwaPaymentAction('checkout')) {
+      setMessage(PWA_PURCHASE_PAUSE_NOTICE)
+      return
+    }
     if (!supabase || !session) {
       navigate('/account')
       setMessage('Sign in to Hyperion first. Your selected tracks are saved in this browser.')
@@ -537,6 +542,10 @@ function TimedBasketScreen() {
     withPageLoading('Checking checkout cancellation', () => cancelCheckoutInternal(groupId, groupItems))
 
   const resumeLifetimeCheckoutInternal = async (order: PendingLifetimeOrder) => {
+    if (!canPerformPwaPaymentAction('resume')) {
+      setMessage(PWA_PURCHASE_PAUSE_NOTICE)
+      return
+    }
     if (!supabase || !session) return
     const product = PAID_PRODUCTS.find(item => item.code === order.product_code)
     if (!product) {
@@ -829,9 +838,10 @@ function TimedBasketScreen() {
     <button type="button" className="basket-back-link" onClick={() => navigate('/account?tab=payments')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
     <AccountSectionTabs active="checkout" />
     <div className="basket-heading" style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
-      <div><div className="basket-heading-brand" style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>Review your selected tracks and check out securely in one payment.</p></div>
+      <div><div className="basket-heading-brand" style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>{canPerformPwaPaymentAction('checkout') ? 'Review your selected tracks and check out securely in one payment.' : 'Review your selections and existing payment statuses. New checkouts are paused.'}</p></div>
       <span className="basket-item-count" style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'} to purchase</span>
     </div>
+    {!canPerformPwaPaymentAction('checkout') && <div role="status" style={{ ...style.card, marginBottom: '1rem', color: 'var(--text-muted)' }}>{PWA_PURCHASE_PAUSE_NOTICE}</div>}
 
     {!session ? <section style={{ ...style.card, maxWidth: 600 }}>
       <h2 style={{ marginTop: 0 }}>Sign in to continue</h2>
@@ -841,11 +851,11 @@ function TimedBasketScreen() {
     </section> : <>
       {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>
         {message}
-        {checkoutUrlFallback && <div style={{ marginTop: '.8rem' }}>
+        {canPerformPwaPaymentAction('resume') && checkoutUrlFallback && <div style={{ marginTop: '.8rem' }}>
           <a href={checkoutUrlFallback} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, padding: '.7rem 1rem', textDecoration: 'none' }}>CONTINUE TO PAYMONGO SECURE CHECKOUT</a>
           <p className="basket-muted" style={{ margin: '.5rem 0 0' }}>If payment is already complete, don't pay again. Return to this page or refresh payment status to verify it.</p>
         </div>}
-        {showManualPaymentFallback && <div style={{ marginTop: '.85rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
+        {canPerformPwaPaymentAction('manual-payment') && showManualPaymentFallback && <div style={{ marginTop: '.85rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
           <strong style={{ display: 'block', marginBottom: '.3rem' }}>PayMongo checkout is unavailable</strong>
           <p className="basket-muted" style={{ margin: '0 0 .7rem' }}>You can pay by QR instead. Choose the track below to open its dedicated manual payment page. Manual payments require admin review before your license is activated.</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem' }}>
@@ -860,7 +870,7 @@ function TimedBasketScreen() {
 
       {(pendingCheckoutGroups.length + pendingLifetimeOrders.length) > 0 && <section className="basket-pending-card" style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
         <div className="basket-pending-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length + pendingLifetimeOrders.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Resume the same payment or cancel it safely. Don’t start a second payment for the same items.</p></div>
+          <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length + pendingLifetimeOrders.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>{canPerformPwaPaymentAction('resume') ? 'Resume the same payment or cancel it safely. Don’t start a second payment for the same items.' : 'Resuming payment is temporarily unavailable. You can still refresh its status or cancel safely.'}</p></div>
           <button type="button" className="btn btn-outline basket-pending-refresh" disabled={busy} onClick={() => void refreshStatus()}>{busy ? 'Checking…' : 'Refresh payment status'}</button>
         </div>
         {pendingCheckoutGroups.map(group => <div className="basket-row basket-pending-row" key={group.id}>
@@ -869,7 +879,7 @@ function TimedBasketScreen() {
             <div className="basket-muted" style={{ marginTop: '.25rem' }}>{group.codes.length} track{group.codes.length === 1 ? '' : 's'} · ₱{group.total}</div>
           </div>
           <div className="basket-action-row basket-pending-actions">
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void checkout(group.items)}>RESUME CHECKOUT</button>
+            <button type="button" className="btn btn-primary" disabled={!canPerformPwaPaymentAction('resume') || busy} onClick={() => void checkout(group.items)}>RESUME CHECKOUT</button>
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelCheckout(group.id, group.items)} style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busyCheckoutId === group.id ? 'CHECKING…' : 'CANCEL'}</button>
           </div>
         </div>)}
@@ -879,7 +889,7 @@ function TimedBasketScreen() {
             <div className="basket-muted" style={{ marginTop: '.25rem' }}>One-time payment · ₱{Number(order.amount_php).toLocaleString('en-PH')}</div>
           </div>
           <div className="basket-action-row basket-pending-actions">
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void resumeLifetimeCheckout(order)}>
+            <button type="button" className="btn btn-primary" disabled={!canPerformPwaPaymentAction('resume') || busy} onClick={() => void resumeLifetimeCheckout(order)}>
               {busyCheckoutId === order.id ? 'CHECKING…' : 'RESUME CHECKOUT'}
             </button>
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelLifetimeCheckout(order.id)}
@@ -912,13 +922,13 @@ function TimedBasketScreen() {
           <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Order summary</h2>
           <p className="basket-muted basket-summary-count" style={{ margin: '.3rem 0 1rem' }}>{selectedItems.length} selected track{selectedItems.length === 1 ? '' : 's'}</p>
           {selectedItems.map(({ code, term, product, price }) => <div className="basket-summary-list" key={code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{product.label} <span className="basket-muted">({termLabel(term)})</span></span><strong>₱{price}</strong></div>)}
-          <div className={`basket-checkout-action${paymongoCheckoutEnabled === true ? ' is-payable' : ''}`}>
+          <div className={`basket-checkout-action${paymongoCheckoutEnabled === true && canPerformPwaPaymentAction('checkout') ? ' is-payable' : ''}`}>
             <div className="basket-total-row" style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
-          {paymongoCheckoutEnabled === true ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length } onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : <>Checkout <span aria-hidden="true">🛒</span></>}</button> : <div role="status" aria-live="polite" style={{ marginTop: '1rem', padding: '.75rem', textAlign: 'center', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text-muted)', fontSize: '.84rem', fontWeight: 750 }}>{paymongoCheckoutEnabled === null ? 'Checking PayMongo checkout availability…' : 'PayMongo checkout is disabled. Use a manual payment option above.'}</div>}
+          {paymongoCheckoutEnabled === true ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={!canPerformPwaPaymentAction('checkout') || busy || !supabaseConfigured || !selectedItems.length } onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : <>Checkout <span aria-hidden="true">🛒</span></>}</button> : <div role="status" aria-live="polite" style={{ marginTop: '1rem', padding: '.75rem', textAlign: 'center', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text-muted)', fontSize: '.84rem', fontWeight: 750 }}>{!canPerformPwaPaymentAction('checkout') ? PWA_PURCHASE_PAUSE_NOTICE : paymongoCheckoutEnabled === null ? 'Checking PayMongo checkout availability…' : 'PayMongo checkout is disabled. Use a manual payment option above.'}</div>}
           </div>
           {activeInBasket.length > 0 && <p style={{ color: 'var(--success, #15803d)', fontSize: '.8rem', lineHeight: 1.45 }}>An active website license is extended from its current expiration date after verified payment. Google Play subscriptions must be managed in Google Play.</p>}
           {paymongoCheckoutEnabled === true && <div className="basket-payment-methods" style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['QR Ph'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>}
-          <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{paymongoCheckoutEnabled === true ? 'After PayMongo verifies this exact payment, new tracks activate and existing website licenses are extended without losing remaining days.' : paymongoCheckoutEnabled === null ? 'Checking whether PayMongo checkout is available…' : 'Use the manual-payment option above. Manual payments require admin review before your license is activated.'}</p>
+          <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{!canPerformPwaPaymentAction('checkout') ? PWA_PURCHASE_PAUSE_NOTICE : paymongoCheckoutEnabled === true ? 'After PayMongo verifies this exact payment, new tracks activate and existing website licenses are extended without losing remaining days.' : paymongoCheckoutEnabled === null ? 'Checking whether PayMongo checkout is available…' : 'Use the manual-payment option above. Manual payments require admin review before your license is activated.'}</p>
         </aside>
       </div>
     </>}
