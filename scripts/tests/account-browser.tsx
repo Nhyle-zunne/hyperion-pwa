@@ -32,7 +32,7 @@ if (section === 'study-time') useStudyTimeStore.setState({ selectedDate: '2026-1
   { id: 'synthetic-deck-time', day: '2026-11-14', at: new Date(2026, 10, 14, 12).getTime(), durationMs: 900000, mode: 'PRACTICE', track: 'DECK_OIC_NW' },
   { id: 'synthetic-radio-time', day: '2026-11-14', at: new Date(2026, 10, 14, 12).getTime(), durationMs: 100000, mode: 'PRACTICE', track: 'GMDSS_GOC' }
 ] })
-const initialPath = section === 'study-time' ? '/study-time' : section === 'account-menu' ? '/account?tab=licenses' : section === 'account' ? '/account?tab=payments' : section === 'admin' ? '/admin/licenses' : section === 'question-editor' ? '/admin/questions' : section === 'basket' ? '/BASKET' : section === 'orders' ? '/orders' : section === 'payment' ? '/checkout?payment=success&order_id=fixture-order' : '/checkout?buy_product=gmdss&buy_term=month'
+const initialPath = section === 'study-time' ? '/study-time' : section === 'account-menu' ? '/account?tab=licenses' : section === 'account' ? '/account?tab=payments' : section === 'admin' ? '/admin/licenses' : section === 'question-editor' ? '/admin/questions' : section === 'basket' ? '/BASKET' : section === 'orders' ? '/orders' : section === 'payment' ? '/checkout?payment=success&order_id=fixture-order' : section === 'lifetime' ? '/checkout?lifetime_product=engine_ew' : '/checkout?buy_product=gmdss&buy_term=month'
 createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={[initialPath]}>
   <TopLoadingIndicator />
   {section === 'account-menu' && <nav className="app-bottom-nav" aria-label="Main navigation"><DesktopAccountMenu /></nav>}

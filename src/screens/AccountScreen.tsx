@@ -10,6 +10,7 @@ import { withPageLoading } from '../lib/pageLoading'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 import { getCachedOfflineEntitlementSnapshot, type CachedOfflineEntitlementSnapshot } from '../lib/offlineQuestionCache'
+import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 
 type Order = {
   id: string
@@ -176,6 +177,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   }, [basket, isLayout])
 
   const buyNow = (code: PaidTrack, term: LicenseTerm) => {
+    if (!canPerformPwaPaymentAction('buy')) return
     const nextItem: BasketItem = { code, term }
     const nextBasket = basket.some(item => item.code === code)
       ? basket.map(item => item.code === code ? nextItem : item)
@@ -214,6 +216,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   }, [session?.user.id, lifetimeRefreshRevision, isLayout])
 
   const buyLifetime = (code: PaidTrack) => {
+    if (!canPerformPwaPaymentAction('buy')) return
     if (!PAID_PRODUCTS.some(product => product.code === code)) return
     // Open Hyperion's own review-and-pay page first. The user starts the
     // existing verified PayMongo Lifetime checkout from that page.
@@ -1020,9 +1023,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           </> : <>
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
-                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>Unlimited practice, mock exams, and offline study for your chosen track. Active website licenses can be extended without losing remaining days.</p></div>
+                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>{canPerformPwaPaymentAction('buy') ? 'Unlimited practice, mock exams, and offline study for your chosen track. Active website licenses can be extended without losing remaining days.' : 'Review the available tracks and plans. Website purchases are temporarily paused.'}</p></div>
                 <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>WEEK · MONTH · YEAR · LIFETIME</span>
               </div>
+              {!canPerformPwaPaymentAction('buy') && <p role="status" style={{ margin: '0 0 1rem', padding: '.8rem', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{PWA_PURCHASE_PAUSE_NOTICE}</p>}
               <div className="account-products-grid">
                 {PAID_PRODUCTS.map(item => {
                   const currentLicense = owned.find(license => license.product_code === item.code)
@@ -1058,14 +1062,14 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                       {alreadyLifetime ? '✓ LIFETIME OWNED' : isLifetime ? (pendingLifetime ? 'LIFETIME CHECKOUT OPEN' : 'NO EXPIRATION') : isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}
                     </span>
                     <button type="button" className="btn btn-primary store-buy-button"
-                      disabled={busy || alreadyLifetime || (isLifetime ? (Boolean(session) && !lifetimeCheckoutEnabled) : (isGooglePlayOwned || manualPending))}
+                      disabled={!canPerformPwaPaymentAction(isOwned ? 'extend' : 'buy') || busy || alreadyLifetime || (isLifetime ? (Boolean(session) && !lifetimeCheckoutEnabled) : (isGooglePlayOwned || manualPending))}
                       onClick={() => isLifetime ? buyLifetime(item.code) : buyNow(item.code, selectedTerm)}>
                       {alreadyLifetime ? 'LIFETIME OWNED' : isLifetime
                         ? 'BUY NOW'
                         : isGooglePlayOwned ? 'GOOGLE PLAY ACTIVE' : manualPending ? 'AWAITING REVIEW' : isOwned ? 'EXTEND LICENSE' : 'BUY NOW'}
                     </button>
                     {isLifetime && !alreadyLifetime && <>
-                      {session && !lifetimeCheckoutEnabled && <p className="store-lifetime-note" role="status">
+                      {canPerformPwaPaymentAction('buy') && session && !lifetimeCheckoutEnabled && <p className="store-lifetime-note" role="status">
                         Lifetime checkout is paused until PayMongo payment and refund verification is ready. Subscriptions remain available.
                       </p>}
                       {pendingLifetime && <button type="button" className="btn btn-outline store-lifetime-cancel" disabled={busy}

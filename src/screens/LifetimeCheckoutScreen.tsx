@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
+import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 import './LifetimeCheckoutScreen.css'
 
 async function checkoutError(error: unknown): Promise<string> {
@@ -97,6 +98,10 @@ export default function LifetimeCheckoutScreen() {
   }
 
   const checkout = async () => {
+    if (!canPerformPwaPaymentAction('checkout')) {
+      setMessage(PWA_PURCHASE_PAUSE_NOTICE)
+      return
+    }
     if (!supabase || !session || !product || checkoutEnabled !== true || busy) return
     setBusy(true)
     setMessage('Preparing secure Lifetime checkout…')
@@ -156,7 +161,7 @@ export default function LifetimeCheckoutScreen() {
   }
 
   const amount = product ? '₱' + product.lifetimePrice.toLocaleString('en-PH') : ''
-  const payable = Boolean(product && session && checkoutEnabled === true && !busy)
+  const payable = Boolean(canPerformPwaPaymentAction('checkout') && product && session && checkoutEnabled === true && !busy)
   return <div className="screen basket-page lifetime-checkout">
     <button type="button" className="lifetime-checkout-back" onClick={() => navigate('/account?tab=payments')}>
       ← Back to Bond Store
@@ -166,10 +171,11 @@ export default function LifetimeCheckoutScreen() {
       <div>
         <div className="lifetime-checkout-brand">HYPERION MARITIME</div>
         <h1 className="page-title">Checkout</h1>
-        <p className="subtitle">Review your selected access before proceeding to payment.</p>
+        <p className="subtitle">{canPerformPwaPaymentAction('checkout') ? 'Review your selected access before proceeding to payment.' : 'Review your selected access. New Lifetime payments are paused.'}</p>
       </div>
       {product && <span className="lifetime-checkout-item-count">1 item to purchase</span>}
     </header>
+    {!canPerformPwaPaymentAction('checkout') && <div className="lifetime-checkout-card" role="status">{PWA_PURCHASE_PAUSE_NOTICE}</div>}
 
     {!product ? <section className="lifetime-checkout-card" role="alert">
       <h2>Invalid Lifetime selection</h2>
@@ -185,7 +191,7 @@ export default function LifetimeCheckoutScreen() {
     </section> : <>
       {message && <div role="status" className="lifetime-checkout-card lifetime-checkout-message">
         {message}
-        {checkoutUrlFallback && <a className="btn btn-primary" href={checkoutUrlFallback}>
+        {canPerformPwaPaymentAction('resume') && checkoutUrlFallback && <a className="btn btn-primary" href={checkoutUrlFallback}>
           CONTINUE TO PAYMONGO SECURE CHECKOUT
         </a>}
       </div>}
@@ -213,13 +219,13 @@ export default function LifetimeCheckoutScreen() {
             <span>{product.label} (Lifetime)</span>
             <strong>{amount}</strong>
           </div>
-          <div className={'lifetime-checkout-action' + (checkoutEnabled === true ? ' is-payable' : '')}>
+          <div className={'lifetime-checkout-action' + (payable ? ' is-payable' : '')}>
             <div className="lifetime-checkout-total"><strong>Total due</strong><strong>{amount}</strong></div>
             {checkoutEnabled === true
               ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={!payable}
                   onClick={() => void checkout()}>{busy ? 'PROCESSING…' : 'Checkout'}</button>
               : <div className="lifetime-checkout-disabled" role="status">
-                  {checkoutEnabled === null ? 'Checking PayMongo checkout availability…' : 'Lifetime checkout is temporarily unavailable.'}
+                  {!canPerformPwaPaymentAction('checkout') ? PWA_PURCHASE_PAUSE_NOTICE : checkoutEnabled === null ? 'Checking PayMongo checkout availability…' : 'Lifetime checkout is temporarily unavailable.'}
                 </div>}
           </div>
           <div className="lifetime-checkout-payment-method">QR Ph</div>

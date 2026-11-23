@@ -7,6 +7,7 @@ import { withPageLoading } from '../lib/pageLoading'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { priceForTerm } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
+import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 
 type Order = {
   id: string
@@ -165,6 +166,11 @@ export default function ManualPaymentScreen() {
 
   const submitPaymentInternal = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!canPerformPwaPaymentAction('manual-payment')) {
+      setIsError(false)
+      setMessage(PWA_PURCHASE_PAUSE_NOTICE)
+      return
+    }
     if (!supabase || !session || !product) return
     if (!licenseChecked || playOutlastsWebsite) {
       setIsError(true)
@@ -317,6 +323,7 @@ export default function ManualPaymentScreen() {
           </section>
            : preparingPayMongoOrder ? <section style={{ ...card, borderColor: 'var(--border)' }}><h2 style={{ marginTop: 0 }}>PayMongo checkout is being prepared</h2><p className="manual-muted">Hyperion is still saving the secure checkout session. Wait a moment and refresh before switching to manual payment, so you don't accidentally pay twice.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshData()} style={{ width: '100%' }}>REFRESH CHECKOUT STATUS</button></section>
            : pendingPayMongoOrder || failedPayMongoOrder ? <section style={{ ...card, borderColor: 'var(--border)' }}><h2 style={{ marginTop: 0 }}>{failedPayMongoOrder ? 'Unresolved PayMongo checkout' : 'PayMongo checkout already open'}</h2><p className="manual-muted">{failedPayMongoOrder ? 'A previous attempt was marked failed, but its provider session is still recorded. Hyperion must verify and close that session before allowing a manual payment.' : 'You have an existing PayMongo checkout for this track. Close it safely before switching to manual payment.'}</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongo(failedPayMongoOrder || pendingPayMongoOrder!)} style={{ width: '100%', color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>VERIFY &amp; CANCEL PAYMONGO CHECKOUT</button></section>
+          : !canPerformPwaPaymentAction('manual-payment') ? <section style={card} role="status"><h2 style={{ marginTop: 0 }}>Payments temporarily unavailable</h2><p className="manual-muted">{PWA_PURCHASE_PAUSE_NOTICE}</p></section>
           : <div className="manual-grid">
             <section style={card}>
               <div className="manual-section-title"><div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>{product.label}</h2><p className="manual-muted" style={{ margin: '.25rem 0 0' }}>{licenseTerm === 'week' ? '7-day' : licenseTerm === 'month' ? '1-month' : '12-month'} reviewer license</p></div><strong style={{ fontSize: '1.25rem' }}>₱{licensePrice}</strong></div>
