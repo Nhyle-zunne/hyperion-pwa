@@ -382,7 +382,15 @@ try {
           `Mobile checkout bar must be anchored 72px above the viewport bottom, not halfway up content: ${JSON.stringify(checkoutRect)}`)
       }
       assert.equal(await page.locator('.route-transition').evaluate(el => getComputedStyle(el).transform), 'none', 'Mobile checkout must not inherit an animated transform containing block that traps fixed payment controls')
-      assert((await page.locator('.basket-selected-card').boundingBox()).y < 220, 'Selected tracks appear near the top without redundant profile and tabs')
+      const selectedTracks = await page.locator('.basket-selected-card').boundingBox()
+      if (PWA_PURCHASES_PAUSED) {
+        const pauseNotice = await page.getByText(PWA_PURCHASE_PAUSE_NOTICE, { exact: true }).first().boundingBox()
+        assert(selectedTracks && pauseNotice && selectedTracks.y >= pauseNotice.y + pauseNotice.height - 2 &&
+          selectedTracks.y - (pauseNotice.y + pauseNotice.height) < 80,
+        'Selected tracks follow the mobile purchase-pause notice without redundant profile or tabs')
+      } else {
+        assert(selectedTracks && selectedTracks.y < 220, 'Selected tracks appear near the top without redundant profile and tabs')
+      }
     }
     await page.screenshot({ path: `account-checkout-${width}.png`, fullPage: true })
   }
