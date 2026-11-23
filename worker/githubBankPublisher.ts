@@ -1,5 +1,5 @@
 import { collectBankImages, checkMediaAssets, checkPublishBudget, type MediaBundler } from './questionMediaBundler.ts'
-import { decryptToText, deriveKeyBytes, toSearchQuestions } from '../supabase/functions/_shared/bankCodec.ts'
+import { decryptToText, deriveKeyBytes, toSearchQuestions, validStandardRows } from '../supabase/functions/_shared/bankCodec.ts'
 import { parseCsvText } from '../src/lib/csvParser.ts'
 import { parseQuestionImageRefs } from '../src/lib/questionMedia.ts'
 import { GITHUB_BANK_FILES, GITHUB_BANK_REPOSITORY, GITHUB_BANK_ROOT, GITHUB_BANK_MANIFEST, GITHUB_BANK_RELEASE, githubAssetPath, INITIAL_BANK_RELEASE, readBounded, sha256, validateBankManifest, type BankRelease } from '../supabase/functions/_shared/githubBankSource.ts'
@@ -12,11 +12,12 @@ const encoder = new TextEncoder()
 const C1_EXPLANATION_PATH = 'deck/oic_nw_c1.csv.enc'
 const C3_EXPLANATION_PATH = 'deck/oic_nw_c3.csv.enc'
 const EXPLANATION_PATHS = new Set([
-  C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc', C3_EXPLANATION_PATH, 'deck/oic_nw_c4.csv.enc', 'deck/oic_nw_c5.csv.enc'
+  C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc', C3_EXPLANATION_PATH, 'deck/oic_nw_c4.csv.enc', 'deck/oic_nw_c5.csv.enc',
+  'deck/oic_nw_c7.csv.enc'
 ])
 
 /**
- * Preserve an existing OIC-NW C1–C5 explanation only when the question, all four
+ * Preserve an existing OIC-NW explanation only when the question, all four
  * choice cells, and the keyed answer are byte-for-byte unchanged. A new bank
  * upload may intentionally omit explanations; never replace those with blanks.
  *
@@ -49,16 +50,7 @@ export function reconcileQuestionExplanations(before: string, uploaded: string, 
       }
     }
     const mediaColumn = header.findIndex(cell => cell.trim().toUpperCase() === 'HYPERION_MEDIA')
-    const questions = rows.slice(headerIndex + 1).filter(row => {
-      const number = (row[0] || '').trim()
-      const choices = row.slice(2, 6).map(choice => (choice || '').trim())
-      const question = (row[1] || '').trim()
-      const imagePrompt = mediaColumn >= 0 && parseQuestionImageRefs(row[mediaColumn] || '').some(ref => ref.placement === 'question')
-      return row.length >= 7 && /^[0-9]+$/.test(number) && Number(number) > 0
-        && (!!question || imagePrompt) && question.toLowerCase() !== 'question'
-        && choices.filter(Boolean).length >= 2
-        && !(!!question && choices.every((choice, i) => choice === ['A', 'B', 'C', 'D'][i]))
-    })
+    const questions = validStandardRows(rows, path)
     return { rows, questions, header, mediaColumn, hasExplanation: header.length === 7 || marker === 'EXPLANATION' || (normalize && metadataFirst), normalized: normalize && metadataFirst }
   }
   const original = parse(before, false), next = parse(uploaded, true)
