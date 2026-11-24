@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { PAID_PRODUCTS, supabase } from '../lib/supabase'
 import { formatMessengerPaymentDetails, parseManualCheckoutItems } from '../lib/manualQrCheckout'
@@ -47,6 +47,18 @@ export default function AdminQrCheckoutScreen() {
   const totalPhp = items.reduce((sum, item) => sum + item.amountPhp, 0)
   const details = formatMessengerPaymentDetails(email, items)
   const paymentStatus = readiness && readiness.userId === userId && readiness.selection === itemQuery ? readiness.status : 'checking'
+
+  useLayoutEffect(() => {
+    if (paymentStatus !== 'ready' || !messageRef.current) return
+    const field = messageRef.current
+    const sizeToContent = () => {
+      field.style.height = 'auto'
+      field.style.height = `${field.scrollHeight + 2}px`
+    }
+    sizeToContent()
+    window.addEventListener('resize', sizeToContent)
+    return () => window.removeEventListener('resize', sizeToContent)
+  }, [details, paymentStatus])
 
   useEffect(() => {
     if (!userId || !access.allowed || !supabase || !items.length) return
