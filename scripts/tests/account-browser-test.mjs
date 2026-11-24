@@ -2,7 +2,11 @@ import { assertSquareCorners } from './square-corners-browser-helper.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { chromium } from 'playwright'
-import { PWA_PURCHASES_PAUSED, PWA_PURCHASE_PAUSE_NOTICE } from '../../src/lib/pwaPurchaseAvailability.ts'
+import { PWA_PURCHASE_PAUSE_NOTICE } from '../../src/lib/pwaPurchaseAvailability.ts'
+
+// Existing browser scenarios deliberately start with the public switch off;
+// separate cases above verify public access when it is enabled.
+const PWA_PURCHASES_PAUSED = true
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
 try {
@@ -328,12 +332,92 @@ try {
 
   const visitorQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await visitorQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
-  await visitorQrPage.getByRole('heading', { name: 'Checkout preview unavailable' }).waitFor()
+  await visitorQrPage.getByRole('heading', { name: 'Checkout temporarily unavailable' }).waitFor()
   assert.equal(await visitorQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
-    'A signed-in non-admin cannot reveal the QR receiving code through a direct link')
+    'A signed-in non-admin cannot reveal the QR receiving code while checkout is disabled')
   assert.equal(await visitorQrPage.locator('.qr-checkout-bank').count(), 0,
     'A non-admin cannot reveal bank transfer instructions through a direct link')
   await visitorQrPage.close()
+
+  const publicQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await publicQrPage.addInitScript(() => localStorage.setItem('fixture-checkout-enabled', 'yes'))
+  await publicQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await publicQrPage.locator('.qr-checkout-image-wrap img').waitFor()
+  assert.equal(await publicQrPage.locator('.qr-checkout-bank').count(), 1,
+    'A signed-in non-admin can see the official QR and bank details when purchasing is enabled')
+  assert.equal(await publicQrPage.getByText('ADMIN PREVIEW').count(), 0,
+    'Customer checkout does not carry an admin-preview label')
+  await publicQrPage.evaluate(() => {
+    localStorage.setItem('fixture-checkout-enabled', 'no')
+    window.dispatchEvent(new Event('focus'))
+  })
+  await publicQrPage.getByRole('heading', { name: 'Checkout temporarily unavailable' }).waitFor()
+  assert.equal(await publicQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Disabling checkout removes the QR from an existing public tab when it refreshes availability')
+  await publicQrPage.close()
+
+  const guestQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await guestQrPage.addInitScript(() => {
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+    localStorage.setItem('fixture-guest', 'yes')
+  })
+  await guestQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await guestQrPage.getByRole('heading', { name: 'Sign in to checkout' }).waitFor()
+  assert.equal(await guestQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Guests must sign in before seeing a payable QR and submitting an untraceable payment')
+  await guestQrPage.close()
+
+  const disconnectedQrPage = await browser.newPage()
+  await disconnectedQrPage.addInitScript(() => {
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+    localStorage.setItem('fixture-checkout-fetch-fails', 'yes')
+  })
+  await disconnectedQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await disconnectedQrPage.getByRole('heading', { name: 'Checkout temporarily unavailable' }).waitFor()
+  assert.equal(await disconnectedQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'An unavailable server-side setting must fail closed')
+  await disconnectedQrPage.close()
+
+  const publicBasketPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await publicBasketPage.addInitScript(() => {
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+    localStorage.setItem('hyperion-account-basket-v1', JSON.stringify([{ code: 'oic_nw', term: 'month' }]))
+  })
+  await publicBasketPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=basket`)
+  const publicCheckout = publicBasketPage.getByRole('button', { name: 'CHECKOUT', exact: true })
+  await publicCheckout.waitFor()
+  assert.equal(await publicCheckout.isEnabled(), true, 'The public checkout button becomes available when enabled')
+  await publicCheckout.click()
+  await publicBasketPage.locator('.qr-checkout-image-wrap img').waitFor()
+  await publicBasketPage.close()
+
+  const publicStorePage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await publicStorePage.addInitScript(() => localStorage.setItem('fixture-checkout-enabled', 'yes'))
+  await publicStorePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  const publicBuyNow = publicStorePage.locator('.account-product-card').first().getByRole('button', { name: 'BUY NOW', exact: true })
+  await publicStorePage.waitForFunction(() => {
+    const button = document.querySelector('.account-product-card .store-buy-button')
+    return button && !button.disabled
+  })
+  await publicStorePage.evaluate(() => {
+    localStorage.setItem('fixture-checkout-enabled', 'no')
+    window.dispatchEvent(new Event('focus'))
+  })
+  await publicStorePage.waitForFunction(() => document.querySelector('.account-product-card .store-buy-button')?.disabled)
+  assert.equal(await publicBuyNow.isDisabled(), true, 'Disabling website checkout also disables Buy Now in an existing store tab')
+  await publicStorePage.close()
+
+  const publicLifetimePage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await publicLifetimePage.addInitScript(() => localStorage.setItem('fixture-checkout-enabled', 'yes'))
+  await publicLifetimePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=lifetime`)
+  const lifetimeCheckoutButton = publicLifetimePage.getByRole('button', { name: 'CHECKOUT', exact: true })
+  await lifetimeCheckoutButton.waitFor()
+  await lifetimeCheckoutButton.click()
+  await publicLifetimePage.locator('.qr-checkout-image-wrap img').waitFor()
+  assert.equal(await publicLifetimePage.evaluate(() =>
+    window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').length), 0,
+    'Public Lifetime checkout also uses QR without initiating PayMongo')
+  await publicLifetimePage.close()
 
   const adminQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await adminQrPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
@@ -453,12 +537,39 @@ try {
   assert.equal(await adminQrPage.locator('.qr-checkout-bank').count(), 0,
     'Unresolved payments also prevent a duplicate bank transfer')
   await adminQrPage.evaluate(() => window.switchFixtureAccount())
-  await adminQrPage.getByRole('heading', { name: 'Checkout preview unavailable' }).waitFor()
+  await adminQrPage.getByRole('heading', { name: 'Checkout temporarily unavailable' }).waitFor()
   assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'Switching to a non-admin account revokes an already open QR preview')
   assert.equal(await adminQrPage.locator('.qr-checkout-bank').count(), 0,
     'Switching accounts revokes bank transfer details as well')
   await adminQrPage.close()
+
+  const adminSettingsPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await adminSettingsPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
+  await adminSettingsPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=admin-payments`)
+  const checkoutSwitch = adminSettingsPage.getByRole('switch', { name: 'Enable website purchases' })
+  await checkoutSwitch.waitFor()
+  assert.equal(await checkoutSwitch.getAttribute('aria-checked'), 'false', 'Checkout defaults to disabled')
+  await checkoutSwitch.click()
+  await adminSettingsPage.getByText('Website purchases enabled', { exact: true }).waitFor()
+  assert.equal(await checkoutSwitch.getAttribute('aria-checked'), 'true')
+  await adminSettingsPage.reload()
+  const refreshedSwitch = adminSettingsPage.getByRole('switch', { name: 'Enable website purchases' })
+  await refreshedSwitch.waitFor()
+  await adminSettingsPage.waitForFunction(() => document.querySelector('[role="switch"]')?.getAttribute('aria-checked') === 'true')
+  assert.equal(await refreshedSwitch.getAttribute('aria-checked'), 'true', 'Admin setting persists across reloads')
+  await refreshedSwitch.click()
+  await adminSettingsPage.getByText('Website purchases disabled', { exact: true }).waitFor()
+  assert.equal(await refreshedSwitch.getAttribute('aria-checked'), 'false')
+  assert.equal(await adminSettingsPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true,
+    'Admin checkout switch fits a mobile screen')
+  await adminSettingsPage.close()
+
+  const nonAdminSettingsPage = await browser.newPage()
+  await nonAdminSettingsPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=admin-payments`)
+  assert.equal(await nonAdminSettingsPage.getByRole('switch', { name: 'Enable website purchases' }).count(), 0,
+    'Non-admin accounts cannot access the website purchase switch')
+  await nonAdminSettingsPage.close()
   const adminBasketPage = await browser.newPage()
   await adminBasketPage.addInitScript(() => {
     localStorage.setItem('fixture-admin', 'yes')
@@ -474,7 +585,7 @@ try {
   await adminLifetimePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=lifetime`)
   await adminLifetimePage.getByRole('button', { name: 'CHECKOUT', exact: true }).waitFor()
   await adminLifetimePage.close()
-  console.log('PASS: QR checkout server-admin gate, exact payment details, pending-payment safety and account isolation')
+  console.log('PASS: QR checkout server availability, admin preview, public access, bank details and account isolation')
 
   const page = await browser.newPage({ viewport: { width: 1531, height: 900 } })
   const errors = []

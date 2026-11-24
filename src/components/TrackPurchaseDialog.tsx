@@ -8,6 +8,7 @@ import { buyNowCheckoutPath, clearPendingBuyNow, rememberPendingBuyNow } from '.
 import BondStoreCardContent from './BondStoreCardContent'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
+import { refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 import './TrackPurchaseDialog.css'
 
 function isPaidTrack(value: string | null): value is PaidTrack {
@@ -54,8 +55,9 @@ export default function TrackPurchaseDialog() {
     : paidProductCodeForTrackId(params.get('track') || 'oic_nw')
   const product = useMemo(() => PAID_PRODUCTS.find(item => item.code === productCode), [productCode])
   const isOpen = Boolean(product && params.get('purchase') === '1')
+  const checkoutAvailability = useWebsiteCheckoutAvailability(isOpen)
   const adminCheckout = useAdminCheckoutAccess(isOpen ? session?.user.id : undefined)
-  const canPreviewPurchase = adminCheckout.allowed || canPerformPwaPaymentAction('buy')
+  const canPreviewPurchase = adminCheckout.allowed || (checkoutAvailability.checked && canPerformPwaPaymentAction('buy', checkoutAvailability.enabled))
 
   useEffect(() => {
     if (isOpen) setBasketItems(savedBasket())
@@ -119,7 +121,10 @@ export default function TrackPurchaseDialog() {
   }, [setParams])
 
   const proceedToCheckout = useCallback(async () => {
-    if (!adminCheckout.allowed && !canPerformPwaPaymentAction('checkout')) return
+    if (!adminCheckout.allowed && !(await refreshWebsiteCheckoutAvailability(true))) {
+      setMessage(PWA_PURCHASE_PAUSE_NOTICE)
+      return
+    }
     if (!product || !session?.user || !supabase) return
     setBusy(true)
     setMessage('Checking your track access…')
@@ -194,13 +199,13 @@ export default function TrackPurchaseDialog() {
   }
 
   useEffect(() => {
-    if (!adminCheckout.allowed && !canPerformPwaPaymentAction('checkout')) return
+    if (!canPreviewPurchase) return
     if (!isOpen || !product || !session?.user.id || params.get('purchase_action') !== 'checkout') return
     const key = `${session.user.id}:${product.code}:${term}`
     if (autoCheckoutRef.current === key) return
     autoCheckoutRef.current = key
     void proceedToCheckout()
-  }, [isOpen, product, session?.user.id, params, term, proceedToCheckout, adminCheckout.allowed])
+  }, [isOpen, product, session?.user.id, params, term, proceedToCheckout, canPreviewPurchase])
 
   if (!isOpen || !product) return null
 

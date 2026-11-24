@@ -114,6 +114,7 @@ const viteConfig = await read('../vite.config.ts');
 const mainEntry = await read('../src/main.tsx');
 const routeErrorBoundary = await read('../src/components/RouteErrorBoundary.tsx');
 const adminPaymentReviewFunction = await read('../supabase/functions/admin-payment-review/index.ts');
+const checkoutToggleMigration = await read('../supabase/migrations/20261124160000_add_website_checkout_toggle.sql');
 const deleteAccount = await read('../supabase/functions/delete-account/index.ts');
 const learningProgressFunction = await read('../supabase/functions/learning-progress/index.ts');
 const progressPrivilegeMigration = await read('../supabase/migrations/20261029032520_revoke_client_access_to_learning_progress.sql');
@@ -223,6 +224,11 @@ assert.ok(checkout.includes("const enabled = !WEBSITE_PAYMONGO_PURCHASES_DISABLE
 assert.ok(checkout.includes('if (WEBSITE_PAYMONGO_PURCHASES_DISABLED) return json('), 'Direct PayMongo checkout creation is disabled server-side');
 assert.ok(submitManualPaymentFunction.includes('if (WEBSITE_MANUAL_SUBMISSIONS_DISABLED) return json('),
   'The retired manual-order API must also reject new public payment submissions server-side');
+assert.match(checkoutToggleMigration, /website_checkout_enabled\s+boolean\s+not\s+null\s+default\s+false/i,
+  'New checkout availability settings fail closed until explicitly enabled');
+assert.ok(adminPaymentReviewFunction.includes("body.action === 'set-checkout-availability'") &&
+  adminPaymentReviewFunction.indexOf("body.action === 'set-checkout-availability'") > adminPaymentReviewFunction.indexOf("allowed.includes(user.email.toLowerCase())"),
+  'Only authenticated administrators can change public checkout availability');
 const lifetimeCheckoutFunction = await read('../supabase/functions/create-lifetime-checkout/index.ts');
 assert.ok(lifetimeCheckoutFunction.includes("body.action !== 'create'") &&
   lifetimeCheckoutFunction.includes('if (WEBSITE_PAYMONGO_PURCHASES_DISABLED) return json(') &&
@@ -230,14 +236,16 @@ assert.ok(lifetimeCheckoutFunction.includes("body.action !== 'create'") &&
 assert.ok(!basketScreen.includes("functions.invoke('create-checkout'") &&
   !basketScreen.includes("action: 'create', productCode: product.code") &&
   !basketScreen.includes('checkout.paymongo.com'), 'Website basket no longer starts or resumes PayMongo payments');
-assert.ok(basketScreen.includes('adminCheckout.allowed ? <button') &&
-  basketScreen.includes("navigate('/checkout/qr?items='"), 'Only checked administrators can proceed from the basket to QR checkout');
+assert.ok(basketScreen.includes('canCheckout ? <button') &&
+  basketScreen.includes('refreshWebsiteCheckoutAvailability(true)') &&
+  basketScreen.includes("navigate('/checkout/qr?items='"), 'Public checkout requires a fresh enabled setting before navigating to QR payment');
 const adminQrScreen = await read('../src/screens/AdminQrCheckoutScreen.tsx');
 const adminCheckoutAccess = await read('../src/hooks/useAdminCheckoutAccess.ts');
 assert.ok(app.includes('path="/checkout/qr"') &&
-  adminQrScreen.includes('if (!access.allowed)') &&
+  adminQrScreen.includes('!checkoutAvailability.enabled && !access.allowed') &&
+  adminQrScreen.includes('refreshWebsiteCheckoutAvailability(true)') &&
   adminCheckoutAccess.includes("action: 'check-admin'") &&
-  adminCheckoutAccess.includes('data?.isAdmin === true'), 'QR checkout route requires server-verified administrator access before showing a QR');
+  adminCheckoutAccess.includes('data?.isAdmin === true'), 'The QR route requires fresh availability or server-verified administrator access');
 assert.ok(adminCheckoutAccess.includes('result?.userId === userId && result.allowed') &&
   adminQrScreen.includes('supabase.auth.onAuthStateChange'), 'Changing or signing out of an administrator account immediately invalidates the QR checkout permission');
 assert.ok(adminCheckoutAccess.includes('!supabase?.functions?.invoke'), 'Missing Functions transport fails closed without unmounting purchase dialogs');
@@ -317,7 +325,7 @@ assert.ok(accountScreen.includes("withPageLoading('Loading account and licenses'
 assert.ok(basketScreen.includes("withPageLoading('Loading checkout and licenses'") && basketScreen.includes("withPageLoading('Preparing secure checkout'") && basketScreen.includes("withPageLoading('Verifying payment status'") || basketScreen.includes("withPageLoading('Refreshing payment status'"), 'Checkout reads and PayMongo operations display the indicator');
 assert.ok(manualPayment.includes("withPageLoading('Loading payment details'") && manualPayment.includes("withPageLoading('Submitting payment for review'"), 'Manual payment lookup and submission display the indicator');
 assert.ok(!accountScreen.includes('/manual-payment?product=') && !accountScreen.includes('Pay manually with QR'), 'Bond Store product cards do not expose direct manual QR payment links');
-assert.ok(!basketScreen.includes('showManualPaymentFallback') && basketScreen.includes('>CHECKOUT</button>') && basketScreen.includes('adminCheckout.allowed'), 'New QR checkout is reached from an administrator-only Checkout button');
+assert.ok(!basketScreen.includes('showManualPaymentFallback') && basketScreen.includes('>CHECKOUT</button>') && basketScreen.includes('canCheckout'), 'The QR checkout is gated by the public availability switch with admin preview fallback');
 assert.ok(!manualPayment.includes('SEND PAYMENT SCREENSHOT VIA FACEBOOK'), 'Manual payment form does not show the Facebook proof button before submission');
 assert.ok(manualPayment.includes('(manualSubmission || pendingManualOrder)') && manualPayment.includes('SEND PAYMENT PROOF VIA FACEBOOK') && manualPayment.indexOf('SEND PAYMENT PROOF VIA FACEBOOK') > manualPayment.indexOf('(manualSubmission || pendingManualOrder)'), 'Facebook proof button appears only after manual submission has been confirmed or an existing pending submission is loaded');
 assert.ok(manualPayment.includes('In your Facebook message, include the email address you use to sign in to your Hyperion account.') && manualPayment.includes('Hyperion account email:</strong> {session.user.email'), 'Post-submission instructions explicitly provide the account email to include with payment proof');
