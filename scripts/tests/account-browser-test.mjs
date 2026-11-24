@@ -1191,7 +1191,7 @@ try {
   await historyPage.getByText('No orders yet', { exact: true }).waitFor()
   await historyPage.evaluate(() => window.releaseFixtureEntitlements())
   await historyPage.waitForTimeout(100)
-  assert.equal(await historyPage.getByText('PayMongo has not confirmed all pending checkouts as paid yet. No additional license was granted.', { exact: true }).count(), 0, 'Previous account payment results cannot appear after an account switch')
+  assert.equal(await historyPage.getByText('The former payment provider has not confirmed all pending checkouts as paid yet. No additional license was granted.', { exact: true }).count(), 0, 'Previous account payment results cannot appear after an account switch')
   assert.equal(await historyPage.locator('.orders-entry').count(), 0, 'Previous account history stays hidden after a delayed refresh completes')
   assert.equal(await historyPage.locator('.orders-history-page > [role="status"]').count(), 0, 'No delayed payment banner is published to the next account')
   await historyPage.close()
@@ -1496,7 +1496,7 @@ try {
   await lifetimeGmdssCard.getByRole('button', { name: /GMDSS GOC Lifetime ₱599/ }).click()
   await lifetimeGmdssCard.getByRole('button', { name: 'BUY NOW' }).waitFor()
   await lifetimeGmdssCard.getByRole('button', { name: 'Cancel pending Lifetime checkout' }).click()
-  await lifetimePage.getByText('PayMongo confirmed this Lifetime checkout was cancelled.', { exact: false }).waitFor()
+  await lifetimePage.getByText('The earlier Lifetime checkout was cancelled.', { exact: false }).waitFor()
   await lifetimeGmdssCard.getByText('NO EXPIRATION', { exact: true }).waitFor()
   const lifetimeCancelCalls = await lifetimePage.evaluate(() =>
     window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:cancel'))
