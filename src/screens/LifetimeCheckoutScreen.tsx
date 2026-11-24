@@ -188,9 +188,9 @@ export default function LifetimeCheckoutScreen() {
                   {checkoutAvailability.checked ? PWA_PURCHASE_PAUSE_NOTICE : 'Checking checkout availability…'}
                 </div>}
           </div>
-          <div className="lifetime-checkout-payment-method">QR Ph</div>
+          <div className="lifetime-checkout-payment-method">QR Ph or bank transfer</div>
           <p className="lifetime-checkout-muted lifetime-checkout-footer">
-            QR payments are reviewed manually. Access activates only after an administrator verifies payment.
+            QR Ph and bank transfers are reviewed manually. Access activates only after an administrator verifies payment.
           </p>
         </aside>
       </div>
