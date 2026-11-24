@@ -9,7 +9,7 @@ As of November 25, 2026, new website purchases use **QR Ph or BPI/VYBE InstaPay 
 3. Send the receipt and copyable purchase details through Messenger.
 4. An authorized administrator checks the actual incoming payment before approving the request and granting access. Allow **24–48 hours** for activation, then contact the Hyperion Facebook page if a follow-up is needed. Proof alone is not approval.
 
-The official QR asset is `public/qr-ph.png` (served as `/qr-ph.png`); the copyable receiving-account details are in `src/lib/manualQrCheckout.ts`, displayed by `src/screens/AdminQrCheckoutScreen.tsx`. Verify the receiving account before making changes. Supabase's `submit-manual-payment`, `admin-payment-review`, and related manual-review functions continue to provide the authoritative payment/license workflow.
+The official QR asset is `public/qr-ph.png` (served as `/qr-ph.png`); the copyable receiving-account details are in `src/lib/manualQrCheckout.ts`, displayed by `src/screens/AdminQrCheckoutScreen.tsx`. Verify the receiving account before making changes. This QR checkout prepares Messenger instructions; it does **not** automatically create a payment order or grant a license. Administrators verify funds and use the protected `admin-license-management` workflow to grant access. The older `submit-manual-payment` entrypoint rejects new submissions, while `admin-payment-review` continues handling older manual submissions.
 
 ## Historical hosted purchases: preserve all records and entitlements
 
