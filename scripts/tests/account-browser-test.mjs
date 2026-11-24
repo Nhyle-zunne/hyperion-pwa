@@ -340,6 +340,34 @@ try {
   await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Account email: synthetic@example.invalid/)
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Deck OIC-NW \(Monthly\): PHP 79\.00/)
+  for (const width of [1440, 1024, 860, 390, 320]) {
+    await adminQrPage.setViewportSize({ width, height: 900 })
+    const layout = await adminQrPage.evaluate(() => {
+      const [qr, proof] = [...document.querySelectorAll('.qr-checkout-grid > .qr-checkout-panel')]
+      const details = document.querySelector('#qr-checkout-details')
+      const copy = document.querySelector('.qr-checkout-copy')
+      const qrBox = qr.getBoundingClientRect()
+      const proofBox = proof.getBoundingClientRect()
+      const copyBox = copy.getBoundingClientRect()
+      return {
+        qr: { x: qrBox.x, y: qrBox.y, right: qrBox.right },
+        proof: { x: proofBox.x, y: proofBox.y, right: proofBox.right },
+        copy: { x: copyBox.x, right: copyBox.right, height: copyBox.height },
+        detailsOverflowY: details.scrollHeight - details.clientHeight,
+        detailsOverflowX: details.scrollWidth - details.clientWidth,
+        pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      }
+    })
+    assert(layout.pageOverflow <= 1, `QR checkout must fit ${width}px without horizontal page scrolling`)
+    assert(layout.detailsOverflowY <= 2 && layout.detailsOverflowX <= 2,
+      `Full Messenger payment message must be readable without nested scrollbars at ${width}px`)
+    assert(layout.copy.x >= 0 && layout.copy.right <= width && layout.copy.height >= 44,
+      `Copy action must remain accessible at ${width}px`)
+    if (width >= 960) assert(layout.proof.x > layout.qr.right,
+      `Desktop QR and proof panels must be side by side at ${width}px`)
+    else assert(layout.proof.y > layout.qr.y && Math.abs(layout.proof.x - layout.qr.x) <= 1,
+      `Smaller screens must stack the QR and proof panels at ${width}px`)
+  }
   await adminQrPage.evaluate(() => localStorage.setItem('fixture-pending-orders', 'yes'))
   await adminQrPage.reload()
   await adminQrPage.getByRole('alert').filter({ hasText: /unresolved checkout/i }).waitFor()
