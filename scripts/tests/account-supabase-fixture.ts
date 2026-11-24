@@ -45,6 +45,10 @@ export function switchFixtureAccount() {
 export const supabase = {
   auth: {
     getUser: async () => ({ data: { user: session()?.user ?? null }, error: null }),
+    signInWithOAuth: async (options: unknown) => {
+      fixtureCalls.push({ action: 'sign-in-google', data: options })
+      return { data: { url: null }, error: null }
+    },
     getSession: async () => {
       if (localStorage.getItem('fixture-hold-account-session') === 'yes') {
         return new Promise(resolve => heldSessionResolvers.push(() => resolve({ data: { session: null }, error: null })))
