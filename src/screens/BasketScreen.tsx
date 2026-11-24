@@ -319,7 +319,7 @@ function TimedBasketScreen() {
       }
       if (error) setMessage(await edgeError(error))
       else if (typeof data?.error === 'string') setMessage(data.error)
-      else if (data?.status === 'pending') setMessage(data.message || 'PayMongo has not confirmed payment yet. No license was granted.')
+      else if (data?.status === 'pending') setMessage(data.message || 'The earlier checkout provider has not confirmed payment yet. No license was granted.')
       if (attempt < attemptCount - 1) await new Promise(resolve => window.setTimeout(resolve, 1600))
     }
     return false
@@ -332,7 +332,7 @@ function TimedBasketScreen() {
     let active = true
     const verificationStartedAt = Date.now()
     if (paymentState === 'cancelled') {
-      setMessage('You returned from PayMongo. The checkout may still be open. Use the pending checkout controls below if you want to cancel it or switch payment methods.')
+      setMessage('You returned from an earlier hosted checkout. It may still be open. Use the pending checkout controls below to cancel it safely before switching payment methods.')
       setIsError(false)
       return () => { active = false }
     }
@@ -340,7 +340,7 @@ function TimedBasketScreen() {
     setPurchaseConfirmation({ orderId, productCodes: [], stage: 'verifying' })
     setBusy(true)
     setIsError(false)
-    setMessage('Checking the completed payment directly with PayMongo…')
+    setMessage('Checking the earlier payment with its provider…')
     void (async () => {
       try {
         const paid = await confirmPaidCheckout(orderId, 6)
@@ -371,7 +371,7 @@ function TimedBasketScreen() {
         } else {
           setIsError(true)
           setPurchaseConfirmation({ orderId, productCodes: [], stage: 'pending' })
-          setMessage(current => current || 'PayMongo has not confirmed this checkout as paid yet. Do not pay again; use Refresh payment status shortly.')
+          setMessage(current => current || 'The earlier checkout provider has not confirmed payment yet. Do not pay again; use Refresh payment status shortly.')
         }
       } catch (error) {
         if (active) {
@@ -391,21 +391,21 @@ function TimedBasketScreen() {
     setBusy(true)
     setBusyCheckoutId(groupId)
     setIsError(false)
-    setMessage('Checking with PayMongo before closing this checkout…')
+    setMessage('Checking the earlier payment before closing this checkout…')
     try {
       const { data, error } = await supabase.functions.invoke('cancel-checkout', { body: { orderId: groupId } })
       if (error) throw new Error(await edgeError(error))
       if (data?.error) throw new Error(data.error)
       if (data?.status === 'already_paid') {
         const paid = await confirmPaidCheckout(groupId, 6)
-        if (!paid) setMessage('PayMongo reports this payment as paid or processing. Do not pay again; refresh payment status shortly.')
+        if (!paid) setMessage('The former provider reports this payment as paid or processing. Do not pay again; refresh payment status shortly.')
         return
       }
       if (data?.status === 'processing') {
-        setMessage(data.message || 'A payment is still processing. Wait for PayMongo to confirm it before switching methods.')
+        setMessage(data.message || 'A payment is still processing. Wait for provider confirmation before switching methods.')
         return
       }
-      if (data?.status !== 'cancelled') throw new Error('PayMongo did not confirm that this checkout was cancelled. No new payment should be started yet.')
+      if (data?.status !== 'cancelled') throw new Error('The former provider did not confirm cancellation. No new payment should be started yet.')
       setBasket(current => [...new Map<PaidTrack, BasketItem>([...current, ...groupItems].map(item => [item.code, item] as const)).values()])
       await refreshData()
       setMessage('Checkout cancelled successfully. Its tracks were added back to your basket; you can now edit your selection or check out again.')
@@ -427,14 +427,14 @@ function TimedBasketScreen() {
     setBusy(true)
     setBusyCheckoutId(orderId)
     setIsError(false)
-    setMessage('Checking with PayMongo before cancelling this Lifetime checkout…')
+    setMessage('Checking the provider before cancelling this earlier Lifetime checkout…')
     try {
       const { data, error } = await supabase.functions.invoke('create-lifetime-checkout', {
         body: { action: 'cancel', orderId }
       })
       if (error) throw new Error(await edgeError(error))
       if (data?.status !== 'cancelled') {
-        throw new Error(data?.error || 'PayMongo has not confirmed cancellation. Do not start another payment.')
+        throw new Error(data?.error || 'The former checkout provider has not confirmed cancellation. Do not start another payment.')
       }
       await refreshData()
       setMessage('Lifetime checkout cancelled. No license was added.')
@@ -455,7 +455,7 @@ function TimedBasketScreen() {
     if (!supabase || !session) return
     setBusy(true)
     setIsError(false)
-    setMessage('Refreshing payment status from PayMongo…')
+    setMessage('Refreshing earlier checkout payment status…')
     try {
       const checkoutIds = [...new Set(pendingPayMongoOrders.map(order => order.checkout_batch_id || order.id))]
       const lifetimeIds = pendingLifetimeOrders.map(order => order.id)
@@ -468,7 +468,7 @@ function TimedBasketScreen() {
           activated.push(...codes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code))
           clearBasketCodes(codes)
         } else if (data?.status === 'pending') {
-          setMessage(data.message || 'PayMongo has not confirmed this checkout as paid yet.')
+          setMessage(data.message || 'The former provider has not confirmed this checkout as paid yet.')
         } else if (data?.error) {
           setMessage(data.error)
         }
@@ -481,7 +481,7 @@ function TimedBasketScreen() {
           const label = PAID_PRODUCTS.find(item => item.code === order?.product_code)?.label ?? order?.product_code ?? 'Reviewer'
           activated.push(label + ' Lifetime Access')
         } else if (data?.status === 'pending') {
-          setMessage(data.message || 'PayMongo has not confirmed this Lifetime checkout as paid yet.')
+          setMessage(data.message || 'The former provider has not confirmed this Lifetime checkout as paid yet.')
         } else if (data?.status === 'reconciliation_required') {
           setMessage('A Lifetime payment needs support review. Do not pay again.')
         } else if (data?.error) {
@@ -493,7 +493,7 @@ function TimedBasketScreen() {
         setIsError(false)
         setMessage(`Payment confirmed. Activated: ${[...new Set(activated)].join(', ')}.`)
       } else if (!checkoutIds.length && !lifetimeIds.length) {
-        setMessage('You have no pending PayMongo checkouts.')
+        setMessage('You have no pending earlier hosted checkouts.')
       }
     } catch (error) {
       setIsError(true)
@@ -634,8 +634,8 @@ function TimedBasketScreen() {
           {purchaseConfirmation.stage === 'success'
             ? `Your payment was verified and your Hyperion license${purchaseConfirmation.productCodes.length === 1 ? ' is' : 's are'} now active. You can start studying right away.`
             : purchaseConfirmation.stage === 'pending'
-              ? 'PayMongo has not confirmed this payment as paid yet. Please do not pay again. Check Orders & Payment History for the latest status.'
-              : 'Please wait while Hyperion securely confirms your payment with PayMongo. Keep this page open.'}
+              ? 'The former provider has not confirmed this payment as paid yet. Please do not pay again. Check Orders & Payment History for the latest status.'
+              : 'Please wait while Hyperion securely verifies your earlier hosted payment. Keep this page open.'}
         </p>
         {purchaseConfirmation.stage === 'success' && purchaseConfirmation.productCodes.length > 0 && <div style={{
           border: '1px solid var(--border)', borderRadius: 10,
@@ -683,7 +683,7 @@ function TimedBasketScreen() {
     </div>}
     {session && (pendingCheckoutGroups.length + pendingLifetimeOrders.length) > 0 && <section className="basket-pending-card" style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
         <div className="basket-pending-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length + pendingLifetimeOrders.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Old PayMongo payments cannot be resumed. You can still refresh their status or cancel them safely.</p></div>
+          <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length + pendingLifetimeOrders.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Earlier hosted payments cannot be resumed. You can still refresh their status or cancel them safely.</p></div>
           <button type="button" className="btn btn-outline basket-pending-refresh" disabled={busy} onClick={() => void refreshStatus()}>{busy ? 'Checking…' : 'Refresh payment status'}</button>
         </div>
         {pendingCheckoutGroups.map(group => <div className="basket-row basket-pending-row" key={group.id}>

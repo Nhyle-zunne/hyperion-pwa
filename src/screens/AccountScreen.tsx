@@ -242,10 +242,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
         body: { action: 'cancel', orderId }
       })
       if (error || data?.status !== 'cancelled') {
-        throw new Error((await edgeFunctionErrorMessage(error)) || data?.error || 'PayMongo did not confirm cancellation.')
+        throw new Error((await edgeFunctionErrorMessage(error)) || data?.error || 'The former checkout provider did not confirm cancellation.')
       }
       setLifetimeRefreshRevision(v => v + 1)
-      setMessage('PayMongo confirmed this Lifetime checkout was cancelled. No Lifetime license was added.')
+      setMessage('The earlier Lifetime checkout was cancelled. No Lifetime license was added.')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not safely cancel the checkout.')
     } finally { setBusy(false) }
@@ -503,13 +503,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     let cancelled = false
 
     if (paymentState === 'cancelled') {
-      setMessage('PayMongo returned you to Hyperion. Cancelling a hosted checkout does not close the payment session automatically. Use CANCEL CHECKOUT below before switching to manual payment.')
+      setMessage('Your earlier hosted checkout returned you to Hyperion. Leaving checkout does not close the payment session automatically. Use CANCEL CHECKOUT below before switching payment methods.')
       void refreshAccount()
       return () => { cancelled = true }
     }
     if (paymentState !== 'success') return
 
-    setMessage('Returned from PayMongo. Verifying your payment with Hyperion…')
+    setMessage('Returned from an earlier checkout. Verifying your payment with Hyperion…')
     const checkPayment = async () => {
       if (!supabase || !orderId) {
         await refreshAccount()
@@ -531,14 +531,14 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           if (!cancelled) setMessage(`Payment confirmed. Activated: ${purchased.join(', ')}. No manual approval is needed.`)
           return
         }
-        if (error) lastVerificationMessage = (await edgeFunctionErrorMessage(error)) || 'PayMongo verification is temporarily unavailable.'
+        if (error) lastVerificationMessage = (await edgeFunctionErrorMessage(error)) || 'Historical payment verification is temporarily unavailable.'
         else if (typeof data?.error === 'string') lastVerificationMessage = data.error
-        else if (data?.status === 'pending') lastVerificationMessage = data.message || 'PayMongo has not confirmed a successful payment yet.'
+        else if (data?.status === 'pending') lastVerificationMessage = data.message || 'The earlier checkout provider has not confirmed payment yet.'
         if (attempt < 5) await new Promise(resolve => window.setTimeout(resolve, 1800))
       }
 
       await refreshAccount()
-      if (!cancelled) setMessage(`${lastVerificationMessage || 'Payment is still awaiting PayMongo confirmation.'} Hyperion will activate only the track attached to this paid order. Do not pay again. Use Refresh status to check again.`)
+      if (!cancelled) setMessage(`${lastVerificationMessage || 'Payment is still awaiting provider confirmation.'} Hyperion will activate only the track attached to this paid order. Do not pay again. Use Refresh status to check again.`)
     }
     void checkPayment()
     return () => { cancelled = true }
@@ -551,12 +551,12 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     if (!state) return
     let active = true
     if (state === 'cancelled') {
-      setMessage('You returned from PayMongo without confirming payment. Resume or safely cancel the pending Lifetime checkout below.')
+      setMessage('You returned from an earlier hosted checkout without confirming payment. Refresh or safely cancel the pending Lifetime checkout below.')
       setLifetimeRefreshRevision(v => v + 1)
       return
     }
     if (state !== 'success' || !orderId) return
-    setMessage('Checking your one-time payment directly with PayMongo…')
+    setMessage('Checking your earlier one-time payment with the provider…')
     const client = supabase
     const verify = async () => {
       let lastError = ''
@@ -570,7 +570,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           return
         }
         if (data?.status === 'refunded' || data?.status === 'reconciliation_required') {
-          setMessage('PayMongo payment requires account support review. Do not pay again.')
+          setMessage('This earlier payment requires account support review. Do not pay again.')
           return
         }
         lastError = (await edgeFunctionErrorMessage(error)) || data?.error || data?.message || 'Payment confirmation is pending.'
@@ -993,7 +993,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   <strong style={{ display: 'block', marginBottom: '.25rem' }}>{item.source === 'google_play' ? 'Subscription details' : adminGrant ? 'Grant details' : 'Transaction details'}</strong>
                   {adminGrant ? <div>Granted: {new Date(item.granted_at).toLocaleString()}</div> : lifetime ? <>
                     <div>Purchase: One-time, non-renewing</div>
-                    <div>Source: {item.lifetimeProvider === 'google_play' ? 'Google Play' : 'PayMongo'}</div>
+                    <div>Source: {item.lifetimeProvider === 'google_play' ? 'Google Play' : item.lifetimeProvider === 'admin' ? 'Administrator' : 'Earlier website checkout'}</div>
                     <div>Purchased: {new Date(item.granted_at).toLocaleString()}</div>
                   </> : transaction ? <>
                     {transaction.customer_name && <div>Customer name: {transaction.customer_name}</div>}

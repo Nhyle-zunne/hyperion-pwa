@@ -257,7 +257,7 @@ export default function ManualPaymentScreen() {
     if (!supabase) return
     setBusy(true)
     setIsError(false)
-    setMessage('Checking the existing PayMongo checkout before switching payment methods…')
+    setMessage('Checking the earlier hosted checkout before switching payment methods…')
     try {
       const { data, error } = await supabase.functions.invoke('cancel-checkout', {
         body: { orderId: order.checkout_batch_id || order.id }
@@ -267,9 +267,9 @@ export default function ManualPaymentScreen() {
       if (data?.status === 'already_paid' || data?.status === 'processing') {
         throw new Error(data.message || 'This payment is already paid or processing. Do not submit another payment.')
       }
-      if (data?.status !== 'cancelled') throw new Error('PayMongo did not confirm cancellation. Do not submit a second payment yet.')
+      if (data?.status !== 'cancelled') throw new Error('The earlier checkout provider did not confirm cancellation. Do not submit a second payment yet.')
       await refreshData()
-      setMessage('The existing PayMongo checkout was cancelled. You may now continue with manual payment.')
+      setMessage('The earlier hosted checkout was cancelled. You may now continue with manual payment.')
     } catch (error) {
       setIsError(true)
       setMessage(await edgeMessage(error, 'Unable to cancel the existing checkout. Please try again.'))
@@ -303,7 +303,7 @@ export default function ManualPaymentScreen() {
 
     {!authLoaded ? <section style={card}>Checking your Hyperion account…</section>
       : !session ? <section style={card}><h2 style={{ marginTop: 0 }}>Sign in required</h2><p className="manual-muted">Sign in to your Hyperion account before submitting a manual payment.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/account')} style={{ width: '100%' }}>OPEN ACCOUNT / SIGN IN</button></section>
-      : !product ? <section style={card}><h2 style={{ marginTop: 0 }}>Choose a reviewer track</h2><p className="manual-muted">The requested track could not be found. Return to Checkout and select the manual QR option when PayMongo checkout is unavailable.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/checkout')}>BACK TO CHECKOUT</button></section>
+      : !product ? <section style={card}><h2 style={{ marginTop: 0 }}>Choose a reviewer track</h2><p className="manual-muted">The requested track could not be found. Return to Checkout and select the current QR Ph or bank transfer option.</p><button type="button" className="btn btn-primary" onClick={() => navigate('/checkout')}>BACK TO CHECKOUT</button></section>
       : <>
         {message && <div role="status" style={{ ...card, borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', marginBottom: '1rem', lineHeight: 1.5 }}>{message}</div>}
         {!licenseChecked ? <section style={card}><h2 style={{ marginTop: 0 }}>Checking existing licenses</h2><p className="manual-muted">Your license and payment status must be verified before a QR transfer. If checking failed, use Refresh instead of sending money.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void withPageLoading('Checking licenses', refreshData)}>REFRESH LICENSE STATUS</button></section>
@@ -321,8 +321,8 @@ export default function ManualPaymentScreen() {
             <a href={facebookPage} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '.8rem' }}>SEND PAYMENT PROOF VIA FACEBOOK</a>
             {pendingManualOrder && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelManualRequest()} style={{ width: '100%', marginTop: '.65rem' }}>CANCEL MANUAL PAYMENT REQUEST</button>}
           </section>
-           : preparingPayMongoOrder ? <section style={{ ...card, borderColor: 'var(--border)' }}><h2 style={{ marginTop: 0 }}>PayMongo checkout is being prepared</h2><p className="manual-muted">Hyperion is still saving the secure checkout session. Wait a moment and refresh before switching to manual payment, so you don't accidentally pay twice.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshData()} style={{ width: '100%' }}>REFRESH CHECKOUT STATUS</button></section>
-           : pendingPayMongoOrder || failedPayMongoOrder ? <section style={{ ...card, borderColor: 'var(--border)' }}><h2 style={{ marginTop: 0 }}>{failedPayMongoOrder ? 'Unresolved PayMongo checkout' : 'PayMongo checkout already open'}</h2><p className="manual-muted">{failedPayMongoOrder ? 'A previous attempt was marked failed, but its provider session is still recorded. Hyperion must verify and close that session before allowing a manual payment.' : 'You have an existing PayMongo checkout for this track. Close it safely before switching to manual payment.'}</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongo(failedPayMongoOrder || pendingPayMongoOrder!)} style={{ width: '100%', color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>VERIFY &amp; CANCEL PAYMONGO CHECKOUT</button></section>
+           : preparingPayMongoOrder ? <section style={{ ...card, borderColor: 'var(--border)' }}><h2 style={{ marginTop: 0 }}>Earlier checkout is being checked</h2><p className="manual-muted">Hyperion is still resolving the earlier hosted checkout session. Wait a moment and refresh before switching to manual payment, so you don't accidentally pay twice.</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void refreshData()} style={{ width: '100%' }}>REFRESH CHECKOUT STATUS</button></section>
+           : pendingPayMongoOrder || failedPayMongoOrder ? <section style={{ ...card, borderColor: 'var(--border)' }}><h2 style={{ marginTop: 0 }}>{failedPayMongoOrder ? 'Unresolved earlier checkout' : 'Earlier checkout still open'}</h2><p className="manual-muted">{failedPayMongoOrder ? 'A previous attempt was marked failed, but its provider session is still recorded. Hyperion must verify and close that session before allowing a manual payment.' : 'You have an earlier hosted checkout for this track. Close it safely before switching payment methods.'}</p><button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelPayMongo(failedPayMongoOrder || pendingPayMongoOrder!)} style={{ width: '100%', color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>VERIFY &amp; CANCEL EARLIER CHECKOUT</button></section>
           : !canPerformPwaPaymentAction('manual-payment') ? <section style={card} role="status"><h2 style={{ marginTop: 0 }}>Payments temporarily unavailable</h2><p className="manual-muted">{PWA_PURCHASE_PAUSE_NOTICE}</p></section>
           : <div className="manual-grid">
             <section style={card}>
