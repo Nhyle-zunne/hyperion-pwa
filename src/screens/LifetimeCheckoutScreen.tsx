@@ -174,7 +174,7 @@ export default function LifetimeCheckoutScreen() {
             <div className="lifetime-checkout-total"><strong>Total due</strong><strong>{amount}</strong></div>
             {adminCheckout.allowed
               ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={!payable}
-                  onClick={() => navigate(`/checkout/qr?items=${encodeURIComponent(`${product.code}:lifetime`)}`)}>CHECKOUT WITH QR PH</button>
+                  onClick={() => navigate(`/checkout/qr?items=${encodeURIComponent(`${product.code}:lifetime`)}`)}>CHECKOUT</button>
               : <div className="lifetime-checkout-disabled" role="status">
                   {PWA_PURCHASE_PAUSE_NOTICE}
                 </div>}
