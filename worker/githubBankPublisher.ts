@@ -15,7 +15,7 @@ const C12_EXPLANATION_PATH = 'deck/oic_nw_c12.csv.enc'
 const EXPLANATION_PATHS = new Set([
   C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc', C3_EXPLANATION_PATH, 'deck/oic_nw_c4.csv.enc', 'deck/oic_nw_c5.csv.enc',
   'deck/oic_nw_c7.csv.enc', 'deck/oic_nw_c9.csv.enc', 'deck/oic_nw_c10.csv.enc', 'deck/oic_nw_c11.csv.enc',
-  C12_EXPLANATION_PATH, 'deck/oic_nw_c13.csv.enc'
+  C12_EXPLANATION_PATH, 'deck/oic_nw_c13.csv.enc', 'deck/oic_nw_c17.csv.enc'
 ])
 
 /**
