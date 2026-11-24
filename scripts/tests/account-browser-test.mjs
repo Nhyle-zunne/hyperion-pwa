@@ -351,7 +351,8 @@ try {
   await saveQr.click()
   assert.equal((await downloadedQr).suggestedFilename(), 'hyperion-qr-ph.png', 'The overlay icon downloads the original QR file')
   assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0, 'QR and bank details appear together without tabs')
-  assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI \/ VYBE by BPI.*Hyperion Maritime.*4309192465/s)
+  assert.equal(await adminQrPage.locator('.qr-checkout-bank dl > div').nth(1).locator('dd').innerText(), 'Hyperion')
+  assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI \/ VYBE by BPI.*4309192465/s)
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Account email: synthetic@example.invalid/)
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Deck OIC-NW \(Monthly\): PHP 79\.00/)
   for (const width of [1920, 1440, 1024, 860, 390, 320]) {
@@ -418,7 +419,7 @@ try {
   await adminQrPage.getByRole('button', { name: 'Copy bank', exact: true }).click()
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'BPI / VYBE by BPI')
   await adminQrPage.getByRole('button', { name: 'Copy account name', exact: true }).click()
-  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'Hyperion Maritime')
+  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'Hyperion')
   await adminQrPage.getByRole('button', { name: 'Copy account number', exact: true }).click()
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '4309192465')
   await adminQrPage.evaluate(() => localStorage.setItem('fixture-pending-orders', 'yes'))
