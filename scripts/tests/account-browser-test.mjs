@@ -345,6 +345,8 @@ try {
   await publicQrPage.locator('.qr-checkout-image-wrap img').waitFor()
   assert.equal(await publicQrPage.locator('.qr-checkout-bank').count(), 1,
     'A signed-in non-admin can see the official QR and bank details when purchasing is enabled')
+  assert.equal(await publicQrPage.locator('.qr-checkout-eyebrow').innerText(), 'HYPERION MARITIME · MANUAL PAYMENT',
+    'Customer checkout uses the shared payment label')
   assert.equal(await publicQrPage.getByText('ADMIN PREVIEW').count(), 0,
     'Customer checkout does not carry an admin-preview label')
   await publicQrPage.evaluate(() => {
@@ -483,7 +485,9 @@ try {
   })
   await adminEnabledQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await adminEnabledQrPage.locator('.qr-checkout-image-wrap img').waitFor()
-  await adminEnabledQrPage.getByText('ADMIN PREVIEW').waitFor()
+  assert.equal(await adminEnabledQrPage.locator('.qr-checkout-eyebrow').innerText(), 'HYPERION MARITIME · MANUAL PAYMENT',
+    'Administrators see the same payment label as customers, not an admin preview')
+  assert.equal(await adminEnabledQrPage.getByText('ADMIN PREVIEW').count(), 0)
   assert.equal(await adminEnabledQrPage.locator('.qr-checkout-bank').count(), 1,
     'Administrator sees the same QR and bank-transfer columns as a paying customer when public checkout is ON')
   assert.equal(await adminEnabledQrPage.locator('.qr-checkout-image-wrap img').getAttribute('src'), '/qr-ph.png')
