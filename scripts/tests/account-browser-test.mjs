@@ -342,6 +342,10 @@ try {
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Deck OIC-NW \(Monthly\): PHP 79\.00/)
   for (const width of [1440, 1024, 860, 390, 320]) {
     await adminQrPage.setViewportSize({ width, height: 900 })
+    await adminQrPage.waitForFunction(() => {
+      const field = document.querySelector('#qr-checkout-details')
+      return field && field.scrollHeight - field.clientHeight <= 2
+    }, null, { timeout: 2000 })
     const layout = await adminQrPage.evaluate(() => {
       const [qr, proof] = [...document.querySelectorAll('.qr-checkout-grid > .qr-checkout-panel')]
       const details = document.querySelector('#qr-checkout-details')

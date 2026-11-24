@@ -56,8 +56,14 @@ export default function AdminQrCheckoutScreen() {
       field.style.height = `${field.scrollHeight + 2}px`
     }
     sizeToContent()
-    window.addEventListener('resize', sizeToContent)
-    return () => window.removeEventListener('resize', sizeToContent)
+    let width = field.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (field.clientWidth === width) return
+      width = field.clientWidth
+      sizeToContent()
+    })
+    observer.observe(field)
+    return () => observer.disconnect()
   }, [details, paymentStatus])
 
   useEffect(() => {
