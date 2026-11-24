@@ -340,7 +340,7 @@ try {
   await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Account email: synthetic@example.invalid/)
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Deck OIC-NW \(Monthly\): PHP 79\.00/)
-  for (const width of [1440, 1024, 860, 390, 320]) {
+  for (const width of [1920, 1440, 1024, 860, 390, 320]) {
     await adminQrPage.setViewportSize({ width, height: 900 })
     await adminQrPage.waitForFunction(() => {
       const field = document.querySelector('#qr-checkout-details')
@@ -350,6 +350,7 @@ try {
       const [qr, proof] = [...document.querySelectorAll('.qr-checkout-grid > .qr-checkout-panel')]
       const details = document.querySelector('#qr-checkout-details')
       const copy = document.querySelector('.qr-checkout-copy')
+      const page = document.querySelector('.qr-checkout-page')
       const qrBox = qr.getBoundingClientRect()
       const proofBox = proof.getBoundingClientRect()
       const copyBox = copy.getBoundingClientRect()
@@ -357,12 +358,15 @@ try {
         qr: { x: qrBox.x, y: qrBox.y, right: qrBox.right },
         proof: { x: proofBox.x, y: proofBox.y, right: proofBox.right },
         copy: { x: copyBox.x, right: copyBox.right, height: copyBox.height },
+        pageWidth: page.getBoundingClientRect().width,
         detailsOverflowY: details.scrollHeight - details.clientHeight,
         detailsOverflowX: details.scrollWidth - details.clientWidth,
         pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
       }
     })
     assert(layout.pageOverflow <= 1, `QR checkout must fit ${width}px without horizontal page scrolling`)
+    if (width >= 960) assert(layout.pageWidth >= Math.min(width - 100, 1050),
+      `Desktop QR checkout must use its available width at ${width}px (rendered ${layout.pageWidth}px)`)
     assert(layout.detailsOverflowY <= 2,
       `Messenger payment message must not scroll vertically at ${width}px (overflow ${layout.detailsOverflowY}px)`)
     assert(layout.detailsOverflowX <= 2,
