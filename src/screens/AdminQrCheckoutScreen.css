@@ -34,6 +34,8 @@
 .qr-checkout-copy-label{display:block;font-size:.84rem;font-weight:800;margin:.6rem 0 .35rem}
 .qr-checkout-panel textarea{display:block;box-sizing:border-box;width:100%;resize:none;min-height:0;padding:.6rem;border:1px solid var(--border);border-radius:0;background:var(--bg-elevated);color:var(--text);font:inherit;font-size:.9rem;line-height:1.4;overflow:hidden;overflow-wrap:anywhere;user-select:text}
 .qr-checkout-copy,.qr-checkout-messenger{display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;min-height:44px;margin-top:.55rem;text-align:center;text-decoration:none;border-radius:0}
+.qr-checkout-panel .qr-checkout-activation-notice{margin:.55rem 0 .3rem;padding:.5rem .65rem;border-left:3px solid var(--accent);background:var(--bg-elevated);color:var(--text);font-size:.83rem;line-height:1.4}
+.qr-checkout-activation-notice a{color:var(--accent);font-weight:800}
 .qr-checkout-copy-status{margin:.45rem 0 0;color:var(--success,#15803d)!important}
 .qr-checkout-plan-picker{display:flex;flex-wrap:wrap;gap:1rem;margin:0 0 .75rem}
 .qr-checkout-plan-picker label{display:flex;flex:1 1 220px;flex-direction:column;gap:.45rem;font-size:.85rem;font-weight:800}

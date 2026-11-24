@@ -354,6 +354,11 @@ try {
   assert.equal(await adminQrPage.locator('.qr-checkout-bank dl > div').nth(1).locator('dd').innerText(), 'Hyperion')
   assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI \/ VYBE by BPI.*4309192465/s)
   assert.match(await adminQrPage.locator('.qr-checkout-transfer-notice').innerText(), /Use InstaPay only\. Never use PESONet\./)
+  const activationNotice = adminQrPage.locator('.qr-checkout-activation-notice')
+  assert.match(await activationNotice.innerText(), /allow 24–48 hours.*verification and license activation.*after 48 hours/s,
+    'Checkout explains the manual activation timeframe and when to follow up')
+  assert.equal(await activationNotice.getByRole('link', { name: 'Hyperion Facebook page' }).getAttribute('href'),
+    'https://www.facebook.com/HyperionMaritime/', 'Follow-ups use Hyperion’s existing Facebook page')
   assert.equal(await adminQrPage.locator('.qr-checkout-bank .qr-checkout-total').count(), 1,
     'The transfer amount belongs with the bank details, not below both payment columns')
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Account email: synthetic@example.invalid/)

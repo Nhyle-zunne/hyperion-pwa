@@ -7,6 +7,7 @@ import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import './AdminQrCheckoutScreen.css'
 
 const messengerUrl = 'https://m.me/HyperionMaritime'
+const facebookPageUrl = 'https://www.facebook.com/HyperionMaritime/'
 
 export default function AdminQrCheckoutScreen() {
   const [params] = useSearchParams()
@@ -202,6 +203,7 @@ export default function AdminQrCheckoutScreen() {
         <button type="button" className="btn btn-outline qr-checkout-copy" onClick={() => void copyDetails()}>COPY PAYMENT DETAILS</button>
         {copyStatus && <p role="status" className="qr-checkout-copy-status">{copyStatus}</p>}
         <a className="btn btn-primary qr-checkout-messenger" href={messengerUrl} target="_blank" rel="noopener noreferrer">OPEN MESSENGER TO SEND PROOF</a>
+        <p className="qr-checkout-activation-notice"><strong>Activation notice:</strong> Please allow 24–48 hours after submitting your payment receipt for verification and license activation. If still inactive after 48 hours, message our <a href={facebookPageUrl} target="_blank" rel="noopener noreferrer">Hyperion Facebook page</a> to follow up.</p>
         <p className="qr-checkout-note">Never send your password, OTP or full bank account credentials.</p>
       </section>
     </div>}
