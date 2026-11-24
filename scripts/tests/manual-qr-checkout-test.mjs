@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { BANK_TRANSFER, formatBankTransferDetails, formatMessengerPaymentDetails, parseManualCheckoutItems } from '../../src/lib/manualQrCheckout.ts'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { BANK_TRANSFER, formatMessengerPaymentDetails, parseManualCheckoutItems } from '../../src/lib/manualQrCheckout.ts'
 
 const products = [
   { code: 'oic_nw', label: 'Deck OIC-NW', weeklyPrice: 29, monthlyPrice: 79, annualPrice: 499, lifetimePrice: 999 },
@@ -42,9 +44,9 @@ test('bank transfer copy text contains the exact receiving account supplied by H
     accountName: 'Hyperion Maritime',
     accountNumber: '4309192465',
   })
-  assert.equal(formatBankTransferDetails(), [
-    'Bank: BPI / VYBE by BPI',
-    'Account name: Hyperion Maritime',
-    'Account number: 4309192465',
-  ].join('\n'))
+})
+
+test('checkout keeps the official Hyperion QR image byte-for-byte', () => {
+  const qrImage = readFileSync(new URL('../../public/qr-ph.png', import.meta.url))
+  assert.equal(createHash('sha256').update(qrImage).digest('hex'), 'c76d07bc70d73a8382d7f59b7eded3a29077b19c0eb814ff5b36ab4d99b91e54')
 })
