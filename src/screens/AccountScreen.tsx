@@ -11,6 +11,7 @@ import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 import { getCachedOfflineEntitlementSnapshot, type CachedOfflineEntitlementSnapshot } from '../lib/offlineQuestionCache'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
+import { useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 
 type Order = {
   id: string
@@ -128,6 +129,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [profileExpanded, setProfileExpanded] = useState(false)
   const [savedProfile, setSavedProfile] = useState({ fullName: '', company: '', school: '' })
   const [isAdmin, setIsAdmin] = useState(false)
+  const checkoutAvailability = useWebsiteCheckoutAvailability(!isLayout && accountTab === 'payments')
+  const canBuyOnWebsite = isAdmin || (checkoutAvailability.checked && canPerformPwaPaymentAction('buy', checkoutAvailability.enabled))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [deletionSuccess, setDeletionSuccess] = useState(false)
@@ -143,7 +146,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [selectedLifetime, setSelectedLifetime] = useState<Partial<Record<PaidTrack, boolean>>>({})
   const [expandedStorePerks, setExpandedStorePerks] = useState<PaidTrack | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
-  const [lifetimeCheckoutEnabled, setLifetimeCheckoutEnabled] = useState(false)
   const [pendingLifetimeOrders, setPendingLifetimeOrders] = useState<Array<{id: string; product_code: string}>>([])
   const [lifetimeRefreshRevision, setLifetimeRefreshRevision] = useState(0)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
@@ -177,7 +179,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   }, [basket, isLayout])
 
   const buyNow = (code: PaidTrack, term: LicenseTerm) => {
-    if (!isAdmin && !canPerformPwaPaymentAction('buy')) return
+    if (!canBuyOnWebsite) return
     const nextItem: BasketItem = { code, term }
     const nextBasket = basket.some(item => item.code === code)
       ? basket.map(item => item.code === code ? nextItem : item)
@@ -190,11 +192,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   }
   const clearBasketItems = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
 
-  // Lifetime checkout is separate from the timed subscription basket.
-  // Only the server can enable it or calculate the actual charged amount.
+  // Historic pending PayMongo Lifetime orders can still be cancelled safely;
+  // new Lifetime payments use the same server-controlled QR checkout as subscriptions.
   useEffect(() => {
     if (!session?.user.id || isLayout || !supabase) {
-      setLifetimeCheckoutEnabled(false)
       setPendingLifetimeOrders([])
       return
     }
@@ -202,13 +203,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     const ownerId = session.user.id
     let active = true
     const load = async () => {
-      const [availability, pending] = await Promise.all([
-        client.functions.invoke('create-lifetime-checkout', { body: { action: 'status' } }),
-        client.from('lifetime_orders').select('id,product_code')
-          .eq('user_id', ownerId).eq('status','pending').limit(10)
-      ])
+      const pending = await client.from('lifetime_orders').select('id,product_code')
+        .eq('user_id', ownerId).eq('status','pending').limit(10)
       if (!active) return
-      setLifetimeCheckoutEnabled(!availability.error && availability.data?.enabled === true)
       setPendingLifetimeOrders(pending.error ? [] : pending.data ?? [])
     }
     void load()
@@ -216,9 +213,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   }, [session?.user.id, lifetimeRefreshRevision, isLayout])
 
   const buyLifetime = (code: PaidTrack) => {
-    if (!isAdmin && !canPerformPwaPaymentAction('buy')) return
+    if (!canBuyOnWebsite) return
     if (!PAID_PRODUCTS.some(product => product.code === code)) return
-    // Administrators can preview manual QR checkout. Public sales remain paused.
     navigate(`/checkout?lifetime_product=${encodeURIComponent(code)}`)
   }
   const cancelLifetimeCheckout = async (orderId: string) => {
@@ -1022,10 +1018,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
           </> : <>
             <section style={{ ...card, marginBottom: '1rem' }}>
               <div className="account-panel-title">
-                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>{isAdmin ? 'Administrator preview: select a track and continue to the new QR payment checkout.' : 'Review the available tracks and plans. Website purchases are temporarily paused.'}</p></div>
+                <div><h3 style={{ margin: 0, fontSize: '1.05rem' }}>Available reviewer tracks</h3><p style={{ margin: '.25rem 0 0', color: 'var(--text-muted)', fontSize: '.82rem' }}>{canBuyOnWebsite ? 'Choose a track and continue to QR Ph or bank transfer checkout.' : 'Review the available tracks and plans. Website purchases are temporarily paused.'}</p></div>
                 <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>WEEK · MONTH · YEAR · LIFETIME</span>
               </div>
-              {!isAdmin && !canPerformPwaPaymentAction('buy') && <p role="status" style={{ margin: '0 0 1rem', padding: '.8rem', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{PWA_PURCHASE_PAUSE_NOTICE}</p>}
+              {!canBuyOnWebsite && checkoutAvailability.checked && <p role="status" style={{ margin: '0 0 1rem', padding: '.8rem', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{PWA_PURCHASE_PAUSE_NOTICE}</p>}
               <div className="account-products-grid">
                 {PAID_PRODUCTS.map(item => {
                   const currentLicense = owned.find(license => license.product_code === item.code)
@@ -1061,16 +1057,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                       {alreadyLifetime ? '✓ LIFETIME OWNED' : isLifetime ? (pendingLifetime ? 'LIFETIME CHECKOUT OPEN' : 'NO EXPIRATION') : isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}
                     </span>
                     <button type="button" className="btn btn-primary store-buy-button"
-                      disabled={(!isAdmin && !canPerformPwaPaymentAction(isOwned ? 'extend' : 'buy')) || busy || alreadyLifetime || (isLifetime ? (!isAdmin && Boolean(session) && !lifetimeCheckoutEnabled) : (isGooglePlayOwned || manualPending))}
+                      disabled={!canBuyOnWebsite || busy || alreadyLifetime || (!isLifetime && (isGooglePlayOwned || manualPending))}
                       onClick={() => isLifetime ? buyLifetime(item.code) : buyNow(item.code, selectedTerm)}>
                       {alreadyLifetime ? 'LIFETIME OWNED' : isLifetime
                         ? 'BUY NOW'
                         : isGooglePlayOwned ? 'GOOGLE PLAY ACTIVE' : manualPending ? 'AWAITING REVIEW' : isOwned ? 'EXTEND LICENSE' : 'BUY NOW'}
                     </button>
                     {isLifetime && !alreadyLifetime && <>
-                      {!isAdmin && canPerformPwaPaymentAction('buy') && session && !lifetimeCheckoutEnabled && <p className="store-lifetime-note" role="status">
-                        Lifetime checkout is paused until PayMongo payment and refund verification is ready. Subscriptions remain available.
-                      </p>}
                       {pendingLifetime && <button type="button" className="btn btn-outline store-lifetime-cancel" disabled={busy}
                         onClick={() => void cancelLifetimeCheckout(pendingLifetime.id)}>Cancel pending Lifetime checkout</button>}
                     </>}

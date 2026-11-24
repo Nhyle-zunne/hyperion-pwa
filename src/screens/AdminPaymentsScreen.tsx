@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AdminNavigation from '../components/AdminNavigation'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
+import { applyAdminCheckoutAvailability, refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 
 type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; license_term: 'week'|'month'|'year'; amount_php: number; status: string; access_status: string; access_expires_at: string | null; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; customer_name: string | null; customer_company: string | null; customer_school: string | null; admin_note: string | null; created_at: string }
 type ReconciliationAlert = { id: string; checkout_reference: string; checkout_session_id: string; paymongo_payment_id: string; expected_amount_php: number; observed_amount_minor: number; observed_currency: string; reason: string; created_at: string }
@@ -17,6 +18,9 @@ export default function AdminPaymentsScreen() {
   const [alertLoadWarning, setAlertLoadWarning] = useState('')
   const [note, setNote] = useState<Record<string,string>>({})
   const [busy, setBusy] = useState(false)
+  const [checkoutSaving, setCheckoutSaving] = useState(false)
+  const [checkoutStatusMessage, setCheckoutStatusMessage] = useState('')
+  const checkoutAvailability = useWebsiteCheckoutAvailability()
   const [message, setMessage] = useState('')
   const [authorized, setAuthorized] = useState(false)
   const [statusTab, setStatusTab] = useState<'active' | 'pending' | 'failed' | 'expired'>('pending')
@@ -71,6 +75,22 @@ export default function AdminPaymentsScreen() {
     try { await withPageLoading(decision === 'approve' ? 'Approving payment' : 'Reviewing payment', async () => { await call({ action:'review', orderId, decision, adminNote: note[orderId] || '' }); setMessage(decision === 'approve' ? 'Payment approved and access granted.' : 'Payment rejected.'); await load(true) }) }
     catch (e) { setMessage(safeAdminError(e, 'Could not complete the payment review. Please try again.')) }
     finally { setBusy(false) }
+  }
+  const toggleCheckout = async () => {
+    if (!checkoutAvailability.checked || checkoutAvailability.error || checkoutSaving) return
+    const enabled = !checkoutAvailability.enabled
+    setCheckoutSaving(true)
+    setCheckoutStatusMessage('')
+    try {
+      const result = await call({ action: 'set-checkout-availability', enabled })
+      if (result.enabled !== enabled) throw new Error('Unexpected checkout setting response')
+      applyAdminCheckoutAvailability(enabled)
+      setCheckoutStatusMessage(`Website purchases ${enabled ? 'enabled' : 'disabled'}`)
+    } catch {
+      setCheckoutStatusMessage('Unable to save the checkout setting. Please retry.')
+    } finally {
+      setCheckoutSaving(false)
+    }
   }
   const duration = (term: Order['license_term']) => term === 'week' ? 'Weekly' : term === 'month' ? 'Monthly' : 'Yearly'
 
@@ -132,6 +152,11 @@ export default function AdminPaymentsScreen() {
       .admin-payment-detail-actions textarea{width:100%;box-sizing:border-box;min-height:76px;padding:.65rem;margin-top:.35rem;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-radius:6px;font:inherit}
       .admin-payment-expand{border:1px solid var(--border);border-radius:7px;background:var(--bg-card);color:var(--text);padding:.42rem .62rem;font:inherit;font-size:.79rem;font-weight:800;white-space:nowrap;cursor:pointer}
       .admin-payment-expand[aria-expanded="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+      .admin-checkout-settings{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap}
+      .admin-checkout-settings__description{flex:1 1 270px;min-width:0}
+      .admin-checkout-switch{min-height:48px;min-width:160px;padding:.65rem .85rem;border:1px solid var(--border);border-radius:0;background:var(--bg-elevated);color:var(--text);font:inherit;font-weight:900;cursor:pointer}
+      .admin-checkout-switch[aria-checked="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+      .admin-checkout-switch:disabled{cursor:wait;opacity:.65}
       @media(max-width:760px){.admin-payment-status-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-payment-details-content{grid-template-columns:1fr}.admin-payment-detail-actions{grid-column:auto}}
     `}</style>
     <AdminNavigation />
@@ -139,6 +164,22 @@ export default function AdminPaymentsScreen() {
     <p className="subtitle">Review manual payment submissions here. License activation, extension, and revocation are managed separately in User Licenses.</p>
     {message && <div role="status" style={card}>{/supabase/i.test(message) ? 'Payment administration is temporarily unavailable. Please try again later.' : message}</div>}
     {!authorized ? <section style={card}><p>Admin dashboard could not load. Confirm that you are signed in with an email listed in ADMIN_EMAILS, then refresh.</p><button className="btn btn-outline" onClick={() => void withPageLoading('Refreshing payment submissions', () => load(true))}>Retry</button></section> : <>
+      <section style={card} aria-labelledby="admin-checkout-settings-title">
+        <div className="admin-checkout-settings">
+          <div className="admin-checkout-settings__description">
+            <h2 id="admin-checkout-settings-title" style={{ margin:'0 0 .3rem', fontSize:'1.05rem' }}>Website checkout</h2>
+            <p style={{ margin:0, color:'var(--text-muted)', fontSize:'.83rem', lineHeight:1.45 }}>Enable or disable public BUY NOW and CHECKOUT for QR Ph and bank transfer. Existing licenses and payment follow-ups remain available.</p>
+          </div>
+          <button type="button" role="switch" aria-label="Enable website purchases"
+            aria-checked={checkoutAvailability.enabled} className="admin-checkout-switch"
+            disabled={checkoutSaving || busy || !checkoutAvailability.checked || checkoutAvailability.error}
+            onClick={() => void toggleCheckout()}>
+            {checkoutSaving ? 'SAVING…' : !checkoutAvailability.checked ? 'CHECKING…' : checkoutAvailability.enabled ? 'ENABLED · ON' : 'DISABLED · OFF'}
+          </button>
+        </div>
+        {checkoutAvailability.error && <p role="alert" style={{ margin:'.6rem 0 0', fontSize:'.83rem' }}>Could not verify the current checkout status. <button type="button" className="btn btn-outline" onClick={() => void refreshWebsiteCheckoutAvailability(true)}>RETRY</button></p>}
+        {checkoutStatusMessage && <p role="status" aria-live="polite" style={{ margin:'.55rem 0 0', fontSize:'.83rem' }}>{checkoutStatusMessage}</p>}
+      </section>
       {alertLoadWarning && <div role="alert" style={{ ...card, borderColor: 'var(--danger, #dc2626)' }}>{alertLoadWarning}</div>}
       {reconciliationAlerts.length > 0 && <section style={{ ...card, borderColor: 'var(--danger, #dc2626)', borderWidth: 2 }}>
         <h2 style={{ marginTop: 0, color: 'var(--danger, #dc2626)' }}>PayMongo reconciliation required ({reconciliationAlerts.length})</h2>

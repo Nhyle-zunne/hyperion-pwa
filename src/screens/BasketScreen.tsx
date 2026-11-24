@@ -13,6 +13,7 @@ import { fetchPendingLifetimeOrders } from '../lib/orderHistoryRequests'
 import type { PendingLifetimeOrder } from '../lib/orderHistoryRequests'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
+import { refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 
 type Order = {
   id: string
@@ -83,6 +84,8 @@ function TimedBasketScreen() {
   const [params] = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
   const adminCheckout = useAdminCheckoutAccess(session?.user.id)
+  const checkoutAvailability = useWebsiteCheckoutAvailability()
+  const canCheckout = adminCheckout.allowed || (checkoutAvailability.checked && canPerformPwaPaymentAction('checkout', checkoutAvailability.enabled))
   const [basket, setBasket] = useState<BasketItem[]>(() => {
     const requested = directBuyNowSelection(params)
     return requested ? [requested] : savedBasket()
@@ -664,10 +667,10 @@ function TimedBasketScreen() {
     <button type="button" className="basket-back-link" onClick={() => navigate('/account?tab=payments')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
     <AccountSectionTabs active="checkout" />
     <div className="basket-heading" style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
-      <div><div className="basket-heading-brand" style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>{adminCheckout.allowed ? 'Review your tracks, then preview QR payment instructions.' : 'Review your selections and existing payment statuses. New checkouts are paused.'}</p></div>
+      <div><div className="basket-heading-brand" style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>{canCheckout ? 'Review your tracks, then continue to QR Ph or bank transfer.' : 'Review your selections and existing payment statuses. New checkouts are paused.'}</p></div>
       <span className="basket-item-count" style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'} to purchase</span>
     </div>
-    {!adminCheckout.allowed && !canPerformPwaPaymentAction('checkout') && <div role="status" style={{ ...style.card, marginBottom: '1rem', color: 'var(--text-muted)' }}>{PWA_PURCHASE_PAUSE_NOTICE}</div>}
+    {!canCheckout && checkoutAvailability.checked && <div role="status" style={{ ...style.card, marginBottom: '1rem', color: 'var(--text-muted)' }}>{PWA_PURCHASE_PAUSE_NOTICE}</div>}
 
     {!session ? <section style={{ ...style.card, maxWidth: 600 }}>
       <h2 style={{ marginTop: 0 }}>Sign in to continue</h2>
@@ -731,12 +734,18 @@ function TimedBasketScreen() {
           <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Order summary</h2>
           <p className="basket-muted basket-summary-count" style={{ margin: '.3rem 0 1rem' }}>{selectedItems.length} selected track{selectedItems.length === 1 ? '' : 's'}</p>
           {selectedItems.map(({ code, term, product, price }) => <div className="basket-summary-list" key={code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{product.label} <span className="basket-muted">({termLabel(term)})</span></span><strong>₱{price}</strong></div>)}
-          <div className={`basket-checkout-action${adminCheckout.allowed ? ' is-payable' : ''}`}>
+          <div className={`basket-checkout-action${canCheckout ? ' is-payable' : ''}`}>
             <div className="basket-total-row" style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
-          {adminCheckout.allowed ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length} onClick={() => navigate('/checkout/qr?items=' + encodeURIComponent(selectedItems.map(item => `${item.code}:${item.term}`).join(',')))} style={{ ...style.primary, marginTop: '1rem' }}>CHECKOUT</button> : <div role="status" aria-live="polite" style={{ marginTop: '1rem', padding: '.75rem', textAlign: 'center', border: '1px solid var(--border)', borderRadius: 0, color: 'var(--text-muted)', fontSize: '.84rem', fontWeight: 750 }}>{PWA_PURCHASE_PAUSE_NOTICE}</div>}
+          {canCheckout ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length} onClick={() => void (async () => {
+            if (!adminCheckout.allowed && !(await refreshWebsiteCheckoutAvailability(true))) {
+              setMessage(PWA_PURCHASE_PAUSE_NOTICE)
+              return
+            }
+            navigate('/checkout/qr?items=' + encodeURIComponent(selectedItems.map(item => `${item.code}:${item.term}`).join(',')))
+          })()} style={{ ...style.primary, marginTop: '1rem' }}>CHECKOUT</button> : <div role="status" aria-live="polite" style={{ marginTop: '1rem', padding: '.75rem', textAlign: 'center', border: '1px solid var(--border)', borderRadius: 0, color: 'var(--text-muted)', fontSize: '.84rem', fontWeight: 750 }}>{checkoutAvailability.checked ? PWA_PURCHASE_PAUSE_NOTICE : 'Checking checkout availability…'}</div>}
           </div>
           {activeInBasket.length > 0 && <p style={{ color: 'var(--success, #15803d)', fontSize: '.8rem', lineHeight: 1.45 }}>An active website license is extended from its current expiration date after verified payment. Google Play subscriptions must be managed in Google Play.</p>}
-          <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{adminCheckout.allowed ? 'QR payment requires a receipt sent via Messenger. An administrator must verify payment and activate access manually.' : PWA_PURCHASE_PAUSE_NOTICE}</p>
+          <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{canCheckout ? 'QR payment requires a receipt sent via Messenger. An administrator must verify payment and activate access manually.' : PWA_PURCHASE_PAUSE_NOTICE}</p>
         </aside>
       </div>
     </>}

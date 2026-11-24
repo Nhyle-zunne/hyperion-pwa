@@ -33,7 +33,7 @@ Deno.serve(async req => {
   if (authError || !user?.email) return json({ error: 'Please sign in again.' }, 401)
   const allowed = (Deno.env.get('ADMIN_EMAILS') || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
   if (!allowed.includes(user.email.toLowerCase())) return json({ error: 'Admin access denied.' }, 403)
-  let body: { action?: string; orderId?: string; decision?: string; adminNote?: string; instructions?: string }
+  let body: { action?: string; orderId?: string; decision?: string; adminNote?: string; instructions?: string; enabled?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
   if (body.action === 'check-admin') return json({ isAdmin: true })
   const admin = createClient(url, service, { auth: { persistSession: false } })
@@ -108,6 +108,16 @@ Deno.serve(async req => {
     if (!instructions) return json({ error: 'Payment instructions cannot be empty.' }, 400)
     const { error } = await admin.from('payment_settings').upsert({ id: 1, instructions, updated_at: new Date().toISOString() })
     return error ? json({ error: 'Could not save payment instructions.' }, 500) : json({ ok: true })
+  }
+  if (body.action === 'set-checkout-availability') {
+    if (typeof body.enabled !== 'boolean') return json({ error: 'Expected a checkout enabled or disabled setting.' }, 400)
+    const { data, error } = await admin.from('payment_settings')
+      .update({ website_checkout_enabled: body.enabled, updated_at: new Date().toISOString() })
+      .eq('id', 1)
+      .select('website_checkout_enabled,updated_at')
+      .single()
+    if (error || !data) return json({ error: 'Could not update checkout availability.' }, 500)
+    return json({ enabled: data.website_checkout_enabled, updatedAt: data.updated_at })
   }
   if (body.action !== 'review' || typeof body.orderId !== 'string' ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.orderId) ||

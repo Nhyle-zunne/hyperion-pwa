@@ -4,6 +4,8 @@ import { PAID_PRODUCTS, supabase } from '../lib/supabase'
 import { BANK_TRANSFER, formatMessengerPaymentDetails, parseManualCheckoutItems } from '../lib/manualQrCheckout'
 import type { ManualCheckoutTerm } from '../lib/manualQrCheckout'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
+import { refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
+import { PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 import './AdminQrCheckoutScreen.css'
 
 const messengerUrl = 'https://m.me/HyperionMaritime'
@@ -14,6 +16,7 @@ export default function AdminQrCheckoutScreen() {
   const [userId, setUserId] = useState<string>()
   const [email, setEmail] = useState('')
   const [authChecked, setAuthChecked] = useState(false)
+  const [checkoutChecked, setCheckoutChecked] = useState(false)
   const [previewCode, setPreviewCode] = useState('')
   const [previewTerm, setPreviewTerm] = useState<ManualCheckoutTerm>('month')
   const [copyStatus, setCopyStatus] = useState('')
@@ -22,6 +25,13 @@ export default function AdminQrCheckoutScreen() {
   const [checkRevision, setCheckRevision] = useState(0)
   const messageRef = useRef<HTMLTextAreaElement>(null)
   const access = useAdminCheckoutAccess(userId)
+  const checkoutAvailability = useWebsiteCheckoutAvailability()
+
+  useEffect(() => {
+    let active = true
+    void refreshWebsiteCheckoutAvailability(true).finally(() => { if (active) setCheckoutChecked(true) })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -69,7 +79,7 @@ export default function AdminQrCheckoutScreen() {
   }, [details, paymentStatus])
 
   useEffect(() => {
-    if (!userId || !access.allowed || !supabase || !items.length) return
+    if (!userId || (!checkoutAvailability.enabled && !access.allowed) || !supabase || !items.length) return
     const client = supabase
     const selectedCodes = items.map(item => item.code)
     let active = true
@@ -95,7 +105,7 @@ export default function AdminQrCheckoutScreen() {
       }
     })()
     return () => { active = false }
-  }, [userId, access.allowed, itemQuery, checkRevision])
+  }, [userId, access.allowed, checkoutAvailability.enabled, itemQuery, checkRevision])
 
   const copyDetails = async () => {
     try {
@@ -117,21 +127,28 @@ export default function AdminQrCheckoutScreen() {
     }
   }
 
-  if (!authChecked || (userId && !access.checked)) {
-    return <div className="screen qr-checkout-gate" role="status">Checking administrator access…</div>
+  if (!authChecked || !checkoutChecked || (userId && !checkoutAvailability.enabled && !access.checked)) {
+    return <div className="screen qr-checkout-gate" role="status">Checking checkout availability…</div>
   }
-  if (!access.allowed) {
+  if (!checkoutAvailability.enabled && !access.allowed) {
     return <div className="screen qr-checkout-gate" role="alert">
-      <h1>Checkout preview unavailable</h1>
-      <p>This QR checkout is currently restricted to Hyperion administrators. Website purchases remain paused.</p>
+      <h1>Checkout temporarily unavailable</h1>
+      <p>{PWA_PURCHASE_PAUSE_NOTICE}</p>
       <Link className="btn btn-outline" to="/account">BACK TO ACCOUNT</Link>
+    </div>
+  }
+  if (!userId) {
+    return <div className="screen qr-checkout-gate">
+      <h1>Sign in to checkout</h1>
+      <p>Sign in with your Hyperion account before paying so your receipt can be matched to the correct license.</p>
+      <Link className="btn btn-primary" to="/checkout">SIGN IN TO CONTINUE</Link>
     </div>
   }
 
   return <div className="screen qr-checkout-page">
     <div className="qr-checkout-topline">
       <Link to="/checkout" className="qr-checkout-back">← Back to Checkout</Link>
-      <span className="qr-checkout-eyebrow">HYPERION MARITIME · ADMIN PREVIEW</span>
+      <span className="qr-checkout-eyebrow">HYPERION MARITIME · {checkoutAvailability.enabled ? 'MANUAL PAYMENT' : 'ADMIN PREVIEW'}</span>
     </div>
     <header className="qr-checkout-header">
       <h1 className="page-title">QR Payment Checkout</h1>

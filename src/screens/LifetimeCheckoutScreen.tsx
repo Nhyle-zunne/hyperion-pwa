@@ -5,6 +5,7 @@ import AccountSectionTabs from '../components/AccountSectionTabs'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
+import { refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 import './LifetimeCheckoutScreen.css'
 
 async function checkoutError(error: unknown): Promise<string> {
@@ -26,6 +27,8 @@ export default function LifetimeCheckoutScreen() {
   const product = PAID_PRODUCTS.find(item => item.code === params.get('lifetime_product'))
   const [session, setSession] = useState<Session | null>(null)
   const adminCheckout = useAdminCheckoutAccess(session?.user.id)
+  const checkoutAvailability = useWebsiteCheckoutAvailability()
+  const canCheckout = adminCheckout.allowed || (checkoutAvailability.checked && canPerformPwaPaymentAction('checkout', checkoutAvailability.enabled))
   const [sessionChecked, setSessionChecked] = useState(!supabaseConfigured)
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null)
   const [refreshRevision, setRefreshRevision] = useState(0)
@@ -115,7 +118,7 @@ export default function LifetimeCheckoutScreen() {
   }
 
   const amount = product ? '₱' + product.lifetimePrice.toLocaleString('en-PH') : ''
-  const payable = Boolean(adminCheckout.allowed && product && session && !busy)
+  const payable = Boolean(canCheckout && product && session && !busy)
   return <div className="screen basket-page lifetime-checkout">
     <button type="button" className="lifetime-checkout-back" onClick={() => navigate('/account?tab=payments')}>
       ← Back to Bond Store
@@ -125,11 +128,11 @@ export default function LifetimeCheckoutScreen() {
       <div>
         <div className="lifetime-checkout-brand">HYPERION MARITIME</div>
         <h1 className="page-title">Checkout</h1>
-        <p className="subtitle">{adminCheckout.allowed ? 'Review this Lifetime plan before previewing QR payment.' : 'Review your selected access. New Lifetime payments are paused.'}</p>
+        <p className="subtitle">{canCheckout ? 'Review this Lifetime plan before QR Ph or bank transfer.' : 'Review your selected access. New Lifetime payments are paused.'}</p>
       </div>
       {product && <span className="lifetime-checkout-item-count">1 item to purchase</span>}
     </header>
-    {!adminCheckout.allowed && !canPerformPwaPaymentAction('checkout') && <div className="lifetime-checkout-card" role="status">{PWA_PURCHASE_PAUSE_NOTICE}</div>}
+    {!canCheckout && checkoutAvailability.checked && <div className="lifetime-checkout-card" role="status">{PWA_PURCHASE_PAUSE_NOTICE}</div>}
 
     {!product ? <section className="lifetime-checkout-card" role="alert">
       <h2>Invalid Lifetime selection</h2>
@@ -172,16 +175,22 @@ export default function LifetimeCheckoutScreen() {
           </div>
           <div className={'lifetime-checkout-action' + (payable ? ' is-payable' : '')}>
             <div className="lifetime-checkout-total"><strong>Total due</strong><strong>{amount}</strong></div>
-            {adminCheckout.allowed
+            {canCheckout
               ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={!payable}
-                  onClick={() => navigate(`/checkout/qr?items=${encodeURIComponent(`${product.code}:lifetime`)}`)}>CHECKOUT</button>
+                  onClick={() => void (async () => {
+                    if (!adminCheckout.allowed && !(await refreshWebsiteCheckoutAvailability(true))) {
+                      setMessage(PWA_PURCHASE_PAUSE_NOTICE)
+                      return
+                    }
+                    navigate(`/checkout/qr?items=${encodeURIComponent(`${product.code}:lifetime`)}`)
+                  })()}>CHECKOUT</button>
               : <div className="lifetime-checkout-disabled" role="status">
-                  {PWA_PURCHASE_PAUSE_NOTICE}
+                  {checkoutAvailability.checked ? PWA_PURCHASE_PAUSE_NOTICE : 'Checking checkout availability…'}
                 </div>}
           </div>
-          <div className="lifetime-checkout-payment-method">QR Ph</div>
+          <div className="lifetime-checkout-payment-method">QR Ph or bank transfer</div>
           <p className="lifetime-checkout-muted lifetime-checkout-footer">
-            QR payments are reviewed manually. Access activates only after an administrator verifies payment.
+            QR Ph and bank transfers are reviewed manually. Access activates only after an administrator verifies payment.
           </p>
         </aside>
       </div>

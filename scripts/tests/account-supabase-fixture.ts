@@ -88,6 +88,7 @@ export const supabase = {
       limit: (value: number) => { limit = value; return query },
       then: (resolve: (value: { data: unknown[]; error: unknown }) => unknown) => {
         fixtureCalls.push({ action: `select:${table}`, data: { columns, limit, cursor, filters } })
+        if (table === 'payment_settings' && localStorage.getItem('fixture-checkout-fetch-fails') === 'yes') return Promise.resolve({ data: [], error: { message: 'Synthetic settings outage' } }).then(resolve)
         if (cursor && localStorage.getItem('fixture-fail-older-orders') === 'yes') return Promise.resolve({ data: [], error: { message: 'Synthetic page failure' } }).then(resolve)
         const websiteRenewal = localStorage.getItem('fixture-renewal-website') === 'yes'
         const playRenewal = localStorage.getItem('fixture-renewal-play') === 'yes'
@@ -96,7 +97,9 @@ export const supabase = {
           granted_at: new Date(Date.now() - 86400_000).toISOString(),
           expires_at: new Date(Date.now() + 5 * 86400_000).toISOString(),
         }
-        let rows: Record<string, any>[] = table === 'orders' ? fixtureOrders().map(row => ({ ...row, user_id: user.id }))
+        let rows: Record<string, any>[] = table === 'payment_settings'
+          ? [{ id: 1, website_checkout_enabled: localStorage.getItem('fixture-checkout-enabled') === 'yes' }]
+          : table === 'orders' ? fixtureOrders().map(row => ({ ...row, user_id: user.id }))
           : table === 'lifetime_orders' && user.id === '11111111-1111-4111-8111-111111111111'
             && localStorage.getItem('fixture-lifetime-pending') === 'yes'
               ? [{id:'88888888-8888-4888-8888-888888888888',user_id:user.id,product_code:'gmdss',
@@ -114,11 +117,15 @@ export const supabase = {
         rows.sort((a,b) => { for (const { key, ascending } of ordering) { const delta = String(a[key]).localeCompare(String(b[key])); if (delta) return ascending ? delta : -delta } return 0 })
         return Promise.resolve({ data: rows.slice(0, limit).map(row => Object.fromEntries(columns.split(',').map(key => [key, row[key]]))), error: null }).then(resolve)
       },
+      single: async () => {
+        const result = await query.then(value => value)
+        return { data: result.data[0] ?? null, error: result.error || (result.data.length === 1 ? null : { message: 'Expected one row' }) }
+      },
     }
     return query
   },
   functions: {
-    invoke: async (name: string, request: { body?: { action?: string; orderId?: string; base64?: string; track?: string; mime?: string } }) => {
+    invoke: async (name: string, request: { body?: { action?: string; orderId?: string; base64?: string; track?: string; mime?: string; enabled?: boolean } }) => {
       fixtureCalls.push({ action: `${name}:${request.body?.action ?? ''}`, data: request.body })
       if (name === 'question-media') {
         const bytes = Uint8Array.from(atob(request.body?.base64 || ''), char => char.charCodeAt(0))
@@ -141,8 +148,16 @@ export const supabase = {
           { id: 'fixture-free', display_name: 'Synthetic Free Member', email: 'free@example.invalid', created_at: '2026-10-02T00:00:00Z', last_accessed_at: '2026-11-01T00:00:00Z', last_access_source: 'website_activity', retention_status: 'free_account_active', retention_due_at: '2027-01-01T00:00:00Z', licenses: {} },
         ], audit: [] }, error: null,
       }
-      if (name === 'admin-payment-review') return {
-        data: { isAdmin: localStorage.getItem('fixture-admin') === 'yes' && user.id === '11111111-1111-4111-8111-111111111111' }, error: null,
+      if (name === 'admin-payment-review') {
+        const isAdmin = localStorage.getItem('fixture-admin') === 'yes' && user.id === '11111111-1111-4111-8111-111111111111'
+        if (request.body?.action === 'check-admin') return { data: { isAdmin }, error: null }
+        if (!isAdmin) return { data: { error: 'Admin access denied' }, error: { message: 'Admin access denied' } }
+        if (request.body?.action === 'list') return { data: { orders: [], alerts: [] }, error: null }
+        if (request.body?.action === 'set-checkout-availability') {
+          if (typeof request.body.enabled !== 'boolean') return { data: { error: 'Invalid checkout setting' }, error: { message: 'Invalid checkout setting' } }
+          localStorage.setItem('fixture-checkout-enabled', request.body.enabled ? 'yes' : 'no')
+          return { data: { enabled: request.body.enabled, updatedAt: new Date().toISOString() }, error: null }
+        }
       }
       if (name === 'create-checkout' && request.body?.action === 'status') return { data: { action: 'status', enabled: true }, error: null }
       if (name === 'create-lifetime-checkout' && request.body?.action === 'status') {
