@@ -353,6 +353,9 @@ try {
   assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0, 'QR and bank details appear together without tabs')
   assert.equal(await adminQrPage.locator('.qr-checkout-bank dl > div').nth(1).locator('dd').innerText(), 'Hyperion')
   assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI \/ VYBE by BPI.*4309192465/s)
+  assert.match(await adminQrPage.locator('.qr-checkout-transfer-notice').innerText(), /Use InstaPay only\. Never use PESONet\./)
+  assert.equal(await adminQrPage.locator('.qr-checkout-bank .qr-checkout-total').count(), 1,
+    'The transfer amount belongs with the bank details, not below both payment columns')
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Account email: synthetic@example.invalid/)
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Deck OIC-NW \(Monthly\): PHP 79\.00/)
   for (const width of [1920, 1440, 1024, 860, 390, 320]) {
@@ -369,6 +372,8 @@ try {
       const image = document.querySelector('.qr-checkout-image-wrap')
       const qrImage = image.querySelector('img')
       const download = document.querySelector('.qr-checkout-download')
+      const bank = document.querySelector('.qr-checkout-bank')
+      const qrContent = document.querySelector('.qr-checkout-qr-content')
       const bankRows = [...document.querySelectorAll('.qr-checkout-bank dl > div')]
       const qrBox = qr.getBoundingClientRect()
       const proofBox = proof.getBoundingClientRect()
@@ -381,6 +386,9 @@ try {
         proof: { x: proofBox.x, y: proofBox.y, right: proofBox.right, bottom: proofBox.bottom },
         copy: { x: copyBox.x, right: copyBox.right, height: copyBox.height },
         pageWidth: page.getBoundingClientRect().width,
+        bankBottom: bank.getBoundingClientRect().bottom,
+        bankContentBottom: bank.lastElementChild.getBoundingClientRect().bottom,
+        qrContentBottom: qrContent.getBoundingClientRect().bottom,
         qrImageWidth: qrImageBox.width,
         detailsOverflowY: details.scrollHeight - details.clientHeight,
         detailsOverflowX: details.scrollWidth - details.clientWidth,
@@ -402,6 +410,9 @@ try {
     if (width >= 1440) assert(layout.qrImageWidth >= 280, `QR must be larger on desktop at ${width}px`)
     if (width === 390) assert(layout.qrImageWidth >= 240, 'QR must be large enough to scan on phones')
     assert(layout.separatedBankColumns, `Bank transfer rows need visually separated columns and right-aligned copy buttons at ${width}px`)
+    assert(layout.bankBottom - layout.bankContentBottom < 16, `Bank instructions must use the available column height at ${width}px`)
+    if (width >= 1440) assert(Math.abs(layout.bankBottom - layout.qrContentBottom) < 95,
+      `QR and transfer columns must be proportionally aligned at ${width}px`)
     if (width >= 960) assert(layout.pageWidth >= Math.min(width - 100, 1050),
       `Desktop QR checkout must use its available width at ${width}px (rendered ${layout.pageWidth}px)`)
     assert(layout.detailsOverflowY <= 2,
@@ -443,6 +454,21 @@ try {
   assert.equal(await adminQrPage.locator('.qr-checkout-bank').count(), 0,
     'Switching accounts revokes bank transfer details as well')
   await adminQrPage.close()
+  const adminBasketPage = await browser.newPage()
+  await adminBasketPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('hyperion-account-basket-v1', JSON.stringify([{ code: 'oic_nw', term: 'month' }]))
+  })
+  await adminBasketPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=basket`)
+  await adminBasketPage.getByRole('button', { name: 'CHECKOUT', exact: true }).waitFor()
+  assert.equal(await adminBasketPage.getByRole('button', { name: 'CHECKOUT WITH QR PH' }).count(), 0)
+  await adminBasketPage.close()
+
+  const adminLifetimePage = await browser.newPage()
+  await adminLifetimePage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
+  await adminLifetimePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=lifetime`)
+  await adminLifetimePage.getByRole('button', { name: 'CHECKOUT', exact: true }).waitFor()
+  await adminLifetimePage.close()
   console.log('PASS: QR checkout server-admin gate, exact payment details, pending-payment safety and account isolation')
 
   const page = await browser.newPage({ viewport: { width: 1531, height: 900 } })

@@ -187,10 +187,11 @@ export default function AdminQrCheckoutScreen() {
               <div><dt>Account number</dt><dd>{BANK_TRANSFER.accountNumber}</dd><button type="button" className="qr-checkout-bank-copy" aria-label="Copy account number" onClick={() => void copyBank(BANK_TRANSFER.accountNumber, 'Account number')}>Copy</button></div>
             </dl>
             {bankCopyStatus && <p role="status" className="qr-checkout-copy-status">{bankCopyStatus}</p>}
+            <p className="qr-checkout-transfer-notice"><strong>Use InstaPay only. Never use PESONet.</strong> InstaPay transfers are typically credited in real time, helping us verify payments sooner. License activation still requires administrator approval.</p>
+            <div className="qr-checkout-total"><span>Amount to transfer</span><strong>₱{totalPhp.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong></div>
+            <p className="qr-checkout-note qr-checkout-caution">Check the recipient before paying and save your receipt. Payment does not automatically activate a license.</p>
           </div>
         </div>
-        <div className="qr-checkout-total"><span>Amount to transfer</span><strong>₱{totalPhp.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong></div>
-        <p className="qr-checkout-note qr-checkout-caution">Check the recipient before paying and save your receipt. Payment does not automatically activate a license.</p>
       </section>
 
       <section className="qr-checkout-panel">
