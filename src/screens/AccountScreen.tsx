@@ -88,7 +88,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const navigate = useNavigate()
   const location = useLocation()
   const { pathname } = location
-  const checkoutPath = /^\/(?:checkout|basket)\/?$/.test(pathname)
+  const checkoutPath = /^\/(?:checkout|basket)\/?$/i.test(pathname)
   const [params] = useSearchParams()
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
   useEffect(() => { setAccountTab(params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments') }, [params])
