@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { PAID_PRODUCTS, supabase } from '../lib/supabase'
 import { BANK_TRANSFER, formatMessengerPaymentDetails, parseManualCheckoutItems } from '../lib/manualQrCheckout'
 import type { ManualCheckoutTerm } from '../lib/manualQrCheckout'
@@ -12,6 +12,7 @@ const messengerUrl = 'https://m.me/HyperionMaritime'
 const facebookPageUrl = 'https://www.facebook.com/HyperionMaritime/'
 
 export default function AdminQrCheckoutScreen() {
+  const location = useLocation()
   const [params] = useSearchParams()
   const [userId, setUserId] = useState<string>()
   const [email, setEmail] = useState('')
@@ -21,6 +22,8 @@ export default function AdminQrCheckoutScreen() {
   const [previewTerm, setPreviewTerm] = useState<ManualCheckoutTerm>('month')
   const [copyStatus, setCopyStatus] = useState('')
   const [bankCopyStatus, setBankCopyStatus] = useState('')
+  const [signingIn, setSigningIn] = useState(false)
+  const [signInError, setSignInError] = useState('')
   const [readiness, setReadiness] = useState<{ userId: string; selection: string | null; status: 'ready' | 'blocked' | 'error' }>()
   const [checkRevision, setCheckRevision] = useState(0)
   const messageRef = useRef<HTMLTextAreaElement>(null)
@@ -127,6 +130,35 @@ export default function AdminQrCheckoutScreen() {
     }
   }
 
+  const signInWithGoogle = async () => {
+    if (!supabase || signingIn) return
+    const requestedReturnTo = `${location.pathname}${location.search}${location.hash}`
+    const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//') ? requestedReturnTo : '/checkout'
+    try {
+      localStorage.setItem('hyperion-oauth-return-to', JSON.stringify({
+        path: returnTo,
+        startedAt: Date.now(),
+        mode: 'redirect',
+      }))
+    } catch { /* OAuth callback falls back to the dashboard if storage is blocked. */ }
+    setSigningIn(true)
+    setSignInError('')
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: 'https://hyperionmaritime.org/auth/callback',
+          queryParams: { prompt: 'select_account' },
+        },
+      })
+      if (error) throw error
+    } catch {
+      try { localStorage.removeItem('hyperion-oauth-return-to') } catch { /* ignore */ }
+      setSignInError('Google sign-in could not be started. Please try again.')
+      setSigningIn(false)
+    }
+  }
+
   if (!authChecked || !checkoutChecked || (userId && !checkoutAvailability.enabled && !access.checked)) {
     return <div className="screen qr-checkout-gate" role="status">Checking checkout availability…</div>
   }
@@ -136,6 +168,16 @@ export default function AdminQrCheckoutScreen() {
       <p>{PWA_PURCHASE_PAUSE_NOTICE}</p>
       <Link className="btn btn-outline" to="/account">BACK TO ACCOUNT</Link>
     </div>
+  }
+  if (!userId) {
+    return <section className="screen qr-checkout-gate" aria-labelledby="qr-checkout-sign-in-title">
+      <h1 id="qr-checkout-sign-in-title">Sign in to checkout</h1>
+      <p>Sign in with your Google account to view payment instructions and match your receipt to your Hyperion license.</p>
+      <button type="button" className="btn btn-primary" disabled={!supabase || signingIn} onClick={() => void signInWithGoogle()}>
+        {signingIn ? 'OPENING GOOGLE…' : 'SIGN IN WITH GOOGLE'}
+      </button>
+      {signInError && <p role="alert">{signInError}</p>}
+    </section>
   }
   return <div className="screen qr-checkout-page">
     <div className="qr-checkout-topline">
@@ -162,11 +204,7 @@ export default function AdminQrCheckoutScreen() {
       </label>
     </section>}
 
-    {!userId ? <section className="qr-checkout-panel qr-checkout-gate">
-      <h2>Sign in to checkout</h2>
-      <p>Sign in with your Hyperion account before paying so your receipt can be matched to the correct license.</p>
-      <Link className="btn btn-primary" to="/checkout">SIGN IN TO CONTINUE</Link>
-    </section> : items.length === 0 ? <section className="qr-checkout-panel" role="status">
+    {items.length === 0 ? <section className="qr-checkout-panel" role="status">
       <h2>No valid checkout selection</h2>
       <p>Choose a reviewer track and duration to prepare the payment instructions. No payment has been started.</p>
     </section> : paymentStatus !== 'ready' ? <section className="qr-checkout-panel" role={paymentStatus === 'checking' ? 'status' : 'alert'}>
