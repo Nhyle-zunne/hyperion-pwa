@@ -359,8 +359,10 @@ try {
       }
     })
     assert(layout.pageOverflow <= 1, `QR checkout must fit ${width}px without horizontal page scrolling`)
-    assert(layout.detailsOverflowY <= 2 && layout.detailsOverflowX <= 2,
-      `Full Messenger payment message must be readable without nested scrollbars at ${width}px`)
+    assert(layout.detailsOverflowY <= 2,
+      `Messenger payment message must not scroll vertically at ${width}px (overflow ${layout.detailsOverflowY}px)`)
+    assert(layout.detailsOverflowX <= 2,
+      `Messenger payment message must not scroll horizontally at ${width}px (overflow ${layout.detailsOverflowX}px)`)
     assert(layout.copy.x >= 0 && layout.copy.right <= width && layout.copy.height >= 44,
       `Copy action must remain accessible at ${width}px`)
     if (width >= 960) assert(layout.proof.x > layout.qr.right,
