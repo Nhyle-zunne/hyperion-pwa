@@ -42,6 +42,18 @@ function orderStatusHelp(order: Pick<Order, 'status' | 'payment_method'>): strin
   return null
 }
 
+function displayPaymentMethod(method: string | null | undefined): string {
+  if (!method) return 'Payment method not recorded'
+  // The finalizer records the actual method on paid legacy checkouts, while
+  // older pending/cancelled orders retain their original hosted-checkout label.
+  if (method.startsWith('PayMongo')) {
+    return method.endsWith('qrph') ? 'Earlier hosted checkout · QR Ph'
+      : method.endsWith('card') ? 'Earlier hosted checkout · card'
+      : 'Earlier hosted checkout'
+  }
+  return method
+}
+
 async function readableError(error: unknown, fallback: string): Promise<string> {
   if (error && typeof error === 'object' && 'context' in error) {
     const context = (error as { context?: unknown }).context
@@ -409,7 +421,7 @@ export default function OrdersPaymentHistoryScreen() {
                 <div className="orders-title-row">
                   <div style={{ minWidth: 0 }}>
                     <strong style={{ display: 'block', fontSize: '1rem' }}>{product?.label ?? order.product_code} · {order.license_term === 'week' ? 'Weekly' : order.license_term === 'month' ? 'Monthly' : 'Yearly'} · ₱{order.amount_php}</strong>
-                    <div className="orders-meta" style={{ marginTop: '.3rem' }}>{new Date(order.paid_at || order.created_at).toLocaleString()} · {order.payment_method === 'PayMongo Checkout' ? 'Earlier hosted checkout' : order.payment_method || 'Payment method not recorded'}</div>
+                    <div className="orders-meta" style={{ marginTop: '.3rem' }}>{new Date(order.paid_at || order.created_at).toLocaleString()} · {displayPaymentMethod(order.payment_method)}</div>
                   </div>
                   <span className="orders-status" style={paid ? { color: 'var(--success, #15803d)', borderColor: '#86cba0', background: 'rgba(34,197,94,.08)' } : rejected ? { color: 'var(--text-muted)' } : { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'var(--bg-elevated)' }}>{status}</span>
                 </div>
