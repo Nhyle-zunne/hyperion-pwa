@@ -140,7 +140,7 @@ export default function AdminQrCheckoutScreen() {
   return <div className="screen qr-checkout-page">
     <div className="qr-checkout-topline">
       <Link to="/checkout" className="qr-checkout-back">← Back to Checkout</Link>
-      <span className="qr-checkout-eyebrow">HYPERION MARITIME · {access.allowed ? 'ADMIN PREVIEW' : 'MANUAL PAYMENT'}</span>
+      <span className="qr-checkout-eyebrow">HYPERION MARITIME · MANUAL PAYMENT</span>
     </div>
     <header className="qr-checkout-header">
       <h1 className="page-title">QR Payment Checkout</h1>
