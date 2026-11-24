@@ -331,6 +331,8 @@ try {
   await visitorQrPage.getByRole('heading', { name: 'Checkout preview unavailable' }).waitFor()
   assert.equal(await visitorQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'A signed-in non-admin cannot reveal the QR receiving code through a direct link')
+  assert.equal(await visitorQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0,
+    'A non-admin cannot reveal bank transfer instructions through a direct link')
   await visitorQrPage.close()
 
   const adminQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
@@ -338,6 +340,9 @@ try {
   await adminQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await adminQrPage.getByRole('heading', { name: 'QR Payment Checkout' }).waitFor()
   await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
+  const saveQr = adminQrPage.getByRole('link', { name: 'SAVE QR IMAGE' })
+  assert.equal(await saveQr.getAttribute('href'), '/qr-ph.png', 'The displayed QR is the downloadable original image')
+  assert.equal(await saveQr.getAttribute('download'), 'hyperion-qr-ph.png', 'QR image saves with a meaningful filename')
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Account email: synthetic@example.invalid/)
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Deck OIC-NW \(Monthly\): PHP 79\.00/)
   for (const width of [1920, 1440, 1024, 860, 390, 320]) {
@@ -355,8 +360,8 @@ try {
       const proofBox = proof.getBoundingClientRect()
       const copyBox = copy.getBoundingClientRect()
       return {
-        qr: { x: qrBox.x, y: qrBox.y, right: qrBox.right },
-        proof: { x: proofBox.x, y: proofBox.y, right: proofBox.right },
+        qr: { x: qrBox.x, y: qrBox.y, right: qrBox.right, bottom: qrBox.bottom },
+        proof: { x: proofBox.x, y: proofBox.y, right: proofBox.right, bottom: proofBox.bottom },
         copy: { x: copyBox.x, right: copyBox.right, height: copyBox.height },
         pageWidth: page.getBoundingClientRect().width,
         detailsOverflowY: details.scrollHeight - details.clientHeight,
@@ -373,20 +378,42 @@ try {
       `Messenger payment message must not scroll horizontally at ${width}px (overflow ${layout.detailsOverflowX}px)`)
     assert(layout.copy.x >= 0 && layout.copy.right <= width && layout.copy.height >= 44,
       `Copy action must remain accessible at ${width}px`)
-    if (width >= 960) assert(layout.proof.x > layout.qr.right,
-      `Desktop QR and proof panels must be side by side at ${width}px`)
+    if (width >= 960) {
+      assert(layout.proof.x > layout.qr.right, `Desktop QR and proof panels must be side by side at ${width}px`)
+      assert(Math.max(layout.qr.bottom, layout.proof.bottom) < 850,
+        `Desktop checkout panels must remain above the fold in a 900px viewport at ${width}px`)
+    }
     else assert(layout.proof.y > layout.qr.y && Math.abs(layout.proof.x - layout.qr.x) <= 1,
       `Smaller screens must stack the QR and proof panels at ${width}px`)
   }
+  await adminQrPage.setViewportSize({ width: 390, height: 900 })
+  await adminQrPage.getByRole('button', { name: 'Bank transfer' }).click()
+  assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0, 'Bank transfer does not display the QR as a required step')
+  assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).getAttribute('aria-pressed'), 'true')
+  assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI \/ VYBE by BPI.*Hyperion Maritime.*4309192465/s)
+  assert(await adminQrPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Bank details fit a phone viewport')
+  await adminQrPage.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedBankDetails = text } } })
+  })
+  await adminQrPage.getByRole('button', { name: 'COPY BANK DETAILS' }).click()
+  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'Bank: BPI / VYBE by BPI\nAccount name: Hyperion Maritime\nAccount number: 4309192465')
+  await adminQrPage.getByRole('button', { name: 'COPY ACCOUNT NUMBER' }).click()
+  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '4309192465')
+  await adminQrPage.getByRole('button', { name: 'QR Ph' }).click()
+  await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
   await adminQrPage.evaluate(() => localStorage.setItem('fixture-pending-orders', 'yes'))
   await adminQrPage.reload()
   await adminQrPage.getByRole('alert').filter({ hasText: /unresolved checkout/i }).waitFor()
   assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'Unresolved PayMongo payment prevents a new QR transfer for the same track')
+  assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0,
+    'Unresolved payments also prevent a duplicate bank transfer')
   await adminQrPage.evaluate(() => window.switchFixtureAccount())
   await adminQrPage.getByRole('heading', { name: 'Checkout preview unavailable' }).waitFor()
   assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'Switching to a non-admin account revokes an already open QR preview')
+  assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0,
+    'Switching accounts revokes bank transfer details as well')
   await adminQrPage.close()
   console.log('PASS: QR checkout server-admin gate, exact payment details, pending-payment safety and account isolation')
 

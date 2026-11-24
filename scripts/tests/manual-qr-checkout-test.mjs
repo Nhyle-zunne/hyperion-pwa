@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { formatMessengerPaymentDetails, parseManualCheckoutItems } from '../../src/lib/manualQrCheckout.ts'
+import { BANK_TRANSFER, formatBankTransferDetails, formatMessengerPaymentDetails, parseManualCheckoutItems } from '../../src/lib/manualQrCheckout.ts'
 
 const products = [
   { code: 'oic_nw', label: 'Deck OIC-NW', weeklyPrice: 29, monthlyPrice: 79, annualPrice: 499, lifetimePrice: 999 },
@@ -33,5 +33,18 @@ test('Messenger text is copyable with exact email, tracks, durations, and total 
     'Total amount: PHP 678.00',
     '',
     'I have attached my payment receipt. Please verify my payment and activate the selected licenses.',
+  ].join('\n'))
+})
+
+test('bank transfer copy text contains the exact receiving account supplied by Hyperion', () => {
+  assert.deepEqual(BANK_TRANSFER, {
+    bank: 'BPI / VYBE by BPI',
+    accountName: 'Hyperion Maritime',
+    accountNumber: '4309192465',
+  })
+  assert.equal(formatBankTransferDetails(), [
+    'Bank: BPI / VYBE by BPI',
+    'Account name: Hyperion Maritime',
+    'Account number: 4309192465',
   ].join('\n'))
 })
