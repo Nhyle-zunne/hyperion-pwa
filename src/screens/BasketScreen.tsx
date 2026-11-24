@@ -672,17 +672,16 @@ function TimedBasketScreen() {
     </div>
     {!canCheckout && checkoutAvailability.checked && <div role="status" style={{ ...style.card, marginBottom: '1rem', color: 'var(--text-muted)' }}>{PWA_PURCHASE_PAUSE_NOTICE}</div>}
 
-    {!session ? <section style={{ ...style.card, maxWidth: 600 }}>
+    {!session && <section style={{ ...style.card, maxWidth: 600 }}>
       <h2 style={{ marginTop: 0 }}>Sign in to continue</h2>
       <p className="basket-muted">Your basket is saved in this browser. Sign in to verify pending purchases and complete checkout.</p>
       <button type="button" className="btn btn-primary" disabled={!supabaseConfigured || busy} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>{busy ? 'OPENING GOOGLE…' : 'SIGN IN WITH GOOGLE'}</button>
       <button type="button" className="btn btn-outline" onClick={() => navigate('/account?tab=payments')} style={{ width: '100%', marginTop: '.55rem' }}>BACK TO BOND STORE</button>
-    </section> : <>
-      {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>
-        {message}
-      </div>}
-
-      {(pendingCheckoutGroups.length + pendingLifetimeOrders.length) > 0 && <section className="basket-pending-card" style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
+    </section>}
+    {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>
+      {message}
+    </div>}
+    {session && (pendingCheckoutGroups.length + pendingLifetimeOrders.length) > 0 && <section className="basket-pending-card" style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
         <div className="basket-pending-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
           <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length + pendingLifetimeOrders.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Old PayMongo payments cannot be resumed. You can still refresh their status or cancel them safely.</p></div>
           <button type="button" className="btn btn-outline basket-pending-refresh" disabled={busy} onClick={() => void refreshStatus()}>{busy ? 'Checking…' : 'Refresh payment status'}</button>
@@ -710,9 +709,8 @@ function TimedBasketScreen() {
             </button>
           </div>
         </div>)}
-      </section>}
-
-      <div className="basket-layout">
+    </section>}
+    <div className="basket-layout">
         <section className="basket-selected-card" style={style.card}>
           <div className="basket-selected-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.8rem', flexWrap: 'wrap' }}>
             <div><h2 style={{ fontSize: '1.1rem', margin: 0 }}>Selected tracks</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Only items shown here will be included in this payment.</p></div>
@@ -737,6 +735,10 @@ function TimedBasketScreen() {
           <div className={`basket-checkout-action${canCheckout ? ' is-payable' : ''}`}>
             <div className="basket-total-row" style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
           {canCheckout ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length} onClick={() => void (async () => {
+            if (!session) {
+              await signInWithGoogle()
+              return
+            }
             if (!adminCheckout.allowed && !(await refreshWebsiteCheckoutAvailability(true))) {
               setMessage(PWA_PURCHASE_PAUSE_NOTICE)
               return
@@ -748,6 +750,5 @@ function TimedBasketScreen() {
           <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{canCheckout ? 'QR payment requires a receipt sent via Messenger. An administrator must verify payment and activate access manually.' : PWA_PURCHASE_PAUSE_NOTICE}</p>
         </aside>
       </div>
-    </>}
   </div>
 }

@@ -118,7 +118,7 @@ export default function LifetimeCheckoutScreen() {
   }
 
   const amount = product ? '₱' + product.lifetimePrice.toLocaleString('en-PH') : ''
-  const payable = Boolean(canCheckout && product && session && !busy)
+  const payable = Boolean(canCheckout && product && !busy && (session || (sessionChecked && supabaseConfigured)))
   return <div className="screen basket-page lifetime-checkout">
     <button type="button" className="lifetime-checkout-back" onClick={() => navigate('/account?tab=payments')}>
       ← Back to Bond Store
@@ -138,14 +138,15 @@ export default function LifetimeCheckoutScreen() {
       <h2>Invalid Lifetime selection</h2>
       <p>Return to Bond Store and select a valid reviewer track.</p>
       <button type="button" className="btn btn-primary" onClick={() => navigate('/account?tab=payments')}>BROWSE TRACKS</button>
-    </section> : !session ? <section className="lifetime-checkout-card lifetime-checkout-sign-in">
+    </section> : <>
+    {!session && <section className="lifetime-checkout-card lifetime-checkout-sign-in">
       <h2>Sign in to continue</h2>
       <p>{sessionChecked ? 'Sign in to complete your selected Lifetime Access purchase.' : 'Checking your saved account session…'}</p>
       <button type="button" className="btn btn-primary" disabled={!supabaseConfigured || busy || !sessionChecked}
         onClick={() => void signInWithGoogle()}>
         {busy ? 'OPENING GOOGLE…' : 'SIGN IN WITH GOOGLE'}
       </button>
-    </section> : <>
+    </section>}
       {message && <div role="status" className="lifetime-checkout-card lifetime-checkout-message">
         {message}
       </div>}
@@ -178,6 +179,10 @@ export default function LifetimeCheckoutScreen() {
             {canCheckout
               ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={!payable}
                   onClick={() => void (async () => {
+                    if (!session) {
+                      await signInWithGoogle()
+                      return
+                    }
                     if (!adminCheckout.allowed && !(await refreshWebsiteCheckoutAvailability(true))) {
                       setMessage(PWA_PURCHASE_PAUSE_NOTICE)
                       return

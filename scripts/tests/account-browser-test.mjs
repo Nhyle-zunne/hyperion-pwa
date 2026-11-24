@@ -383,7 +383,7 @@ try {
   const guestCheckout = guestBasketPage.getByRole('button', { name: 'CHECKOUT', exact: true })
   await guestCheckout.waitFor()
   assert.equal(await guestCheckout.isEnabled(), true, 'Guests can see and use the checkout action to start sign-in')
-  assert.match(await guestBasketPage.locator('.basket-summary').innerText(), /₱50/)
+  assert.match(await guestBasketPage.locator('.basket-summary').innerText(), /₱79/)
   await guestCheckout.click()
   await guestBasketPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'sign-in-google'))
   assert.equal(await guestBasketPage.locator('.qr-checkout-image-wrap img').count(), 0,

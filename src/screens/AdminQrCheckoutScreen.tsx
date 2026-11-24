@@ -137,18 +137,10 @@ export default function AdminQrCheckoutScreen() {
       <Link className="btn btn-outline" to="/account">BACK TO ACCOUNT</Link>
     </div>
   }
-  if (!userId) {
-    return <div className="screen qr-checkout-gate">
-      <h1>Sign in to checkout</h1>
-      <p>Sign in with your Hyperion account before paying so your receipt can be matched to the correct license.</p>
-      <Link className="btn btn-primary" to="/checkout">SIGN IN TO CONTINUE</Link>
-    </div>
-  }
-
   return <div className="screen qr-checkout-page">
     <div className="qr-checkout-topline">
       <Link to="/checkout" className="qr-checkout-back">← Back to Checkout</Link>
-      <span className="qr-checkout-eyebrow">HYPERION MARITIME · {checkoutAvailability.enabled ? 'MANUAL PAYMENT' : 'ADMIN PREVIEW'}</span>
+      <span className="qr-checkout-eyebrow">HYPERION MARITIME · {access.allowed ? 'ADMIN PREVIEW' : 'MANUAL PAYMENT'}</span>
     </div>
     <header className="qr-checkout-header">
       <h1 className="page-title">QR Payment Checkout</h1>
@@ -170,7 +162,11 @@ export default function AdminQrCheckoutScreen() {
       </label>
     </section>}
 
-    {items.length === 0 ? <section className="qr-checkout-panel" role="status">
+    {!userId ? <section className="qr-checkout-panel qr-checkout-gate">
+      <h2>Sign in to checkout</h2>
+      <p>Sign in with your Hyperion account before paying so your receipt can be matched to the correct license.</p>
+      <Link className="btn btn-primary" to="/checkout">SIGN IN TO CONTINUE</Link>
+    </section> : items.length === 0 ? <section className="qr-checkout-panel" role="status">
       <h2>No valid checkout selection</h2>
       <p>Choose a reviewer track and duration to prepare the payment instructions. No payment has been started.</p>
     </section> : paymentStatus !== 'ready' ? <section className="qr-checkout-panel" role={paymentStatus === 'checking' ? 'status' : 'alert'}>
