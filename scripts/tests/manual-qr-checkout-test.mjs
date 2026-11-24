@@ -41,7 +41,7 @@ test('Messenger text is copyable with exact email, tracks, durations, and total 
 test('bank transfer copy text contains the exact receiving account supplied by Hyperion', () => {
   assert.deepEqual(BANK_TRANSFER, {
     bank: 'BPI / VYBE by BPI',
-    accountName: 'Hyperion Maritime',
+    accountName: 'Hyperion',
     accountNumber: '4309192465',
   })
 })
