@@ -16,6 +16,8 @@ export default function AdminQrCheckoutScreen() {
   const [previewCode, setPreviewCode] = useState('')
   const [previewTerm, setPreviewTerm] = useState<ManualCheckoutTerm>('month')
   const [copyStatus, setCopyStatus] = useState('')
+  const [readiness, setReadiness] = useState<{ userId: string; selection: string | null; status: 'ready' | 'blocked' | 'error' }>()
+  const [checkRevision, setCheckRevision] = useState(0)
   const messageRef = useRef<HTMLTextAreaElement>(null)
   const access = useAdminCheckoutAccess(userId)
 
@@ -44,6 +46,36 @@ export default function AdminQrCheckoutScreen() {
   const items = parseManualCheckoutItems(itemQuery, PAID_PRODUCTS)
   const totalPhp = items.reduce((sum, item) => sum + item.amountPhp, 0)
   const details = formatMessengerPaymentDetails(email, items)
+  const paymentStatus = readiness && readiness.userId === userId && readiness.selection === itemQuery ? readiness.status : 'checking'
+
+  useEffect(() => {
+    if (!userId || !access.allowed || !supabase || !items.length) return
+    const client = supabase
+    const selectedCodes = items.map(item => item.code)
+    let active = true
+    setReadiness(undefined)
+    void (async () => {
+      try {
+        const [pendingOrders, failedProviderSessions, pendingLifetimeOrders] = await Promise.all([
+          client.from('orders').select('id').eq('user_id', userId)
+            .in('product_code', selectedCodes).in('status', ['pending', 'submitted']).limit(1),
+          client.from('orders').select('id').eq('user_id', userId)
+            .in('product_code', selectedCodes).eq('status', 'failed')
+            .eq('payment_method', 'PayMongo Checkout')
+            .not('paymongo_checkout_session_id', 'is', null).limit(1),
+          client.from('lifetime_orders').select('id').eq('user_id', userId)
+            .in('product_code', selectedCodes).eq('status', 'pending').limit(1),
+        ])
+        if (!active) return
+        const failed = pendingOrders.error || failedProviderSessions.error || pendingLifetimeOrders.error
+        const blocked = pendingOrders.data?.length || failedProviderSessions.data?.length || pendingLifetimeOrders.data?.length
+        setReadiness({ userId, selection: itemQuery, status: failed ? 'error' : blocked ? 'blocked' : 'ready' })
+      } catch {
+        if (active) setReadiness({ userId, selection: itemQuery, status: 'error' })
+      }
+    })()
+    return () => { active = false }
+  }, [userId, access.allowed, itemQuery, checkRevision])
 
   const copyDetails = async () => {
     try {
@@ -93,6 +125,15 @@ export default function AdminQrCheckoutScreen() {
     {items.length === 0 ? <section className="qr-checkout-panel" role="status">
       <h2>No valid checkout selection</h2>
       <p>Choose a reviewer track and duration to prepare the payment instructions. No payment has been started.</p>
+    </section> : paymentStatus !== 'ready' ? <section className="qr-checkout-panel" role={paymentStatus === 'checking' ? 'status' : 'alert'}>
+      <h2>{paymentStatus === 'blocked' ? 'Existing unresolved checkout' : paymentStatus === 'error' ? 'Unable to verify payment status' : 'Checking existing payments…'}</h2>
+      <p>{paymentStatus === 'blocked'
+        ? 'Resolve or safely cancel the existing payment for this track before making another QR transfer. Do not pay twice.'
+        : paymentStatus === 'error'
+          ? 'Hyperion could not check previous payments. No QR code is available until this check succeeds.'
+          : 'Verifying there is no pending PayMongo or manual payment for the selected tracks.'}</p>
+      {paymentStatus === 'blocked' && <Link className="btn btn-outline" to="/orders">VIEW ORDERS &amp; PAYMENT HISTORY</Link>}
+      {paymentStatus === 'error' && <button type="button" className="btn btn-outline" onClick={() => setCheckRevision(value => value + 1)}>RETRY PAYMENT CHECK</button>}
     </section> : <div className="qr-checkout-grid">
       <section className="qr-checkout-panel">
         <h2>1. Scan and pay</h2>
@@ -100,6 +141,7 @@ export default function AdminQrCheckoutScreen() {
         <div className="qr-checkout-image-wrap">
           <img src="/qr-ph.png" alt="Hyperion's QR Ph payment code" width="320" height="320" />
         </div>
+        <p className="qr-checkout-note" role="status">Administrator preview: this is the previous MariBank/InstaPay QR image. Replace it with the intended receiving-account QR before accepting payment.</p>
         <div className="qr-checkout-total"><span>Amount to transfer</span><strong>₱{totalPhp.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong></div>
         <p className="qr-checkout-note">Confirm the recipient in your banking app before paying. Save your receipt or screenshot. Sending money does not automatically activate a license.</p>
       </section>

@@ -221,6 +221,8 @@ assert.match(functionConfig, /\[functions\.create-checkout\]\s*verify_jwt = true
 assert.ok(checkout.includes("body.action === 'status'"), 'Checkout endpoint exposes only a non-secret availability status action');
 assert.ok(checkout.includes("const enabled = !WEBSITE_PAYMONGO_PURCHASES_DISABLED && checkoutEnabled && Boolean(serviceKey) && keyMatchesMode"), 'PayMongo checkout status stays disabled during the QR transition');
 assert.ok(checkout.includes('if (WEBSITE_PAYMONGO_PURCHASES_DISABLED) return json('), 'Direct PayMongo checkout creation is disabled server-side');
+assert.ok(submitManualPaymentFunction.includes('if (WEBSITE_MANUAL_SUBMISSIONS_DISABLED) return json('),
+  'The retired manual-order API must also reject new public payment submissions server-side');
 const lifetimeCheckoutFunction = await read('../supabase/functions/create-lifetime-checkout/index.ts');
 assert.ok(lifetimeCheckoutFunction.includes("body.action !== 'create'") &&
   lifetimeCheckoutFunction.includes('if (WEBSITE_PAYMONGO_PURCHASES_DISABLED) return json(') &&

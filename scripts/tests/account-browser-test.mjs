@@ -326,6 +326,32 @@ try {
   console.log('PASS: admin image upload, optional descriptions, removal, apply/queue metadata and responsive editor workflow')
   await editorPage.close()
 
+  const visitorQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await visitorQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await visitorQrPage.getByRole('heading', { name: 'Checkout preview unavailable' }).waitFor()
+  assert.equal(await visitorQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'A signed-in non-admin cannot reveal the QR receiving code through a direct link')
+  await visitorQrPage.close()
+
+  const adminQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await adminQrPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
+  await adminQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await adminQrPage.getByRole('heading', { name: 'QR Payment Checkout' }).waitFor()
+  await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
+  assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Account email: synthetic@example.invalid/)
+  assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Deck OIC-NW \(Monthly\): PHP 79\.00/)
+  await adminQrPage.evaluate(() => localStorage.setItem('fixture-pending-orders', 'yes'))
+  await adminQrPage.reload()
+  await adminQrPage.getByRole('alert').filter({ hasText: /unresolved checkout/i }).waitFor()
+  assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Unresolved PayMongo payment prevents a new QR transfer for the same track')
+  await adminQrPage.evaluate(() => window.switchFixtureAccount())
+  await adminQrPage.getByRole('heading', { name: 'Checkout preview unavailable' }).waitFor()
+  assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Switching to a non-admin account revokes an already open QR preview')
+  await adminQrPage.close()
+  console.log('PASS: QR checkout server-admin gate, exact payment details, pending-payment safety and account isolation')
+
   const page = await browser.newPage({ viewport: { width: 1531, height: 900 } })
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
@@ -368,11 +394,13 @@ try {
     assert.equal(await page.getByRole('button', { name: 'Shopping cart', exact: true }).count(), 0, 'Checkout has no floating cart')
     if (width === 390) {
       const action = page.locator('.basket-checkout-action')
-      assert.equal(await page.getByRole('button', { name: 'Checkout', exact: true }).count(), 1, 'Mobile shows exactly one checkout button')
+      assert.equal(await page.locator('.checkout-pay-button').count(), 0,
+        'Public visitors never receive a payment action during the admin-only QR preview')
       if (PWA_PURCHASES_PAUSED) {
         assert.equal(await action.evaluate(el => getComputedStyle(el).position), 'static',
           'Paused checkout does not dock a disabled payment bar over the mobile content')
-        assert.equal(await action.getByRole('button', { name: 'Checkout', exact: true }).isDisabled(), true)
+        assert.equal(await action.getByRole('status').count(), 1,
+          'Paused checkout explains why payment is unavailable')
         assert.equal(await page.locator('.basket-checkout-action.is-payable').count(), 0)
       } else {
         assert.equal(await action.evaluate(el => getComputedStyle(el).position), 'fixed',
@@ -394,8 +422,8 @@ try {
     }
     await page.screenshot({ path: `account-checkout-${width}.png`, fullPage: true })
   }
-  // Payment labels must match the only method configured for PayMongo
-  // on *both* desktop and mobile, including the pending-checkout state.
+  // Existing PayMongo orders remain manageable, but new PayMongo checkout
+  // sessions cannot be resumed during the admin-only QR transition.
   const pendingPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await pendingPage.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
   await pendingPage.addInitScript(() => localStorage.setItem('fixture-pending-orders', 'yes'))
@@ -404,19 +432,19 @@ try {
   for (const width of [390, 320, 1531]) {
     await pendingPage.setViewportSize({ width, height: 900 })
     const rows = pendingPage.locator('.basket-pending-row')
-    assert.equal(await rows.count(), 2, 'Each pending checkout still has its own resume/cancel actions')
+    assert.equal(await rows.count(), 2, 'Each pending checkout retains its own safe cancellation control')
     const methods = await pendingPage.locator('.basket-payment-methods span').allTextContents()
-    assert.deepEqual(methods, ['QR Ph'], `Only the actual QR Ph payment method is advertised at ${width}px`)
+    assert.deepEqual(methods, [], `Legacy checkout does not advertise payment options at ${width}px`)
     assert(await pendingPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Pending checkout has no horizontal overflow at ${width}px`)
     if (width <= 800) {
       const row = rows.first()
       const details = await row.locator('.basket-pending-detail').boundingBox()
       const actions = await row.locator('.basket-pending-actions').boundingBox()
-      const resume = await row.getByRole('button', { name: 'RESUME CHECKOUT' }).boundingBox()
+      const resume = await row.getByText('RESUME UNAVAILABLE', { exact: true }).boundingBox()
       const cancel = await row.getByRole('button', { name: 'CANCEL' }).boundingBox()
       assert(details && actions && resume && cancel)
       assert(actions.y >= details.y + details.height - 2, 'Mobile pending payment actions appear beneath the full track details')
-      assert(Math.abs(resume.y - cancel.y) < 3 && resume.width > 90 && cancel.width > 70, 'Resume and Cancel form a readable, single row')
+      assert(Math.abs(resume.y - cancel.y) < 12 && resume.width > 90 && cancel.width > 70, 'Resume-unavailable notice and Cancel remain readable')
       assert(actions.x >= 0 && actions.x + actions.width <= width, 'Pending checkout controls fit the mobile viewport')
     }
   }
@@ -682,23 +710,17 @@ try {
   await page.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
   assert.equal(await page.getByRole('button', { name: 'Shopping cart', exact: true }).count(), 0, 'Basket alias also hides the floating cart')
   await page.setViewportSize({ width: 390, height: 900 })
-  const checkout = page.getByRole('button', { name: 'Checkout', exact: true })
-  await page.locator('.checkout-pay-button').waitFor()
-  assert.equal(await checkout.isDisabled(), PWA_PURCHASES_PAUSED,
-    'Selected checkout follows the temporary purchase availability policy')
+  assert.equal(await page.locator('.checkout-pay-button').count(), 0,
+    'Non-admin users cannot reach the QR payment action by a direct basket link')
   await page.getByRole('button', { name: 'Remove', exact: true }).click()
   await page.getByText('Your checkout is empty', { exact: true }).waitFor()
-  assert.equal(await checkout.isDisabled(), true, 'Empty checkout cannot be activated')
   const callsBefore = await page.evaluate(() => window.accountFixtureCalls.length)
-  await checkout.evaluate(button => button.click())
+  assert.equal(await page.locator('.checkout-pay-button').count(), 0, 'Empty public checkout offers no payment action')
   assert.equal(await page.evaluate(() => window.accountFixtureCalls.length), callsBefore, 'Empty checkout starts no payment request')
-  assert(Number(await checkout.evaluate(button => getComputedStyle(button).opacity)) < 1, 'Empty checkout looks disabled')
-  assert.equal(await checkout.evaluate(button => getComputedStyle(button).cursor), 'not-allowed', 'Empty checkout does not show an active pointer')
   await page.screenshot({ path: 'account-empty-checkout-390.png', fullPage: true })
   await page.goto(process.env.HYPERION_RECOVERY_TEST_URL)
-  await page.locator('.checkout-pay-button').waitFor()
-  assert.equal(await checkout.isEnabled(), !PWA_PURCHASES_PAUSED,
-    'Selecting a track only enables checkout when website payments are available')
+  assert.equal(await page.locator('.checkout-pay-button').count(), 0,
+    'Selecting a track does not bypass admin-only QR checkout')
   await page.waitForFunction(() => !document.querySelector('.hyperion-top-loader.is-visible'))
   await page.evaluate(() => {
     window.finishFirstLoading = window.beginFixtureLoading('Loading preview')
@@ -1119,12 +1141,11 @@ try {
     await directCheckoutPage.addInitScript(() => localStorage.setItem('fixture-lifetime-enabled', 'yes'))
     await directCheckoutPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=lifetime`)
     await directCheckoutPage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
-    const checkoutButton = directCheckoutPage.getByRole('button', { name: 'Checkout', exact: true })
-    assert.equal(await checkoutButton.isDisabled(), true, 'Direct Lifetime Checkout is disabled during the pause')
+    assert.equal(await directCheckoutPage.locator('.checkout-pay-button').count(), 0,
+      'Direct Lifetime Checkout cannot expose a payment action to non-admins')
     assert.equal(await directCheckoutPage.getByText(PWA_PURCHASE_PAUSE_NOTICE).count() > 0, true)
     assert(await directCheckoutPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       'Paused Lifetime Checkout still fits mobile')
-    await checkoutButton.evaluate(button => button.click())
     const lifetimeCreateCalls = await directCheckoutPage.evaluate(() =>
       window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create'))
     assert.equal(lifetimeCreateCalls.length, 0, 'A direct checkout link cannot start a paused payment')
