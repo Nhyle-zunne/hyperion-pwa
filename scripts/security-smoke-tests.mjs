@@ -170,11 +170,11 @@ for (const [code, weekly, monthly, yearly, oldWeekly, oldMonthly, oldYearly] of 
   }
   assert.ok(finalizerMigration.includes(`when '${code}' then case v_order.license_term`), `Database finalizer covers ${code}`);
 }
-for (const source of [checkout, verify, webhook, submitManualPaymentFunction]) {
-  assert.ok(source.includes("from '../_shared/paymentPrices.mjs'"), 'All payment entrypoints use the shared price schedule');
+for (const source of [verify, webhook, submitManualPaymentFunction]) {
+  assert.ok(source.includes("from '../_shared/paymentPrices.mjs'"), 'Historical verification and current manual payments share the accepted price schedule');
 }
-assert.ok(checkout.includes('termPrices[code][termsByCode[code]]'), 'New PayMongo orders use the updated prices');
-assert.ok(checkout.includes('body.expectedTotalPhp !== totalPrice'), 'Stale PWA price quote cannot create an unexpected new charge');
+assert.ok(checkout.includes("enabled: false, mode: null, reason: 'manual_only'"), 'Legacy checkout availability must remain disabled');
+assert.ok(!checkout.includes('api.paymongo.com'), 'Retired checkout endpoint cannot initiate a provider payment');
 assert.ok(basketScreen.includes('selectedItems.map(item => `${item.code}:${item.term}`)') &&
   basketScreen.includes("price: priceForTerm(product, entry.term)"), 'PWA basket sends selected product and term to the QR preview with catalogue prices');
 assert.ok(submitManualPaymentFunction.includes('body.expectedAmountPhp !== prices[code][term]'), 'Manual endpoint rejects a stale quote before recording a transfer');
@@ -220,8 +220,8 @@ assert.match(functionConfig, /\[functions\.paymongo-webhook\]\s*verify_jwt = fal
 assert.match(functionConfig, /\[functions\.question-bank\]\s*verify_jwt = false/, 'Question bank preserves publishable-key guest access and validates user tokens in the handler');
 assert.match(functionConfig, /\[functions\.create-checkout\]\s*verify_jwt = true/, 'Checkout requires an authenticated Hyperion session');
 assert.ok(checkout.includes("body.action === 'status'"), 'Checkout endpoint exposes only a non-secret availability status action');
-assert.ok(checkout.includes("const enabled = !WEBSITE_PAYMONGO_PURCHASES_DISABLED && checkoutEnabled && Boolean(serviceKey) && keyMatchesMode"), 'PayMongo checkout status stays disabled during the QR transition');
-assert.ok(checkout.includes('if (WEBSITE_PAYMONGO_PURCHASES_DISABLED) return json('), 'Direct PayMongo checkout creation is disabled server-side');
+assert.ok(checkout.includes("enabled: false, mode: null, reason: 'manual_only'"), 'Retired hosted checkout status stays disabled');
+assert.ok(checkout.includes('New hosted checkout sessions are retired.'), 'Direct hosted checkout creation is disabled server-side');
 assert.ok(submitManualPaymentFunction.includes('if (WEBSITE_MANUAL_SUBMISSIONS_DISABLED) return json('),
   'The retired manual-order API must also reject new public payment submissions server-side');
 assert.match(checkoutToggleMigration, /website_checkout_enabled\s+boolean\s+not\s+null\s+default\s+false/i,
@@ -230,9 +230,9 @@ assert.ok(adminPaymentReviewFunction.includes("body.action === 'set-checkout-ava
   adminPaymentReviewFunction.indexOf("body.action === 'set-checkout-availability'") > adminPaymentReviewFunction.indexOf("allowed.includes(user.email.toLowerCase())"),
   'Only authenticated administrators can change public checkout availability');
 const lifetimeCheckoutFunction = await read('../supabase/functions/create-lifetime-checkout/index.ts');
-assert.ok(lifetimeCheckoutFunction.includes("body.action !== 'create'") &&
-  lifetimeCheckoutFunction.includes('if (WEBSITE_PAYMONGO_PURCHASES_DISABLED) return json(') &&
-  lifetimeCheckoutFunction.includes("body.action === 'cancel'"), 'Lifetime PayMongo creation is disabled without breaking cancellation of existing orders');
+assert.ok(lifetimeCheckoutFunction.includes("body.action !== 'cancel'") &&
+  lifetimeCheckoutFunction.includes("body.action === 'status'") &&
+  lifetimeCheckoutFunction.includes("'https://api.paymongo.com/v1/checkout_sessions/'"), 'Lifetime creation stays retired while historical cancellation remains available');
 assert.ok(!basketScreen.includes("functions.invoke('create-checkout'") &&
   !basketScreen.includes("action: 'create', productCode: product.code") &&
   !basketScreen.includes('checkout.paymongo.com'), 'Website basket no longer starts or resumes PayMongo payments');
@@ -774,7 +774,7 @@ assert.ok(trackHubScreen.includes("window.addEventListener('focus', refreshOffli
 
 
 assert.ok(ordersHistory.includes("order.status === 'failed' && order.payment_method === 'PayMongo Checkout'") && ordersHistory.includes("'Checkout not completed'"), 'Expired/failed PayMongo checkout is not mislabeled as a rejected manual payment');
-assert.ok(ordersHistory.includes("'Awaiting PayMongo payment'") && ordersHistory.includes('PayMongo has not confirmed this payment yet.'), 'Pending PayMongo checkout status explains the unresolved payment and next safe action');
+assert.ok(ordersHistory.includes("'Awaiting earlier checkout payment'") && ordersHistory.includes('The former payment provider has not confirmed this payment yet.'), 'Pending historical checkout status explains the unresolved payment and next safe action');
 assert.ok(ordersHistory.includes('No license was activated from this checkout.') && ordersHistory.includes("order.status === 'failed'"), 'Failed or cancelled checkouts clearly explain that no access was granted and users can restart safely');
 assert.ok(ordersHistory.includes('This manual payment submission was rejected.') && ordersHistory.includes("order.status === 'submitted'"), 'Manual payment rejection remains distinct from an expired hosted checkout');
 
@@ -1067,13 +1067,8 @@ assert.ok(
   basketScreen.includes("navigate('/checkout', { replace: true })"),
   'Checkout restores a valid track/term selection from the sign-in return URL and consumes the one-time URL'
 );
-assert.ok(
-  checkout.includes('body.returnTo') &&
-  checkout.includes("target.pathname !== '/practice'") &&
-  checkout.includes("buildReturnUrl('success')") &&
-  checkout.includes("buildReturnUrl('cancelled')"),
-  'Single-track checkout returns to the originating practice purchase dialog only for a validated same-app practice path'
-);
+assert.ok(!checkout.includes('body.returnTo') && !checkout.includes('checkout.paymongo.com'),
+  'Retired checkout does not construct external payment return URLs');
 
 assert.ok(
   !trackHubScreen.includes('DOWNLOAD FULL BANK FOR OFFLINE') &&
@@ -1125,10 +1120,11 @@ assert.ok(!trackHubScreen.includes('startOfflineDownload') && !trackHubScreen.in
 
 
 assert.ok(
-  checkout.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&
-    checkout.includes("if (website.error || (play.error && !playTableMissing))") &&
-    checkout.includes("!playTableMissing && play.data?.status === 'active'"),
-  'PayMongo checkout remains usable before the Play migration while still rejecting other license-query errors'
+  checkout.includes("if (body.action === 'status')") &&
+    checkout.includes("enabled: false") &&
+    !checkout.includes("from('entitlements')") &&
+    !checkout.includes("from('google_play_entitlements')"),
+  'Retired hosted checkout cannot issue new payments or query entitlements through a legacy purchase path'
 );
 assert.ok(
   submitManualPaymentFunction.includes("function isMissingGooglePlayEntitlementsTable(error: unknown)") &&

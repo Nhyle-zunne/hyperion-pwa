@@ -213,7 +213,7 @@ export default function AdminQrCheckoutScreen() {
         ? 'Resolve or safely cancel the existing payment for this track before making another QR transfer. Do not pay twice.'
         : paymentStatus === 'error'
           ? 'Hyperion could not check previous payments. No QR code is available until this check succeeds.'
-          : 'Verifying there is no pending PayMongo or manual payment for the selected tracks.'}</p>
+          : 'Verifying there is no pending earlier checkout or manual payment for the selected tracks.'}</p>
       {paymentStatus === 'blocked' && <Link className="btn btn-outline" to="/orders">VIEW ORDERS &amp; PAYMENT HISTORY</Link>}
       {paymentStatus === 'error' && <button type="button" className="btn btn-outline" onClick={() => setCheckRevision(value => value + 1)}>RETRY PAYMENT CHECK</button>}
     </section> : <div className="qr-checkout-grid">

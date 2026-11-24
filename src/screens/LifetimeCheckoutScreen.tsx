@@ -105,11 +105,11 @@ export default function LifetimeCheckoutScreen() {
       })
       if (error) throw new Error(await checkoutError(error))
       if (data?.status !== 'cancelled') {
-        throw new Error(data?.error || 'PayMongo could not confirm cancellation. Please retry.')
+        throw new Error(data?.error || 'The earlier checkout provider could not confirm cancellation. Please retry.')
       }
       setPendingOrderId(null)
       setRefreshRevision(value => value + 1)
-      setMessage('PayMongo confirmed the pending checkout was cancelled. No license was added.')
+      setMessage('The earlier pending checkout was cancelled. No license was added.')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not cancel the pending checkout.')
     } finally {

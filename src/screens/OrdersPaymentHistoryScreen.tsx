@@ -12,7 +12,7 @@ import type { HistoryOrder as Order, PendingOrder } from '../lib/orderHistoryReq
 
 function orderStatusLabel(order: Pick<Order, 'status' | 'payment_method'>): string {
   if (order.status === 'failed' && order.payment_method === 'PayMongo Checkout') return 'Checkout not completed'
-  if (order.status === 'pending' && order.payment_method === 'PayMongo Checkout') return 'Awaiting PayMongo payment'
+  if (order.status === 'pending' && order.payment_method === 'PayMongo Checkout') return 'Awaiting earlier checkout payment'
   if (order.status === 'paid') return 'Approved'
   return ({
     submitted: 'Awaiting manual review',
@@ -28,7 +28,7 @@ function orderStatusHelp(order: Pick<Order, 'status' | 'payment_method'>): strin
     return 'No license was activated from this checkout. You can start a new checkout or choose manual payment from the Bond Store.'
   }
   if (order.status === 'pending' && order.payment_method === 'PayMongo Checkout') {
-    return 'PayMongo has not confirmed this payment yet. Use Refresh status before trying another payment, and do not pay again while a payment attempt is still processing.'
+    return 'The former payment provider has not confirmed this payment yet. Use Refresh status before trying another payment, and do not pay again while a payment attempt is still processing.'
   }
   if (order.status === 'submitted') {
     return 'Your manual payment submission is waiting for review. Access is activated only after approval.'
@@ -199,7 +199,7 @@ export default function OrdersPaymentHistoryScreen() {
     statusRefresh.current = refresh
     setLoading(true)
     setErrorMessage(false)
-    setMessage('Refreshing orders and checking pending PayMongo payments…')
+    setMessage('Refreshing orders and checking pending historical payments…')
     try {
       const pending = await loadOrders()
       if (!pending) return
@@ -213,7 +213,7 @@ export default function OrdersPaymentHistoryScreen() {
         const { data, error } = await supabase.functions.invoke('verify-checkout', { body: { orderId } })
         if (!mounted.current || currentOwner.current !== session.user.id) return
         if (error) {
-          lastError = await readableError(error, 'PayMongo verification is temporarily unavailable.')
+          lastError = await readableError(error, 'Historical payment verification is temporarily unavailable.')
           if (!mounted.current || currentOwner.current !== session.user.id) return
           continue
         }
@@ -261,7 +261,7 @@ export default function OrdersPaymentHistoryScreen() {
         setErrorMessage(true)
         setMessage(lastError)
       } else if (stillPending) {
-        setMessage('PayMongo has not confirmed all pending checkouts as paid yet. No additional license was granted.')
+        setMessage('The former payment provider has not confirmed all pending checkouts as paid yet. No additional license was granted.')
       } else {
         setMessage('Orders and payment history are up to date.')
       }
@@ -351,7 +351,7 @@ export default function OrdersPaymentHistoryScreen() {
       <div>
         <div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.7rem', letterSpacing: '.14em' }}>ACCOUNT & SUBSCRIPTIONS</div>
         <h1 className="page-title" style={{ textAlign: 'left', margin: '.2rem 0 .3rem' }}>Orders & payment history</h1>
-        <p style={{ color: 'var(--text-muted)', margin: 0 }}>Review your manual submissions, PayMongo purchases, and payment status.</p>
+        <p style={{ color: 'var(--text-muted)', margin: 0 }}>Review your manual submissions, earlier website purchases, and payment status.</p>
       </div>
       <div className="orders-heading-actions" style={{ display: 'flex', gap: '.55rem', flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-outline" disabled={loading || loadingMore || !session} onClick={() => void refreshStatus()}>{loading ? 'Refreshing…' : 'Refresh status'}</button>
@@ -370,7 +370,7 @@ export default function OrdersPaymentHistoryScreen() {
         {visibleLifetime.length > 0 && <section style={card} aria-label="One-time Lifetime Access purchases">
           <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '.6rem' }}>
             <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Lifetime Access purchases</h2>
-            <p className="orders-meta" style={{ margin: '.25rem 0 0' }}>One-time PayMongo orders, separate from subscriptions.</p>
+            <p className="orders-meta" style={{ margin: '.25rem 0 0' }}>Earlier one-time website orders, separate from subscriptions.</p>
           </div>
           {visibleLifetime.map(order => {
             const product = PAID_PRODUCTS.find(item => item.code === order.product_code)
@@ -379,7 +379,7 @@ export default function OrdersPaymentHistoryScreen() {
               <div className="orders-title-row">
                 <div style={{ minWidth: 0 }}>
                   <strong>{product?.label ?? order.product_code} · Lifetime · ₱{order.amount_php.toLocaleString()}</strong>
-                  <div className="orders-meta">{new Date(order.paid_at || order.created_at).toLocaleString()} · PayMongo QR Ph</div>
+                  <div className="orders-meta">{new Date(order.paid_at || order.created_at).toLocaleString()} · Earlier website QR Ph checkout</div>
                 </div>
                 <span className="orders-status" style={paid ? { color: 'var(--success, #15803d)' } : undefined}>
                   {paid ? 'PAID · LIFETIME' : order.status === 'pending' ? 'AWAITING PAYMENT'
@@ -409,7 +409,7 @@ export default function OrdersPaymentHistoryScreen() {
                 <div className="orders-title-row">
                   <div style={{ minWidth: 0 }}>
                     <strong style={{ display: 'block', fontSize: '1rem' }}>{product?.label ?? order.product_code} · {order.license_term === 'week' ? 'Weekly' : order.license_term === 'month' ? 'Monthly' : 'Yearly'} · ₱{order.amount_php}</strong>
-                    <div className="orders-meta" style={{ marginTop: '.3rem' }}>{new Date(order.paid_at || order.created_at).toLocaleString()} · {order.payment_method || 'Payment method not recorded'}</div>
+                    <div className="orders-meta" style={{ marginTop: '.3rem' }}>{new Date(order.paid_at || order.created_at).toLocaleString()} · {order.payment_method === 'PayMongo Checkout' ? 'Earlier hosted checkout' : order.payment_method || 'Payment method not recorded'}</div>
                   </div>
                   <span className="orders-status" style={paid ? { color: 'var(--success, #15803d)', borderColor: '#86cba0', background: 'rgba(34,197,94,.08)' } : rejected ? { color: 'var(--text-muted)' } : { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'var(--bg-elevated)' }}>{status}</span>
                 </div>
