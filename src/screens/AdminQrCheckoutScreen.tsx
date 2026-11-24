@@ -79,7 +79,7 @@ export default function AdminQrCheckoutScreen() {
   }, [details, paymentStatus])
 
   useEffect(() => {
-    if (!userId || !access.allowed || !supabase || !items.length) return
+    if (!userId || (!checkoutAvailability.enabled && !access.allowed) || !supabase || !items.length) return
     const client = supabase
     const selectedCodes = items.map(item => item.code)
     let active = true
@@ -105,7 +105,7 @@ export default function AdminQrCheckoutScreen() {
       }
     })()
     return () => { active = false }
-  }, [userId, access.allowed, itemQuery, checkRevision])
+  }, [userId, access.allowed, checkoutAvailability.enabled, itemQuery, checkRevision])
 
   const copyDetails = async () => {
     try {
