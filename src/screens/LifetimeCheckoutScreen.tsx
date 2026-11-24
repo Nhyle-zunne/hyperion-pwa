@@ -163,7 +163,7 @@ export default function LifetimeCheckoutScreen() {
           </div>
           {pendingOrderId && <div className="lifetime-checkout-pending">
             <strong>Existing checkout detected</strong>
-            <p>Checkout resumes your pending payment. If it was started at an earlier price, cancel it first to use the updated price. Do not pay twice.</p>
+            <p>An earlier hosted checkout is still pending. Refresh its payment status or cancel it safely before starting a new QR Ph transfer. Do not pay twice.</p>
             <button type="button" className="btn btn-outline" disabled={busy}
               onClick={() => void cancelPending()}>CANCEL PENDING CHECKOUT</button>
           </div>}

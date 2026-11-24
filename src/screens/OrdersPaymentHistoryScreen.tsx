@@ -388,7 +388,7 @@ export default function OrdersPaymentHistoryScreen() {
                 </span>
               </div>
               <div className="orders-meta" style={{ marginTop: '.45rem' }}>Order ID: {order.id}</div>
-              {order.status === 'pending' && <p className="orders-meta" style={{ margin: '.4rem 0 0' }}>Resume or cancel this checkout from Bond Store. Refresh status before paying again.</p>}
+              {order.status === 'pending' && <p className="orders-meta" style={{ margin: '.4rem 0 0' }}>Refresh its payment status or cancel the earlier checkout safely from Bond Store. Do not pay again until the original payment is resolved.</p>}
               {order.status === 'refunded' && <p className="orders-meta" style={{ margin: '.4rem 0 0' }}>Lifetime access from this payment was revoked; saved study history is retained.</p>}
             </article>
           })}
