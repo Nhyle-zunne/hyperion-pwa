@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { PAID_PRODUCTS, supabase } from '../lib/supabase'
-import { BANK_TRANSFER, formatBankTransferDetails, formatMessengerPaymentDetails, parseManualCheckoutItems } from '../lib/manualQrCheckout'
+import { BANK_TRANSFER, formatMessengerPaymentDetails, parseManualCheckoutItems } from '../lib/manualQrCheckout'
 import type { ManualCheckoutTerm } from '../lib/manualQrCheckout'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import './AdminQrCheckoutScreen.css'
@@ -17,7 +17,6 @@ export default function AdminQrCheckoutScreen() {
   const [previewTerm, setPreviewTerm] = useState<ManualCheckoutTerm>('month')
   const [copyStatus, setCopyStatus] = useState('')
   const [bankCopyStatus, setBankCopyStatus] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<'qr' | 'bank'>('qr')
   const [readiness, setReadiness] = useState<{ userId: string; selection: string | null; status: 'ready' | 'blocked' | 'error' }>()
   const [checkRevision, setCheckRevision] = useState(0)
   const messageRef = useRef<HTMLTextAreaElement>(null)
@@ -135,7 +134,7 @@ export default function AdminQrCheckoutScreen() {
     </div>
     <header className="qr-checkout-header">
       <h1 className="page-title">QR Payment Checkout</h1>
-      <p>Choose QR Ph or bank transfer. Send your payment receipt through Messenger for verification.</p>
+      <p>Pay by QR Ph or bank transfer. Send your payment receipt through Messenger for verification.</p>
     </header>
 
     {!params.has('items') && <section className="qr-checkout-panel qr-checkout-plan-picker" aria-label="Select a product to preview">
@@ -167,33 +166,29 @@ export default function AdminQrCheckoutScreen() {
       {paymentStatus === 'error' && <button type="button" className="btn btn-outline" onClick={() => setCheckRevision(value => value + 1)}>RETRY PAYMENT CHECK</button>}
     </section> : <div className="qr-checkout-grid">
       <section className="qr-checkout-panel">
-        <h2>1. Choose how to pay</h2>
-        <div className="qr-checkout-methods" role="group" aria-label="Payment method">
-          <button type="button" aria-pressed={paymentMethod === 'qr'} onClick={() => setPaymentMethod('qr')}>QR Ph</button>
-          <button type="button" aria-pressed={paymentMethod === 'bank'} onClick={() => setPaymentMethod('bank')}>Bank transfer</button>
+        <h2>1. Pay by QR Ph or bank transfer</h2>
+        <div className="qr-checkout-payment-options">
+          <div className="qr-checkout-qr-content">
+            <div className="qr-checkout-image-wrap">
+              <img src="/qr-ph.png" alt="Hyperion's official BPI QR Ph payment code" width="1080" height="1213" />
+              <a className="qr-checkout-download" href="/qr-ph.png" download="hyperion-qr-ph.png" aria-label="Download QR Ph image" title="Download QR Ph image">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 3v12m-5-5 5 5 5-5M4 17v3h16v-3" />
+                </svg>
+              </a>
+            </div>
+            <p className="qr-checkout-note">Scan this QR Ph image or download it to pay in your bank app.</p>
+          </div>
+          <div className="qr-checkout-bank" aria-label="Bank transfer details">
+            <p>Or transfer directly to this BPI account:</p>
+            <dl>
+              <div><dt>Bank</dt><dd>{BANK_TRANSFER.bank}</dd><button type="button" className="qr-checkout-bank-copy" aria-label="Copy bank" onClick={() => void copyBank(BANK_TRANSFER.bank, 'Bank')}>Copy</button></div>
+              <div><dt>Account name</dt><dd>{BANK_TRANSFER.accountName}</dd><button type="button" className="qr-checkout-bank-copy" aria-label="Copy account name" onClick={() => void copyBank(BANK_TRANSFER.accountName, 'Account name')}>Copy</button></div>
+              <div><dt>Account number</dt><dd>{BANK_TRANSFER.accountNumber}</dd><button type="button" className="qr-checkout-bank-copy" aria-label="Copy account number" onClick={() => void copyBank(BANK_TRANSFER.accountNumber, 'Account number')}>Copy</button></div>
+            </dl>
+            {bankCopyStatus && <p role="status" className="qr-checkout-copy-status">{bankCopyStatus}</p>}
+          </div>
         </div>
-        {paymentMethod === 'qr' ? <div className="qr-checkout-qr-content">
-          <div className="qr-checkout-image-wrap">
-            <img src="/qr-ph.png" alt="Hyperion's QR Ph payment code" width="320" height="320" />
-          </div>
-          <div className="qr-checkout-qr-instructions">
-            <p>Scan using your bank or e-wallet app.</p>
-            <a className="btn btn-outline qr-checkout-save" href="/qr-ph.png" download="hyperion-qr-ph.png">SAVE QR IMAGE</a>
-            <p className="qr-checkout-note" role="status">Admin preview: this is the old MariBank/InstaPay QR. Replace it before accepting QR payments.</p>
-          </div>
-        </div> : <div className="qr-checkout-bank" aria-label="Bank transfer details">
-          <p>Transfer directly to this BPI receiving account:</p>
-          <dl>
-            <div><dt>Bank</dt><dd>{BANK_TRANSFER.bank}</dd></div>
-            <div><dt>Account name</dt><dd>{BANK_TRANSFER.accountName}</dd></div>
-            <div><dt>Account number</dt><dd>{BANK_TRANSFER.accountNumber}</dd></div>
-          </dl>
-          <div className="qr-checkout-bank-actions">
-            <button type="button" className="btn btn-outline" onClick={() => void copyBank(BANK_TRANSFER.accountNumber, 'Account number')}>COPY ACCOUNT NUMBER</button>
-            <button type="button" className="btn btn-outline" onClick={() => void copyBank(formatBankTransferDetails(), 'Bank details')}>COPY BANK DETAILS</button>
-          </div>
-          {bankCopyStatus && <p role="status" className="qr-checkout-copy-status">{bankCopyStatus}</p>}
-        </div>}
         <div className="qr-checkout-total"><span>Amount to transfer</span><strong>₱{totalPhp.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong></div>
         <p className="qr-checkout-note qr-checkout-caution">Check the recipient before paying and save your receipt. Payment does not automatically activate a license.</p>
       </section>

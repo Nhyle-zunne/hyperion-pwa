@@ -331,7 +331,7 @@ try {
   await visitorQrPage.getByRole('heading', { name: 'Checkout preview unavailable' }).waitFor()
   assert.equal(await visitorQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'A signed-in non-admin cannot reveal the QR receiving code through a direct link')
-  assert.equal(await visitorQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0,
+  assert.equal(await visitorQrPage.locator('.qr-checkout-bank').count(), 0,
     'A non-admin cannot reveal bank transfer instructions through a direct link')
   await visitorQrPage.close()
 
@@ -340,9 +340,18 @@ try {
   await adminQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await adminQrPage.getByRole('heading', { name: 'QR Payment Checkout' }).waitFor()
   await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
-  const saveQr = adminQrPage.getByRole('link', { name: 'SAVE QR IMAGE' })
+  const saveQr = adminQrPage.getByRole('link', { name: 'Download QR Ph image' })
   assert.equal(await saveQr.getAttribute('href'), '/qr-ph.png', 'The displayed QR is the downloadable original image')
   assert.equal(await saveQr.getAttribute('download'), 'hyperion-qr-ph.png', 'QR image saves with a meaningful filename')
+  await adminQrPage.waitForFunction(() => {
+    const qr = document.querySelector('.qr-checkout-image-wrap img')
+    return qr?.complete && qr.naturalWidth === 1080 && qr.naturalHeight === 1213
+  })
+  const downloadedQr = adminQrPage.waitForEvent('download')
+  await saveQr.click()
+  assert.equal((await downloadedQr).suggestedFilename(), 'hyperion-qr-ph.png', 'The overlay icon downloads the original QR file')
+  assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0, 'QR and bank details appear together without tabs')
+  assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI \/ VYBE by BPI.*Hyperion Maritime.*4309192465/s)
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Account email: synthetic@example.invalid/)
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Deck OIC-NW \(Monthly\): PHP 79\.00/)
   for (const width of [1920, 1440, 1024, 860, 390, 320]) {
@@ -356,9 +365,14 @@ try {
       const details = document.querySelector('#qr-checkout-details')
       const copy = document.querySelector('.qr-checkout-copy')
       const page = document.querySelector('.qr-checkout-page')
+      const image = document.querySelector('.qr-checkout-image-wrap')
+      const download = document.querySelector('.qr-checkout-download')
+      const bankRows = [...document.querySelectorAll('.qr-checkout-bank dl > div')]
       const qrBox = qr.getBoundingClientRect()
       const proofBox = proof.getBoundingClientRect()
       const copyBox = copy.getBoundingClientRect()
+      const imageBox = image.getBoundingClientRect()
+      const downloadBox = download.getBoundingClientRect()
       return {
         qr: { x: qrBox.x, y: qrBox.y, right: qrBox.right, bottom: qrBox.bottom },
         proof: { x: proofBox.x, y: proofBox.y, right: proofBox.right, bottom: proofBox.bottom },
@@ -367,9 +381,19 @@ try {
         detailsOverflowY: details.scrollHeight - details.clientHeight,
         detailsOverflowX: details.scrollWidth - details.clientWidth,
         pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+        qrDownloadOverlay: downloadBox.x >= imageBox.x && downloadBox.right <= imageBox.right && downloadBox.y >= imageBox.y && downloadBox.bottom <= imageBox.bottom,
+        separatedBankColumns: bankRows.every(row => {
+          const value = row.querySelector('dd')
+          const action = row.querySelector('button')
+          const rowBox = row.getBoundingClientRect()
+          const buttonBox = action.getBoundingClientRect()
+          return getComputedStyle(value).borderLeftStyle === 'solid' && getComputedStyle(action).borderLeftStyle === 'solid' && buttonBox.right <= rowBox.right + 1 && buttonBox.right > rowBox.right - 12
+        }),
       }
     })
     assert(layout.pageOverflow <= 1, `QR checkout must fit ${width}px without horizontal page scrolling`)
+    assert(layout.qrDownloadOverlay, `QR download icon must overlay the image at ${width}px`)
+    assert(layout.separatedBankColumns, `Bank transfer rows need visually separated columns and right-aligned copy buttons at ${width}px`)
     if (width >= 960) assert(layout.pageWidth >= Math.min(width - 100, 1050),
       `Desktop QR checkout must use its available width at ${width}px (rendered ${layout.pageWidth}px)`)
     assert(layout.detailsOverflowY <= 2,
@@ -387,32 +411,28 @@ try {
       `Smaller screens must stack the QR and proof panels at ${width}px`)
   }
   await adminQrPage.setViewportSize({ width: 390, height: 900 })
-  await adminQrPage.getByRole('button', { name: 'Bank transfer' }).click()
-  assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0, 'Bank transfer does not display the QR as a required step')
-  assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).getAttribute('aria-pressed'), 'true')
-  assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI \/ VYBE by BPI.*Hyperion Maritime.*4309192465/s)
   assert(await adminQrPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Bank details fit a phone viewport')
   await adminQrPage.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedBankDetails = text } } })
   })
-  await adminQrPage.getByRole('button', { name: 'COPY BANK DETAILS' }).click()
-  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'Bank: BPI / VYBE by BPI\nAccount name: Hyperion Maritime\nAccount number: 4309192465')
-  await adminQrPage.getByRole('button', { name: 'COPY ACCOUNT NUMBER' }).click()
+  await adminQrPage.getByRole('button', { name: 'Copy bank', exact: true }).click()
+  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'BPI / VYBE by BPI')
+  await adminQrPage.getByRole('button', { name: 'Copy account name', exact: true }).click()
+  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'Hyperion Maritime')
+  await adminQrPage.getByRole('button', { name: 'Copy account number', exact: true }).click()
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '4309192465')
-  await adminQrPage.getByRole('button', { name: 'QR Ph' }).click()
-  await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
   await adminQrPage.evaluate(() => localStorage.setItem('fixture-pending-orders', 'yes'))
   await adminQrPage.reload()
   await adminQrPage.getByRole('alert').filter({ hasText: /unresolved checkout/i }).waitFor()
   assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'Unresolved PayMongo payment prevents a new QR transfer for the same track')
-  assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0,
+  assert.equal(await adminQrPage.locator('.qr-checkout-bank').count(), 0,
     'Unresolved payments also prevent a duplicate bank transfer')
   await adminQrPage.evaluate(() => window.switchFixtureAccount())
   await adminQrPage.getByRole('heading', { name: 'Checkout preview unavailable' }).waitFor()
   assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'Switching to a non-admin account revokes an already open QR preview')
-  assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0,
+  assert.equal(await adminQrPage.locator('.qr-checkout-bank').count(), 0,
     'Switching accounts revokes bank transfer details as well')
   await adminQrPage.close()
   console.log('PASS: QR checkout server-admin gate, exact payment details, pending-payment safety and account isolation')

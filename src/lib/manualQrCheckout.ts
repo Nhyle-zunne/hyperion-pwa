@@ -6,14 +6,6 @@ export const BANK_TRANSFER = {
   accountNumber: '4309192465',
 } as const
 
-export function formatBankTransferDetails(): string {
-  return [
-    `Bank: ${BANK_TRANSFER.bank}`,
-    `Account name: ${BANK_TRANSFER.accountName}`,
-    `Account number: ${BANK_TRANSFER.accountNumber}`,
-  ].join('\n')
-}
-
 type PricedProduct = {
   code: string
   label: string
