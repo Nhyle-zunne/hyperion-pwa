@@ -86,7 +86,9 @@ function isCurrentLicense(item: OwnedTrack, now = Date.now()) {
 export default function AccountScreen({ children }: { children?: React.ReactNode }) {
   const isLayout = children !== undefined
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const location = useLocation()
+  const { pathname } = location
+  const checkoutPath = /^\/(?:checkout|basket)\/?$/i.test(pathname)
   const [params] = useSearchParams()
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
   useEffect(() => { setAccountTab(params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments') }, [params])
@@ -179,15 +181,25 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   }, [basket, isLayout])
 
   const buyNow = (code: PaidTrack, term: LicenseTerm) => {
-    if (!canBuyOnWebsite) return
+    if (!canBuyOnWebsite || !sessionChecked) return
     const nextItem: BasketItem = { code, term }
     const nextBasket = basket.some(item => item.code === code)
       ? basket.map(item => item.code === code ? nextItem : item)
       : [...basket, nextItem]
     try {
       if (nextBasket.length) localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(nextBasket))
-    } catch { /* Keep this purchase selection in memory for the current page. */ }
+    } catch {
+      // A Google redirect would discard an unsaved guest selection.
+      if (!session) {
+        setMessage('Your browser could not save this selection. Allow site storage and try again.')
+        return
+      }
+    }
     setBasket(nextBasket)
+    if (!session) {
+      void signInWithGoogle('/checkout')
+      return
+    }
     navigate('/checkout')
   }
   const clearBasketItems = (codes: string[]) => setBasket(current => current.filter(item => !codes.includes(item.code)))
@@ -213,9 +225,14 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   }, [session?.user.id, lifetimeRefreshRevision, isLayout])
 
   const buyLifetime = (code: PaidTrack) => {
-    if (!canBuyOnWebsite) return
+    if (!canBuyOnWebsite || !sessionChecked) return
     if (!PAID_PRODUCTS.some(product => product.code === code)) return
-    navigate(`/checkout?lifetime_product=${encodeURIComponent(code)}`)
+    const path = `/checkout?lifetime_product=${encodeURIComponent(code)}`
+    if (!session) {
+      void signInWithGoogle(path)
+      return
+    }
+    navigate(path)
   }
   const cancelLifetimeCheckout = async (orderId: string) => {
     if (!supabase || busy) return
@@ -565,13 +582,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     return () => { active = false }
   }, [session?.user.id, params, isLayout])
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (checkoutReturnTo?: string) => {
     if (!supabase) {
       setMessage('Sign-in is temporarily unavailable. Please try again later.')
       return
     }
 
-    const requestedReturnTo = window.location.pathname + window.location.search + window.location.hash
+    const requestedReturnTo = checkoutReturnTo ?? `${location.pathname}${location.search}${location.hash}`
     const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//') ? requestedReturnTo : '/'
     try {
       localStorage.setItem('hyperion-oauth-return-to', JSON.stringify({
@@ -827,7 +844,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     </div>}
 
     <>
-      {session && message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
+      {message && <div role="status" style={{ ...card, lineHeight: 1.5, marginTop: '.8rem', marginBottom: 0 }}>{message}</div>}
       {session && renewalGraceUntil && <div role="status" style={{ ...card, lineHeight: 1.55, marginTop: '.8rem', marginBottom: 0, borderColor: 'var(--warning, #c2410c)' }}>
         <strong style={{ display: 'block', marginBottom: '.25rem' }}>Your license has expired</strong>
         Paid-track access ended at expiry. Your account is in its 30-day retention grace period until <strong>{new Date(renewalGraceUntil).toLocaleDateString()}</strong>, giving you time to purchase an eligible website license. This is an account-retention safeguard, not extra paid access. Account deletion is considered only after the separate inactivity and grace requirements are met.
@@ -898,13 +915,21 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
               <button type="button" className="btn btn-primary" disabled={!sessionChecked || !supabaseConfigured || busy || !online} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>
                 {!sessionChecked ? 'Checking session…' : !online ? 'Reconnect when online' : busy ? 'Opening Google…' : hasSavedOfflineAccess ? 'Reconnect Google account' : 'Sign in with Google'}
               </button>
-              {!hasSavedOfflineAccess && sessionChecked && <p className="profile-side-links" style={{ margin: '.7rem 0 0' }}>You can browse the Bond Store without signing in. Sign-in is required only when you proceed to checkout or manage your account.</p>}
+              {!hasSavedOfflineAccess && sessionChecked && <p className="profile-side-links" style={{ margin: '.7rem 0 0' }}>You can browse the Bond Store without signing in. Selecting BUY NOW or opening Checkout requires Google sign-in.</p>}
             </div>
           </section>}
         </aside>
 
         <main className="account-main">
-          {isLayout ? children : <>
+          {isLayout ? checkoutPath && !session ? <section style={{ ...card, maxWidth: 560, margin: 0, padding: 'clamp(1rem, 4%, 1.5rem)' }} aria-labelledby="checkout-sign-in-title">
+            {!sessionChecked ? <p role="status" style={{ margin: 0 }}>Checking your saved Google session…</p> : <>
+              <h1 id="checkout-sign-in-title" style={{ margin: '0 0 .5rem', fontSize: 'clamp(1.3rem, 3vw, 1.6rem)' }}>Sign in to checkout</h1>
+              <p style={{ margin: '0 0 1rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>Sign in with your Google account to view your checkout, pay, and link your purchase to your Hyperion license.</p>
+              <button type="button" className="btn btn-primary" disabled={!supabaseConfigured || busy || !online} onClick={() => void signInWithGoogle()} style={{ minHeight: 46, width: '100%', maxWidth: 340 }}>
+                {!online ? 'RECONNECT WHEN ONLINE' : busy ? 'OPENING GOOGLE…' : 'SIGN IN WITH GOOGLE'}
+              </button>
+            </>}
+          </section> : children : <>
           {(session || hasSavedOfflineAccess) && <AccountSectionTabs active={accountTab === 'licenses' ? 'licenses' : 'store'} />}
           {hasSavedOfflineAccess && accountTab === 'licenses' ? (
             <section style={card} aria-label="Saved offline licenses">
@@ -1057,7 +1082,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                       {alreadyLifetime ? '✓ LIFETIME OWNED' : isLifetime ? (pendingLifetime ? 'LIFETIME CHECKOUT OPEN' : 'NO EXPIRATION') : isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}
                     </span>
                     <button type="button" className="btn btn-primary store-buy-button"
-                      disabled={!canBuyOnWebsite || busy || alreadyLifetime || (!isLifetime && (isGooglePlayOwned || manualPending))}
+                      disabled={!canBuyOnWebsite || !sessionChecked || busy || alreadyLifetime || (!isLifetime && (isGooglePlayOwned || manualPending))}
                       onClick={() => isLifetime ? buyLifetime(item.code) : buyNow(item.code, selectedTerm)}>
                       {alreadyLifetime ? 'LIFETIME OWNED' : isLifetime
                         ? 'BUY NOW'

@@ -365,11 +365,14 @@ try {
   })
   await guestQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await guestQrPage.getByRole('heading', { name: 'Sign in to checkout' }).waitFor()
-  assert.equal(await guestQrPage.getByRole('heading', { name: 'QR Payment Checkout' }).count(), 1,
-    'Guest visitors see the same checkout page heading and payment-method explanation before signing in')
-  assert.match(await guestQrPage.locator('.qr-checkout-header').innerText(), /QR Ph or bank transfer/)
+  assert.equal(await guestQrPage.locator('.qr-checkout-header').count(), 0,
+    'A direct QR link must not show the checkout page before Google sign-in')
   assert.equal(await guestQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'Guests must sign in before seeing a payable QR and submitting an untraceable payment')
+  await guestQrPage.getByRole('button', { name: 'SIGN IN WITH GOOGLE' }).click()
+  await guestQrPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'sign-in-google'))
+  assert.equal(await guestQrPage.evaluate(() => JSON.parse(localStorage.getItem('hyperion-oauth-return-to')).path),
+    '/checkout/qr?items=oic_nw:month', 'Google sign-in must return to the selected QR checkout')
   await guestQrPage.close()
 
   const guestBasketPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
@@ -379,17 +382,19 @@ try {
     localStorage.setItem('hyperion-account-basket-v1', JSON.stringify([{ code: 'oic_nw', term: 'month' }]))
   })
   await guestBasketPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=basket`)
-  await guestBasketPage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
-  await guestBasketPage.locator('.basket-selected-card').waitFor()
-  await guestBasketPage.locator('.basket-summary').waitFor()
-  const guestCheckout = guestBasketPage.getByRole('button', { name: 'CHECKOUT', exact: true })
-  await guestCheckout.waitFor()
-  assert.equal(await guestCheckout.isEnabled(), true, 'Guests can see and use the checkout action to start sign-in')
-  assert.match(await guestBasketPage.locator('.basket-summary').innerText(), /₱79/)
-  await guestCheckout.click()
+  await guestBasketPage.getByRole('heading', { name: 'Sign in to checkout' }).waitFor()
+  assert.equal(await guestBasketPage.locator('.basket-selected-card, .basket-summary').count(), 0,
+    'Guests cannot view the Checkout selection or order summary')
+  await guestBasketPage.locator('.account-main').getByRole('button', { name: 'SIGN IN WITH GOOGLE' }).click()
   await guestBasketPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'sign-in-google'))
-  assert.equal(await guestBasketPage.locator('.qr-checkout-image-wrap img').count(), 0,
-    'Guest checkout requires sign-in before exposing a payable QR')
+  assert.equal(await guestBasketPage.evaluate(() => JSON.parse(localStorage.getItem('hyperion-oauth-return-to')).path.toLowerCase()),
+    '/basket', 'Google sign-in preserves the originally requested checkout route')
+  await guestBasketPage.evaluate(() => {
+    localStorage.removeItem('fixture-guest')
+    window.emitFixtureAuth('SIGNED_IN')
+  })
+  await guestBasketPage.locator('.basket-summary').waitFor()
+  assert.match(await guestBasketPage.locator('.basket-summary').innerText(), /₱79/)
   assert(await guestBasketPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Guest checkout fits a phone screen')
   await guestBasketPage.close()
 
@@ -399,13 +404,13 @@ try {
     localStorage.setItem('fixture-checkout-enabled', 'yes')
   })
   await guestLifetimePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=lifetime`)
-  await guestLifetimePage.locator('.lifetime-checkout-summary').waitFor()
-  const guestLifetimeCheckout = guestLifetimePage.getByRole('button', { name: 'CHECKOUT', exact: true })
-  await guestLifetimeCheckout.waitFor()
-  await guestLifetimeCheckout.click()
+  await guestLifetimePage.getByRole('heading', { name: 'Sign in to checkout' }).waitFor()
+  assert.equal(await guestLifetimePage.locator('.lifetime-checkout-summary').count(), 0,
+    'Lifetime Checkout is unavailable to unsigned visitors')
+  await guestLifetimePage.locator('.account-main').getByRole('button', { name: 'SIGN IN WITH GOOGLE' }).click()
   await guestLifetimePage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'sign-in-google'))
-  assert.equal(await guestLifetimePage.locator('.qr-checkout-image-wrap img').count(), 0,
-    'Guest Lifetime checkout stays on the summary until sign-in')
+  assert.equal(await guestLifetimePage.evaluate(() => JSON.parse(localStorage.getItem('hyperion-oauth-return-to')).path),
+    '/checkout?lifetime_product=engine_ew', 'Google sign-in keeps the selected Lifetime track')
   assert(await guestLifetimePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Guest Lifetime checkout fits a phone screen')
   await guestLifetimePage.close()
 
@@ -462,8 +467,13 @@ try {
   })
   assert.equal(await guestBuyNow.isVisible(), true, 'BUY NOW is visible even without a signed-in account')
   await guestBuyNow.click()
-  await guestStorePage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
-  await guestStorePage.getByRole('heading', { name: 'Sign in to continue' }).waitFor()
+  await guestStorePage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'sign-in-google'))
+  assert.equal(await guestStorePage.getByRole('heading', { name: 'Checkout', exact: true }).count(), 0,
+    'BUY NOW must start Google sign-in before navigating to Checkout')
+  assert.equal(await guestStorePage.evaluate(() => JSON.parse(localStorage.getItem('hyperion-oauth-return-to')).path),
+    '/checkout', 'Google returns a BUY NOW customer to the preserved basket')
+  assert.equal(await guestStorePage.evaluate(() => JSON.parse(localStorage.getItem('hyperion-account-basket-v1')).length), 1,
+    'The purchase selection survives the Google sign-in redirect')
   await guestStorePage.close()
 
   const publicLifetimePage = await browser.newPage({ viewport: { width: 390, height: 900 } })
