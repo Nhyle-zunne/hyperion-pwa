@@ -2,7 +2,8 @@ import { assertSquareCorners } from './square-corners-browser-helper.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { chromium } from 'playwright'
-import { PWA_PURCHASES_PAUSED, PWA_PURCHASE_PAUSE_NOTICE } from '../../src/lib/pwaPurchaseAvailability.ts'
+import { PWA_PURCHASE_PAUSE_NOTICE } from '../../src/lib/pwaPurchaseAvailability.ts'
+const PWA_PURCHASES_PAUSED = true // The media fixture exercises the default-off checkout state.
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
 const failures = []
 const base = process.env.HYPERION_MEDIA_TEST_URL || process.env.HYPERION_RECOVERY_TEST_URL
