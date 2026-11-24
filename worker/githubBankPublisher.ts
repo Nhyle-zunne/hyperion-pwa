@@ -11,9 +11,11 @@ const allowed = new Set(GITHUB_BANK_FILES.map(file => file.path))
 const encoder = new TextEncoder()
 const C1_EXPLANATION_PATH = 'deck/oic_nw_c1.csv.enc'
 const C3_EXPLANATION_PATH = 'deck/oic_nw_c3.csv.enc'
+const C12_EXPLANATION_PATH = 'deck/oic_nw_c12.csv.enc'
 const EXPLANATION_PATHS = new Set([
   C1_EXPLANATION_PATH, 'deck/oic_nw_c2.csv.enc', C3_EXPLANATION_PATH, 'deck/oic_nw_c4.csv.enc', 'deck/oic_nw_c5.csv.enc',
-  'deck/oic_nw_c7.csv.enc', 'deck/oic_nw_c9.csv.enc', 'deck/oic_nw_c10.csv.enc', 'deck/oic_nw_c11.csv.enc'
+  'deck/oic_nw_c7.csv.enc', 'deck/oic_nw_c9.csv.enc', 'deck/oic_nw_c10.csv.enc', 'deck/oic_nw_c11.csv.enc',
+  C12_EXPLANATION_PATH
 ])
 
 /**
@@ -71,8 +73,9 @@ export function reconcileQuestionExplanations(before: string, uploaded: string, 
   }
   for (let i = 0; i < Math.min(original.questions.length, next.questions.length); i++) {
     const oldRow = original.questions[i], newRow = next.questions[i]
-    // Legacy C3 rows 297/428 have shifted fields; their eighth cell is not an explanation.
-    if (path === C3_EXPLANATION_PATH && (!hasValidAnswer(oldRow) || !hasValidAnswer(newRow))) continue
+    // Legacy C3/C12 rows with shifted fields can have distractors in the explanation cell.
+    if ((path === C3_EXPLANATION_PATH || path === C12_EXPLANATION_PATH)
+        && (!hasValidAnswer(oldRow) || !hasValidAnswer(newRow))) continue
     const oldExplanation = original.hasExplanation ? oldRow[7] || '' : '', supplied = next.hasExplanation ? newRow[7] || '' : ''
     const unchanged = [1, 2, 3, 4, 5, 6].every(column => (oldRow[column] || '') === (newRow[column] || ''))
       && promptImages(oldRow, original.mediaColumn) === promptImages(newRow, next.mediaColumn)

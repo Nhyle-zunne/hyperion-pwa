@@ -212,3 +212,11 @@ const numberedDeckResult = reconcileC1Explanations(numberedDeckBefore, numberedD
 assert.equal(numberedDeckResult.preserved, 2)
 assert.deepEqual(toSearchQuestions(c7, numberedDeckResult.text).map(q => q.explanation), ['First rationale', 'Second rationale'])
 assert.deepEqual(numberedDeckResult.text.split(/\r?\n/).slice(2, 4), numberedDeckRows.slice(1, 3))
+
+const c12 = 'deck/oic_nw_c12.csv.enc'
+const shiftedC12Row = '57,Legacy maritime question?,Fragment one,Fragment two,Fragment three,Retain onboard,Shifted non-key,Shifted eighth cell,Other option,A'
+const c12Before = [header, shiftedC12Row].join('\n')
+const c12Upload = c12Before.replace('Shifted eighth cell', '')
+const c12Result = reconcileC1Explanations(c12Before, c12Upload, c12)
+assert.equal(c12Result.preserved, 0)
+assert.equal(c12Result.text, c12Upload, 'C12 must not treat a shifted distractor as an explanation')
