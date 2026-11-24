@@ -345,7 +345,7 @@ try {
   assert.equal(await saveQr.getAttribute('download'), 'hyperion-qr-ph.png', 'QR image saves with a meaningful filename')
   await adminQrPage.waitForFunction(() => {
     const qr = document.querySelector('.qr-checkout-image-wrap img')
-    return qr?.complete && qr.naturalWidth === 1080 && qr.naturalHeight === 1213
+    return qr?.complete && qr.naturalWidth === 380 && qr.naturalHeight === 377
   })
   const downloadedQr = adminQrPage.waitForEvent('download')
   await saveQr.click()
@@ -367,22 +367,26 @@ try {
       const copy = document.querySelector('.qr-checkout-copy')
       const page = document.querySelector('.qr-checkout-page')
       const image = document.querySelector('.qr-checkout-image-wrap')
+      const qrImage = image.querySelector('img')
       const download = document.querySelector('.qr-checkout-download')
       const bankRows = [...document.querySelectorAll('.qr-checkout-bank dl > div')]
       const qrBox = qr.getBoundingClientRect()
       const proofBox = proof.getBoundingClientRect()
       const copyBox = copy.getBoundingClientRect()
       const imageBox = image.getBoundingClientRect()
+      const qrImageBox = qrImage.getBoundingClientRect()
       const downloadBox = download.getBoundingClientRect()
       return {
         qr: { x: qrBox.x, y: qrBox.y, right: qrBox.right, bottom: qrBox.bottom },
         proof: { x: proofBox.x, y: proofBox.y, right: proofBox.right, bottom: proofBox.bottom },
         copy: { x: copyBox.x, right: copyBox.right, height: copyBox.height },
         pageWidth: page.getBoundingClientRect().width,
+        qrImageWidth: qrImageBox.width,
         detailsOverflowY: details.scrollHeight - details.clientHeight,
         detailsOverflowX: details.scrollWidth - details.clientWidth,
         pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
         qrDownloadOverlay: downloadBox.x >= imageBox.x && downloadBox.right <= imageBox.right && downloadBox.y >= imageBox.y && downloadBox.bottom <= imageBox.bottom,
+        downloadClearOfCode: downloadBox.left >= qrImageBox.right,
         separatedBankColumns: bankRows.every(row => {
           const value = row.querySelector('dd')
           const action = row.querySelector('button')
@@ -394,6 +398,9 @@ try {
     })
     assert(layout.pageOverflow <= 1, `QR checkout must fit ${width}px without horizontal page scrolling`)
     assert(layout.qrDownloadOverlay, `QR download icon must overlay the image at ${width}px`)
+    assert(layout.downloadClearOfCode, `QR download icon must not obscure scannable modules at ${width}px`)
+    if (width >= 1440) assert(layout.qrImageWidth >= 280, `QR must be larger on desktop at ${width}px`)
+    if (width === 390) assert(layout.qrImageWidth >= 240, 'QR must be large enough to scan on phones')
     assert(layout.separatedBankColumns, `Bank transfer rows need visually separated columns and right-aligned copy buttons at ${width}px`)
     if (width >= 960) assert(layout.pageWidth >= Math.min(width - 100, 1050),
       `Desktop QR checkout must use its available width at ${width}px (rendered ${layout.pageWidth}px)`)
