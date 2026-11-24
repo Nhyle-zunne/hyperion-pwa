@@ -1,6 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { finalizeVerifiedLifetimePayment, lifetimeProduct, hasLifetimePaymongoWebhook } from '../_shared/paymongoLifetime.ts'
 
+const WEBSITE_PAYMONGO_PURCHASES_DISABLED = true
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -80,7 +82,7 @@ Deno.serve(async req => {
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
   const config = paymentConfiguration()
   if (body.action === 'status') {
-    const enabled = config.enabled && await lifetimeWebhookReady(config.key, config.isLive, url)
+    const enabled = !WEBSITE_PAYMONGO_PURCHASES_DISABLED && config.enabled && await lifetimeWebhookReady(config.key, config.isLive, url)
     return json({ enabled })
   }
   if (!config.configured) return json({ error: 'PayMongo checkout is not configured.' }, 503)
@@ -129,6 +131,7 @@ Deno.serve(async req => {
   }
 
   if (body.action !== 'create') return json({ error: 'Unsupported lifetime checkout action.' }, 400)
+  if (WEBSITE_PAYMONGO_PURCHASES_DISABLED) return json({ error: 'Website payments use the manual QR checkout. New PayMongo sessions are disabled.' }, 503)
   if (!config.enabled || !await lifetimeWebhookReady(config.key, config.isLive, url)) {
     return json({ error: 'Lifetime Access requires a working PayMongo checkout and a live signed payment-and-refund webhook. No payment has been started.' }, 503)
   }

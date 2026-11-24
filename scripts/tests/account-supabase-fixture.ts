@@ -44,6 +44,7 @@ export function switchFixtureAccount() {
 }
 export const supabase = {
   auth: {
+    getUser: async () => ({ data: { user: session()?.user ?? null }, error: null }),
     getSession: async () => {
       if (localStorage.getItem('fixture-hold-account-session') === 'yes') {
         return new Promise(resolve => heldSessionResolvers.push(() => resolve({ data: { session: null }, error: null })))
@@ -140,7 +141,9 @@ export const supabase = {
           { id: 'fixture-free', display_name: 'Synthetic Free Member', email: 'free@example.invalid', created_at: '2026-10-02T00:00:00Z', last_accessed_at: '2026-11-01T00:00:00Z', last_access_source: 'website_activity', retention_status: 'free_account_active', retention_due_at: '2027-01-01T00:00:00Z', licenses: {} },
         ], audit: [] }, error: null,
       }
-      if (name === 'admin-payment-review') return { data: { isAdmin: false }, error: null }
+      if (name === 'admin-payment-review') return {
+        data: { isAdmin: localStorage.getItem('fixture-admin') === 'yes' && user.id === '11111111-1111-4111-8111-111111111111' }, error: null,
+      }
       if (name === 'create-checkout' && request.body?.action === 'status') return { data: { action: 'status', enabled: true }, error: null }
       if (name === 'create-lifetime-checkout' && request.body?.action === 'status') {
         return {data:{enabled:localStorage.getItem('fixture-lifetime-enabled') === 'yes'},error:null}

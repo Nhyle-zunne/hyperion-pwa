@@ -174,7 +174,8 @@ for (const source of [checkout, verify, webhook, submitManualPaymentFunction]) {
 }
 assert.ok(checkout.includes('termPrices[code][termsByCode[code]]'), 'New PayMongo orders use the updated prices');
 assert.ok(checkout.includes('body.expectedTotalPhp !== totalPrice'), 'Stale PWA price quote cannot create an unexpected new charge');
-assert.ok(basketScreen.includes('expectedTotalPhp }'), 'PWA basket transmits the exact displayed quote to checkout');
+assert.ok(basketScreen.includes('selectedItems.map(item => `${item.code}:${item.term}`)') &&
+  basketScreen.includes("price: priceForTerm(product, entry.term)"), 'PWA basket sends selected product and term to the QR preview with catalogue prices');
 assert.ok(submitManualPaymentFunction.includes('body.expectedAmountPhp !== prices[code][term]'), 'Manual endpoint rejects a stale quote before recording a transfer');
 assert.ok(manualPayment.includes('expectedAmountPhp: licensePrice'), 'Manual payment submits the displayed amount for matching');
 assert.ok(submitManualPaymentFunction.includes('const prices = termPrices'), 'New manual orders use the updated prices');
@@ -218,19 +219,37 @@ assert.match(functionConfig, /\[functions\.paymongo-webhook\]\s*verify_jwt = fal
 assert.match(functionConfig, /\[functions\.question-bank\]\s*verify_jwt = false/, 'Question bank preserves publishable-key guest access and validates user tokens in the handler');
 assert.match(functionConfig, /\[functions\.create-checkout\]\s*verify_jwt = true/, 'Checkout requires an authenticated Hyperion session');
 assert.ok(checkout.includes("body.action === 'status'"), 'Checkout endpoint exposes only a non-secret availability status action');
-assert.ok(checkout.includes("const enabled = checkoutEnabled && Boolean(serviceKey) && keyMatchesMode"), 'Checkout status fails closed unless enabled and correctly configured');
-assert.ok(basketScreen.includes("body: { action: 'status' }"), 'Basket loads checkout availability from the server');
-assert.ok(basketScreen.includes('paymongoCheckoutEnabled !== true'), 'Checkout handler fails closed until server availability is confirmed');
-assert.ok(basketScreen.includes('paymongoCheckoutEnabled === true ? <button'), 'PayMongo button is only rendered when the server says checkout is enabled');
-assert.ok(basketScreen.includes('showManualPaymentFallback'), 'Basket exposes manual payment fallback when checkout is disabled');
+assert.ok(checkout.includes("const enabled = !WEBSITE_PAYMONGO_PURCHASES_DISABLED && checkoutEnabled && Boolean(serviceKey) && keyMatchesMode"), 'PayMongo checkout status stays disabled during the QR transition');
+assert.ok(checkout.includes('if (WEBSITE_PAYMONGO_PURCHASES_DISABLED) return json('), 'Direct PayMongo checkout creation is disabled server-side');
+assert.ok(submitManualPaymentFunction.includes('if (WEBSITE_MANUAL_SUBMISSIONS_DISABLED) return json('),
+  'The retired manual-order API must also reject new public payment submissions server-side');
+const lifetimeCheckoutFunction = await read('../supabase/functions/create-lifetime-checkout/index.ts');
+assert.ok(lifetimeCheckoutFunction.includes("body.action !== 'create'") &&
+  lifetimeCheckoutFunction.includes('if (WEBSITE_PAYMONGO_PURCHASES_DISABLED) return json(') &&
+  lifetimeCheckoutFunction.includes("body.action === 'cancel'"), 'Lifetime PayMongo creation is disabled without breaking cancellation of existing orders');
+assert.ok(!basketScreen.includes("functions.invoke('create-checkout'") &&
+  !basketScreen.includes("action: 'create', productCode: product.code") &&
+  !basketScreen.includes('checkout.paymongo.com'), 'Website basket no longer starts or resumes PayMongo payments');
+assert.ok(basketScreen.includes('adminCheckout.allowed ? <button') &&
+  basketScreen.includes("navigate('/checkout/qr?items='"), 'Only checked administrators can proceed from the basket to QR checkout');
+const adminQrScreen = await read('../src/screens/AdminQrCheckoutScreen.tsx');
+const adminCheckoutAccess = await read('../src/hooks/useAdminCheckoutAccess.ts');
+assert.ok(app.includes('path="/checkout/qr"') &&
+  adminQrScreen.includes('if (!access.allowed)') &&
+  adminCheckoutAccess.includes("action: 'check-admin'") &&
+  adminCheckoutAccess.includes('data?.isAdmin === true'), 'QR checkout route requires server-verified administrator access before showing a QR');
+assert.ok(adminCheckoutAccess.includes('result?.userId === userId && result.allowed') &&
+  adminQrScreen.includes('supabase.auth.onAuthStateChange'), 'Changing or signing out of an administrator account immediately invalidates the QR checkout permission');
+assert.ok(adminCheckoutAccess.includes('!supabase?.functions?.invoke'), 'Missing Functions transport fails closed without unmounting purchase dialogs');
+assert.ok(adminQrScreen.includes('formatMessengerPaymentDetails(email, items)') &&
+  adminQrScreen.includes('navigator.clipboard.writeText(details)') &&
+  adminQrScreen.includes('https://m.me/HyperionMaritime'), 'QR checkout presents copyable payment details and a Messenger proof link');
 assert.ok(basketScreen.includes('fetchPendingLifetimeOrders(supabase, session.user.id)') &&
   basketScreen.includes('pendingLifetimeOrders.map(order =>') &&
-  basketScreen.includes('RESUME CHECKOUT') &&
+  basketScreen.includes('RESUME UNAVAILABLE') &&
   basketScreen.includes('Lifetime Access)'), 'Pending Lifetime purchases appear alongside existing timed Resume Checkout controls');
-assert.ok(basketScreen.includes("functions.invoke('create-lifetime-checkout'") &&
-  basketScreen.includes("action: 'create', productCode: product.code, expectedTotalPhp: product.lifetimePrice") &&
-  basketScreen.includes('data.orderId !== order.id') &&
-  basketScreen.includes("target.hostname !== 'checkout.paymongo.com'"), 'Lifetime resume reuses server-owned price, original order identity and trusted PayMongo checkout URL');
+assert.ok(!basketScreen.includes("action: 'create', productCode: product.code") &&
+  basketScreen.includes("functions.invoke('verify-lifetime-checkout'"), 'Lifetime creation has been removed from the basket without removing historic payment verification');
 assert.ok(basketScreen.includes("action: 'cancel', orderId") &&
   basketScreen.includes("functions.invoke('verify-lifetime-checkout'") &&
   basketScreen.includes("await refreshData()"), 'Lifetime cancel and status refresh use existing provider-verified payment handlers');
@@ -298,7 +317,7 @@ assert.ok(accountScreen.includes("withPageLoading('Loading account and licenses'
 assert.ok(basketScreen.includes("withPageLoading('Loading checkout and licenses'") && basketScreen.includes("withPageLoading('Preparing secure checkout'") && basketScreen.includes("withPageLoading('Verifying payment status'") || basketScreen.includes("withPageLoading('Refreshing payment status'"), 'Checkout reads and PayMongo operations display the indicator');
 assert.ok(manualPayment.includes("withPageLoading('Loading payment details'") && manualPayment.includes("withPageLoading('Submitting payment for review'"), 'Manual payment lookup and submission display the indicator');
 assert.ok(!accountScreen.includes('/manual-payment?product=') && !accountScreen.includes('Pay manually with QR'), 'Bond Store product cards do not expose direct manual QR payment links');
-assert.ok(basketScreen.includes('showManualPaymentFallback = manualPaymentItems.length > 0') && basketScreen.includes('PayMongo checkout is unavailable') && basketScreen.includes('to={`/manual-payment?product=${encodeURIComponent(code)}&term=${term}`}'), 'Manual QR payment links are only offered from Checkout when PayMongo is unavailable');
+assert.ok(!basketScreen.includes('showManualPaymentFallback') && basketScreen.includes('CHECKOUT WITH QR PH') && basketScreen.includes('adminCheckout.allowed'), 'New QR checkout is reached from an administrator-only Checkout button');
 assert.ok(!manualPayment.includes('SEND PAYMENT SCREENSHOT VIA FACEBOOK'), 'Manual payment form does not show the Facebook proof button before submission');
 assert.ok(manualPayment.includes('(manualSubmission || pendingManualOrder)') && manualPayment.includes('SEND PAYMENT PROOF VIA FACEBOOK') && manualPayment.indexOf('SEND PAYMENT PROOF VIA FACEBOOK') > manualPayment.indexOf('(manualSubmission || pendingManualOrder)'), 'Facebook proof button appears only after manual submission has been confirmed or an existing pending submission is loaded');
 assert.ok(manualPayment.includes('In your Facebook message, include the email address you use to sign in to your Hyperion account.') && manualPayment.includes('Hyperion account email:</strong> {session.user.email'), 'Post-submission instructions explicitly provide the account email to include with payment proof');

@@ -1,6 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { termPrices } from '../_shared/paymentPrices.mjs'
 
+// The QR checkout is reviewed manually. Keep historical verification and
+// cancellation endpoints running, but never create new PayMongo sessions.
+const WEBSITE_PAYMONGO_PURCHASES_DISABLED = true
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -85,8 +89,9 @@ Deno.serve(async (req) => {
     (expectedLiveMode === 'false' && paymongoKey.startsWith('sk_test_'))
   ))
   if (body.action === 'status') {
-    const enabled = checkoutEnabled && Boolean(serviceKey) && keyMatchesMode
+    const enabled = !WEBSITE_PAYMONGO_PURCHASES_DISABLED && checkoutEnabled && Boolean(serviceKey) && keyMatchesMode
     const reason = enabled ? null
+      : WEBSITE_PAYMONGO_PURCHASES_DISABLED ? 'manual_only'
       : !checkoutEnabled ? 'disabled'
       : !serviceKey ? 'service_unavailable'
       : !paymongoKey || !modeIsValid ? 'not_configured'
@@ -100,6 +105,7 @@ Deno.serve(async (req) => {
     })
   }
 
+  if (WEBSITE_PAYMONGO_PURCHASES_DISABLED) return json({ error: 'Website payments use the manual QR checkout. New PayMongo sessions are disabled.' }, 503)
   if (!serviceKey) return json({ error: 'Payment service is not configured. Contact Hyperion support.' }, 503)
   if (!checkoutEnabled) return json({ error: 'PayMongo checkout is not enabled yet. Please use manual payment for now.' }, 503)
   if (!paymongoKey || !modeIsValid) return json({ error: 'PayMongo checkout is not fully configured yet. Please use manual payment for now.' }, 503)

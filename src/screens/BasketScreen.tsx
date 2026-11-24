@@ -1,6 +1,6 @@
 import { createPaymentPollingState, pendingPaymentCheckoutIds, startPaymentPolling } from '../lib/paymentPolling'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
@@ -12,6 +12,7 @@ import LifetimeCheckoutScreen from './LifetimeCheckoutScreen'
 import { fetchPendingLifetimeOrders } from '../lib/orderHistoryRequests'
 import type { PendingLifetimeOrder } from '../lib/orderHistoryRequests'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
+import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 
 type Order = {
   id: string
@@ -81,6 +82,7 @@ function TimedBasketScreen() {
   const location = useLocation()
   const [params] = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
+  const adminCheckout = useAdminCheckoutAccess(session?.user.id)
   const [basket, setBasket] = useState<BasketItem[]>(() => {
     const requested = directBuyNowSelection(params)
     return requested ? [requested] : savedBasket()
@@ -92,9 +94,6 @@ function TimedBasketScreen() {
   const [busyCheckoutId, setBusyCheckoutId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
-  const [manualFallbackItems, setManualFallbackItems] = useState<BasketItem[]>([])
-  const [paymongoCheckoutEnabled, setPaymongoCheckoutEnabled] = useState<boolean | null>(null)
-  const [checkoutUrlFallback, setCheckoutUrlFallback] = useState<string | null>(null)
   const [purchaseConfirmation, setPurchaseConfirmation] = useState<PurchaseConfirmation | null>(() => {
     const state = location.state as { purchaseConfirmation?: PurchaseConfirmation } | null
     const saved = state?.purchaseConfirmation
@@ -159,54 +158,6 @@ function TimedBasketScreen() {
       setBusy(false)
     }
   }
-
-  // Read the server-side checkout switch on entry and when the user returns to
-  // this tab. Never show an actionable PayMongo button while availability is
-  // disabled or cannot be verified.
-  useEffect(() => {
-    let active = true
-    if (!supabase || !session?.user.id) {
-      setPaymongoCheckoutEnabled(null)
-      return
-    }
-    const refreshCheckoutAvailability = async () => {
-      try {
-        const { data, error } = await supabase!.functions.invoke('create-checkout', { body: { action: 'status' } })
-        if (!active) return
-        if (error || data?.action !== 'status' || typeof data?.enabled !== 'boolean') {
-          setPaymongoCheckoutEnabled(false)
-          setCheckoutUrlFallback(null)
-          setManualFallbackItems([])
-          setIsError(false)
-          setMessage('PayMongo checkout availability could not be verified. For your safety, checkout is disabled here for now. Please use manual payment.')
-          return
-        }
-        setPaymongoCheckoutEnabled(data.enabled)
-        if (!data.enabled) {
-          setCheckoutUrlFallback(null)
-          setManualFallbackItems([])
-          setIsError(false)
-          setMessage('PayMongo checkout is not enabled yet. Please use manual payment for now.')
-        } else {
-          setMessage(current => /PayMongo checkout is not enabled yet|availability could not be verified/i.test(current) ? '' : current)
-        }
-      } catch {
-        if (!active) return
-        setPaymongoCheckoutEnabled(false)
-        setCheckoutUrlFallback(null)
-        setManualFallbackItems([])
-        setIsError(false)
-        setMessage('PayMongo checkout availability could not be verified. For your safety, checkout is disabled here for now. Please use manual payment.')
-      }
-    }
-    void withPageLoading('Checking checkout availability', refreshCheckoutAvailability)
-    const onFocus = () => { void refreshCheckoutAvailability() }
-    window.addEventListener('focus', onFocus)
-    return () => {
-      active = false
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [session?.user.id])
 
   const refreshData = async () => {
     if (!supabase || !session?.user.id) {
@@ -277,11 +228,6 @@ function TimedBasketScreen() {
   }), [basket])
   const totalPhp = selectedItems.reduce((sum, item) => sum + item.price, 0)
   const activeInBasket = selectedItems.filter(item => ownedCodes.includes(item.code))
-  const manualPaymentItems: BasketItem[] = manualFallbackItems.length
-    ? manualFallbackItems
-    : paymongoCheckoutEnabled === false ? selectedItems.map(({ code, term }) => ({ code, term })) : []
-  const showManualPaymentFallback = manualPaymentItems.length > 0 &&
-    (paymongoCheckoutEnabled === false || (isError && manualFallbackItems.length > 0))
   const pendingLifetimeOrders = session?.user.id && lifetimePending?.owner === session.user.id ? lifetimePending.orders : []
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
   const pendingCheckoutGroups = useMemo(() => {
@@ -335,7 +281,6 @@ function TimedBasketScreen() {
         if (active && activated.length) {
           const uniqueCodes = [...new Set(activated)]
           const labels = uniqueCodes.map(code => PAID_PRODUCTS.find(item => item.code === code)?.label ?? code)
-          setCheckoutUrlFallback(null)
           setIsError(false)
           setMessage(`Payment confirmed automatically. Activated: ${labels.join(', ')}.`)
           clearBasketCodes(uniqueCodes)
@@ -384,13 +329,11 @@ function TimedBasketScreen() {
     let active = true
     const verificationStartedAt = Date.now()
     if (paymentState === 'cancelled') {
-      setCheckoutUrlFallback(null)
       setMessage('You returned from PayMongo. The checkout may still be open. Use the pending checkout controls below if you want to cancel it or switch payment methods.')
       setIsError(false)
       return () => { active = false }
     }
     if (paymentState !== 'success' || handledSuccessOrderRef.current === orderId) return
-    setCheckoutUrlFallback(null)
     setPurchaseConfirmation({ orderId, productCodes: [], stage: 'verifying' })
     setBusy(true)
     setIsError(false)
@@ -440,71 +383,6 @@ function TimedBasketScreen() {
     return () => { active = false }
   }, [session?.user.id, params])
 
-  const checkoutInternal = async (requestedItems: BasketItem[] = basket) => {
-    if (!canPerformPwaPaymentAction('checkout')) {
-      setMessage(PWA_PURCHASE_PAUSE_NOTICE)
-      return
-    }
-    if (!supabase || !session) {
-      navigate('/account')
-      setMessage('Sign in to Hyperion first. Your selected tracks are saved in this browser.')
-      return
-    }
-    if (paymongoCheckoutEnabled !== true) {
-      setIsError(false)
-      setMessage('PayMongo checkout is not available right now. Please use manual payment instead.')
-      return
-    }
-    const itemsByCode = new Map<PaidTrack, BasketItem>()
-    for (const entry of requestedItems) {
-      if (PAID_PRODUCTS.some(item => item.code === entry.code) &&
-          (entry.term === 'week' || entry.term === 'month' || entry.term === 'year')) itemsByCode.set(entry.code, entry)
-    }
-    const items = [...itemsByCode.values()]
-    const codes = items.map(item => item.code)
-    if (!codes.length) {
-      setIsError(true)
-      setMessage('Your checkout is empty. Return to the shop and add a reviewer track first.')
-      return
-    }
-    setBusy(true)
-    setIsError(false)
-    setManualFallbackItems([])
-    setCheckoutUrlFallback(null)
-    setMessage('Preparing secure checkout…')
-    try {
-      const expectedTotalPhp = items.reduce((sum, item) => sum + priceForTerm(PAID_PRODUCTS.find(product => product.code === item.code)!, item.term), 0)
-      const { data, error } = await supabase.functions.invoke('create-checkout', { body: { items: items.map(item => ({ productCode: item.code, term: item.term })), expectedTotalPhp } })
-      if (error) throw new Error(await edgeError(error))
-      if (data?.error) throw new Error(data.error)
-      if (data?.alreadyProcessing === true && typeof data.orderId === 'string') {
-        const paid = await confirmPaidCheckout(data.orderId, 6)
-        if (!paid) setMessage('PayMongo reports a payment attempt for this checkout. Refresh payment status shortly; do not pay again.')
-        return
-      }
-      const url = typeof data?.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
-      if (!url || url.protocol !== 'https:' || url.hostname !== 'checkout.paymongo.com') {
-        throw new Error('PayMongo did not return a valid secure checkout URL. Please retry or contact Hyperion support.')
-      }
-      setCheckoutUrlFallback(url.toString())
-      setMessage('Opening PayMongo secure checkout… If this page stays open, use the link below to continue.')
-      window.location.assign(url.toString())
-    } catch (error) {
-      setIsError(true)
-      setManualFallbackItems(items)
-      const errorMessage = await edgeError(error)
-      setMessage(errorMessage)
-      if (/PayMongo checkout is not enabled|not fully configured|key does not match the configured payment mode/i.test(errorMessage)) {
-        setPaymongoCheckoutEnabled(false)
-      }
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const checkout = async (requestedItems: BasketItem[] = basket) =>
-    withPageLoading('Preparing secure checkout', () => checkoutInternal(requestedItems))
-
   const cancelCheckoutInternal = async (groupId: string, groupItems: BasketItem[]) => {
     if (!supabase || !session) return
     setBusy(true)
@@ -540,58 +418,6 @@ function TimedBasketScreen() {
 
   const cancelCheckout = async (groupId: string, groupItems: BasketItem[]) =>
     withPageLoading('Checking checkout cancellation', () => cancelCheckoutInternal(groupId, groupItems))
-
-  const resumeLifetimeCheckoutInternal = async (order: PendingLifetimeOrder) => {
-    if (!canPerformPwaPaymentAction('resume')) {
-      setMessage(PWA_PURCHASE_PAUSE_NOTICE)
-      return
-    }
-    if (!supabase || !session) return
-    const product = PAID_PRODUCTS.find(item => item.code === order.product_code)
-    if (!product) {
-      setIsError(true)
-      setMessage('This Lifetime order has an unknown track. Contact Hyperion support.')
-      return
-    }
-    setBusy(true)
-    setBusyCheckoutId(order.id)
-    setIsError(false)
-    setCheckoutUrlFallback(null)
-    setMessage('Resuming the existing Lifetime checkout…')
-    try {
-      // The server reuses the owner's pending order and validates the provider session.
-      const { data, error } = await supabase.functions.invoke('create-lifetime-checkout', {
-        body: { action: 'create', productCode: product.code, expectedTotalPhp: product.lifetimePrice }
-      })
-      if (error) throw new Error(await edgeError(error))
-      if (typeof data?.error === 'string') throw new Error(data.error)
-      if (data?.status === 'paid') {
-        await refreshData()
-        setMessage('Lifetime payment confirmed. Your license has been activated.')
-        return
-      }
-      // Do not turn a stale Resume action into a different new purchase.
-      if (data?.status !== 'pending' || data.orderId !== order.id) {
-        throw new Error('This Lifetime checkout changed. Refresh payment status before trying again.')
-      }
-      const target = typeof data.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
-      if (!target || target.protocol !== 'https:' || target.hostname !== 'checkout.paymongo.com') {
-        throw new Error('PayMongo did not return a trusted checkout link.')
-      }
-      setCheckoutUrlFallback(target.toString())
-      window.location.assign(target.toString())
-    } catch (error) {
-      setIsError(true)
-      setMessage(await edgeError(error))
-      await refreshData().catch(() => undefined)
-    } finally {
-      setBusy(false)
-      setBusyCheckoutId(null)
-    }
-  }
-
-  const resumeLifetimeCheckout = async (order: PendingLifetimeOrder) =>
-    withPageLoading('Resuming Lifetime checkout', () => resumeLifetimeCheckoutInternal(order))
 
   const cancelLifetimeCheckoutInternal = async (orderId: string) => {
     if (!supabase || !session) return
@@ -838,10 +664,10 @@ function TimedBasketScreen() {
     <button type="button" className="basket-back-link" onClick={() => navigate('/account?tab=payments')} style={{ color: 'var(--text-muted)', marginBottom: '.6rem' }}>← Back to Bond Store</button>
     <AccountSectionTabs active="checkout" />
     <div className="basket-heading" style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
-      <div><div className="basket-heading-brand" style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>{canPerformPwaPaymentAction('checkout') ? 'Review your selected tracks and check out securely in one payment.' : 'Review your selections and existing payment statuses. New checkouts are paused.'}</p></div>
+      <div><div className="basket-heading-brand" style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.72rem', letterSpacing: '.16em', marginBottom: '.25rem' }}>HYPERION MARITIME</div><h1 className="page-title" style={{ textAlign: 'left', margin: 0 }}>Checkout</h1><p className="subtitle" style={{ textAlign: 'left', margin: '.35rem 0 0' }}>{adminCheckout.allowed ? 'Review your tracks, then preview QR payment instructions.' : 'Review your selections and existing payment statuses. New checkouts are paused.'}</p></div>
       <span className="basket-item-count" style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '.55rem .75rem', background: 'var(--bg-card)', fontWeight: 850, fontSize: '.8rem' }}>🛒 {basket.length} {basket.length === 1 ? 'item' : 'items'} to purchase</span>
     </div>
-    {!canPerformPwaPaymentAction('checkout') && <div role="status" style={{ ...style.card, marginBottom: '1rem', color: 'var(--text-muted)' }}>{PWA_PURCHASE_PAUSE_NOTICE}</div>}
+    {!adminCheckout.allowed && !canPerformPwaPaymentAction('checkout') && <div role="status" style={{ ...style.card, marginBottom: '1rem', color: 'var(--text-muted)' }}>{PWA_PURCHASE_PAUSE_NOTICE}</div>}
 
     {!session ? <section style={{ ...style.card, maxWidth: 600 }}>
       <h2 style={{ marginTop: 0 }}>Sign in to continue</h2>
@@ -851,26 +677,11 @@ function TimedBasketScreen() {
     </section> : <>
       {message && <div role="status" style={{ ...style.card, marginBottom: '1rem', borderColor: isError ? 'var(--danger, #dc2626)' : 'var(--border)', lineHeight: 1.5 }}>
         {message}
-        {canPerformPwaPaymentAction('resume') && checkoutUrlFallback && <div style={{ marginTop: '.8rem' }}>
-          <a href={checkoutUrlFallback} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, padding: '.7rem 1rem', textDecoration: 'none' }}>CONTINUE TO PAYMONGO SECURE CHECKOUT</a>
-          <p className="basket-muted" style={{ margin: '.5rem 0 0' }}>If payment is already complete, don't pay again. Return to this page or refresh payment status to verify it.</p>
-        </div>}
-        {canPerformPwaPaymentAction('manual-payment') && showManualPaymentFallback && <div style={{ marginTop: '.85rem', paddingTop: '.8rem', borderTop: '1px solid var(--border)' }}>
-          <strong style={{ display: 'block', marginBottom: '.3rem' }}>PayMongo checkout is unavailable</strong>
-          <p className="basket-muted" style={{ margin: '0 0 .7rem' }}>You can pay by QR instead. Choose the track below to open its dedicated manual payment page. Manual payments require admin review before your license is activated.</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem' }}>
-            {manualPaymentItems.map(({ code, term }) => {
-              const item = PAID_PRODUCTS.find(product => product.code === code)
-              if (!item) return null
-              return <Link key={code} className="manual-fallback-link" to={`/manual-payment?product=${encodeURIComponent(code)}&term=${term}`}>Pay manually for {item.label} · ₱{priceForTerm(item, term)}</Link>
-            })}
-          </div>
-        </div>}
       </div>}
 
       {(pendingCheckoutGroups.length + pendingLifetimeOrders.length) > 0 && <section className="basket-pending-card" style={{ ...style.card, borderColor: 'var(--border)', marginBottom: '1rem' }}>
         <div className="basket-pending-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length + pendingLifetimeOrders.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>{canPerformPwaPaymentAction('resume') ? 'Resume the same payment or cancel it safely. Don’t start a second payment for the same items.' : 'Resuming payment is temporarily unavailable. You can still refresh its status or cancel safely.'}</p></div>
+          <div><h2 style={{ fontSize: '1.05rem', margin: 0 }}>Pending checkout{pendingCheckoutGroups.length + pendingLifetimeOrders.length === 1 ? '' : 's'}</h2><p className="basket-muted" style={{ margin: '.25rem 0 0' }}>Old PayMongo payments cannot be resumed. You can still refresh their status or cancel them safely.</p></div>
           <button type="button" className="btn btn-outline basket-pending-refresh" disabled={busy} onClick={() => void refreshStatus()}>{busy ? 'Checking…' : 'Refresh payment status'}</button>
         </div>
         {pendingCheckoutGroups.map(group => <div className="basket-row basket-pending-row" key={group.id}>
@@ -879,7 +690,7 @@ function TimedBasketScreen() {
             <div className="basket-muted" style={{ marginTop: '.25rem' }}>{group.codes.length} track{group.codes.length === 1 ? '' : 's'} · ₱{group.total}</div>
           </div>
           <div className="basket-action-row basket-pending-actions">
-            <button type="button" className="btn btn-primary" disabled={!canPerformPwaPaymentAction('resume') || busy} onClick={() => void checkout(group.items)}>RESUME CHECKOUT</button>
+            <span className="basket-muted" role="status">RESUME UNAVAILABLE</span>
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelCheckout(group.id, group.items)} style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>{busyCheckoutId === group.id ? 'CHECKING…' : 'CANCEL'}</button>
           </div>
         </div>)}
@@ -889,9 +700,7 @@ function TimedBasketScreen() {
             <div className="basket-muted" style={{ marginTop: '.25rem' }}>One-time payment · ₱{Number(order.amount_php).toLocaleString('en-PH')}</div>
           </div>
           <div className="basket-action-row basket-pending-actions">
-            <button type="button" className="btn btn-primary" disabled={!canPerformPwaPaymentAction('resume') || busy} onClick={() => void resumeLifetimeCheckout(order)}>
-              {busyCheckoutId === order.id ? 'CHECKING…' : 'RESUME CHECKOUT'}
-            </button>
+            <span className="basket-muted" role="status">RESUME UNAVAILABLE</span>
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void cancelLifetimeCheckout(order.id)}
               style={{ color: 'var(--danger, #dc2626)', borderColor: 'var(--danger, #dc2626)' }}>
               {busyCheckoutId === order.id ? 'CHECKING…' : 'CANCEL'}
@@ -922,13 +731,12 @@ function TimedBasketScreen() {
           <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Order summary</h2>
           <p className="basket-muted basket-summary-count" style={{ margin: '.3rem 0 1rem' }}>{selectedItems.length} selected track{selectedItems.length === 1 ? '' : 's'}</p>
           {selectedItems.map(({ code, term, product, price }) => <div className="basket-summary-list" key={code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{product.label} <span className="basket-muted">({termLabel(term)})</span></span><strong>₱{price}</strong></div>)}
-          <div className={`basket-checkout-action${paymongoCheckoutEnabled === true && canPerformPwaPaymentAction('checkout') ? ' is-payable' : ''}`}>
+          <div className={`basket-checkout-action${adminCheckout.allowed ? ' is-payable' : ''}`}>
             <div className="basket-total-row" style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
-          {paymongoCheckoutEnabled === true ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={!canPerformPwaPaymentAction('checkout') || busy || !supabaseConfigured || !selectedItems.length } onClick={() => void checkout()} style={{ ...style.primary, marginTop: '1rem' }}>{busy ? 'PROCESSING…' : <>Checkout <span aria-hidden="true">🛒</span></>}</button> : <div role="status" aria-live="polite" style={{ marginTop: '1rem', padding: '.75rem', textAlign: 'center', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text-muted)', fontSize: '.84rem', fontWeight: 750 }}>{!canPerformPwaPaymentAction('checkout') ? PWA_PURCHASE_PAUSE_NOTICE : paymongoCheckoutEnabled === null ? 'Checking PayMongo checkout availability…' : 'PayMongo checkout is disabled. Use a manual payment option above.'}</div>}
+          {adminCheckout.allowed ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length} onClick={() => navigate('/checkout/qr?items=' + encodeURIComponent(selectedItems.map(item => `${item.code}:${item.term}`).join(',')))} style={{ ...style.primary, marginTop: '1rem' }}>CHECKOUT WITH QR PH</button> : <div role="status" aria-live="polite" style={{ marginTop: '1rem', padding: '.75rem', textAlign: 'center', border: '1px solid var(--border)', borderRadius: 0, color: 'var(--text-muted)', fontSize: '.84rem', fontWeight: 750 }}>{PWA_PURCHASE_PAUSE_NOTICE}</div>}
           </div>
           {activeInBasket.length > 0 && <p style={{ color: 'var(--success, #15803d)', fontSize: '.8rem', lineHeight: 1.45 }}>An active website license is extended from its current expiration date after verified payment. Google Play subscriptions must be managed in Google Play.</p>}
-          {paymongoCheckoutEnabled === true && <div className="basket-payment-methods" style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', justifyContent: 'center', marginTop: '.8rem' }}>{['QR Ph'].map(method => <span key={method} style={{ padding: '.3rem .45rem', border: '1px solid var(--border)', background: 'var(--bg-elevated)', borderRadius: 5, fontSize: '.7rem', fontWeight: 750 }}>{method}</span>)}</div>}
-          <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{!canPerformPwaPaymentAction('checkout') ? PWA_PURCHASE_PAUSE_NOTICE : paymongoCheckoutEnabled === true ? 'After PayMongo verifies this exact payment, new tracks activate and existing website licenses are extended without losing remaining days.' : paymongoCheckoutEnabled === null ? 'Checking whether PayMongo checkout is available…' : 'Use the manual-payment option above. Manual payments require admin review before your license is activated.'}</p>
+          <p className="basket-muted basket-summary-note" style={{ textAlign: 'center', fontSize: '.76rem', marginBottom: 0, marginTop: '.75rem' }}>{adminCheckout.allowed ? 'QR payment requires a receipt sent via Messenger. An administrator must verify payment and activate access manually.' : PWA_PURCHASE_PAUSE_NOTICE}</p>
         </aside>
       </div>
     </>}

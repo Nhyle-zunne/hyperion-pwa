@@ -10,6 +10,8 @@ const products = {
 } as const
 type LicenseTerm = 'week' | 'month' | 'year'
 const prices = termPrices
+// Keep historical manual orders reviewable; do not accept new submissions from the retired form.
+const WEBSITE_MANUAL_SUBMISSIONS_DISABLED = true
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 
 function isMissingGooglePlayEntitlementsTable(error: unknown): boolean {
@@ -30,6 +32,7 @@ Deno.serve(async req => {
   const client = createClient(url, anon, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } })
   const { data: { user }, error: authError } = await client.auth.getUser()
   if (authError || !user) return json({ error: 'Please sign in again.' }, 401)
+  if (WEBSITE_MANUAL_SUBMISSIONS_DISABLED) return json({ error: 'New manual payment submissions are closed. Please use Hyperion Messenger support.' }, 503)
   let body: { productCode?: string; licenseTerm?: string; expectedAmountPhp?: unknown; paymentMethod?: string; paymentReference?: string; proofUrl?: string; customerNote?: string; customerProfile?: { fullName?: string; company?: string; school?: string } }
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
   const code = body.productCode as keyof typeof products, product = products[code]

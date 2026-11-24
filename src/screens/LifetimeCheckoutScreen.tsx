@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
+import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import './LifetimeCheckoutScreen.css'
 
 async function checkoutError(error: unknown): Promise<string> {
@@ -24,13 +25,12 @@ export default function LifetimeCheckoutScreen() {
   const navigate = useNavigate()
   const product = PAID_PRODUCTS.find(item => item.code === params.get('lifetime_product'))
   const [session, setSession] = useState<Session | null>(null)
+  const adminCheckout = useAdminCheckoutAccess(session?.user.id)
   const [sessionChecked, setSessionChecked] = useState(!supabaseConfigured)
-  const [checkoutEnabled, setCheckoutEnabled] = useState<boolean | null>(null)
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null)
   const [refreshRevision, setRefreshRevision] = useState(0)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-  const [checkoutUrlFallback, setCheckoutUrlFallback] = useState<string | null>(null)
 
   useEffect(() => {
     if (!supabase) return
@@ -46,7 +46,6 @@ export default function LifetimeCheckoutScreen() {
 
   useEffect(() => {
     if (!supabase || !session?.user.id || !product) {
-      setCheckoutEnabled(null)
       setPendingOrderId(null)
       return
     }
@@ -55,16 +54,12 @@ export default function LifetimeCheckoutScreen() {
     let active = true
     const refresh = async () => {
       try {
-        const [availability, pending] = await Promise.all([
-          client.functions.invoke('create-lifetime-checkout', { body: { action: 'status' } }),
-          client.from('lifetime_orders').select('id')
-            .eq('user_id', ownerId).eq('product_code', product.code).eq('status', 'pending').limit(1)
-        ])
+        const pending = await client.from('lifetime_orders').select('id')
+          .eq('user_id', ownerId).eq('product_code', product.code).eq('status', 'pending').limit(1)
         if (!active) return
-        setCheckoutEnabled(!availability.error && availability.data?.enabled === true)
         setPendingOrderId(pending.error ? null : pending.data?.[0]?.id ?? null)
       } catch {
-        if (active) { setCheckoutEnabled(false); setPendingOrderId(null) }
+        if (active) setPendingOrderId(null)
       }
     }
     void refresh()
@@ -97,47 +92,6 @@ export default function LifetimeCheckoutScreen() {
     }
   }
 
-  const checkout = async () => {
-    if (!canPerformPwaPaymentAction('checkout')) {
-      setMessage(PWA_PURCHASE_PAUSE_NOTICE)
-      return
-    }
-    if (!supabase || !session || !product || checkoutEnabled !== true || busy) return
-    setBusy(true)
-    setMessage('Preparing secure Lifetime checkout…')
-    setCheckoutUrlFallback(null)
-    try {
-      // The client price is only a consistency check. The Edge Function owns
-      // the product catalogue, price, purchase identity and payment verification.
-      const { data, error } = await supabase.functions.invoke('create-lifetime-checkout', {
-        body: {
-          action: 'create', productCode: product.code,
-          expectedTotalPhp: product.lifetimePrice
-        }
-      })
-      if (error) throw new Error(await checkoutError(error))
-      if (typeof data?.error === 'string') throw new Error(data.error)
-      if (data?.status === 'paid') {
-        navigate('/account?tab=licenses', { replace: true })
-        return
-      }
-      if (data?.status !== 'pending') {
-        throw new Error('PayMongo checkout requires verification. Do not pay again; contact Hyperion support.')
-      }
-      const target = typeof data?.checkoutUrl === 'string' ? new URL(data.checkoutUrl) : null
-      if (!target || target.protocol !== 'https:' || target.hostname !== 'checkout.paymongo.com') {
-        throw new Error('PayMongo did not return a trusted checkout link.')
-      }
-      setCheckoutUrlFallback(target.toString())
-      setMessage('Opening PayMongo secure checkout…')
-      window.location.assign(target.toString())
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Lifetime checkout could not be opened. Try again.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   const cancelPending = async () => {
     if (!supabase || !pendingOrderId || busy) return
     setBusy(true)
@@ -161,7 +115,7 @@ export default function LifetimeCheckoutScreen() {
   }
 
   const amount = product ? '₱' + product.lifetimePrice.toLocaleString('en-PH') : ''
-  const payable = Boolean(canPerformPwaPaymentAction('checkout') && product && session && checkoutEnabled === true && !busy)
+  const payable = Boolean(adminCheckout.allowed && product && session && !busy)
   return <div className="screen basket-page lifetime-checkout">
     <button type="button" className="lifetime-checkout-back" onClick={() => navigate('/account?tab=payments')}>
       ← Back to Bond Store
@@ -171,11 +125,11 @@ export default function LifetimeCheckoutScreen() {
       <div>
         <div className="lifetime-checkout-brand">HYPERION MARITIME</div>
         <h1 className="page-title">Checkout</h1>
-        <p className="subtitle">{canPerformPwaPaymentAction('checkout') ? 'Review your selected access before proceeding to payment.' : 'Review your selected access. New Lifetime payments are paused.'}</p>
+        <p className="subtitle">{adminCheckout.allowed ? 'Review this Lifetime plan before previewing QR payment.' : 'Review your selected access. New Lifetime payments are paused.'}</p>
       </div>
       {product && <span className="lifetime-checkout-item-count">1 item to purchase</span>}
     </header>
-    {!canPerformPwaPaymentAction('checkout') && <div className="lifetime-checkout-card" role="status">{PWA_PURCHASE_PAUSE_NOTICE}</div>}
+    {!adminCheckout.allowed && !canPerformPwaPaymentAction('checkout') && <div className="lifetime-checkout-card" role="status">{PWA_PURCHASE_PAUSE_NOTICE}</div>}
 
     {!product ? <section className="lifetime-checkout-card" role="alert">
       <h2>Invalid Lifetime selection</h2>
@@ -191,9 +145,6 @@ export default function LifetimeCheckoutScreen() {
     </section> : <>
       {message && <div role="status" className="lifetime-checkout-card lifetime-checkout-message">
         {message}
-        {canPerformPwaPaymentAction('resume') && checkoutUrlFallback && <a className="btn btn-primary" href={checkoutUrlFallback}>
-          CONTINUE TO PAYMONGO SECURE CHECKOUT
-        </a>}
       </div>}
       <div className="lifetime-checkout-layout">
         <section className="lifetime-checkout-card">
@@ -221,16 +172,16 @@ export default function LifetimeCheckoutScreen() {
           </div>
           <div className={'lifetime-checkout-action' + (payable ? ' is-payable' : '')}>
             <div className="lifetime-checkout-total"><strong>Total due</strong><strong>{amount}</strong></div>
-            {checkoutEnabled === true
+            {adminCheckout.allowed
               ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={!payable}
-                  onClick={() => void checkout()}>{busy ? 'PROCESSING…' : 'Checkout'}</button>
+                  onClick={() => navigate(`/checkout/qr?items=${encodeURIComponent(`${product.code}:lifetime`)}`)}>CHECKOUT WITH QR PH</button>
               : <div className="lifetime-checkout-disabled" role="status">
-                  {!canPerformPwaPaymentAction('checkout') ? PWA_PURCHASE_PAUSE_NOTICE : checkoutEnabled === null ? 'Checking PayMongo checkout availability…' : 'Lifetime checkout is temporarily unavailable.'}
+                  {PWA_PURCHASE_PAUSE_NOTICE}
                 </div>}
           </div>
           <div className="lifetime-checkout-payment-method">QR Ph</div>
           <p className="lifetime-checkout-muted lifetime-checkout-footer">
-            Access activates after PayMongo confirms this purchase.
+            QR payments are reviewed manually. Access activates only after an administrator verifies payment.
           </p>
         </aside>
       </div>
