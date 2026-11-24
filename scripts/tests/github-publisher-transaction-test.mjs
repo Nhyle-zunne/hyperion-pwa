@@ -10,6 +10,7 @@ const path=process.env.HYPERION_TEST_BANK || 'deck/oic_nw_c1.csv.enc'
 const malformedRowsByPath = {
  'deck/oic_nw_c3.csv.enc': '297,Legacy scan?,Port,Starboard,Ahead,Astern,invalid answer,shifted eighth cell,extra field,A\n428,Legacy plot?,Port,Starboard,Ahead,Astern,,shifted eighth cell,extra field,B\n',
  'deck/oic_nw_c5.csv.enc': '117,Legacy incomplete row?,Port,Starboard,Ahead,A\n',
+ 'deck/oic_nw_c12.csv.enc': '57,Legacy question?,Fragment one,Fragment two,Fragment three,Retain onboard,Shifted non-key,Shifted eighth cell,Other option,A\n',
 }
 const malformedRows = malformedRowsByPath[path] ?? ''
 const text='No,Question,A,B,C,D,Ans,Explanation\n1,First synthetic question?,Port,Starboard,Ahead,Astern,A,Existing answer rationale one\n2,Second synthetic question?,Port,Starboard,Ahead,Astern,A,Existing answer rationale two\n'+malformedRows
