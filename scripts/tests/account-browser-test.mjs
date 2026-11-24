@@ -385,7 +385,7 @@ try {
   await guestBasketPage.getByRole('heading', { name: 'Sign in to checkout' }).waitFor()
   assert.equal(await guestBasketPage.locator('.basket-selected-card, .basket-summary').count(), 0,
     'Guests cannot view the Checkout selection or order summary')
-  await guestBasketPage.getByRole('button', { name: 'SIGN IN WITH GOOGLE' }).click()
+  await guestBasketPage.locator('.account-main').getByRole('button', { name: 'SIGN IN WITH GOOGLE' }).click()
   await guestBasketPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'sign-in-google'))
   assert.equal(await guestBasketPage.evaluate(() => JSON.parse(localStorage.getItem('hyperion-oauth-return-to')).path.toLowerCase()),
     '/basket', 'Google sign-in preserves the originally requested checkout route')
@@ -407,7 +407,7 @@ try {
   await guestLifetimePage.getByRole('heading', { name: 'Sign in to checkout' }).waitFor()
   assert.equal(await guestLifetimePage.locator('.lifetime-checkout-summary').count(), 0,
     'Lifetime Checkout is unavailable to unsigned visitors')
-  await guestLifetimePage.getByRole('button', { name: 'SIGN IN WITH GOOGLE' }).click()
+  await guestLifetimePage.locator('.account-main').getByRole('button', { name: 'SIGN IN WITH GOOGLE' }).click()
   await guestLifetimePage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'sign-in-google'))
   assert.equal(await guestLifetimePage.evaluate(() => JSON.parse(localStorage.getItem('hyperion-oauth-return-to')).path),
     '/checkout?lifetime_product=engine_ew', 'Google sign-in keeps the selected Lifetime track')
