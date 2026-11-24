@@ -7,6 +7,7 @@ import { useLicenseStore } from '../stores/licenseStore'
 import { buyNowCheckoutPath, clearPendingBuyNow, rememberPendingBuyNow } from '../lib/pendingBuyNow'
 import BondStoreCardContent from './BondStoreCardContent'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
+import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import './TrackPurchaseDialog.css'
 
 function isPaidTrack(value: string | null): value is PaidTrack {
@@ -53,6 +54,8 @@ export default function TrackPurchaseDialog() {
     : paidProductCodeForTrackId(params.get('track') || 'oic_nw')
   const product = useMemo(() => PAID_PRODUCTS.find(item => item.code === productCode), [productCode])
   const isOpen = Boolean(product && params.get('purchase') === '1')
+  const adminCheckout = useAdminCheckoutAccess(isOpen ? session?.user.id : undefined)
+  const canPreviewPurchase = adminCheckout.allowed || canPerformPwaPaymentAction('buy')
 
   useEffect(() => {
     if (isOpen) setBasketItems(savedBasket())
@@ -116,7 +119,7 @@ export default function TrackPurchaseDialog() {
   }, [setParams])
 
   const proceedToCheckout = useCallback(async () => {
-    if (!canPerformPwaPaymentAction('checkout')) return
+    if (!adminCheckout.allowed && !canPerformPwaPaymentAction('checkout')) return
     if (!product || !session?.user || !supabase) return
     setBusy(true)
     setMessage('Checking your track access…')
@@ -153,10 +156,10 @@ export default function TrackPurchaseDialog() {
     } finally {
       setBusy(false)
     }
-  }, [product, session?.user.id, refreshCloudEntitlements, term, navigate])
+  }, [product, session?.user.id, refreshCloudEntitlements, term, navigate, adminCheckout.allowed])
 
   const signIn = async () => {
-    if (!canPerformPwaPaymentAction('buy')) return
+    if (!canPreviewPurchase) return
     if (!supabase || !supabaseConfigured || !product) {
       setMessage('Sign-in is temporarily unavailable. Please try again later.')
       return
@@ -191,19 +194,19 @@ export default function TrackPurchaseDialog() {
   }
 
   useEffect(() => {
-    if (!canPerformPwaPaymentAction('checkout')) return
+    if (!adminCheckout.allowed && !canPerformPwaPaymentAction('checkout')) return
     if (!isOpen || !product || !session?.user.id || params.get('purchase_action') !== 'checkout') return
     const key = `${session.user.id}:${product.code}:${term}`
     if (autoCheckoutRef.current === key) return
     autoCheckoutRef.current = key
     void proceedToCheckout()
-  }, [isOpen, product, session?.user.id, params, term, proceedToCheckout])
+  }, [isOpen, product, session?.user.id, params, term, proceedToCheckout, adminCheckout.allowed])
 
   if (!isOpen || !product) return null
 
   const isInBasket = basketItems.some(item => item.code === product.code)
   const handleBuyNow = () => {
-    if (!canPerformPwaPaymentAction('buy')) return
+    if (!canPreviewPurchase) return
     if (!session?.user) {
       void signIn()
       return
@@ -254,7 +257,7 @@ export default function TrackPurchaseDialog() {
             <button
               type="button"
               className="btn btn-primary store-buy-button track-purchase-buy"
-              disabled={!canPerformPwaPaymentAction('buy') || !sessionChecked || !supabaseConfigured || busy}
+              disabled={!canPreviewPurchase || !sessionChecked || !supabaseConfigured || busy}
               onClick={handleBuyNow}
             >
               {!sessionChecked ? 'PLEASE WAIT…' : busy ? 'CHECKING LICENSE…' : isInBasket ? 'CONTINUE TO CHECKOUT' : 'BUY NOW'}
@@ -264,7 +267,7 @@ export default function TrackPurchaseDialog() {
 
         {message && <div className="track-purchase-message" role="status" aria-live="polite">{message}</div>}
         <p className="track-purchase-footnote" role="status">
-          {!canPerformPwaPaymentAction('buy') ? PWA_PURCHASE_PAUSE_NOTICE : !session?.user
+          {!canPreviewPurchase ? PWA_PURCHASE_PAUSE_NOTICE : !session?.user
             ? 'BUY NOW signs you in with Google and keeps your selected plan for Checkout. Access activates after verified payment.'
             : 'Secure Hyperion Checkout · Access activates after verified payment.'}
         </p>

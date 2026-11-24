@@ -38,6 +38,7 @@ const HomeScreen = lazy(() => import('./screens/HomeScreen'))
 const TrackSelectionScreen = lazy(() => import('./screens/TrackSelectionScreen'))
 const AccountScreen = lazy(() => import('./screens/AccountScreen'))
 const BasketScreen = lazy(() => import('./screens/BasketScreen'))
+const AdminQrCheckoutScreen = lazy(() => import('./screens/AdminQrCheckoutScreen'))
 const ManualPaymentScreen = lazy(() => import('./screens/ManualPaymentScreen'))
 const OrdersPaymentHistoryScreen = lazy(() => import('./screens/OrdersPaymentHistoryScreen'))
 const OAuthCallbackScreen = lazy(() => import('./screens/OAuthCallbackScreen'))
@@ -679,6 +680,7 @@ export default function App() {
           <Route path="/manual-payment" element={<ManualPaymentScreen />} />
           <Route path="/orders" element={<AccountScreen key="orders"><OrdersPaymentHistoryScreen /></AccountScreen>} />
           <Route path="/checkout" element={<AccountScreen key="checkout"><BasketScreen /></AccountScreen>} />
+          <Route path="/checkout/qr" element={<AdminQrCheckoutScreen />} />
           <Route path="/basket" element={<AccountScreen key="basket"><BasketScreen /></AccountScreen>} />
           <Route path="/auth/callback" element={<OAuthCallbackScreen />} />
           <Route path="/admin/licenses" element={<AdminLicensesScreen />} />
