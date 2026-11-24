@@ -363,9 +363,49 @@ try {
   })
   await guestQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await guestQrPage.getByRole('heading', { name: 'Sign in to checkout' }).waitFor()
+  assert.equal(await guestQrPage.getByRole('heading', { name: 'QR Payment Checkout' }).count(), 1,
+    'Guest visitors see the same checkout page heading and payment-method explanation before signing in')
+  assert.match(await guestQrPage.locator('.qr-checkout-header').innerText(), /QR Ph or bank transfer/)
   assert.equal(await guestQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'Guests must sign in before seeing a payable QR and submitting an untraceable payment')
   await guestQrPage.close()
+
+  const guestBasketPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await guestBasketPage.addInitScript(() => {
+    localStorage.setItem('fixture-guest', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+    localStorage.setItem('hyperion-account-basket-v1', JSON.stringify([{ code: 'oic_nw', term: 'month' }]))
+  })
+  await guestBasketPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=basket`)
+  await guestBasketPage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
+  await guestBasketPage.locator('.basket-selected-card').waitFor()
+  await guestBasketPage.locator('.basket-summary').waitFor()
+  const guestCheckout = guestBasketPage.getByRole('button', { name: 'CHECKOUT', exact: true })
+  await guestCheckout.waitFor()
+  assert.equal(await guestCheckout.isEnabled(), true, 'Guests can see and use the checkout action to start sign-in')
+  assert.match(await guestBasketPage.locator('.basket-summary').innerText(), /₱50/)
+  await guestCheckout.click()
+  await guestBasketPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'sign-in-google'))
+  assert.equal(await guestBasketPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Guest checkout requires sign-in before exposing a payable QR')
+  assert(await guestBasketPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Guest checkout fits a phone screen')
+  await guestBasketPage.close()
+
+  const guestLifetimePage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await guestLifetimePage.addInitScript(() => {
+    localStorage.setItem('fixture-guest', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+  })
+  await guestLifetimePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=lifetime`)
+  await guestLifetimePage.locator('.lifetime-checkout-summary').waitFor()
+  const guestLifetimeCheckout = guestLifetimePage.getByRole('button', { name: 'CHECKOUT', exact: true })
+  await guestLifetimeCheckout.waitFor()
+  await guestLifetimeCheckout.click()
+  await guestLifetimePage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'sign-in-google'))
+  assert.equal(await guestLifetimePage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Guest Lifetime checkout stays on the summary until sign-in')
+  assert(await guestLifetimePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Guest Lifetime checkout fits a phone screen')
+  await guestLifetimePage.close()
 
   const disconnectedQrPage = await browser.newPage()
   await disconnectedQrPage.addInitScript(() => {
@@ -407,6 +447,23 @@ try {
   assert.equal(await publicBuyNow.isDisabled(), true, 'Disabling website checkout also disables Buy Now in an existing store tab')
   await publicStorePage.close()
 
+  const guestStorePage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await guestStorePage.addInitScript(() => {
+    localStorage.setItem('fixture-guest', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+  })
+  await guestStorePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  const guestBuyNow = guestStorePage.locator('.account-product-card').first().getByRole('button', { name: 'BUY NOW', exact: true })
+  await guestStorePage.waitForFunction(() => {
+    const button = document.querySelector('.account-product-card .store-buy-button')
+    return button && !button.disabled
+  })
+  assert.equal(await guestBuyNow.isVisible(), true, 'BUY NOW is visible even without a signed-in account')
+  await guestBuyNow.click()
+  await guestStorePage.getByRole('heading', { name: 'Checkout', exact: true }).waitFor()
+  await guestStorePage.getByRole('heading', { name: 'Sign in to continue' }).waitFor()
+  await guestStorePage.close()
+
   const publicLifetimePage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await publicLifetimePage.addInitScript(() => localStorage.setItem('fixture-checkout-enabled', 'yes'))
   await publicLifetimePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=lifetime`)
@@ -418,6 +475,19 @@ try {
     window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').length), 0,
     'Public Lifetime checkout also uses QR without initiating PayMongo')
   await publicLifetimePage.close()
+
+  const adminEnabledQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await adminEnabledQrPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+  })
+  await adminEnabledQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await adminEnabledQrPage.locator('.qr-checkout-image-wrap img').waitFor()
+  await adminEnabledQrPage.getByText('ADMIN PREVIEW').waitFor()
+  assert.equal(await adminEnabledQrPage.locator('.qr-checkout-bank').count(), 1,
+    'Administrator sees the same QR and bank-transfer columns as a paying customer when public checkout is ON')
+  assert.equal(await adminEnabledQrPage.locator('.qr-checkout-image-wrap img').getAttribute('src'), '/qr-ph.png')
+  await adminEnabledQrPage.close()
 
   const adminQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await adminQrPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
