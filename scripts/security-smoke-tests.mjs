@@ -238,6 +238,7 @@ assert.ok(app.includes('path="/checkout/qr"') &&
   adminCheckoutAccess.includes('data?.isAdmin === true'), 'QR checkout route requires server-verified administrator access before showing a QR');
 assert.ok(adminCheckoutAccess.includes('result?.userId === userId && result.allowed') &&
   adminQrScreen.includes('supabase.auth.onAuthStateChange'), 'Changing or signing out of an administrator account immediately invalidates the QR checkout permission');
+assert.ok(adminCheckoutAccess.includes('!supabase?.functions?.invoke'), 'Missing Functions transport fails closed without unmounting purchase dialogs');
 assert.ok(adminQrScreen.includes('formatMessengerPaymentDetails(email, items)') &&
   adminQrScreen.includes('navigator.clipboard.writeText(details)') &&
   adminQrScreen.includes('https://m.me/HyperionMaritime'), 'QR checkout presents copyable payment details and a Messenger proof link');
