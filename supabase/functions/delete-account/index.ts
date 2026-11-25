@@ -47,6 +47,18 @@ Deno.serve(async req => {
     return json({ error: 'Please resolve or cancel all pending payment submissions and PayMongo checkouts before deleting your account. This prevents a payment in progress from being lost.' }, 409)
   }
 
+  // A new Messenger claim might represent funds already sent but not yet
+  // reviewed. Preserve this association until support resolves the claim.
+  const { data: openClaims, error: openClaimsError } = await admin.from('manual_checkout_claims')
+    .select('id,status,expires_at')
+    .eq('user_id', user.id)
+    .in('status', ['awaiting_proof', 'pending_verification'])
+    .limit(10)
+  if (openClaimsError) return json({ error: 'Could not verify Messenger payment claims. No account deletion was performed.' }, 500)
+  if (openClaims?.some(claim => claim.status === 'pending_verification' || new Date(claim.expires_at).getTime() > Date.now())) {
+    return json({ error: 'Please resolve your open Messenger payment submission with Hyperion support before deleting the account.' }, 409)
+  }
+
   const { data: failedProviderSessions, error: failedProviderSessionsError } = await admin.from('orders')
     .select('id,status')
     .eq('user_id', user.id)
@@ -79,15 +91,24 @@ Deno.serve(async req => {
     return json({ error: 'This account is referenced by administrative license audit records. Contact support to process account deletion while preserving the audit trail.' }, 409)
   }
 
+  // Atomically recheck all open claims and serialize account deletion with
+  // checkout/approval. The hold blocks new claims until deletion completes.
+  const { data: deletionReady, error: deletionReadyError } = await admin.rpc('begin_checkout_account_deletion', {
+    p_user_id: user.id, p_reason: 'customer'
+  })
+  if (deletionReadyError) return json({ error: 'Could not safely prepare account deletion. Please retry.' }, 500)
+  if (deletionReady !== true) return json({ error: 'Payment status changed. Resolve open submissions before deleting your account.' }, 409)
+  const cancelDeletionHold = () => admin.rpc('cancel_checkout_account_deletion', { p_user_id: user.id })
+
   // Remove user-owned entitlements first because they reference orders with RESTRICT.
   const { error: entitlementsError } = await admin.from('entitlements').delete().eq('user_id', user.id)
-  if (entitlementsError) return json({ error: 'Could not remove your linked licenses. No account deletion was completed. Please contact support.' }, 500)
+  if (entitlementsError) { await cancelDeletionHold(); return json({ error: 'Could not remove your linked licenses. No account deletion was completed. Please contact support.' }, 500) }
 
   const { error: ordersError } = await admin.from('orders').delete().eq('user_id', user.id)
-  if (ordersError) return json({ error: 'Could not remove your payment submissions. Account deletion was not completed. Please contact support.' }, 500)
+  if (ordersError) { await cancelDeletionHold(); return json({ error: 'Could not remove your payment submissions. Account deletion was not completed. Please contact support.' }, 500) }
 
   const { error: deleteUserError } = await admin.auth.admin.deleteUser(user.id)
-  if (deleteUserError) return json({ error: 'Your account data was processed, but the authentication account could not be deleted. Please contact support to complete the request.' }, 500)
+  if (deleteUserError) { await cancelDeletionHold(); return json({ error: 'Your account data was processed, but the authentication account could not be deleted. Please contact support to complete the request.' }, 500) }
 
   return json({ success: true })
 })

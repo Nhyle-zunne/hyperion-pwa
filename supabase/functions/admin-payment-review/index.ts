@@ -33,12 +33,32 @@ Deno.serve(async req => {
   if (authError || !user?.email) return json({ error: 'Please sign in again.' }, 401)
   const allowed = (Deno.env.get('ADMIN_EMAILS') || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
   if (!allowed.includes(user.email.toLowerCase())) return json({ error: 'Admin access denied.' }, 403)
-  let body: { action?: string; orderId?: string; decision?: string; adminNote?: string; instructions?: string; enabled?: unknown }
+  let body: { action?: string; orderId?: string; claimId?: string; decision?: string; adminNote?: string; instructions?: string; enabled?: unknown }
   try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
   if (body.action === 'check-admin') return json({ isAdmin: true })
   const admin = createClient(url, service, { auth: { persistSession: false } })
   if (body.action === 'list') {
-    const [ordersResult, alertsResult] = await Promise.all([
+    // Expire only abandoned intent; receipt-received claims never auto-expire.
+    const { error: expiryError } = await admin.from('manual_checkout_claims')
+      .update({ status: 'expired', updated_at: new Date().toISOString() })
+      .eq('status', 'awaiting_proof')
+      .lte('expires_at', new Date().toISOString())
+    if (expiryError) return json({ error: 'Could not refresh manual payment statuses.' }, 500)
+    // Open claims are never hidden behind a mixed-status "last 200" limit.
+    const claimColumns = 'id,user_id,items,total_amount_php,status,created_at,expires_at,proof_received_at,reviewed_at,reviewed_by,admin_note'
+    const openClaims = [] as Record<string, unknown>[]
+    const pageSize = 200
+    for (let offset = 0; offset < 10000; offset += pageSize) {
+      const page = await admin.from('manual_checkout_claims').select(claimColumns)
+        .in('status', ['awaiting_proof','pending_verification'])
+        .order('created_at', { ascending: false })
+        .range(offset, offset + pageSize - 1)
+      if (page.error) return json({ error: 'Could not load open Messenger claims.' }, 500)
+      openClaims.push(...(page.data || []))
+      if ((page.data || []).length < pageSize) break
+      if (offset + pageSize >= 10000) return json({ error: 'Too many open claims to show safely. Contact an administrator to page the backlog.' }, 503)
+    }
+    const [ordersResult, alertsResult, recentClaimsResult] = await Promise.all([
       admin.from('orders')
         .select('id,user_id,product_code,track_id,license_term,amount_php,status,payment_reference,payment_method,proof_url,customer_note,customer_name,customer_company,customer_school,admin_note,created_at,reviewed_at,paid_at')
         .in('status', ['submitted','pending','paid','failed'])
@@ -47,13 +67,20 @@ Deno.serve(async req => {
       admin.from('paymongo_reconciliation_alerts')
         .select('id,checkout_reference,checkout_session_id,paymongo_payment_id,expected_amount_php,observed_amount_minor,observed_currency,reason,created_at')
         .order('created_at', { ascending: false })
+        .limit(100),
+      admin.from('manual_checkout_claims')
+        .select(claimColumns)
+        .in('status', ['approved','rejected','expired'])
+        .order('created_at', { ascending: false })
         .limit(100)
     ]);
     if (ordersResult.error) return json({ error: 'Could not load payment submissions.' }, 500);
     if (alertsResult.error) return json({ error: 'Could not load PayMongo reconciliation alerts.' }, 500);
+    if (recentClaimsResult.error) return json({ error: 'Could not load reviewed manual claims.' }, 500);
 
     const rows = ordersResult.data || [];
-    const ids = [...new Set(rows.map(row => row.user_id))];
+    const claimRows = [...openClaims, ...(recentClaimsResult.data || [])] as { id: string; user_id: string; [key: string]: unknown }[]
+    const ids = [...new Set([...rows.map(row => row.user_id), ...claimRows.map(row => row.user_id)])];
     const emails: Record<string,string> = {};
     // One paginated Auth request replaces one getUserById request per order owner.
     // The current dashboard is capped at 200 orders; stop as soon as every distinct
@@ -91,8 +118,46 @@ Deno.serve(async req => {
         access_status: row.status !== 'paid' ? 'none' : accessByOrder[row.id]?.status || 'not_current',
         access_expires_at: accessByOrder[row.id]?.expires_at || null
       })),
+      claims: claimRows.map(claim => ({
+        ...claim, email: emails[claim.user_id] || '(email unavailable)'
+      })),
       alerts: alertsResult.data || []
     });
+  }
+  if (body.action === 'review-claim') {
+    if (typeof body.claimId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.claimId) ||
+        !['proof_received','approve','reject'].includes(body.decision || '')) {
+      return json({ error: 'Invalid claim review action.' }, 400)
+    }
+    const { data, error } = await admin.rpc('review_manual_checkout_claim', {
+      p_claim_id: body.claimId,
+      p_action: body.decision,
+      p_admin_email: user.email,
+      p_admin_note: String(body.adminNote || '').trim().slice(0, 1000) || null,
+    })
+    if (error || !data || data.ok !== true) {
+      if (data?.status === 'expired') return json({ error: 'This claim expired before proof was recorded. Ask the customer to submit a new claim.' }, 409)
+      if (error?.code === 'P0002') return json({ error: 'Submission not found.' }, 404)
+      if (error?.code === '23514') return json({ error: 'Submission is no longer eligible for this action. Confirm the actual transfer and refresh the list.' }, 409)
+      console.error('[admin-payment-review] Claim review failed', error?.code || 'unknown')
+      return json({ error: 'Could not review this submission. Please retry.' }, 500)
+    }
+    return json(data)
+  }
+  if (body.action === 'find-claim') {
+    if (typeof body.claimId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.claimId)) {
+      return json({ error: 'Enter a complete submission ID.' }, 400)
+    }
+    const { data: claim, error } = await admin.from('manual_checkout_claims')
+      .select('id,user_id,items,total_amount_php,status,created_at,expires_at,proof_received_at,reviewed_at,reviewed_by,admin_note')
+      .eq('id',body.claimId).maybeSingle()
+    if (error) return json({ error: 'Could not find that submission.' }, 500)
+    if (!claim) return json({ error: 'No submission matches that ID.' }, 404)
+    const { data: owner, error: ownerError } = await admin.auth.admin.getUserById(claim.user_id)
+    if (ownerError) return json({ error: 'Could not resolve the submission account.' }, 500)
+    return json({ claim: { ...claim,email:owner?.user?.email || '(email unavailable)' } })
   }
   if (body.action === 'reconciliation-alerts') {
     const { data, error } = await admin.from('paymongo_reconciliation_alerts')

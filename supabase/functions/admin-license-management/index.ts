@@ -168,15 +168,17 @@ Deno.serve(async req => {
     const adminAuditUsers = new Set<string>()
     for (let start = 0; start < users.length; start += 1000) {
       const ids = users.slice(start, start + 1000).map(account => account.id)
-      const [activityResult, pendingOrdersResult, failedCheckoutResult, pendingBatchesResult, adminAuditResult] = await Promise.all([
+      const [activityResult, pendingOrdersResult, failedCheckoutResult, pendingBatchesResult, adminAuditResult, manualClaimsResult] = await Promise.all([
         admin.from('user_activity').select('user_id,last_accessed_at').in('user_id', ids),
         admin.from('orders').select('user_id').in('user_id', ids).in('status', ['pending', 'submitted']).limit(10000),
         admin.from('orders').select('user_id').in('user_id', ids).eq('status', 'failed').eq('payment_method', 'PayMongo Checkout').not('paymongo_checkout_session_id', 'is', null).limit(10000),
         admin.from('checkout_batches').select('user_id').in('user_id', ids).eq('status', 'pending').limit(10000),
-        admin.from('license_admin_audit').select('admin_user_id').in('admin_user_id', ids).limit(10000)
+        admin.from('license_admin_audit').select('admin_user_id').in('admin_user_id', ids).limit(10000),
+        admin.from('manual_checkout_claims').select('user_id,status,expires_at').in('user_id', ids)
+          .in('status', ['awaiting_proof','pending_verification']).limit(10000)
       ])
       if (activityResult.error) return json(req, { error: 'Could not load last website activity.' }, 500)
-      if (pendingOrdersResult.error || failedCheckoutResult.error || pendingBatchesResult.error) {
+      if (pendingOrdersResult.error || failedCheckoutResult.error || pendingBatchesResult.error || manualClaimsResult.error) {
         return json(req, { error: 'Could not verify pending payment dependencies.' }, 500)
       }
       if (adminAuditResult.error) return json(req, { error: 'Could not verify admin audit dependencies.' }, 500)
@@ -184,6 +186,9 @@ Deno.serve(async req => {
       for (const row of pendingOrdersResult.data || []) pendingPaymentUsers.add(row.user_id)
       for (const row of failedCheckoutResult.data || []) pendingPaymentUsers.add(row.user_id)
       for (const row of pendingBatchesResult.data || []) pendingPaymentUsers.add(row.user_id)
+      for (const row of manualClaimsResult.data || []) {
+        if (row.status === 'pending_verification' || Date.parse(row.expires_at) > Date.now()) pendingPaymentUsers.add(row.user_id)
+      }
       for (const row of adminAuditResult.data || []) adminAuditUsers.add(row.admin_user_id)
     }
 

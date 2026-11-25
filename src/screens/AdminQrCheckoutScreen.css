@@ -37,6 +37,7 @@
 .qr-checkout-panel .qr-checkout-activation-notice{margin:.55rem 0 .3rem;padding:.5rem .65rem;border-left:3px solid var(--accent);background:var(--bg-elevated);color:var(--text);font-size:.83rem;line-height:1.4}
 .qr-checkout-activation-notice a{color:var(--accent);font-weight:800}
 .qr-checkout-copy-status{margin:.45rem 0 0;color:var(--success,#15803d)!important}
+.qr-checkout-copy-status.is-error{color:var(--danger,#b91c1c)!important}
 .qr-checkout-plan-picker{display:flex;flex-wrap:wrap;gap:1rem;margin:0 0 .75rem}
 .qr-checkout-plan-picker label{display:flex;flex:1 1 220px;flex-direction:column;gap:.45rem;font-size:.85rem;font-weight:800}
 .qr-checkout-plan-picker select{width:100%;box-sizing:border-box;padding:.75rem;background:var(--bg-elevated);border:1px solid var(--border);border-radius:0;color:var(--text);font:inherit}

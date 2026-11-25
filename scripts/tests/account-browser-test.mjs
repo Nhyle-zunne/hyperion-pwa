@@ -540,7 +540,7 @@ try {
     const layout = await adminQrPage.evaluate(() => {
       const [qr, proof] = [...document.querySelectorAll('.qr-checkout-grid > .qr-checkout-panel')]
       const details = document.querySelector('#qr-checkout-details')
-      const copy = document.querySelector('.qr-checkout-copy')
+      const copy = document.querySelector('.qr-checkout-messenger')
       const page = document.querySelector('.qr-checkout-page')
       const image = document.querySelector('.qr-checkout-image-wrap')
       const qrImage = image.querySelector('img')
@@ -593,7 +593,7 @@ try {
     assert(layout.detailsOverflowX <= 2,
       `Messenger payment message must not scroll horizontally at ${width}px (overflow ${layout.detailsOverflowX}px)`)
     assert(layout.copy.x >= 0 && layout.copy.right <= width && layout.copy.height >= 44,
-      `Copy action must remain accessible at ${width}px`)
+      `Combined copy-and-Messenger action must remain accessible at ${width}px`)
     if (width >= 960) {
       assert(layout.proof.x > layout.qr.right, `Desktop QR and proof panels must be side by side at ${width}px`)
       assert(Math.max(layout.qr.bottom, layout.proof.bottom) < 850,
@@ -613,6 +613,15 @@ try {
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'Hyperion')
   await adminQrPage.getByRole('button', { name: 'Copy account number', exact: true }).click()
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '4309192465')
+  await adminQrPage.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Synthetic clipboard denied') } } })
+  })
+  await adminQrPage.getByRole('button', { name: 'COPY DETAILS & OPEN MESSENGER' }).click()
+  await adminQrPage.getByText(/Submission saved, but clipboard access was blocked/).waitFor()
+  assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Submission ID: 33333333-3333-4333-8333-333333333333/,
+    'User can manually copy a traceable submission if clipboard permission fails')
+  assert(await adminQrPage.evaluate(() => window.accountFixtureCalls.some(call => call.action === 'create-manual-checkout-claim:' && call.data?.selection === 'oic_nw:month')),
+    'The combined action saves a signed-in, server-priced claim before opening Messenger')
   await adminQrPage.evaluate(() => localStorage.setItem('fixture-pending-orders', 'yes'))
   await adminQrPage.reload()
   await adminQrPage.getByRole('alert').filter({ hasText: /unresolved checkout/i }).waitFor()
