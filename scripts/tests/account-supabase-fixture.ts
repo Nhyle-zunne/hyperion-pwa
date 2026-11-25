@@ -162,13 +162,15 @@ export const supabase = {
         if (request.body?.action === 'check-admin') return { data: { isAdmin }, error: null }
         if (!isAdmin) return { data: { error: 'Admin access denied' }, error: { message: 'Admin access denied' } }
         if (request.body?.action === 'list') {
-          const sample = { user_id: user.id, email: 'customer@example.invalid', items: [{ code: 'oic_nw', label: 'Deck OIC-NW', term: 'year', amountPhp: 499 }], total_amount_php: 499, created_at: '2026-11-25T00:00:00Z', expires_at: '2026-11-27T00:00:00Z', proof_received_at: null, reviewed_at: null, reviewed_by: null, admin_note: null }
+          const sample = { user_id: user.id, email: 'customer@example.invalid', customer_name: 'Boss Sample Seafarer', items: [{ code: 'oic_nw', label: 'Deck OIC-NW', term: 'year', amountPhp: 499 }], total_amount_php: 499, created_at: '2026-11-25T00:00:00Z', expires_at: '2026-11-27T00:00:00Z', proof_received_at: null, reviewed_at: null, reviewed_by: null, admin_note: null }
           const includeClaims = localStorage.getItem('fixture-manual-claims') === 'yes'
           const manualClaimId = '55555555-5555-4555-8555-555555555555'
           const claims = includeClaims ? [
             { ...sample, id: '33333333-3333-4333-8333-333333333333', status: localStorage.getItem('fixture-approved-claim') === 'yes' ? 'approved' : 'awaiting_proof' },
             { ...sample, id: '44444444-4444-4444-8444-444444444444', status: 'pending_verification', proof_received_at: '2026-11-25T01:00:00Z' },
             { ...sample, id: manualClaimId, status: 'approved', reviewed_at: '2026-11-25T02:00:00Z' },
+            { ...sample, id: '88888888-8888-4888-8888-888888888888', status: 'rejected', reviewed_at: '2026-11-25T03:00:00Z' },
+            { ...sample, id: '99999999-9999-4999-8999-999999999999', status: 'expired' },
           ] : []
           const order = { user_id: user.id, email: 'customer@example.invalid', product_code: 'oic_nw', track_id: 'DECK_OIC_NW', license_term: 'year', amount_php: 499, status: 'paid', access_status: 'active', access_expires_at: '2027-11-25T00:00:00Z', payment_reference: null, proof_url: null, customer_note: null, customer_name: null, customer_company: null, customer_school: null, admin_note: null, created_at: '2026-11-25T00:00:00Z' }
           const orders = includeClaims ? [

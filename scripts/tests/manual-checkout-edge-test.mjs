@@ -60,6 +60,67 @@ function fixture(file, email='buyer@example.invalid', initialClaimStatus='awaiti
   return {send,calls,signOut:()=>{signedIn=false},unlinkGoogle:()=>{googleLinked=false}}
 }
 
+function adminListFixture(metadata, identityName) {
+  const customerId = '22222222-2222-4222-8222-222222222222'
+  const claim = {
+    id: claimId, user_id: customerId, items: [{ code: 'oic_nw', term: 'month', amountPhp: 50 }],
+    total_amount_php: 50, status: 'awaiting_proof', created_at: '2026-11-25T00:00:00Z',
+  }
+  const owner = {
+    id: customerId, email: 'seafarer@example.invalid', user_metadata: metadata,
+    identities: identityName ? [{ provider: 'google', identity_data: { name: identityName } }] : [],
+  }
+  let handler
+  const createClient = (_url, key) => key === 'anon-key'
+    ? { auth: { getUser: async () => ({ data: { user: { id: uid, email: 'admin@example.invalid' } }, error: null }) } }
+    : {
+      auth: { admin: {
+        listUsers: async () => ({ data: { users: [owner] }, error: null }),
+        getUserById: async () => ({ data: { user: owner }, error: null }),
+      } },
+      from: table => ({
+        update: () => ({ eq: () => ({ lte: async () => ({ error: null }) }) }),
+        select: () => ({
+          in: () => ({ order: () => ({
+            range: async () => ({ data: table === 'manual_checkout_claims' ? [claim] : [], error: null }),
+            limit: async () => ({ data: [], error: null }),
+          }) }),
+          order: () => ({ limit: async () => ({ data: [], error: null }) }),
+          eq: () => ({ maybeSingle: async () => ({ data: claim, error: null }) }),
+        }),
+      }),
+    }
+  const env = { SUPABASE_URL: 'http://fixture.invalid', SUPABASE_ANON_KEY: 'anon-key', SUPABASE_SERVICE_ROLE_KEY: 'service-key', ADMIN_EMAILS: 'admin@example.invalid' }
+  vm.runInNewContext(compile('admin-payment-review'), {
+    exports: {}, require: name => { assert.equal(name, 'npm:@supabase/supabase-js@2'); return { createClient } },
+    Deno: { serve: fn => { handler = fn }, env: { get: name => env[name] } }, Response, Request, Headers, console,
+  })
+  return async action => {
+    const response = await handler(new Request('http://fixture.invalid/functions/v1/admin-payment-review', {
+      method: 'POST', headers: { Authorization: 'Bearer fixture', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, claimId }),
+    }))
+    return { status: response.status, data: await response.json() }
+  }
+}
+
+test('admin payments resolves the Google full name for pending and searched claims', async () => {
+  const send = adminListFixture({ full_name: 'Boss Maria Santos' })
+  const list = await send('list')
+  assert.equal(list.status, 200)
+  assert.equal(list.data.claims[0].customer_name, 'Boss Maria Santos')
+  const found = await send('find-claim')
+  assert.equal(found.status, 200)
+  assert.equal(found.data.claim.customer_name, 'Boss Maria Santos')
+})
+
+test('admin payments uses Google identity name when profile metadata is missing', async () => {
+  const send = adminListFixture({}, 'Boss Juan Dela Cruz')
+  const list = await send('list')
+  assert.equal(list.status, 200)
+  assert.equal(list.data.claims[0].customer_name, 'Boss Juan Dela Cruz')
+})
+
 test('claim endpoint derives owner from verified JWT, not spoofable request fields',async()=>{
   const edge=fixture('create-manual-checkout-claim')
   assert.equal((await edge.send({selection:'oic_nw:month'},false)).status,401)

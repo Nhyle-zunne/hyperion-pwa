@@ -7,7 +7,7 @@ import { applyAdminCheckoutAvailability, refreshWebsiteCheckoutAvailability, use
 type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; license_term: 'week'|'month'|'year'; amount_php: number; status: string; access_status: string; access_expires_at: string | null; manual_claim_id: string | null; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; customer_name: string | null; customer_company: string | null; customer_school: string | null; admin_note: string | null; created_at: string }
 type ManualClaimStatus = 'awaiting_proof' | 'pending_verification' | 'approved' | 'rejected' | 'expired'
 type PaymentStatusTab = 'active' | 'pending' | 'failed' | 'expired'
-type ManualClaim = { id: string; user_id: string; email: string; items: { code: string; label: string; term: string; amountPhp: number }[]; total_amount_php: number; status: ManualClaimStatus; created_at: string; expires_at: string; proof_received_at: string | null; reviewed_at: string | null; reviewed_by: string | null; admin_note: string | null }
+type ManualClaim = { id: string; user_id: string; email: string; customer_name: string | null; items: { code: string; label: string; term: string; amountPhp: number }[]; total_amount_php: number; status: ManualClaimStatus; created_at: string; expires_at: string; proof_received_at: string | null; reviewed_at: string | null; reviewed_by: string | null; admin_note: string | null }
 type ReconciliationAlert = { id: string; checkout_reference: string; checkout_session_id: string; paymongo_payment_id: string; expected_amount_php: number; observed_amount_minor: number; observed_currency: string; reason: string; created_at: string }
 function safeAdminError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : ''
@@ -158,6 +158,13 @@ export default function AdminPaymentsScreen() {
     return groups
   }, [claims])
   const visibleClaims = claimsByStatus[statusTab]
+  const tableEntries = useMemo(() => {
+    const entries = [
+      ...visibleOrders.map(order => ({ kind: 'order' as const, order, createdAt: order.created_at })),
+      ...(statusTab === 'pending' ? [] : visibleClaims.map(claim => ({ kind: 'claim' as const, claim, createdAt: claim.created_at })))
+    ]
+    return entries.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+  }, [visibleOrders, visibleClaims, statusTab])
   const submissionCount = Object.keys(ordersByStatus).reduce((count, status) =>
     count + ordersByStatus[status as PaymentStatusTab].length + claimsByStatus[status as PaymentStatusTab].length, 0)
   const paymentStatusLabel = (order: Order) => {
@@ -286,9 +293,10 @@ export default function AdminPaymentsScreen() {
           <p style={{ color:'var(--text-muted)', fontSize:'.82rem', margin:'.1rem 0 .8rem' }}>This tab also includes paid licenses that have been revoked or are no longer current.</p>
         )}
         <div id="admin-payment-status-panel" role="tabpanel" aria-label={`${statusTab} payment submissions`}>
-        {visibleClaims.length > 0 && <div className="admin-claim-grid" style={{ marginBottom: visibleOrders.length ? '.8rem' : 0 }}>
+        {statusTab === 'pending' && visibleClaims.length > 0 && <div className="admin-claim-grid" style={{ marginBottom: tableEntries.length ? '.8rem' : 0 }}>
           {visibleClaims.map(claim => <article className="admin-claim-card" key={claim.id}>
-            <p><strong>{claim.email}</strong> · Manual QR Ph / bank transfer</p>
+            <p><strong>{claim.customer_name || 'Name unavailable'}</strong></p>
+            <p>{claim.email} · Manual QR Ph / bank transfer</p>
             <p><span className="admin-payment-detail-label">Submission ID</span><strong style={{ userSelect:'all' }}>{claim.id}</strong></p>
             <p><span className="admin-payment-detail-label">Started</span>{new Date(claim.created_at).toLocaleString()}</p>
             <p><span className="admin-payment-detail-label">Purchase</span>{claim.items.map(item => `${names[item.code] || item.label} (${item.term}): ₱${item.amountPhp}`).join(' · ')}</p>
@@ -303,7 +311,7 @@ export default function AdminPaymentsScreen() {
             </div>}
           </article>)}
         </div>}
-      {visibleOrders.length ? <div className="admin-payment-table-wrap">
+      {tableEntries.length ? <div className="admin-payment-table-wrap">
         <table className="admin-payment-table">
           <thead>
             <tr>
@@ -315,7 +323,41 @@ export default function AdminPaymentsScreen() {
               <th scope="col">More info</th>
             </tr>
           </thead>
-          {visibleOrders.map(order => {
+          {tableEntries.map(entry => {
+            if (entry.kind === 'claim') {
+              const claim = entry.claim
+              const expanded = Boolean(expandedOrders[claim.id])
+              const statusLabel = claim.status === 'approved' ? 'ACTIVE' : claim.status === 'rejected' ? 'FAILED' : 'EXPIRED'
+              return <tbody key={`claim-${claim.id}`}>
+                <tr className="payment-main-row">
+                  <td className="admin-payment-customer">{claim.customer_name || 'Name unavailable'}</td>
+                  <td className="admin-payment-email">{claim.email}</td>
+                  <td className="admin-payment-date">{new Date(claim.created_at).toLocaleString()}</td>
+                  <td className="admin-payment-purchase">
+                    <strong>{claim.items.map(item => names[item.code] || item.label).join(' + ')}</strong><br/>
+                    <span style={{ color:'var(--text-muted)',fontSize:'.8rem' }}>{claim.items.length} {claim.items.length === 1 ? 'item' : 'items'} · ₱{claim.total_amount_php.toLocaleString('en-PH')}</span>
+                  </td>
+                  <td><span className={`admin-payment-status-pill ${statusTab}`}>{statusLabel}</span></td>
+                  <td><button type="button" className="admin-payment-expand" aria-expanded={expanded}
+                    aria-controls={`claim-details-${claim.id}`}
+                    onClick={() => setExpandedOrders(old => ({ ...old, [claim.id]: !old[claim.id] }))}>
+                    {expanded ? 'Hide details ▲' : 'Details ▼'}
+                  </button></td>
+                </tr>
+                {expanded && <tr id={`claim-details-${claim.id}`} className="admin-payment-details-row">
+                  <td colSpan={6}><div className="admin-payment-details-content">
+                    <div className="admin-payment-detail-item"><span className="admin-payment-detail-label">Submission ID</span>{claim.id}</div>
+                    <div className="admin-payment-detail-item"><span className="admin-payment-detail-label">Payment method</span>Manual QR Ph / bank transfer</div>
+                    <div className="admin-payment-detail-item"><span className="admin-payment-detail-label">Purchase breakdown</span>{claim.items.map(item => `${names[item.code] || item.label} (${item.term}): ₱${item.amountPhp}`).join(' · ')}</div>
+                    <div className="admin-payment-detail-item"><span className="admin-payment-detail-label">Total amount</span>₱{claim.total_amount_php.toLocaleString('en-PH')}</div>
+                    {claim.proof_received_at && <div className="admin-payment-detail-item"><span className="admin-payment-detail-label">Proof marked received</span>{new Date(claim.proof_received_at).toLocaleString()}</div>}
+                    {claim.reviewed_at && <div className="admin-payment-detail-item"><span className="admin-payment-detail-label">Reviewed</span>{new Date(claim.reviewed_at).toLocaleString()}</div>}
+                    {claim.admin_note && <div className="admin-payment-detail-item"><span className="admin-payment-detail-label">Admin note</span>{claim.admin_note}</div>}
+                  </div></td>
+                </tr>}
+              </tbody>
+            }
+            const order = entry.order
             const expanded = Boolean(expandedOrders[order.id])
             const group = orderGroup(order)
             const statusClass = group === 'active' ? 'active' : group === 'pending' ? 'pending' : group === 'failed' ? 'failed' : 'expired'

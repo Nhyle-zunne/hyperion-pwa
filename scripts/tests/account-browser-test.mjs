@@ -707,19 +707,31 @@ try {
   assert.equal(await pendingClaimsTab.getAttribute('aria-selected'), 'true', 'Both pending states share the existing tab')
   assert.equal(await adminClaimsPage.getByRole('tablist', { name: 'Filter payment submissions by status' }).count(), 1)
   assert.equal(await adminClaimsPage.locator('.admin-claim-card').count(), 2, 'Both internal stages appear under Pending verification')
+  assert.equal(await adminClaimsPage.locator('.admin-claim-card').filter({ hasText: 'Boss Sample Seafarer' }).count(), 2,
+    'Pending Messenger cards show the Google account name for quick approval')
   assert.equal(await adminClaimsPage.getByRole('button', { name: 'Mark proof received' }).count(), 0)
   assert.equal(await adminClaimsPage.getByRole('button', { name: 'Approve & unlock' }).count(), 2,
     'Both pending claims can be approved in a single action')
   const activeClaimsTab = adminClaimsPage.getByRole('tab', { name: 'ACTIVE 2' })
   await activeClaimsTab.click()
-  assert.equal(await adminClaimsPage.locator('.admin-claim-card').count(), 1)
-  assert.equal(await adminClaimsPage.locator('.payment-main-row').count(), 1,
-    'Approved manual purchases appear once alongside preserved PayMongo history')
+  assert.equal(await adminClaimsPage.locator('.admin-claim-card').count(), 0)
+  assert.equal(await adminClaimsPage.locator('.payment-main-row').count(), 2,
+    'Approved manual claims and preserved PayMongo purchases share the same table')
+  assert.equal(await adminClaimsPage.locator('.payment-main-row').filter({ hasText: 'Boss Sample Seafarer' }).count(), 1,
+    'The approved manual claim keeps the Google name in the table')
+  await adminClaimsPage.getByRole('tab', { name: 'FAILED 1' }).click()
+  assert.equal(await adminClaimsPage.locator('.admin-claim-card').count(), 0)
+  assert.equal(await adminClaimsPage.locator('.payment-main-row').count(), 1, 'Rejected manual claims use the payment table')
+  await adminClaimsPage.getByRole('tab', { name: 'EXPIRED 1' }).click()
+  assert.equal(await adminClaimsPage.locator('.admin-claim-card').count(), 0)
+  assert.equal(await adminClaimsPage.locator('.payment-main-row').count(), 1, 'Expired manual claims use the payment table')
   await pendingClaimsTab.click()
   await adminClaimsPage.locator('.admin-claim-card').first().getByRole('button',{name:'Approve & unlock'}).click()
   await adminClaimsPage.getByText('Bank credit verified; licenses granted.',{exact:true}).waitFor()
   await adminClaimsPage.getByRole('tab',{name:'PENDING 1'}).waitFor()
   await adminClaimsPage.getByRole('tab',{name:'ACTIVE 3'}).waitFor()
+  await adminClaimsPage.getByRole('tab',{name:'ACTIVE 3'}).click()
+  assert.equal(await adminClaimsPage.locator('.payment-main-row').count(), 3, 'Newly approved claims move into the shared table')
   await adminClaimsPage.close()
 
   const nonAdminSettingsPage = await browser.newPage()
