@@ -161,7 +161,14 @@ export const supabase = {
         const isAdmin = localStorage.getItem('fixture-admin') === 'yes' && user.id === '11111111-1111-4111-8111-111111111111'
         if (request.body?.action === 'check-admin') return { data: { isAdmin }, error: null }
         if (!isAdmin) return { data: { error: 'Admin access denied' }, error: { message: 'Admin access denied' } }
-        if (request.body?.action === 'list') return { data: { orders: [], alerts: [], claims: [] }, error: null }
+        if (request.body?.action === 'list') {
+          const sample = { user_id: user.id, email: 'customer@example.invalid', items: [{ code: 'oic_nw', label: 'Deck OIC-NW', term: 'year', amountPhp: 499 }], total_amount_php: 499, created_at: '2026-11-25T00:00:00Z', expires_at: '2026-11-27T00:00:00Z', proof_received_at: null, reviewed_at: null, reviewed_by: null, admin_note: null }
+          const claims = localStorage.getItem('fixture-manual-claims') === 'yes' ? [
+            { ...sample, id: '33333333-3333-4333-8333-333333333333', status: 'awaiting_proof' },
+            { ...sample, id: '44444444-4444-4444-8444-444444444444', status: 'pending_verification', proof_received_at: '2026-11-25T01:00:00Z' },
+          ] : []
+          return { data: { orders: [], alerts: [], claims }, error: null }
+        }
         if (request.body?.action === 'set-checkout-availability') {
           if (typeof request.body.enabled !== 'boolean') return { data: { error: 'Invalid checkout setting' }, error: { message: 'Invalid checkout setting' } }
           localStorage.setItem('fixture-checkout-enabled', request.body.enabled ? 'yes' : 'no')

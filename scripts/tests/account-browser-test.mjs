@@ -696,6 +696,22 @@ try {
     'Admin checkout switch fits a mobile screen')
   await adminSettingsPage.close()
 
+  const adminClaimsPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await adminClaimsPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-manual-claims', 'yes')
+  })
+  await adminClaimsPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=admin-payments`)
+  const pendingClaimsTab = adminClaimsPage.getByRole('tab', { name: 'PENDING VERIFICATION 2' })
+  await pendingClaimsTab.waitFor()
+  assert.equal(await pendingClaimsTab.getAttribute('aria-selected'), 'true', 'Both pending states share the default tab')
+  assert.equal(await adminClaimsPage.getByRole('tab', { name: /AWAITING PROOF/i }).count(), 0)
+  assert.equal(await adminClaimsPage.locator('.admin-claim-card').count(), 2, 'Both internal stages appear under Pending verification')
+  assert.equal(await adminClaimsPage.getByRole('button', { name: 'Mark proof received' }).count(), 1)
+  assert.equal(await adminClaimsPage.getByRole('button', { name: 'Approve & unlock' }).count(), 1,
+    'Approval remains unavailable until proof is marked received')
+  await adminClaimsPage.close()
+
   const nonAdminSettingsPage = await browser.newPage()
   await nonAdminSettingsPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=admin-payments`)
   assert.equal(await nonAdminSettingsPage.getByRole('switch', { name: 'Enable website purchases' }).count(), 0,

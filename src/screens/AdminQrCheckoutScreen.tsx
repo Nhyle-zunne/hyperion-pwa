@@ -23,7 +23,6 @@ export default function AdminQrCheckoutScreen() {
   const [copyStatus, setCopyStatus] = useState('')
   const [copyError, setCopyError] = useState(false)
   const [claimId, setClaimId] = useState('')
-  const [claimStatus, setClaimStatus] = useState<'awaiting_proof'|'pending_verification'>('awaiting_proof')
   const [claimBusy, setClaimBusy] = useState(false)
   const [showMessengerHelp, setShowMessengerHelp] = useState(false)
   const [copyFallback, setCopyFallback] = useState('')
@@ -68,12 +67,11 @@ export default function AdminQrCheckoutScreen() {
   checkoutIdentityRef.current = `${userId || ''}|${itemQuery || ''}`
   const items = parseManualCheckoutItems(itemQuery, PAID_PRODUCTS)
   const totalPhp = items.reduce((sum, item) => sum + item.amountPhp, 0)
-  const details = copyFallback || formatMessengerPaymentDetails(email, items, claimId || undefined, claimStatus)
+  const details = copyFallback || formatMessengerPaymentDetails(email, items, claimId || undefined)
   const paymentStatus = readiness && readiness.userId === userId && readiness.selection === itemQuery ? readiness.status : 'checking'
 
   useEffect(() => {
     setClaimId('')
-    setClaimStatus('awaiting_proof')
     setCopyFallback('')
     setCopyStatus('')
     setCopyError(false)
@@ -176,10 +174,8 @@ export default function AdminQrCheckoutScreen() {
         throw new Error(typeof reason === 'string' ? reason : 'Could not prepare your payment details. Please try again.')
       }
       if (data.totalAmountPhp !== totalPhp) throw new Error('Price verification failed. Do not transfer funds; refresh checkout.')
-      const status = data.status === 'pending_verification' ? 'pending_verification' : 'awaiting_proof'
-      const message = formatMessengerPaymentDetails(email, items, data.id, status)
+      const message = formatMessengerPaymentDetails(email, items, data.id)
       setClaimId(data.id)
-      setClaimStatus(status)
       setCopyFallback(message)
       try {
         await navigator.clipboard.writeText(message)
@@ -350,7 +346,7 @@ export default function AdminQrCheckoutScreen() {
           {claimBusy ? 'OPENING MESSENGER…' : 'COPY DETAILS & OPEN MESSENGER'}
         </button>
         {copyStatus && <p role={copyError ? 'alert' : 'status'} aria-live="polite" className={`qr-checkout-copy-status${copyError ? ' is-error' : ''}`}>{copyStatus}</p>}
-        {claimId && <p className="qr-checkout-note">{claimStatus === 'pending_verification' ? 'We received your receipt and are checking your payment.' : 'Remember to send the copied text and your receipt through Messenger.'}</p>}
+        {claimId && <p className="qr-checkout-note">Remember to send the copied text and your receipt through Messenger if you haven't already.</p>}
         {showMessengerHelp && <a className="btn btn-outline qr-checkout-copy" href={messengerUrl} target="_blank" rel="noopener noreferrer">OPEN MESSENGER</a>}
         <p className="qr-checkout-activation-notice"><strong>Activation notice:</strong> Please allow 24–48 hours after submitting your payment receipt for verification and license activation. If still inactive after 48 hours, message our <a href={facebookPageUrl} target="_blank" rel="noopener noreferrer">Hyperion Facebook page</a> to follow up.</p>
         <p className="qr-checkout-note">Never send your password, OTP or full bank account credentials.</p>

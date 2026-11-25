@@ -204,6 +204,8 @@ test('admin review exposes claim statuses without removing historical payment re
   assert.match(endpoint,/rpc\('review_manual_checkout_claim'/)
   assert.match(endpoint,/from\('orders'\)/)
   for (const status of ['awaiting_proof','pending_verification','approved','rejected']) assert.ok(screen.includes(status),`missing ${status}`)
+  assert.match(screen,/\['pending_verification','PENDING VERIFICATION'\]/)
+  assert.doesNotMatch(screen,/\['awaiting_proof','AWAITING PROOF'\]/)
   assert.match(screen,/Mark proof received/i)
   assert.match(screen,/Approve\s*&(?:amp;)?\s*unlock/i)
   assert.match(screen,/Find by submission ID/i)
