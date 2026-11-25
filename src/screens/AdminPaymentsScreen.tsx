@@ -4,9 +4,9 @@ import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
 import { applyAdminCheckoutAvailability, refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 
-type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; license_term: 'week'|'month'|'year'; amount_php: number; status: string; access_status: string; access_expires_at: string | null; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; customer_name: string | null; customer_company: string | null; customer_school: string | null; admin_note: string | null; created_at: string }
+type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; license_term: 'week'|'month'|'year'; amount_php: number; status: string; access_status: string; access_expires_at: string | null; manual_claim_id: string | null; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; customer_name: string | null; customer_company: string | null; customer_school: string | null; admin_note: string | null; created_at: string }
 type ManualClaimStatus = 'awaiting_proof' | 'pending_verification' | 'approved' | 'rejected' | 'expired'
-type ManualClaimTab = Exclude<ManualClaimStatus, 'awaiting_proof'>
+type PaymentStatusTab = 'active' | 'pending' | 'failed' | 'expired'
 type ManualClaim = { id: string; user_id: string; email: string; items: { code: string; label: string; term: string; amountPhp: number }[]; total_amount_php: number; status: ManualClaimStatus; created_at: string; expires_at: string; proof_received_at: string | null; reviewed_at: string | null; reviewed_by: string | null; admin_note: string | null }
 type ReconciliationAlert = { id: string; checkout_reference: string; checkout_session_id: string; paymongo_payment_id: string; expected_amount_php: number; observed_amount_minor: number; observed_currency: string; reason: string; created_at: string }
 function safeAdminError(error: unknown, fallback: string) {
@@ -18,7 +18,6 @@ const names: Record<string,string> = { oic_nw:'Deck OIC-NW', gmdss:'GMDSS GOC', 
 export default function AdminPaymentsScreen() {
   const [orders, setOrders] = useState<Order[]>([])
   const [claims, setClaims] = useState<ManualClaim[]>([])
-  const [claimTab, setClaimTab] = useState<ManualClaimTab>('pending_verification')
   const [claimLookup, setClaimLookup] = useState('')
   const [reconciliationAlerts, setReconciliationAlerts] = useState<ReconciliationAlert[]>([])
   const [alertLoadWarning, setAlertLoadWarning] = useState('')
@@ -29,7 +28,7 @@ export default function AdminPaymentsScreen() {
   const checkoutAvailability = useWebsiteCheckoutAvailability()
   const [message, setMessage] = useState('')
   const [authorized, setAuthorized] = useState(false)
-  const [statusTab, setStatusTab] = useState<'active' | 'pending' | 'failed' | 'expired'>('pending')
+  const [statusTab, setStatusTab] = useState<PaymentStatusTab>('pending')
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({})
   const loadInFlight = useRef<Promise<void> | null>(null)
   const lastAutoLoadAt = useRef(0)
@@ -83,13 +82,12 @@ export default function AdminPaymentsScreen() {
     catch (e) { setMessage(safeAdminError(e, 'Could not complete the payment review. Please try again.')) }
     finally { setBusy(false) }
   }
-  const reviewClaim = async (claimId: string, decision: 'proof_received' | 'approve' | 'reject') => {
-    if (decision === 'approve' && !window.confirm('Have you checked the receipt in Messenger AND confirmed the actual credit in the receiving bank account? This will activate every track in the submission.')) return
+  const reviewClaim = async (claimId: string, decision: 'approve' | 'reject') => {
     setBusy(true); setMessage('')
     try {
       await withPageLoading('Reviewing payment claim', async () => {
         await call({ action: 'review-claim', claimId, decision, adminNote: note[claimId] || '' })
-        setMessage(decision === 'proof_received' ? 'Proof marked received. Funds are NOT yet verified.' : decision === 'approve' ? 'Bank credit verified; licenses granted.' : 'Submission rejected. No licenses granted.')
+        setMessage(decision === 'approve' ? 'Bank credit verified; licenses granted.' : 'Submission rejected. No licenses granted.')
         await load(true)
       })
     } catch (e) { setMessage(safeAdminError(e,'Unable to review submission. Refresh and retry.')) }
@@ -103,7 +101,8 @@ export default function AdminPaymentsScreen() {
       if (!result.claim) throw new Error('No matching submission was found.')
       const claim = result.claim as ManualClaim
       setClaims(old => [claim,...old.filter(item=>item.id!==claim.id)])
-      setClaimTab(claim.status === 'awaiting_proof' ? 'pending_verification' : claim.status)
+      setStatusTab(claim.status === 'awaiting_proof' || claim.status === 'pending_verification' ? 'pending'
+        : claim.status === 'approved' ? 'active' : claim.status === 'rejected' ? 'failed' : 'expired')
       setMessage(`Found submission ${claim.id} for ${claim.email}.`)
     } catch(error) {setMessage(safeAdminError(error,'Could not find this submission.'))}
     finally {setBusy(false)}
@@ -134,24 +133,33 @@ export default function AdminPaymentsScreen() {
     return 'expired'
   }
   const ordersByStatus = useMemo(() => {
-    const groups: Record<'active' | 'pending' | 'failed' | 'expired', Order[]> = {
+    const groups: Record<PaymentStatusTab, Order[]> = {
       active: [], pending: [], failed: [], expired: []
     }
-    for (const order of orders) groups[orderGroup(order)].push(order)
+    const shownClaimIds = new Set(claims.map(claim => claim.id))
+    for (const order of orders) {
+      // A verified manual subscription creates a paid order too; show it
+      // once as a claim, while retaining historical orders and their data.
+      if (order.manual_claim_id && shownClaimIds.has(order.manual_claim_id)) continue
+      groups[orderGroup(order)].push(order)
+    }
     return groups
-  }, [orders])
+  }, [orders, claims])
   const visibleOrders = ordersByStatus[statusTab]
-  const claimsByTab = useMemo(() => {
-    const groups: Record<ManualClaimTab, ManualClaim[]> = {
-      pending_verification: [], approved: [], rejected: [], expired: []
+  const claimsByStatus = useMemo(() => {
+    const groups: Record<PaymentStatusTab, ManualClaim[]> = {
+      active: [], pending: [], failed: [], expired: []
     }
     for (const claim of claims) {
-      const tab = claim.status === 'awaiting_proof' ? 'pending_verification' : claim.status
+      const tab = claim.status === 'awaiting_proof' || claim.status === 'pending_verification' ? 'pending'
+        : claim.status === 'approved' ? 'active' : claim.status === 'rejected' ? 'failed' : 'expired'
       groups[tab].push(claim)
     }
     return groups
   }, [claims])
-  const visibleClaims = claimsByTab[claimTab]
+  const visibleClaims = claimsByStatus[statusTab]
+  const submissionCount = Object.keys(ordersByStatus).reduce((count, status) =>
+    count + ordersByStatus[status as PaymentStatusTab].length + claimsByStatus[status as PaymentStatusTab].length, 0)
   const paymentStatusLabel = (order: Order) => {
     const group = orderGroup(order)
     if (group === 'active') return 'ACTIVE'
@@ -248,31 +256,39 @@ export default function AdminPaymentsScreen() {
           </section>)}
         </div>
       </section>}
-      <section style={card} aria-labelledby="admin-manual-claims-title">
+      <section style={card} aria-labelledby="admin-payment-submissions-title">
         <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:'.8rem',flexWrap:'wrap' }}>
-          <h2 id="admin-manual-claims-title" style={{ margin:0 }}>Messenger payment claims ({claims.length})</h2>
-          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void load(true)}>Refresh claims</button>
+          <h2 id="admin-payment-submissions-title" style={{ margin:0 }}>Payment submissions ({submissionCount})</h2>
+          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void load(true)}>Refresh submissions</button>
         </div>
-        <p style={{ color:'var(--text-muted)',fontSize:'.86rem',lineHeight:1.5 }}><strong>A claim means the user clicked checkout—not that they paid.</strong> Match the claim ID or Google email with their receipt in Messenger. Mark proof received, then independently confirm the exact bank credit before approving. Receipt images remain in Messenger, not Supabase.</p>
+        <p style={{ color:'var(--text-muted)',fontSize:'.86rem',lineHeight:1.5 }}><strong>A pending Messenger claim means someone clicked checkout, not that they paid.</strong> Before tapping Approve &amp; unlock, match the receipt in Messenger and independently verify the exact bank credit. Receipt images stay in Messenger, not Supabase. Historical PayMongo records remain available here.</p>
         <form onSubmit={event => {event.preventDefault();void findClaim()}} style={{display:'flex',gap:'.5rem',flexWrap:'wrap',marginBottom:'.5rem'}}>
           <label htmlFor="admin-claim-search" style={{ flex:'1 1 260px',fontSize:'.8rem',fontWeight:800 }}>Find by submission ID
             <input id="admin-claim-search" value={claimLookup} onChange={event=>setClaimLookup(event.target.value)} placeholder="Paste customer's full submission ID" autoComplete="off" style={{display:'block',width:'100%',boxSizing:'border-box',minHeight:44,padding:'.55rem',background:'var(--bg-card)',color:'var(--text)',border:'1px solid var(--border)',borderRadius:6}} />
           </label>
           <button type="submit" className="btn btn-outline" disabled={busy || !claimLookup.trim()} style={{alignSelf:'end',minHeight:44}}>Find claim</button>
         </form>
-        <div className="admin-payment-status-tabs" role="tablist" aria-label="Filter Messenger payment claims" style={{ gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,135px),1fr))' }}>
+        <div className="admin-payment-status-tabs" role="tablist" aria-label="Filter payment submissions by status">
           {([
-            ['pending_verification','PENDING VERIFICATION'],
-            ['approved','APPROVED'],
-            ['rejected','REJECTED'],
-            ['expired','EXPIRED'],
-          ] as const).map(([status,label]) => <button key={status} type="button" role="tab" aria-selected={claimTab === status} className={`admin-payment-status-tab${claimTab === status ? ' is-active' : ''}`} onClick={() => setClaimTab(status)}>
-            {label} <span className="admin-payment-status-count">{claimsByTab[status].length}</span>
-          </button>)}
+            ['active', 'ACTIVE'],
+            ['pending', 'PENDING'],
+            ['failed', 'FAILED'],
+            ['expired', 'EXPIRED']
+          ] as const).map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={statusTab === id}
+              aria-controls="admin-payment-status-panel" className={`admin-payment-status-tab${statusTab === id ? ' is-active' : ''}`}
+              onClick={() => setStatusTab(id)}>
+              <span>{label}</span><span className="admin-payment-status-count">{ordersByStatus[id].length + claimsByStatus[id].length}</span>
+            </button>
+          ))}
         </div>
-        <div role="tabpanel" aria-label={`${claimTab.replace('_',' ')} Messenger submissions`} className="admin-claim-grid">
+        {statusTab === 'expired' && visibleOrders.some(order => order.access_status === 'revoked' || order.access_status === 'not_current') && (
+          <p style={{ color:'var(--text-muted)', fontSize:'.82rem', margin:'.1rem 0 .8rem' }}>This tab also includes paid licenses that have been revoked or are no longer current.</p>
+        )}
+        <div id="admin-payment-status-panel" role="tabpanel" aria-label={`${statusTab} payment submissions`}>
+        {visibleClaims.length > 0 && <div className="admin-claim-grid" style={{ marginBottom: visibleOrders.length ? '.8rem' : 0 }}>
           {visibleClaims.map(claim => <article className="admin-claim-card" key={claim.id}>
-            <p><strong>{claim.email}</strong></p>
+            <p><strong>{claim.email}</strong> · Manual QR Ph / bank transfer</p>
             <p><span className="admin-payment-detail-label">Submission ID</span><strong style={{ userSelect:'all' }}>{claim.id}</strong></p>
             <p><span className="admin-payment-detail-label">Started</span>{new Date(claim.created_at).toLocaleString()}</p>
             <p><span className="admin-payment-detail-label">Purchase</span>{claim.items.map(item => `${names[item.code] || item.label} (${item.term}): ₱${item.amountPhp}`).join(' · ')}</p>
@@ -282,43 +298,11 @@ export default function AdminPaymentsScreen() {
             {claim.admin_note && <p>Admin note: {claim.admin_note}</p>}
             {(claim.status === 'awaiting_proof' || claim.status === 'pending_verification') && <div className="admin-claim-actions">
               <label>Internal admin note<textarea rows={2} value={note[claim.id] || ''} onChange={e => setNote(old => ({...old,[claim.id]:e.target.value}))} placeholder="Receipt/transfer matching notes (no passwords or OTPs)" /></label>
-              {claim.status === 'awaiting_proof' && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void reviewClaim(claim.id,'proof_received')}>Mark proof received</button>}
-              {claim.status === 'pending_verification' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void reviewClaim(claim.id,'approve')}>Approve &amp; unlock</button>}
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void reviewClaim(claim.id,'approve')}>Approve &amp; unlock</button>
               <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void reviewClaim(claim.id,'reject')}>Reject</button>
             </div>}
           </article>)}
-          {!visibleClaims.length && <p>No {claimTab.replace('_',' ')} Messenger submissions.</p>}
-        </div>
-      </section>
-      <h2 style={{ margin:'1.2rem 0 .6rem' }}>Historical payment records</h2>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap', marginBottom:'.65rem' }}>
-        <h2 style={{ margin:0 }}>Payment submissions ({orders.length})</h2>
-        <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void withPageLoading('Refreshing payment submissions', () => load(true))} style={{ padding:'.55rem .8rem' }}>Refresh submissions</button>
-      </div>
-      <div className="admin-payment-status-tabs" role="tablist" aria-label="Filter payment submissions by status">
-        {([
-          ['active', 'ACTIVE'],
-          ['pending', 'PENDING'],
-          ['failed', 'FAILED'],
-          ['expired', 'EXPIRED']
-        ] as const).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={statusTab === id}
-            aria-controls="admin-payment-status-panel"
-            className={`admin-payment-status-tab${statusTab === id ? ' is-active' : ''}`}
-            onClick={() => setStatusTab(id)}
-          >
-            <span>{label}</span><span className="admin-payment-status-count">{ordersByStatus[id].length}</span>
-          </button>
-        ))}
-      </div>
-      {statusTab === 'expired' && visibleOrders.some(order => order.access_status === 'revoked' || order.access_status === 'not_current') && (
-        <p style={{ color:'var(--text-muted)', fontSize:'.82rem', margin:'.1rem 0 .8rem' }}>This tab also includes paid licenses that have been revoked or are no longer current.</p>
-      )}
-      <div id="admin-payment-status-panel" role="tabpanel" aria-label={`${statusTab} payment submissions`}>
+        </div>}
       {visibleOrders.length ? <div className="admin-payment-table-wrap">
         <table className="admin-payment-table">
           <thead>
@@ -379,8 +363,10 @@ export default function AdminPaymentsScreen() {
             </tbody>
           })}
         </table>
-      </div> : <section style={card}><p style={{ margin:0 }}>No {statusTab} payment submissions.</p></section>}
+      </div> : null}
+        {!visibleClaims.length && !visibleOrders.length && <p style={{ margin:0 }}>No {statusTab} payment submissions.</p>}
       </div>
+      </section>
     </>}
   </div>
 }

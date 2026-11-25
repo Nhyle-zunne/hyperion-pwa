@@ -60,7 +60,7 @@ Deno.serve(async req => {
     }
     const [ordersResult, alertsResult, recentClaimsResult] = await Promise.all([
       admin.from('orders')
-        .select('id,user_id,product_code,track_id,license_term,amount_php,status,payment_reference,payment_method,proof_url,customer_note,customer_name,customer_company,customer_school,admin_note,created_at,reviewed_at,paid_at')
+        .select('id,user_id,product_code,track_id,license_term,amount_php,status,manual_claim_id,payment_reference,payment_method,proof_url,customer_note,customer_name,customer_company,customer_school,admin_note,created_at,reviewed_at,paid_at')
         .in('status', ['submitted','pending','paid','failed'])
         .order('created_at', { ascending: false })
         .limit(200),
@@ -130,11 +130,28 @@ Deno.serve(async req => {
         !['proof_received','approve','reject'].includes(body.decision || '')) {
       return json({ error: 'Invalid claim review action.' }, 400)
     }
-    const { data, error } = await admin.rpc('review_manual_checkout_claim', {
+    const reviewParams = {
       p_claim_id: body.claimId,
-      p_action: body.decision,
       p_admin_email: user.email,
       p_admin_note: String(body.adminNote || '').trim().slice(0, 1000) || null,
+    }
+    if (body.decision === 'approve') {
+      // One admin approval click covers both internal steps. Do not let the
+      // browser bypass the existing database verification and license checks.
+      const { data: claim, error: lookupError } = await admin.from('manual_checkout_claims')
+        .select('status').eq('id', body.claimId).maybeSingle()
+      if (lookupError) return json({ error: 'Could not load this submission. Please retry.' }, 500)
+      if (!claim) return json({ error: 'Submission not found.' }, 404)
+      if (claim.status === 'awaiting_proof') {
+        const { data: receipt, error: receiptError } = await admin.rpc('review_manual_checkout_claim', {
+          ...reviewParams, p_action: 'proof_received',
+        })
+        if (receipt?.status === 'expired') return json({ error: 'This claim expired. Ask the customer to submit a new claim.' }, 409)
+        if (receiptError || !receipt || receipt.ok !== true) return json({ error: 'Could not prepare this approval. Refresh and retry.' }, 409)
+      }
+    }
+    const { data, error } = await admin.rpc('review_manual_checkout_claim', {
+      ...reviewParams, p_action: body.decision,
     })
     if (error || !data || data.ok !== true) {
       if (data?.status === 'expired') return json({ error: 'This claim expired before proof was recorded. Ask the customer to submit a new claim.' }, 409)
