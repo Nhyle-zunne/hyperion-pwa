@@ -597,7 +597,7 @@ try {
     if (width >= 960) {
       assert(layout.proof.x > layout.qr.right, `Desktop QR and proof panels must be side by side at ${width}px`)
       assert(Math.max(layout.qr.bottom, layout.proof.bottom) < 850,
-        `Desktop checkout panels must remain above the fold in a 900px viewport at ${width}px`)
+        `Desktop checkout panels must remain above the fold in a 900px viewport at ${width}px (QR ${layout.qr.bottom.toFixed(1)}px, proof ${layout.proof.bottom.toFixed(1)}px)`)
     }
     else assert(layout.proof.y > layout.qr.y && Math.abs(layout.proof.x - layout.qr.x) <= 1,
       `Smaller screens must stack the QR and proof panels at ${width}px`)
