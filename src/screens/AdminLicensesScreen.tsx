@@ -73,7 +73,7 @@ const TERM_OPTIONS: { value: LicenseTerm; label: string }[] = [
 const TERM_LABEL: Record<LicenseTerm, string> = { week: 'Weekly', month: 'Monthly', year: 'Yearly', lifetime: 'Lifetime' }
 const SOURCE_LABEL: Record<string, string> = {
   website: 'Website/Admin', google_play: 'Google Play', admin_lifetime: 'Admin lifetime',
-  google_play_lifetime: 'Google Play lifetime', paymongo_lifetime: 'Website lifetime'
+  google_play_lifetime: 'Google Play lifetime', paymongo_lifetime: 'Website lifetime', manual_lifetime: 'Verified manual lifetime'
 }
 const STATUS_LABEL: Record<LicenseStatus, string> = { active: 'ACTIVE', expired: 'EXPIRED', revoked: 'REVOKED', none: 'NOT LICENSED' }
 function dateLabel(value: string | null) {

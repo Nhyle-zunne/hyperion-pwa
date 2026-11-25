@@ -129,8 +129,13 @@ export const supabase = {
     return query
   },
   functions: {
-    invoke: async (name: string, request: { body?: { action?: string; orderId?: string; base64?: string; track?: string; mime?: string; enabled?: boolean } }) => {
+    invoke: async (name: string, request: { body?: { action?: string; orderId?: string; selection?: string; base64?: string; track?: string; mime?: string; enabled?: boolean } }) => {
       fixtureCalls.push({ action: `${name}:${request.body?.action ?? ''}`, data: request.body })
+      if (name === 'create-manual-checkout-claim') {
+        if (!user || localStorage.getItem('fixture-guest') === 'yes') return { data: { error: 'Sign in required' }, error: null }
+        if (request.body?.selection !== 'oic_nw:month') return { data: { error: 'Invalid selection' }, error: null }
+        return { data: { id:'33333333-3333-4333-8333-333333333333',status:'awaiting_proof',totalAmountPhp:79 }, error: null }
+      }
       if (name === 'question-media') {
         const bytes = Uint8Array.from(atob(request.body?.base64 || ''), char => char.charCodeAt(0))
         const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(value => value.toString(16).padStart(2, '0')).join('')
@@ -156,7 +161,7 @@ export const supabase = {
         const isAdmin = localStorage.getItem('fixture-admin') === 'yes' && user.id === '11111111-1111-4111-8111-111111111111'
         if (request.body?.action === 'check-admin') return { data: { isAdmin }, error: null }
         if (!isAdmin) return { data: { error: 'Admin access denied' }, error: { message: 'Admin access denied' } }
-        if (request.body?.action === 'list') return { data: { orders: [], alerts: [] }, error: null }
+        if (request.body?.action === 'list') return { data: { orders: [], alerts: [], claims: [] }, error: null }
         if (request.body?.action === 'set-checkout-availability') {
           if (typeof request.body.enabled !== 'boolean') return { data: { error: 'Invalid checkout setting' }, error: { message: 'Invalid checkout setting' } }
           localStorage.setItem('fixture-checkout-enabled', request.body.enabled ? 'yes' : 'no')

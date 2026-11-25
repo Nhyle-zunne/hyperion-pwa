@@ -1,0 +1,70 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { readFileSync } from 'node:fs'
+import vm from 'node:vm'
+import ts from 'typescript'
+
+const uid = '11111111-1111-4111-8111-111111111111'
+const claimId = '33333333-3333-4333-8333-333333333333'
+const compile = file => ts.transpileModule(readFileSync(new URL(`../../supabase/functions/${file}/index.ts`,import.meta.url),'utf8'),{
+  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022},reportDiagnostics:true,
+}).outputText
+
+function fixture(file, email='buyer@example.invalid') {
+  let handler, calls=[]
+  let signedIn = true
+  let googleLinked = true
+  const createClient = (_url,key) => key === 'anon-key' ? {
+    auth: { getUser: async()=>({data:{user:signedIn?{id:uid,email,identities:googleLinked?[{provider:'google'}]:[{provider:'email'}]}:null},error:signedIn?null:new Error('Signed out')}) },
+  } : {
+    rpc: async (functionName,params) => {
+      calls.push({functionName,params})
+      if (functionName === 'create_manual_checkout_claim') return {data:{id:claimId,status:'awaiting_proof',total_amount_php:79},error:null}
+      if (functionName === 'review_manual_checkout_claim') return {data:{ok:true,status:'pending_verification'},error:null}
+      throw Error('Unexpected RPC '+functionName)
+    },
+  }
+  const env = { SUPABASE_URL:'http://fixture.invalid',SUPABASE_ANON_KEY:'anon-key',SUPABASE_SERVICE_ROLE_KEY:'service-key',ADMIN_EMAILS:'admin@example.invalid' }
+  vm.runInNewContext(compile(file),{
+    exports:{},require:name => { assert.equal(name,'npm:@supabase/supabase-js@2'); return {createClient} },
+    Deno:{serve:fn=>{handler=fn},env:{get:name=>env[name]}},Response,Request,Headers,console,
+  })
+  const send = async (body,authenticated=true) => {
+    const response = await handler(new Request('http://fixture.invalid/functions/v1/'+file,{
+      method:'POST',headers:{...(authenticated?{Authorization:'Bearer fixture'}:{}),'Content-Type':'application/json'},
+      body:JSON.stringify(body),
+    }))
+    return {status:response.status,data:await response.json()}
+  }
+  return {send,calls,signOut:()=>{signedIn=false},unlinkGoogle:()=>{googleLinked=false}}
+}
+
+test('claim endpoint derives owner from verified JWT, not spoofable request fields',async()=>{
+  const edge=fixture('create-manual-checkout-claim')
+  assert.equal((await edge.send({selection:'oic_nw:month'},false)).status,401)
+  assert.equal(edge.calls.length,0)
+  const response=await edge.send({selection:'oic_nw:month',userId:'22222222-2222-4222-8222-222222222222',amount:1})
+  assert.equal(response.status,200)
+  assert.equal(response.data.id,claimId)
+  assert.deepEqual(JSON.parse(JSON.stringify(edge.calls[0])),{functionName:'create_manual_checkout_claim',params:{p_user_id:uid,p_selection:'oic_nw:month'}})
+  edge.signOut()
+  assert.equal((await edge.send({selection:'oic_nw:month'})).status,401)
+  assert.equal(edge.calls.length,1)
+  const other=fixture('create-manual-checkout-claim');other.unlinkGoogle()
+  assert.equal((await other.send({selection:'oic_nw:month'})).status,403)
+  assert.equal(other.calls.length,0)
+})
+
+test('admin claim review denies customers and uses verified admin identity',async()=>{
+  const customer=fixture('admin-payment-review')
+  assert.equal((await customer.send({action:'review-claim',claimId,decision:'approve'})).status,403)
+  assert.equal(customer.calls.length,0)
+  const admin=fixture('admin-payment-review','admin@example.invalid')
+  assert.equal((await admin.send({action:'review-claim',claimId,decision:'paid'})).status,400)
+  const response=await admin.send({action:'review-claim',claimId,decision:'proof_received',adminEmail:'spoof@example.invalid'})
+  assert.equal(response.status,200)
+  assert.deepEqual(JSON.parse(JSON.stringify(admin.calls[0])),{
+    functionName:'review_manual_checkout_claim',
+    params:{p_claim_id:claimId,p_action:'proof_received',p_admin_email:'admin@example.invalid',p_admin_note:null},
+  })
+})

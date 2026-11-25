@@ -5,6 +5,8 @@ import { withPageLoading } from '../lib/pageLoading'
 import { applyAdminCheckoutAvailability, refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 
 type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; license_term: 'week'|'month'|'year'; amount_php: number; status: string; access_status: string; access_expires_at: string | null; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; customer_name: string | null; customer_company: string | null; customer_school: string | null; admin_note: string | null; created_at: string }
+type ManualClaimStatus = 'awaiting_proof' | 'pending_verification' | 'approved' | 'rejected' | 'expired'
+type ManualClaim = { id: string; user_id: string; email: string; items: { code: string; label: string; term: string; amountPhp: number }[]; total_amount_php: number; status: ManualClaimStatus; created_at: string; expires_at: string; proof_received_at: string | null; reviewed_at: string | null; reviewed_by: string | null; admin_note: string | null }
 type ReconciliationAlert = { id: string; checkout_reference: string; checkout_session_id: string; paymongo_payment_id: string; expected_amount_php: number; observed_amount_minor: number; observed_currency: string; reason: string; created_at: string }
 function safeAdminError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : ''
@@ -14,6 +16,9 @@ function safeAdminError(error: unknown, fallback: string) {
 const names: Record<string,string> = { oic_nw:'Deck OIC-NW', gmdss:'GMDSS GOC', engine_ew:'Engine OIC-EW', deck_mgt:'Deck Management', engine_mgt:'Engine Management', all_access:'All-Access Bundle' }
 export default function AdminPaymentsScreen() {
   const [orders, setOrders] = useState<Order[]>([])
+  const [claims, setClaims] = useState<ManualClaim[]>([])
+  const [claimTab, setClaimTab] = useState<ManualClaimStatus>('awaiting_proof')
+  const [claimLookup, setClaimLookup] = useState('')
   const [reconciliationAlerts, setReconciliationAlerts] = useState<ReconciliationAlert[]>([])
   const [alertLoadWarning, setAlertLoadWarning] = useState('')
   const [note, setNote] = useState<Record<string,string>>({})
@@ -44,6 +49,7 @@ export default function AdminPaymentsScreen() {
       try {
         const result = await call({ action: 'list' })
         setOrders(result.orders || [])
+        setClaims(result.claims || [])
         setReconciliationAlerts(Array.isArray(result.alerts) ? result.alerts : [])
         setAlertLoadWarning(Array.isArray(result.alerts) ? '' : 'Could not load PayMongo reconciliation alerts. Check the function logs before marking any duplicate payment resolved.')
         setAuthorized(true)
@@ -75,6 +81,31 @@ export default function AdminPaymentsScreen() {
     try { await withPageLoading(decision === 'approve' ? 'Approving payment' : 'Reviewing payment', async () => { await call({ action:'review', orderId, decision, adminNote: note[orderId] || '' }); setMessage(decision === 'approve' ? 'Payment approved and access granted.' : 'Payment rejected.'); await load(true) }) }
     catch (e) { setMessage(safeAdminError(e, 'Could not complete the payment review. Please try again.')) }
     finally { setBusy(false) }
+  }
+  const reviewClaim = async (claimId: string, decision: 'proof_received' | 'approve' | 'reject') => {
+    if (decision === 'approve' && !window.confirm('Have you checked the receipt in Messenger AND confirmed the actual credit in the receiving bank account? This will activate every track in the submission.')) return
+    setBusy(true); setMessage('')
+    try {
+      await withPageLoading('Reviewing payment claim', async () => {
+        await call({ action: 'review-claim', claimId, decision, adminNote: note[claimId] || '' })
+        setMessage(decision === 'proof_received' ? 'Proof marked received. Funds are NOT yet verified.' : decision === 'approve' ? 'Bank credit verified; licenses granted.' : 'Submission rejected. No licenses granted.')
+        await load(true)
+      })
+    } catch (e) { setMessage(safeAdminError(e,'Unable to review submission. Refresh and retry.')) }
+    finally { setBusy(false) }
+  }
+  const findClaim = async () => {
+    if (busy) return
+    setBusy(true);setMessage('')
+    try {
+      const result = await call({action:'find-claim',claimId:claimLookup.trim()})
+      if (!result.claim) throw new Error('No matching submission was found.')
+      const claim = result.claim as ManualClaim
+      setClaims(old => [claim,...old.filter(item=>item.id!==claim.id)])
+      setClaimTab(claim.status)
+      setMessage(`Found submission ${claim.id} for ${claim.email}.`)
+    } catch(error) {setMessage(safeAdminError(error,'Could not find this submission.'))}
+    finally {setBusy(false)}
   }
   const toggleCheckout = async () => {
     if (!checkoutAvailability.checked || checkoutAvailability.error || checkoutSaving) return
@@ -157,6 +188,13 @@ export default function AdminPaymentsScreen() {
       .admin-checkout-switch{min-height:48px;min-width:160px;padding:.65rem .85rem;border:1px solid var(--border);border-radius:0;background:var(--bg-elevated);color:var(--text);font:inherit;font-weight:900;cursor:pointer}
       .admin-checkout-switch[aria-checked="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
       .admin-checkout-switch:disabled{cursor:wait;opacity:.65}
+      .admin-claim-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,325px),1fr));gap:.7rem}
+      .admin-claim-card{min-width:0;padding:.9rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-elevated)}
+      .admin-claim-card p{overflow-wrap:anywhere;margin:.35rem 0;font-size:.86rem;line-height:1.45}
+      .admin-claim-actions{display:flex;gap:.55rem;flex-wrap:wrap;align-items:center;margin-top:.8rem}
+      .admin-claim-actions label{flex:1 1 100%;font-size:.83rem}
+      .admin-claim-actions textarea{display:block;width:100%;box-sizing:border-box;margin-top:.3rem;padding:.55rem;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-radius:6px}
+      .admin-claim-actions button{flex:1 1 auto}
       @media(max-width:760px){.admin-payment-status-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-payment-details-content{grid-template-columns:1fr}.admin-payment-detail-actions{grid-column:auto}}
     `}</style>
     <AdminNavigation />
@@ -198,6 +236,50 @@ export default function AdminPaymentsScreen() {
           </section>)}
         </div>
       </section>}
+      <section style={card} aria-labelledby="admin-manual-claims-title">
+        <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:'.8rem',flexWrap:'wrap' }}>
+          <h2 id="admin-manual-claims-title" style={{ margin:0 }}>Messenger payment claims ({claims.length})</h2>
+          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void load(true)}>Refresh claims</button>
+        </div>
+        <p style={{ color:'var(--text-muted)',fontSize:'.86rem',lineHeight:1.5 }}><strong>A claim means the user clicked checkout—not that they paid.</strong> Match the claim ID or Google email with their receipt in Messenger. Mark proof received, then independently confirm the exact bank credit before approving. Receipt images remain in Messenger, not Supabase.</p>
+        <form onSubmit={event => {event.preventDefault();void findClaim()}} style={{display:'flex',gap:'.5rem',flexWrap:'wrap',marginBottom:'.5rem'}}>
+          <label htmlFor="admin-claim-search" style={{ flex:'1 1 260px',fontSize:'.8rem',fontWeight:800 }}>Find by submission ID
+            <input id="admin-claim-search" value={claimLookup} onChange={event=>setClaimLookup(event.target.value)} placeholder="Paste customer's full submission ID" autoComplete="off" style={{display:'block',width:'100%',boxSizing:'border-box',minHeight:44,padding:'.55rem',background:'var(--bg-card)',color:'var(--text)',border:'1px solid var(--border)',borderRadius:6}} />
+          </label>
+          <button type="submit" className="btn btn-outline" disabled={busy || !claimLookup.trim()} style={{alignSelf:'end',minHeight:44}}>Find claim</button>
+        </form>
+        <div className="admin-payment-status-tabs" role="tablist" aria-label="Filter Messenger payment claims" style={{ gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,135px),1fr))' }}>
+          {([
+            ['awaiting_proof','AWAITING PROOF'],
+            ['pending_verification','PENDING VERIFICATION'],
+            ['approved','APPROVED'],
+            ['rejected','REJECTED'],
+            ['expired','EXPIRED'],
+          ] as const).map(([status,label]) => <button key={status} type="button" role="tab" aria-selected={claimTab === status} className={`admin-payment-status-tab${claimTab === status ? ' is-active' : ''}`} onClick={() => setClaimTab(status)}>
+            {label} <span className="admin-payment-status-count">{claims.filter(claim => claim.status === status).length}</span>
+          </button>)}
+        </div>
+        <div role="tabpanel" aria-label={`${claimTab.replace('_',' ')} Messenger submissions`} className="admin-claim-grid">
+          {claims.filter(claim => claim.status === claimTab).map(claim => <article className="admin-claim-card" key={claim.id}>
+            <p><strong>{claim.email}</strong></p>
+            <p><span className="admin-payment-detail-label">Submission ID</span><strong style={{ userSelect:'all' }}>{claim.id}</strong></p>
+            <p><span className="admin-payment-detail-label">Started</span>{new Date(claim.created_at).toLocaleString()}</p>
+            <p><span className="admin-payment-detail-label">Purchase</span>{claim.items.map(item => `${names[item.code] || item.label} (${item.term}): ₱${item.amountPhp}`).join(' · ')}</p>
+            <p><strong>Total: ₱{claim.total_amount_php.toLocaleString('en-PH')}</strong></p>
+            {claim.proof_received_at && <p>Proof marked received: {new Date(claim.proof_received_at).toLocaleString()}</p>}
+            {claim.reviewed_at && <p>Reviewed: {new Date(claim.reviewed_at).toLocaleString()}</p>}
+            {claim.admin_note && <p>Admin note: {claim.admin_note}</p>}
+            {(claim.status === 'awaiting_proof' || claim.status === 'pending_verification') && <div className="admin-claim-actions">
+              <label>Internal admin note<textarea rows={2} value={note[claim.id] || ''} onChange={e => setNote(old => ({...old,[claim.id]:e.target.value}))} placeholder="Receipt/transfer matching notes (no passwords or OTPs)" /></label>
+              {claim.status === 'awaiting_proof' && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void reviewClaim(claim.id,'proof_received')}>Mark proof received</button>}
+              {claim.status === 'pending_verification' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void reviewClaim(claim.id,'approve')}>Approve &amp; unlock</button>}
+              <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void reviewClaim(claim.id,'reject')}>Reject</button>
+            </div>}
+          </article>)}
+          {!claims.some(claim => claim.status === claimTab) && <p>No {claimTab.replace('_',' ')} Messenger submissions.</p>}
+        </div>
+      </section>
+      <h2 style={{ margin:'1.2rem 0 .6rem' }}>Historical payment records</h2>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap', marginBottom:'.65rem' }}>
         <h2 style={{ margin:0 }}>Payment submissions ({orders.length})</h2>
         <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void withPageLoading('Refreshing payment submissions', () => load(true))} style={{ padding:'.55rem .8rem' }}>Refresh submissions</button>

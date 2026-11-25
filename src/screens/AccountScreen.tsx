@@ -28,7 +28,7 @@ type Order = {
   paid_at: string | null
   checkout_batch_id: string | null
 }
-type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' | 'lifetime'; lifetimeProvider?: 'paymongo' | 'google_play' | 'admin' }
+type OwnedTrack = { product_code: string; order_id: string | null; license_term: LicenseTerm | null; status: string; granted_at: string; expires_at: string | null; renewed_at: string | null; source?: 'website' | 'google_play' | 'lifetime'; lifetimeProvider?: 'paymongo' | 'google_play' | 'admin' | 'manual' }
 type BasketItem = { code: PaidTrack; term: LicenseTerm }
 
 // Owner-bound in-memory display cache for this browser session. These rows are
@@ -993,7 +993,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   <strong style={{ display: 'block', marginBottom: '.25rem' }}>{item.source === 'google_play' ? 'Subscription details' : adminGrant ? 'Grant details' : 'Transaction details'}</strong>
                   {adminGrant ? <div>Granted: {new Date(item.granted_at).toLocaleString()}</div> : lifetime ? <>
                     <div>Purchase: One-time, non-renewing</div>
-                    <div>Source: {item.lifetimeProvider === 'google_play' ? 'Google Play' : item.lifetimeProvider === 'admin' ? 'Administrator' : 'Earlier website checkout'}</div>
+                    <div>Source: {item.lifetimeProvider === 'google_play' ? 'Google Play' : item.lifetimeProvider === 'admin' ? 'Administrator' : item.lifetimeProvider === 'manual' ? 'Verified manual checkout' : 'Earlier website checkout'}</div>
                     <div>Purchased: {new Date(item.granted_at).toLocaleString()}</div>
                   </> : transaction ? <>
                     {transaction.customer_name && <div>Customer name: {transaction.customer_name}</div>}

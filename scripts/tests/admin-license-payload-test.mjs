@@ -43,7 +43,7 @@ globalThis.fetch = async (input, init) => {
   if (url.pathname.endsWith('/lifetime_entitlements')) return json(lifetime)
   if (url.pathname.endsWith('/google_play_entitlements')) return json(play)
   if (url.pathname.endsWith('/entitlements')) return json(url.searchParams.has('product_code') ? website[0] : website)
-  if (url.pathname.endsWith('/license_admin_audit') || url.pathname.endsWith('/user_activity') || url.pathname.endsWith('/orders') || url.pathname.endsWith('/checkout_batches')) return json([])
+  if (url.pathname.endsWith('/license_admin_audit') || url.pathname.endsWith('/user_activity') || url.pathname.endsWith('/orders') || url.pathname.endsWith('/checkout_batches') || url.pathname.endsWith('/manual_checkout_claims')) return json([])
   throw new Error('Unexpected request ' + req.url)
 }
 const env = { SUPABASE_URL: 'http://fixture.invalid', SUPABASE_ANON_KEY: 'fixture-anon', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service', ADMIN_EMAILS: adminEmail }

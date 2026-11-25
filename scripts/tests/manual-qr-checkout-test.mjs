@@ -25,8 +25,9 @@ test('checkout rejects unknown, duplicate, or malformed selections rather than s
 
 test('Messenger text is copyable with exact email, tracks, durations, and total in PHP', () => {
   const items = parseManualCheckoutItems('oic_nw:month,gmdss:lifetime', products)
-  assert.equal(formatMessengerPaymentDetails('boss@example.com', items), [
+  assert.equal(formatMessengerPaymentDetails('boss@example.com', items, '12345678-1234-4234-8234-123456789abc'), [
     'Hyperion Maritime - Payment Verification',
+    'Submission ID: 12345678-1234-4234-8234-123456789abc',
     'Account email: boss@example.com',
     '',
     'Purchased:',
@@ -34,8 +35,10 @@ test('Messenger text is copyable with exact email, tracks, durations, and total 
     'GMDSS GOC (Lifetime): PHP 599.00',
     'Total amount: PHP 678.00',
     '',
+    'Status: Awaiting proof (NOT payment confirmation).',
     'I have attached my payment receipt. Please verify my payment and activate the selected licenses.',
   ].join('\n'))
+  assert.match(formatMessengerPaymentDetails('boss@example.com', items, '12345678-1234-4234-8234-123456789abc','pending_verification'), /Status: Proof received; pending bank verification \(NOT payment confirmation\)\./)
 })
 
 test('bank transfer copy text contains the exact receiving account supplied by Hyperion', () => {

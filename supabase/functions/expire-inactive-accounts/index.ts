@@ -172,6 +172,19 @@ Deno.serve(async req => {
       if (rows.length < PAGE_SIZE) break
     }
 
+    const pendingClaimUsers = new Set<string>()
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const result = await admin.from('manual_checkout_claims').select('user_id,status,expires_at')
+        .in('user_id', userIds).in('status', ['awaiting_proof','pending_verification'])
+        .range(offset, offset + PAGE_SIZE - 1)
+      if (result.error) return json({ error: 'Could not verify Messenger payment claims; no accounts were deleted in this batch.', processed: totalUsers - users.length }, 500)
+      const rows = (result.data || []) as { user_id: string; status: string; expires_at: string }[]
+      for (const row of rows) {
+        if (row.status === 'pending_verification' || parseDate(row.expires_at) > now) pendingClaimUsers.add(row.user_id)
+      }
+      if (rows.length < PAGE_SIZE) break
+    }
+
     const adminAuditUsers = new Set<string>()
     for (let offset = 0; ; offset += PAGE_SIZE) {
       const result = await admin.from('license_admin_audit').select('admin_user_id')
@@ -219,7 +232,7 @@ Deno.serve(async req => {
       }
 
       const payments = paymentMap.get(user.id) || []
-      const hasPendingPayment = payments.length > 0 || pendingBatchUsers.has(user.id)
+      const hasPendingPayment = payments.length > 0 || pendingBatchUsers.has(user.id) || pendingClaimUsers.has(user.id)
       if (hasPendingPayment) { skippedPendingPayment++; continue }
 
       if (dryRun) {
@@ -230,27 +243,35 @@ Deno.serve(async req => {
 
       // Recheck mutable conditions just before deletion, so a renewal, new payment,
       // or fresh website visit racing the daily job cannot cause an account to be deleted.
-      const [freshEntitlements, freshPlayEntitlements, freshActivity, freshPendingOrders, freshFailedCheckout, freshPendingBatch, freshAdminAudit] = await Promise.all([
+      const [freshEntitlements, freshPlayEntitlements, freshActivity, freshPendingOrders, freshFailedCheckout, freshPendingBatch, freshAdminAudit, freshPendingClaim, freshLifetime] = await Promise.all([
         admin.from('entitlements').select('status,expires_at').eq('user_id', user.id),
         admin.from('google_play_entitlements').select('status,expires_at').eq('user_id', user.id),
         admin.from('user_activity').select('last_accessed_at').eq('user_id', user.id).maybeSingle(),
         admin.from('orders').select('id').eq('user_id', user.id).in('status', ['pending', 'submitted']).limit(1),
         admin.from('orders').select('id').eq('user_id', user.id).eq('status', 'failed').eq('payment_method', 'PayMongo Checkout').not('paymongo_checkout_session_id', 'is', null).limit(1),
         admin.from('checkout_batches').select('id').eq('user_id', user.id).eq('status', 'pending').limit(1),
-        admin.from('license_admin_audit').select('id').eq('admin_user_id', user.id).limit(1)
+        admin.from('license_admin_audit').select('id').eq('admin_user_id', user.id).limit(1),
+        admin.from('manual_checkout_claims').select('id,status,expires_at').eq('user_id', user.id)
+          .in('status', ['awaiting_proof','pending_verification']).limit(5),
+        admin.from('lifetime_entitlements').select('id').eq('user_id',user.id).eq('status','active').limit(1)
       ])
       const freshPlayTableMissing = isMissingGooglePlayEntitlementsTable(freshPlayEntitlements.error)
       if (freshEntitlements.error || (freshPlayEntitlements.error && !freshPlayTableMissing) ||
-          freshActivity.error || freshPendingOrders.error || freshFailedCheckout.error || freshPendingBatch.error || freshAdminAudit.error) {
+          freshActivity.error || freshPendingOrders.error || freshFailedCheckout.error || freshPendingBatch.error || freshAdminAudit.error || freshPendingClaim.error || freshLifetime.error) {
         failed++
         continue
       }
-      if ((freshPendingOrders.data?.length || 0) > 0 || (freshFailedCheckout.data?.length || 0) > 0 || (freshPendingBatch.data?.length || 0) > 0) {
+      if ((freshPendingOrders.data?.length || 0) > 0 || (freshFailedCheckout.data?.length || 0) > 0 || (freshPendingBatch.data?.length || 0) > 0 ||
+          (freshPendingClaim.data || []).some(row => row.status === 'pending_verification' || parseDate(row.expires_at) > Date.now())) {
         skippedPendingPayment++
         continue
       }
       if ((freshAdminAudit.data?.length || 0) > 0) {
         skippedAuditDependency++
+        continue
+      }
+      if ((freshLifetime.data?.length || 0) > 0) {
+        skippedActiveLicense++
         continue
       }
 
@@ -299,9 +320,24 @@ Deno.serve(async req => {
       }).select('id').single()
       if (auditInsert.error || !auditInsert.data?.id) { failed++; continue }
 
+      // This is the final transactional guard: it shares a database advisory
+      // lock and short-lived deletion intent with manual claim creation/review.
+      const { data: deletionReady, error: deletionReadyError } = await admin.rpc('begin_checkout_account_deletion', {
+        p_user_id: user.id,p_reason:'retention'
+      })
+      if (deletionReadyError || deletionReady !== true) {
+        if (deletionReadyError) failed++
+        else skippedPendingPayment++
+        await admin.from('account_retention_audit').update({
+          action:'delete_failed', details:{ failure:'New claim or license appeared during retention validation.' }
+        }).eq('id',auditInsert.data.id)
+        continue
+      }
+
       const deletion = await admin.auth.admin.deleteUser(user.id, false)
       if (deletion.error) {
         failed++
+        await admin.rpc('cancel_checkout_account_deletion', { p_user_id: user.id })
         await admin.from('account_retention_audit').update({
           action: 'delete_failed',
           details: { failure: 'Auth deletion returned an error.' }

@@ -504,7 +504,10 @@ try {
   await adminEnabledQrPage.close()
 
   const adminQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
-  await adminQrPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
+  await adminQrPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+  })
   await adminQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await adminQrPage.getByRole('heading', { name: 'QR Payment Checkout' }).waitFor()
   await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
@@ -521,7 +524,7 @@ try {
   assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0, 'QR and bank details appear together without tabs')
   assert.equal(await adminQrPage.locator('.qr-checkout-bank dl > div').nth(1).locator('dd').innerText(), 'Hyperion')
   assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI \/ VYBE by BPI.*4309192465/s)
-  assert.match(await adminQrPage.locator('.qr-checkout-transfer-notice').innerText(), /Use InstaPay only\. Never use PESONet\./)
+  assert.match(await adminQrPage.locator('.qr-checkout-transfer-notice').filter({ hasText: 'Use InstaPay only' }).innerText(), /Use InstaPay only\. Never use PESONet\./)
   const activationNotice = adminQrPage.locator('.qr-checkout-activation-notice')
   assert.match(await activationNotice.innerText(), /allow 24–48 hours.*verification and license activation.*after 48 hours/s,
     'Checkout explains the manual activation timeframe and when to follow up')
@@ -540,7 +543,7 @@ try {
     const layout = await adminQrPage.evaluate(() => {
       const [qr, proof] = [...document.querySelectorAll('.qr-checkout-grid > .qr-checkout-panel')]
       const details = document.querySelector('#qr-checkout-details')
-      const copy = document.querySelector('.qr-checkout-copy')
+      const copy = document.querySelector('.qr-checkout-messenger')
       const page = document.querySelector('.qr-checkout-page')
       const image = document.querySelector('.qr-checkout-image-wrap')
       const qrImage = image.querySelector('img')
@@ -593,11 +596,11 @@ try {
     assert(layout.detailsOverflowX <= 2,
       `Messenger payment message must not scroll horizontally at ${width}px (overflow ${layout.detailsOverflowX}px)`)
     assert(layout.copy.x >= 0 && layout.copy.right <= width && layout.copy.height >= 44,
-      `Copy action must remain accessible at ${width}px`)
+      `Combined copy-and-Messenger action must remain accessible at ${width}px`)
     if (width >= 960) {
       assert(layout.proof.x > layout.qr.right, `Desktop QR and proof panels must be side by side at ${width}px`)
       assert(Math.max(layout.qr.bottom, layout.proof.bottom) < 850,
-        `Desktop checkout panels must remain above the fold in a 900px viewport at ${width}px`)
+        `Desktop checkout panels must remain above the fold in a 900px viewport at ${width}px (QR ${layout.qr.bottom.toFixed(1)}px, proof ${layout.proof.bottom.toFixed(1)}px)`)
     }
     else assert(layout.proof.y > layout.qr.y && Math.abs(layout.proof.x - layout.qr.x) <= 1,
       `Smaller screens must stack the QR and proof panels at ${width}px`)
@@ -613,6 +616,15 @@ try {
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'Hyperion')
   await adminQrPage.getByRole('button', { name: 'Copy account number', exact: true }).click()
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '4309192465')
+  await adminQrPage.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Synthetic clipboard denied') } } })
+  })
+  await adminQrPage.getByRole('button', { name: 'COPY DETAILS & OPEN MESSENGER' }).click()
+  await adminQrPage.getByText(/Submission saved, but clipboard access was blocked/).waitFor()
+  assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Submission ID: 33333333-3333-4333-8333-333333333333/,
+    'User can manually copy a traceable submission if clipboard permission fails')
+  assert(await adminQrPage.evaluate(() => window.accountFixtureCalls.some(call => call.action === 'create-manual-checkout-claim:' && call.data?.selection === 'oic_nw:month')),
+    'The combined action saves a signed-in, server-priced claim before opening Messenger')
   await adminQrPage.evaluate(() => localStorage.setItem('fixture-pending-orders', 'yes'))
   await adminQrPage.reload()
   await adminQrPage.getByRole('alert').filter({ hasText: /unresolved checkout/i }).waitFor()
@@ -620,13 +632,19 @@ try {
     'Unresolved PayMongo payment prevents a new QR transfer for the same track')
   assert.equal(await adminQrPage.locator('.qr-checkout-bank').count(), 0,
     'Unresolved payments also prevent a duplicate bank transfer')
-  await adminQrPage.evaluate(() => window.switchFixtureAccount())
-  await adminQrPage.getByRole('heading', { name: 'Checkout temporarily unavailable' }).waitFor()
-  assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
-    'Switching to a non-admin account revokes an already open QR preview')
-  assert.equal(await adminQrPage.locator('.qr-checkout-bank').count(), 0,
-    'Switching accounts revokes bank transfer details as well')
   await adminQrPage.close()
+
+  const adminDisabledQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await adminDisabledQrPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
+  await adminDisabledQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await adminDisabledQrPage.locator('.qr-checkout-image-wrap img').waitFor()
+  await adminDisabledQrPage.evaluate(() => window.switchFixtureAccount())
+  await adminDisabledQrPage.getByRole('heading', { name: 'Checkout temporarily unavailable' }).waitFor()
+  assert.equal(await adminDisabledQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Switching to a non-admin account revokes an already open QR preview')
+  assert.equal(await adminDisabledQrPage.locator('.qr-checkout-bank').count(), 0,
+    'Switching accounts revokes bank transfer details as well')
+  await adminDisabledQrPage.close()
 
   const adminSettingsPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await adminSettingsPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
