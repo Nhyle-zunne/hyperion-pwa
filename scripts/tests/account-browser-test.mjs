@@ -504,7 +504,10 @@ try {
   await adminEnabledQrPage.close()
 
   const adminQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
-  await adminQrPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
+  await adminQrPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+  })
   await adminQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await adminQrPage.getByRole('heading', { name: 'QR Payment Checkout' }).waitFor()
   await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
@@ -629,13 +632,19 @@ try {
     'Unresolved PayMongo payment prevents a new QR transfer for the same track')
   assert.equal(await adminQrPage.locator('.qr-checkout-bank').count(), 0,
     'Unresolved payments also prevent a duplicate bank transfer')
-  await adminQrPage.evaluate(() => window.switchFixtureAccount())
-  await adminQrPage.getByRole('heading', { name: 'Checkout temporarily unavailable' }).waitFor()
-  assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
-    'Switching to a non-admin account revokes an already open QR preview')
-  assert.equal(await adminQrPage.locator('.qr-checkout-bank').count(), 0,
-    'Switching accounts revokes bank transfer details as well')
   await adminQrPage.close()
+
+  const adminDisabledQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await adminDisabledQrPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
+  await adminDisabledQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await adminDisabledQrPage.locator('.qr-checkout-image-wrap img').waitFor()
+  await adminDisabledQrPage.evaluate(() => window.switchFixtureAccount())
+  await adminDisabledQrPage.getByRole('heading', { name: 'Checkout temporarily unavailable' }).waitFor()
+  assert.equal(await adminDisabledQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Switching to a non-admin account revokes an already open QR preview')
+  assert.equal(await adminDisabledQrPage.locator('.qr-checkout-bank').count(), 0,
+    'Switching accounts revokes bank transfer details as well')
+  await adminDisabledQrPage.close()
 
   const adminSettingsPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await adminSettingsPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))
