@@ -3,7 +3,7 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 
-const migration = new URL('../../supabase/migrations/20261125110000_manual_checkout_claims.sql', import.meta.url)
+const migration = new URL('../../supabase/migrations/20261125013418_manual_checkout_claims.sql', import.meta.url)
 const buyer = '11111111-1111-4111-8111-111111111111'
 const secondBuyer = '22222222-2222-4222-8222-222222222222'
 

@@ -4,7 +4,7 @@ Spec: `docs/superpowers/specs/2026-11-25-messenger-claims-design.md`.
 
 ## Task 1 — Claim schema and atomic lifecycle
 
-Files: `supabase/migrations/20261125110000_manual_checkout_claims.sql`, `scripts/tests/manual-checkout-claims-test.mjs`.
+Files: `supabase/migrations/20261125013418_manual_checkout_claims.sql`, `scripts/tests/manual-checkout-claims-test.mjs`.
 1. RED: Add invariants/tests for authenticated owner-only read, no client mutations, canonical server prices, idempotent open cart, max-three-open limit, 72h expiry and no payout on creation.
 2. GREEN: Add table, RLS, service-role-only `create_manual_checkout_claim` RPC and `review_manual_checkout_claim` RPC with row locks and atomic multi-item fulfillment, including subscription order history and manual lifetime grants.
 3. Verify: `node --test scripts/tests/manual-checkout-claims-test.mjs`.
