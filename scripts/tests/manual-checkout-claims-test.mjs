@@ -195,7 +195,7 @@ test('claims use own-account read RLS with no client insert/update/delete grants
   } finally { await db.exec('reset role') }
 })
 
-test('admin review exposes claim statuses without removing historical payment records', () => {
+test('admin review merges manual claims into historical status tabs without dropping receipts or orders', () => {
   const endpoint = readFileSync(new URL('../../supabase/functions/admin-payment-review/index.ts',import.meta.url),'utf8')
   const screen = readFileSync(new URL('../../src/screens/AdminPaymentsScreen.tsx',import.meta.url),'utf8')
   assert.match(endpoint,/from\('manual_checkout_claims'\)/)
@@ -204,9 +204,10 @@ test('admin review exposes claim statuses without removing historical payment re
   assert.match(endpoint,/rpc\('review_manual_checkout_claim'/)
   assert.match(endpoint,/from\('orders'\)/)
   for (const status of ['awaiting_proof','pending_verification','approved','rejected']) assert.ok(screen.includes(status),`missing ${status}`)
-  assert.match(screen,/\['pending_verification','PENDING VERIFICATION'\]/)
-  assert.doesNotMatch(screen,/\['awaiting_proof','AWAITING PROOF'\]/)
-  assert.match(screen,/Mark proof received/i)
+  assert.match(screen,/\['pending', 'PENDING'\]/)
+  assert.doesNotMatch(screen,/Mark proof received/i)
+  assert.match(screen,/manual_claim_id/)
+  assert.match(screen,/claimsByStatus/)
   assert.match(screen,/Approve\s*&(?:amp;)?\s*unlock/i)
   assert.match(screen,/Find by submission ID/i)
 })

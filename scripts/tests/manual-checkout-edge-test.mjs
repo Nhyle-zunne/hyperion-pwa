@@ -10,17 +10,38 @@ const compile = file => ts.transpileModule(readFileSync(new URL(`../../supabase/
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022},reportDiagnostics:true,
 }).outputText
 
-function fixture(file, email='buyer@example.invalid') {
+function fixture(file, email='buyer@example.invalid', initialClaimStatus='awaiting_proof') {
   let handler, calls=[]
   let signedIn = true
   let googleLinked = true
+  let claimStatus = initialClaimStatus
   const createClient = (_url,key) => key === 'anon-key' ? {
     auth: { getUser: async()=>({data:{user:signedIn?{id:uid,email,identities:googleLinked?[{provider:'google'}]:[{provider:'email'}]}:null},error:signedIn?null:new Error('Signed out')}) },
   } : {
+    from: table => {
+      assert.equal(table, 'manual_checkout_claims')
+      return { select: columns => {
+        assert.equal(columns, 'status')
+        return { eq: (_field,id) => {
+          assert.equal(id, claimId)
+          return { maybeSingle: async () => ({ data: { status: claimStatus }, error: null }) }
+        } }
+      } }
+    },
     rpc: async (functionName,params) => {
       calls.push({functionName,params})
       if (functionName === 'create_manual_checkout_claim') return {data:{id:claimId,status:'awaiting_proof',total_amount_php:79},error:null}
-      if (functionName === 'review_manual_checkout_claim') return {data:{ok:true,status:'pending_verification'},error:null}
+      if (functionName === 'review_manual_checkout_claim') {
+        if (params.p_action === 'proof_received' && claimStatus === 'awaiting_proof') {
+          claimStatus = 'pending_verification'
+          return {data:{ok:true,status:claimStatus},error:null}
+        }
+        if (params.p_action === 'approve' && claimStatus === 'pending_verification') {
+          claimStatus = 'approved'
+          return {data:{ok:true,status:claimStatus},error:null}
+        }
+        if (params.p_action === 'proof_received' || params.p_action === 'approve') return {data:null,error:{code:'23514'}}
+      }
       throw Error('Unexpected RPC '+functionName)
     },
   }
@@ -67,4 +88,20 @@ test('admin claim review denies customers and uses verified admin identity',asyn
     functionName:'review_manual_checkout_claim',
     params:{p_claim_id:claimId,p_action:'proof_received',p_admin_email:'admin@example.invalid',p_admin_note:null},
   })
+})
+
+test('a single admin approval performs both internal stages for a new claim', async () => {
+  const admin=fixture('admin-payment-review','admin@example.invalid')
+  const result=await admin.send({action:'review-claim',claimId,decision:'approve',adminEmail:'spoof@example.invalid'})
+  assert.equal(result.status,200)
+  assert.equal(result.data.status,'approved')
+  assert.deepEqual(admin.calls.map(call => call.params.p_action),['proof_received','approve'])
+  assert.ok(admin.calls.every(call => call.params.p_admin_email==='admin@example.invalid'))
+})
+
+test('an already verified claim approves without repeating receipt processing', async () => {
+  const admin=fixture('admin-payment-review','admin@example.invalid','pending_verification')
+  const result=await admin.send({action:'review-claim',claimId,decision:'approve'})
+  assert.equal(result.status,200)
+  assert.deepEqual(admin.calls.map(call => call.params.p_action),['approve'])
 })
