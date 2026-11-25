@@ -623,15 +623,37 @@ try {
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'Hyperion')
   await adminQrPage.getByRole('button', { name: 'Copy account number', exact: true }).click()
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '4309192465')
+  await adminQrPage.context().route('https://m.me/**', route => route.fulfill({ contentType: 'text/html', body: 'Synthetic Messenger page' }))
+  const checkoutUrl = adminQrPage.url()
+  const messengerPopupPromise = adminQrPage.waitForEvent('popup')
+  await adminQrPage.getByRole('button', { name: 'COPY DETAILS & OPEN MESSENGER' }).click()
+  const messengerPopup = await messengerPopupPromise
+  await messengerPopup.waitForURL('https://m.me/HyperionMaritime')
+  assert.equal(adminQrPage.url(), checkoutUrl, 'Opening Messenger keeps the original checkout tab available')
+  assert.match(await adminQrPage.evaluate(() => window.copiedBankDetails), /Submission ID: 33333333-3333-4333-8333-333333333333/,
+    'The traceable payment message is copied before Messenger opens')
+  await messengerPopup.close()
   await adminQrPage.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Synthetic clipboard denied') } } })
   })
+  const blockedClipboardPopupPromise = adminQrPage.waitForEvent('popup')
   await adminQrPage.getByRole('button', { name: 'COPY DETAILS & OPEN MESSENGER' }).click()
+  const blockedClipboardPopup = await blockedClipboardPopupPromise
   await adminQrPage.getByText(/Could not copy the details automatically/).waitFor()
+  assert(blockedClipboardPopup.isClosed(), 'Clipboard failure closes the waiting Messenger tab and keeps checkout open')
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Submission ID: 33333333-3333-4333-8333-333333333333/,
     'User can manually copy a traceable submission if clipboard permission fails')
   assert(await adminQrPage.evaluate(() => window.accountFixtureCalls.some(call => call.action === 'create-manual-checkout-claim:' && call.data?.selection === 'oic_nw:month')),
     'The combined action saves a signed-in, server-priced claim before opening Messenger')
+  await adminQrPage.evaluate(() => {
+    window.open = () => null
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedBankDetails = text } } })
+  })
+  await adminQrPage.getByRole('button', { name: 'COPY DETAILS & OPEN MESSENGER' }).click()
+  await adminQrPage.getByText(/Details copied\. Tap OPEN MESSENGER below/).waitFor()
+  assert.equal(await adminQrPage.getByRole('link', { name: 'OPEN MESSENGER', exact: true }).getAttribute('target'), '_blank',
+    'Popup blocking leaves a direct link that does not replace checkout')
+  assert.equal(adminQrPage.url(), checkoutUrl, 'Popup blocking must not navigate away from checkout')
   await adminQrPage.evaluate(() => localStorage.setItem('fixture-pending-orders', 'yes'))
   await adminQrPage.reload()
   await adminQrPage.getByRole('alert').filter({ hasText: /unresolved checkout/i }).waitFor()

@@ -149,6 +149,17 @@ export default function AdminQrCheckoutScreen() {
   const submitToMessenger = async () => {
     if (!supabase || !userId || claimBusy || paymentStatus !== 'ready' || !checkoutAvailability.enabled) return
     const checkoutIdentity = checkoutIdentityRef.current
+    // Reserve the new tab during the tap; browsers may block popups opened after an async request.
+    let messengerTab: Window | null = null
+    try {
+      messengerTab = window.open('about:blank', '_blank')
+      if (messengerTab) {
+        messengerTab.opener = null
+        messengerTab.document.title = 'Opening Messenger'
+        messengerTab.document.body.textContent = 'Preparing your payment details. Messenger will open shortly…'
+      }
+    } catch { /* The link below is available if a new tab is blocked. */ }
+    let messengerOpened = false
     setClaimBusy(true)
     setCopyError(false)
     setShowMessengerHelp(false)
@@ -173,8 +184,17 @@ export default function AdminQrCheckoutScreen() {
       try {
         await navigator.clipboard.writeText(message)
         if (checkoutIdentityRef.current !== checkoutIdentity) return
-        setCopyStatus('Details copied. Paste them into Messenger, attach your receipt, and send both.')
-        window.location.assign(messengerUrl)
+        if (messengerTab && !messengerTab.closed) {
+          try {
+            messengerTab.location.replace(messengerUrl)
+            messengerOpened = true
+          } catch { /* Let the customer open Messenger from the checkout link. */ }
+        }
+        if (messengerOpened) setCopyStatus('Details copied. Paste them into Messenger, attach your receipt, and send both.')
+        else {
+          setShowMessengerHelp(true)
+          setCopyStatus('Details copied. Tap OPEN MESSENGER below, paste the text, and attach your receipt.')
+        }
       } catch {
         if (checkoutIdentityRef.current !== checkoutIdentity) return
         setCopyError(true)
@@ -190,6 +210,7 @@ export default function AdminQrCheckoutScreen() {
       setCopyStatus(/^(You have three open submissions|Checkout is temporarily unavailable|Invalid checkout selection|Price verification failed)/.test(message)
         ? message : 'Could not prepare your payment details. Please try again. No payment has been confirmed.')
     } finally {
+      if (!messengerOpened) messengerTab?.close()
       if (checkoutIdentityRef.current === checkoutIdentity) setClaimBusy(false)
     }
   }
@@ -330,7 +351,7 @@ export default function AdminQrCheckoutScreen() {
         </button>
         {copyStatus && <p role={copyError ? 'alert' : 'status'} aria-live="polite" className={`qr-checkout-copy-status${copyError ? ' is-error' : ''}`}>{copyStatus}</p>}
         {claimId && <p className="qr-checkout-note">{claimStatus === 'pending_verification' ? 'We received your receipt and are checking your payment.' : 'Remember to send the copied text and your receipt through Messenger.'}</p>}
-        {showMessengerHelp && <a className="btn btn-outline qr-checkout-copy" href={messengerUrl} target="_blank" rel="noopener noreferrer">OPEN MESSENGER FOR PAYMENT HELP</a>}
+        {showMessengerHelp && <a className="btn btn-outline qr-checkout-copy" href={messengerUrl} target="_blank" rel="noopener noreferrer">OPEN MESSENGER</a>}
         <p className="qr-checkout-activation-notice"><strong>Activation notice:</strong> Please allow 24–48 hours after submitting your payment receipt for verification and license activation. If still inactive after 48 hours, message our <a href={facebookPageUrl} target="_blank" rel="noopener noreferrer">Hyperion Facebook page</a> to follow up.</p>
         <p className="qr-checkout-note">Never send your password, OTP or full bank account credentials.</p>
       </section>
