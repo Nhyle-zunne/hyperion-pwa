@@ -152,7 +152,7 @@ export default function AdminQrCheckoutScreen() {
     setClaimBusy(true)
     setCopyError(false)
     setShowMessengerHelp(false)
-    setCopyStatus('Creating an unverified payment submission for your account…')
+    setCopyStatus('Preparing your payment details…')
     try {
       const selection = items.map(item => `${item.code}:${item.term}`).join(',')
       const { data, error } = await supabase.functions.invoke('create-manual-checkout-claim', { body: { selection } })
@@ -162,7 +162,7 @@ export default function AdminQrCheckoutScreen() {
         if (error && typeof error === 'object' && 'context' in error && error.context instanceof Response) {
           try { reason = (await error.context.clone().json() as {error?: unknown}).error } catch { /* Use generic warning. */ }
         }
-        throw new Error(typeof reason === 'string' ? reason : 'Could not save your submission. Please try again.')
+        throw new Error(typeof reason === 'string' ? reason : 'Could not prepare your payment details. Please try again.')
       }
       if (data.totalAmountPhp !== totalPhp) throw new Error('Price verification failed. Do not transfer funds; refresh checkout.')
       const status = data.status === 'pending_verification' ? 'pending_verification' : 'awaiting_proof'
@@ -173,13 +173,13 @@ export default function AdminQrCheckoutScreen() {
       try {
         await navigator.clipboard.writeText(message)
         if (checkoutIdentityRef.current !== checkoutIdentity) return
-        setCopyStatus('Submission details copied. Paste them into Messenger and attach your receipt. Submission is not payment confirmation.')
+        setCopyStatus('Details copied. Paste them into Messenger, attach your receipt, and send both.')
         window.location.assign(messengerUrl)
       } catch {
         if (checkoutIdentityRef.current !== checkoutIdentity) return
         setCopyError(true)
         setShowMessengerHelp(true)
-        setCopyStatus('Submission saved, but clipboard access was blocked. Select and copy the text below, then open Messenger and attach your receipt.')
+        setCopyStatus('Could not copy the details automatically. Copy the text above, then open Messenger and send it with your receipt.')
         window.setTimeout(() => { messageRef.current?.focus(); messageRef.current?.select() }, 0)
       }
     } catch (error) {
@@ -188,7 +188,7 @@ export default function AdminQrCheckoutScreen() {
       setCopyError(true)
       setShowMessengerHelp(true)
       setCopyStatus(/^(You have three open submissions|Checkout is temporarily unavailable|Invalid checkout selection|Price verification failed)/.test(message)
-        ? message : 'Could not create a payment submission. Please retry; no new license or verified payment was recorded.')
+        ? message : 'Could not prepare your payment details. Please try again. No payment has been confirmed.')
     } finally {
       if (checkoutIdentityRef.current === checkoutIdentity) setClaimBusy(false)
     }
@@ -320,16 +320,16 @@ export default function AdminQrCheckoutScreen() {
       </section>
 
       <section className="qr-checkout-panel">
-        <h2>2. Send proof through Messenger</h2>
-        <p>Tap the button to create an <strong>unverified</strong> submission, copy its ID and details, and open Messenger. Paste the text and attach your receipt. A click alone is not proof of payment; an administrator checks the actual transfer before activation.</p>
+        <h2>2. Send your payment receipt</h2>
+        <p>After paying, tap <strong>COPY DETAILS &amp; OPEN MESSENGER</strong> below. Your details will be copied and Messenger will open. Paste the text into the chat, attach a photo or screenshot of your receipt, and send both. We'll check your payment before activating your license.</p>
         {!checkoutAvailability.enabled && <p role="status" className="qr-checkout-transfer-notice">Website checkout is disabled. Do not transfer money while purchases are paused.</p>}
         <label className="qr-checkout-copy-label" htmlFor="qr-checkout-details">Payment details</label>
         <textarea id="qr-checkout-details" ref={messageRef} readOnly value={details} rows={Math.max(9, items.length + 7)} onFocus={event => event.currentTarget.select()} />
         <button type="button" className="btn btn-primary qr-checkout-messenger" disabled={claimBusy || !checkoutAvailability.enabled} onClick={() => void submitToMessenger()}>
-          {claimBusy ? 'PREPARING SUBMISSION…' : 'COPY DETAILS & OPEN MESSENGER'}
+          {claimBusy ? 'OPENING MESSENGER…' : 'COPY DETAILS & OPEN MESSENGER'}
         </button>
         {copyStatus && <p role={copyError ? 'alert' : 'status'} aria-live="polite" className={`qr-checkout-copy-status${copyError ? ' is-error' : ''}`}>{copyStatus}</p>}
-        {claimId && <p className="qr-checkout-note">Submission ID: <strong>{claimId}</strong>. Status: {claimStatus === 'pending_verification' ? 'proof received, bank verification pending' : 'awaiting proof'}, not yet paid/verified.</p>}
+        {claimId && <p className="qr-checkout-note">{claimStatus === 'pending_verification' ? 'We received your receipt and are checking your payment.' : 'Remember to send the copied text and your receipt through Messenger.'}</p>}
         {showMessengerHelp && <a className="btn btn-outline qr-checkout-copy" href={messengerUrl} target="_blank" rel="noopener noreferrer">OPEN MESSENGER FOR PAYMENT HELP</a>}
         <p className="qr-checkout-activation-notice"><strong>Activation notice:</strong> Please allow 24–48 hours after submitting your payment receipt for verification and license activation. If still inactive after 48 hours, message our <a href={facebookPageUrl} target="_blank" rel="noopener noreferrer">Hyperion Facebook page</a> to follow up.</p>
         <p className="qr-checkout-note">Never send your password, OTP or full bank account credentials.</p>

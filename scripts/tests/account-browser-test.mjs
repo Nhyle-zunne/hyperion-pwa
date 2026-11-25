@@ -511,6 +511,13 @@ try {
   await adminQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await adminQrPage.getByRole('heading', { name: 'QR Payment Checkout' }).waitFor()
   await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
+  const proofInstructions = adminQrPage.locator('.qr-checkout-grid > .qr-checkout-panel').nth(1)
+  assert.equal(await proofInstructions.getByRole('heading', { level: 2 }).innerText(), '2. Send your payment receipt')
+  const proofHelp = await proofInstructions.locator('p').first().innerText()
+  assert.match(proofHelp, /After paying.*Messenger.*Paste.*receipt.*send/s,
+    'Customers see simple steps for sending the copied details and receipt')
+  assert.doesNotMatch(proofHelp, /unverified|submission|administrator|\bID\b/i,
+    'Customer instructions do not expose payment-review jargon')
   const saveQr = adminQrPage.getByRole('link', { name: 'Download QR Ph image' })
   assert.equal(await saveQr.getAttribute('href'), '/qr-ph.png', 'The displayed QR is the downloadable original image')
   assert.equal(await saveQr.getAttribute('download'), 'hyperion-qr-ph.png', 'QR image saves with a meaningful filename')
@@ -620,7 +627,7 @@ try {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Synthetic clipboard denied') } } })
   })
   await adminQrPage.getByRole('button', { name: 'COPY DETAILS & OPEN MESSENGER' }).click()
-  await adminQrPage.getByText(/Submission saved, but clipboard access was blocked/).waitFor()
+  await adminQrPage.getByText(/Could not copy the details automatically/).waitFor()
   assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Submission ID: 33333333-3333-4333-8333-333333333333/,
     'User can manually copy a traceable submission if clipboard permission fails')
   assert(await adminQrPage.evaluate(() => window.accountFixtureCalls.some(call => call.action === 'create-manual-checkout-claim:' && call.data?.selection === 'oic_nw:month')),
