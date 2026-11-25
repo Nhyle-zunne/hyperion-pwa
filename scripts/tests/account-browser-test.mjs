@@ -521,7 +521,7 @@ try {
   assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0, 'QR and bank details appear together without tabs')
   assert.equal(await adminQrPage.locator('.qr-checkout-bank dl > div').nth(1).locator('dd').innerText(), 'Hyperion')
   assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI \/ VYBE by BPI.*4309192465/s)
-  assert.match(await adminQrPage.locator('.qr-checkout-transfer-notice').innerText(), /Use InstaPay only\. Never use PESONet\./)
+  assert.match(await adminQrPage.locator('.qr-checkout-transfer-notice').filter({ hasText: 'Use InstaPay only' }).innerText(), /Use InstaPay only\. Never use PESONet\./)
   const activationNotice = adminQrPage.locator('.qr-checkout-activation-notice')
   assert.match(await activationNotice.innerText(), /allow 24–48 hours.*verification and license activation.*after 48 hours/s,
     'Checkout explains the manual activation timeframe and when to follow up')
