@@ -6,6 +6,7 @@ import { applyAdminCheckoutAvailability, refreshWebsiteCheckoutAvailability, use
 
 type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; license_term: 'week'|'month'|'year'; amount_php: number; status: string; access_status: string; access_expires_at: string | null; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; customer_name: string | null; customer_company: string | null; customer_school: string | null; admin_note: string | null; created_at: string }
 type ManualClaimStatus = 'awaiting_proof' | 'pending_verification' | 'approved' | 'rejected' | 'expired'
+type ManualClaimTab = Exclude<ManualClaimStatus, 'awaiting_proof'>
 type ManualClaim = { id: string; user_id: string; email: string; items: { code: string; label: string; term: string; amountPhp: number }[]; total_amount_php: number; status: ManualClaimStatus; created_at: string; expires_at: string; proof_received_at: string | null; reviewed_at: string | null; reviewed_by: string | null; admin_note: string | null }
 type ReconciliationAlert = { id: string; checkout_reference: string; checkout_session_id: string; paymongo_payment_id: string; expected_amount_php: number; observed_amount_minor: number; observed_currency: string; reason: string; created_at: string }
 function safeAdminError(error: unknown, fallback: string) {
@@ -17,7 +18,7 @@ const names: Record<string,string> = { oic_nw:'Deck OIC-NW', gmdss:'GMDSS GOC', 
 export default function AdminPaymentsScreen() {
   const [orders, setOrders] = useState<Order[]>([])
   const [claims, setClaims] = useState<ManualClaim[]>([])
-  const [claimTab, setClaimTab] = useState<ManualClaimStatus>('awaiting_proof')
+  const [claimTab, setClaimTab] = useState<ManualClaimTab>('pending_verification')
   const [claimLookup, setClaimLookup] = useState('')
   const [reconciliationAlerts, setReconciliationAlerts] = useState<ReconciliationAlert[]>([])
   const [alertLoadWarning, setAlertLoadWarning] = useState('')
@@ -102,7 +103,7 @@ export default function AdminPaymentsScreen() {
       if (!result.claim) throw new Error('No matching submission was found.')
       const claim = result.claim as ManualClaim
       setClaims(old => [claim,...old.filter(item=>item.id!==claim.id)])
-      setClaimTab(claim.status)
+      setClaimTab(claim.status === 'awaiting_proof' ? 'pending_verification' : claim.status)
       setMessage(`Found submission ${claim.id} for ${claim.email}.`)
     } catch(error) {setMessage(safeAdminError(error,'Could not find this submission.'))}
     finally {setBusy(false)}
@@ -140,6 +141,17 @@ export default function AdminPaymentsScreen() {
     return groups
   }, [orders])
   const visibleOrders = ordersByStatus[statusTab]
+  const claimsByTab = useMemo(() => {
+    const groups: Record<ManualClaimTab, ManualClaim[]> = {
+      pending_verification: [], approved: [], rejected: [], expired: []
+    }
+    for (const claim of claims) {
+      const tab = claim.status === 'awaiting_proof' ? 'pending_verification' : claim.status
+      groups[tab].push(claim)
+    }
+    return groups
+  }, [claims])
+  const visibleClaims = claimsByTab[claimTab]
   const paymentStatusLabel = (order: Order) => {
     const group = orderGroup(order)
     if (group === 'active') return 'ACTIVE'
@@ -250,17 +262,16 @@ export default function AdminPaymentsScreen() {
         </form>
         <div className="admin-payment-status-tabs" role="tablist" aria-label="Filter Messenger payment claims" style={{ gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,135px),1fr))' }}>
           {([
-            ['awaiting_proof','AWAITING PROOF'],
             ['pending_verification','PENDING VERIFICATION'],
             ['approved','APPROVED'],
             ['rejected','REJECTED'],
             ['expired','EXPIRED'],
           ] as const).map(([status,label]) => <button key={status} type="button" role="tab" aria-selected={claimTab === status} className={`admin-payment-status-tab${claimTab === status ? ' is-active' : ''}`} onClick={() => setClaimTab(status)}>
-            {label} <span className="admin-payment-status-count">{claims.filter(claim => claim.status === status).length}</span>
+            {label} <span className="admin-payment-status-count">{claimsByTab[status].length}</span>
           </button>)}
         </div>
         <div role="tabpanel" aria-label={`${claimTab.replace('_',' ')} Messenger submissions`} className="admin-claim-grid">
-          {claims.filter(claim => claim.status === claimTab).map(claim => <article className="admin-claim-card" key={claim.id}>
+          {visibleClaims.map(claim => <article className="admin-claim-card" key={claim.id}>
             <p><strong>{claim.email}</strong></p>
             <p><span className="admin-payment-detail-label">Submission ID</span><strong style={{ userSelect:'all' }}>{claim.id}</strong></p>
             <p><span className="admin-payment-detail-label">Started</span>{new Date(claim.created_at).toLocaleString()}</p>
@@ -276,7 +287,7 @@ export default function AdminPaymentsScreen() {
               <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void reviewClaim(claim.id,'reject')}>Reject</button>
             </div>}
           </article>)}
-          {!claims.some(claim => claim.status === claimTab) && <p>No {claimTab.replace('_',' ')} Messenger submissions.</p>}
+          {!visibleClaims.length && <p>No {claimTab.replace('_',' ')} Messenger submissions.</p>}
         </div>
       </section>
       <h2 style={{ margin:'1.2rem 0 .6rem' }}>Historical payment records</h2>

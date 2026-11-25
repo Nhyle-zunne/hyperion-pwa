@@ -50,7 +50,7 @@ export function parseManualCheckoutItems(raw: string | null, products: readonly 
   return items
 }
 
-export function formatMessengerPaymentDetails(email: string, items: readonly ManualCheckoutItem[], claimId?: string, claimStatus?: 'awaiting_proof'|'pending_verification'): string {
+export function formatMessengerPaymentDetails(email: string, items: readonly ManualCheckoutItem[], claimId?: string): string {
   const total = items.reduce((sum, item) => sum + item.amountPhp, 0)
   return [
     'Hyperion Maritime - Payment Verification',
@@ -61,9 +61,7 @@ export function formatMessengerPaymentDetails(email: string, items: readonly Man
     ...items.map(item => `${item.label} (${termNames[item.term]}): PHP ${item.amountPhp.toFixed(2)}`),
     `Total amount: PHP ${total.toFixed(2)}`,
     '',
-    ...(claimId ? [claimStatus === 'pending_verification'
-      ? 'Status: Proof received; pending bank verification (NOT payment confirmation).'
-      : 'Status: Awaiting proof (NOT payment confirmation).'] : []),
+    ...(claimId ? ['Status: Pending verification (NOT payment confirmation).'] : []),
     'I have attached my payment receipt. Please verify my payment and activate the selected licenses.',
   ].join('\n')
 }
