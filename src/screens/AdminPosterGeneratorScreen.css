@@ -1,8 +1,8 @@
-.admin-poster { max-width: 1480px; margin: 0 auto; padding: 18px; width: 100%; box-sizing: border-box; }
+.admin-poster { max-width: 1320px; margin: 0 auto; padding: 18px; width: 100%; box-sizing: border-box; }
 .admin-poster__heading { margin: 24px 0; }
 .admin-poster__heading h1 { margin: 0 0 8px; color: var(--text); font-size: clamp(1.5rem, 3vw, 2rem); }
 .admin-poster__heading p { color: var(--text-muted); margin: 0; line-height: 1.55; }
-.admin-poster__grid { display: grid; grid-template-columns: minmax(310px, 410px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.admin-poster__grid { display: grid; grid-template-columns: minmax(340px, 430px) minmax(0, 1fr); gap: 24px; align-items: start; }
 .admin-poster__fields, .admin-poster__preview { border: 1px solid var(--border); background: var(--bg-card); padding: 20px; min-width: 0; border-radius: 0; }
 .admin-poster__fields h2 { color: var(--text); font-size: .9rem; letter-spacing: .06em; margin: 2px 0 16px; }
 .admin-poster__fields h2:not(:first-child) { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); }
@@ -21,7 +21,7 @@
 .admin-poster__preview-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .admin-poster__preview-heading h2 { margin: 0; color: var(--text); font-size: .9rem; letter-spacing: .06em; }
 .admin-poster__preview-heading span { color: var(--text-muted); font-size: .76rem; }
-.admin-poster__canvas { display: block; width: 100%; aspect-ratio: 1; height: auto; border: 1px solid var(--border); background: #dfe7f1; box-sizing: border-box; }
+.admin-poster__canvas { display: block; width: 100%; max-width: 760px; aspect-ratio: 1; height: auto; margin: 0 auto; border: 1px solid var(--border); background: #dfe7f1; box-sizing: border-box; }
 .admin-poster__download { display: block; width: 100%; min-height: 48px; margin-top: 14px; border-radius: 0; font-weight: 800; }
 .admin-poster__download:disabled { cursor: not-allowed; opacity: .5; }
 .admin-poster__error { color: var(--danger, #b91c1c); margin: 10px 0; font-size: .88rem; }
