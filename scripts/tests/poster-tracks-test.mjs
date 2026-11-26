@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { POSTER_TRACKS, POSTER_DEGREES, fullPosterName, formatPosterDate } from '../../src/lib/posterTracks.mjs'
+import { POSTER_TRACKS, fullPosterName, formatPosterDate } from '../../src/lib/posterTracks.mjs'
 
 test('all five licensure tracks are available', () => {
   assert.deepEqual(POSTER_TRACKS.map(track => [track.id, track.label, track.prefix]), [
@@ -13,20 +13,12 @@ test('all five licensure tracks are available', () => {
   assert.equal(new Set(POSTER_TRACKS.map(track => track.id)).size, 5)
 })
 
-test('degrees are Marine Transportation and Marine Engineering', () => {
-  assert.deepEqual(POSTER_DEGREES.map(degree => degree.label), ['Marine Transportation', 'Marine Engineering'])
-  assert.deepEqual(POSTER_DEGREES.map(degree => degree.value), [
-    'Bachelor of Science in Marine Transportation',
-    'Bachelor of Science in Marine Engineering',
-  ])
-})
-
 test('deck and engine degrees and licensure headings follow track selection', () => {
   const deck = POSTER_TRACKS.find(track => track.id === 'master_mariner')
   const engine = POSTER_TRACKS.find(track => track.id === 'chief_engineer')
   for (const track of POSTER_TRACKS) {
     const engineering = ['oic_ew', 'chief_engineer'].includes(track.id)
-    assert.equal(track.defaultDegree, POSTER_DEGREES[engineering ? 1 : 0].value)
+    assert.equal(track.defaultDegree, `Bachelor of Science in Marine ${engineering ? 'Engineering' : 'Transportation'}`)
   }
   assert.match(deck.defaultDegree, /Marine Transportation/)
   assert.equal(deck.examTitle, 'MARINA LICENSURE EXAMINATION\nFOR DECK MANAGEMENT LEVEL')

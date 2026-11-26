@@ -3,11 +3,6 @@ const marineEngine = 'Bachelor of Science in Marine Engineering'
 const examHeading = 'MARINA LICENSURE EXAMINATION'
 const examTitle = description => examHeading + '\n' + description
 
-export const POSTER_DEGREES = Object.freeze([
-  { label: 'Marine Transportation', value: marineDeck },
-  { label: 'Marine Engineering', value: marineEngine },
-])
-
 export const POSTER_TRACKS = Object.freeze([
   { id: 'oic_nw', label: 'OIC-NW', prefix: 'OIC-NW', defaultDegree: marineDeck, examTitle: examTitle('FOR MARINE DECK OFFICERS') },
   { id: 'gmdss', label: 'GMDSS GOC', prefix: 'OIC-NW', defaultDegree: marineDeck, examTitle: examTitle('FOR GMDSS RADIO OPERATORS') },

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import AdminNavigation from '../components/AdminNavigation'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import { supabase } from '../lib/supabase'
-import { POSTER_DEGREES, POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
+import { POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
 import { removePortraitBackground } from '../lib/posterPortrait'
 import { downloadPoster, loadPosterArtwork, renderPoster } from '../lib/renderPoster'
 import './AdminPosterGeneratorScreen.css'
@@ -140,9 +140,6 @@ export default function AdminPosterGeneratorScreen() {
         <label htmlFor="poster-name">Full name</label>
         <input id="poster-name" value={name} maxLength={120} placeholder="e.g. Sheldon R. Abarquez" onChange={event => setName(event.target.value)} />
         <small className="admin-poster__hint">Appears as: {fullPosterName(trackId, name) || `${track.prefix} [FULL NAME]`.trim()}</small>
-
-        <label htmlFor="poster-degree">Degree or qualification</label>
-        <input id="poster-degree" readOnly value={POSTER_DEGREES.find(option => option.value === track.defaultDegree)?.label ?? track.defaultDegree} />
 
         <label htmlFor="poster-date">Examination date</label>
         <input id="poster-date" type="date" value={date} onChange={event => setDate(event.target.value)} />

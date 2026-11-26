@@ -30,8 +30,8 @@ test('four admin links form equal columns and a mobile two-by-two grid', () => {
   assert.ok(/@media\s*\(max-width:\s*760px\)[\s\S]*?\.admin-page-navigation__sections\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/.test(navigationStyles), 'Mobile navigation has two columns')
 })
 
-test('poster degree follows the selected track and photo positioning uses percentages', () => {
-  assert.match(editor, /<input id="poster-degree" readOnly.*track\.defaultDegree/)
+test('the poster renders the track degree without an editor field and positions photos by percentage', () => {
+  assert.doesNotMatch(editor, /poster-degree|Degree or qualification/)
   assert.match(renderer, /drawFittedText\(ctx, data.track.defaultDegree,/)
   assert.match(editor, /xOffsetPercent/)
   assert.match(editor, /yOffsetPercent/)
