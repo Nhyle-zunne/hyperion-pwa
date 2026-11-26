@@ -12,9 +12,9 @@ function profileName(user: any): string | null {
     .find((value: unknown) => typeof value === 'string' && value.trim())
   return typeof name === 'string' ? name.trim() : null
 }
-function trackCategory(user: any): 'DECK' | 'ENGINE' | 'GMDSS' | null {
+function trackCategory(user: any): 'DECK' | 'ENGINE' | 'GMDSS' | 'DECK+GMDSS' | null {
   const value = user?.user_metadata?.track_category
-  return value === 'DECK' || value === 'ENGINE' || value === 'GMDSS' ? value : null
+  return value === 'DECK' || value === 'ENGINE' || value === 'GMDSS' || value === 'DECK+GMDSS' ? value : null
 }
 function expiryForTerm(base: Date, term: LicenseTerm) {
   const result = new Date(base)
@@ -98,7 +98,7 @@ Deno.serve(async req => {
     const ids = [...new Set([...rows.map(row => row.user_id), ...claimRows.map(row => row.user_id)])];
     const emails: Record<string,string> = {};
     const customerNames: Record<string,string> = {};
-    const customerCategories: Record<string, 'DECK' | 'ENGINE' | 'GMDSS'> = {};
+    const customerCategories: Record<string, 'DECK' | 'ENGINE' | 'GMDSS' | 'DECK+GMDSS'> = {};
     // One paginated Auth request replaces one getUserById request per order owner.
     // The current dashboard is capped at 200 orders; stop as soon as every distinct
     // owner is found, and retain pagination for accounts beyond the first 1,000.

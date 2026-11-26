@@ -11,7 +11,7 @@ const compile = path => ts.transpileModule(readFileSync(new URL('../../' + path,
 const codes = ['oic_nw', 'gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt']
 const userId = '11111111-1111-4111-8111-111111111111'
 const adminEmail = 'admin@fixture.invalid'
-const accounts = Array.from({ length: 381 }, (_, i) => ({ id: i ? `22222222-2222-4222-8222-${String(i).padStart(12, '0')}` : userId, email: `user${i}@fixture.invalid`, created_at: '2025-01-01T00:00:00Z', user_metadata: { full_name: `Member ${i}`, ...(i === 0 ? { track_category: 'ENGINE' } : i === 1 ? { track_category: 'INVALID' } : {}) } }))
+const accounts = Array.from({ length: 381 }, (_, i) => ({ id: i ? `22222222-2222-4222-8222-${String(i).padStart(12, '0')}` : userId, email: `user${i}@fixture.invalid`, created_at: '2025-01-01T00:00:00Z', user_metadata: { full_name: `Member ${i}`, ...(i === 0 ? { track_category: 'ENGINE' } : i === 1 ? { track_category: 'INVALID' } : i === 2 ? { track_category: 'DECK+GMDSS' } : {}) } }))
 const row = (product_code, status, expires_at) => ({ id: product_code, user_id: userId, product_code, track_id: product_code, status, expires_at, license_term: 'month', granted_at: '2025-01-01T00:00:00Z', renewed_at: null, order_id: null })
 const website = [row('oic_nw', 'active', '2099-01-01T00:00:00Z'), row('gmdss', 'active', '2025-01-01T00:00:00Z'), row('engine_ew', 'revoked', '2099-01-01T00:00:00Z'), row('deck_mgt', 'active', null)]
 const play = [{ ...row('oic_nw', 'active', '2099-02-01T00:00:00Z'), updated_at: '2025-01-01T00:00:00Z' }]
@@ -80,7 +80,9 @@ try {
   assert.equal(compact.users.length, accounts.length, 'Compaction must not truncate accounts')
   assert.equal(compact.users[0].track_category, 'ENGINE', 'A registered account displays its self-selected track category')
   assert.equal(compact.users[1].track_category, null, 'Invalid or missing self-reported categories are hidden')
+  assert.equal(compact.users.find(account => account.id === accounts[2].id).track_category, 'DECK+GMDSS', 'Admin lists preserve both deck-side tags')
   assert.equal(legacy.users[0].track_category, 'ENGINE', 'Legacy admin responses include the same account tag')
+  assert.equal(legacy.users.find(account => account.id === accounts[2].id).track_category, 'DECK+GMDSS', 'Legacy admin lists also preserve both tags')
   assert.equal(compact.users.find(account => account.id === accounts[380].id).last_access_source, 'website_activity', 'The final account batch retains activity records')
   assert.equal(compact.users.find(account => account.id === accounts[380].id).retention_status, 'pending_payment_hold', 'Pending orders in the final batch protect accounts')
   assert.equal(compact.users.find(account => account.id === accounts[150].id).retention_status, 'admin_audit_hold', 'Middle-batch admin audit records remain protected')
