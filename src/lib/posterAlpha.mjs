@@ -107,5 +107,8 @@ export function findPortraitFrame({ width, height, data }) {
   const headRows = rows.filter(row => row.y <= headBottom)
   const left = Math.min(...headRows.map(row => row.left))
   const right = Math.max(...headRows.map(row => row.right))
-  return { top, bottom, headCenter: (left + right) / 2, headWidth: right - left }
+  const headWidth = right - left
+  const shoulderRows = rows.filter(row => row.y >= top + headWidth && row.y <= top + headWidth * 2.1)
+  const shoulderRight = Math.max(right, ...shoulderRows.map(row => row.right))
+  return { top, bottom, headCenter: (left + right) / 2, headWidth, shoulderRight }
 }

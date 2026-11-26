@@ -43,7 +43,7 @@ test('framing finds the head above offset shoulders and ignores faint background
       data[(y * width + x) * 4 + 3] = head || shoulders ? 255 : 24
     }
   }
-  assert.deepEqual(findPortraitFrame({ width, height, data }), { top: 26, bottom: 114, headCenter: 60, headWidth: 24 })
+  assert.deepEqual(findPortraitFrame({ width, height, data }), { top: 26, bottom: 114, headCenter: 60, headWidth: 24, shoulderRight: 98 })
   assert.equal(findPortraitFrame({ width, height, data: data.fill(0) }), null)
 })
 

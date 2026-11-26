@@ -82,8 +82,11 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   let fadeEnd: number
   let shoulderBottom = 0
   if (frame) {
-    const portraitScale = 236 / frame.headWidth * scale
-    const left = 1000 + xOffset - frame.headCenter * portraitScale
+    const headCenter = 1000
+    const shoulderRoom = ART_SIZE - 16 - headCenter
+    const shoulderWidth = frame.shoulderRight - frame.headCenter
+    const portraitScale = Math.min(236 / frame.headWidth, shoulderRoom / shoulderWidth) * scale
+    const left = headCenter + xOffset - frame.headCenter * portraitScale
     const headTop = 271 + yOffset
     shoulderBottom = headTop + frame.headWidth * portraitScale * 1.9
     const top = headTop - frame.top * portraitScale
