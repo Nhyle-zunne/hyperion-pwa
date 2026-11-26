@@ -1,7 +1,7 @@
 const marineDeck = 'Bachelor of Science in Marine Transportation'
 const marineEngine = 'Bachelor of Science in Marine Engineering'
 const examHeading = 'MARINA LICENSURE EXAMINATION'
-const examTitle = description => `${examHeading}\\n${description}`
+const examTitle = description => examHeading + '\n' + description
 
 export const POSTER_DEGREES = Object.freeze([
   { label: 'Marine Transportation', value: marineDeck },
@@ -16,14 +16,14 @@ export const POSTER_TRACKS = Object.freeze([
 ])
 
 export function fullPosterName(trackId, name) {
-  const clean = String(name || '').trim().replace(/\\s+/g, ' ')
+  const clean = String(name || '').trim().replace(/\s+/g, ' ')
   if (!clean) return ''
   const prefix = POSTER_TRACKS.find(track => track.id === trackId)?.prefix
-  return !prefix || clean.toUpperCase().startsWith(`${prefix} `) ? clean : `${prefix} ${clean}`
+  return !prefix || clean.toUpperCase().startsWith(prefix + ' ') ? clean : prefix + ' ' + clean
 }
 
 export function formatPosterDate(value) {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return ''
   const [year, month, day] = value.split('-').map(Number)
   const date = new Date(Date.UTC(year, month - 1, day))
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return ''
