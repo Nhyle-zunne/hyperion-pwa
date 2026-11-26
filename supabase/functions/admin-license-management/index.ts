@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { gzipSync } from 'node:zlib'
 
 type LicenseTerm = 'week' | 'month' | 'year'
 const PRODUCTS = [
@@ -29,7 +30,7 @@ function json(req: Request, body: unknown, status = 200) {
   })
   if (acceptsGzip && new TextEncoder().encode(serialized).byteLength >= 4096) {
     headers.set('Content-Encoding', 'gzip')
-    return new Response(new Blob([serialized]).stream().pipeThrough(new CompressionStream('gzip')), { status, headers })
+    return new Response(new Uint8Array(gzipSync(serialized)), { status, headers })
   }
   return new Response(serialized, { status, headers })
 }
