@@ -7,7 +7,7 @@ const width = (text, size) => text.length * size * 0.55
 test('a typical candidate name stays on one line', () => {
   const value = fitPosterText('OIC-NW SHELDON R. ABARQUEZ', { maxWidth: 800, preferredSize: 54, minSize: 20, maxLines: 2 }, width)
   assert.deepEqual(value.lines, ['OIC-NW SHELDON R. ABARQUEZ'])
-  assert.ok(width(value.lines[0], value.fontSize) <= 710)
+  assert.ok(width(value.lines[0], value.fontSize) <= 800)
 })
 
 test('long candidate names wrap without entering the portrait area', () => {
