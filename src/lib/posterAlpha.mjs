@@ -25,6 +25,60 @@ export function applyPortraitAlpha(image, mask, maskWidth, maskHeight) {
   return { width: image.width, height: image.height, data }
 }
 
+/**
+ * On an even backdrop, retain contrasting details that touch the detected
+ * subject. Grow only a short distance from the model's confident foreground.
+ */
+export function recoverPortraitEdges(source, cutout) {
+  const { width, height, data } = source
+  const left = Math.floor(width * 0.03)
+  const right = width - 1 - left
+  const upper = Math.floor(height * 0.04)
+  const lower = Math.floor(height * 0.28)
+  const corners = [upper * width + left, upper * width + right, lower * width + left, lower * width + right]
+  const reference = corners[0] * 4
+  const contrast = offset => Math.max(
+    Math.abs(data[offset] - data[reference]),
+    Math.abs(data[offset + 1] - data[reference + 1]),
+    Math.abs(data[offset + 2] - data[reference + 2])
+  )
+
+  if (corners.some(pixel => {
+    const offset = pixel * 4
+    return data[offset + 3] < 245 || cutout.data[offset + 3] > 32 || contrast(offset) > 18
+  })) return
+
+  const pixels = width * height
+  const depth = new Uint8Array(pixels)
+  const queue = new Uint32Array(pixels)
+  let tail = 0
+  for (let i = 0; i < pixels; i++) {
+    if (cutout.data[i * 4 + 3] < 184) continue
+    depth[i] = 1
+    queue[tail++] = i
+  }
+
+  const maxDepth = Math.min(200, Math.ceil(Math.min(width, height) * 0.12))
+  const restore = (pixel, nextDepth) => {
+    if (depth[pixel]) return
+    const offset = pixel * 4
+    if (contrast(offset) < 34 || data[offset + 3] === 0) return
+    depth[pixel] = nextDepth
+    queue[tail++] = pixel
+    cutout.data[offset + 3] = data[offset + 3]
+  }
+  for (let head = 0; head < tail; head++) {
+    const pixel = queue[head]
+    if (depth[pixel] > maxDepth) continue
+    const nextDepth = depth[pixel] + 1
+    const x = pixel % width
+    if (x > 0) restore(pixel - 1, nextDepth)
+    if (x < width - 1) restore(pixel + 1, nextDepth)
+    if (pixel >= width) restore(pixel - width, nextDepth)
+    if (pixel < pixels - width) restore(pixel + width, nextDepth)
+  }
+}
+
 export function findPortraitFrame({ width, height, data }) {
   const step = Math.max(1, Math.floor(Math.max(width, height) / 220))
   const minRowPixels = Math.max(2, Math.ceil(width * 0.035 / step))

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { applyPortraitAlpha, findPortraitFrame } from '../../src/lib/posterAlpha.mjs'
+import { applyPortraitAlpha, findPortraitFrame, recoverPortraitEdges } from '../../src/lib/posterAlpha.mjs'
 
 test('background removal changes alpha without changing face, hair, or uniform RGB', () => {
   const image = { width: 2, height: 2, data: Uint8ClampedArray.from([
@@ -45,4 +45,31 @@ test('framing finds the head above offset shoulders and ignores faint background
   }
   assert.deepEqual(findPortraitFrame({ width, height, data }), { top: 26, bottom: 114, headCenter: 60, headWidth: 24 })
   assert.equal(findPortraitFrame({ width, height, data: data.fill(0) }), null)
+})
+
+test('restores connected gold uniform trim without recovering the plain background or disconnected details', () => {
+  const width = 50
+  const height = 50
+  const data = new Uint8ClampedArray(width * height * 4)
+  const cutout = new Uint8ClampedArray(data.length)
+  const color = (x, y, rgb, alpha) => {
+    const i = (y * width + x) * 4
+    data.set([...rgb, 255], i)
+    cutout.set([...rgb, alpha], i)
+  }
+  const background = [246, 244, 236]
+  const gold = [218, 170, 64]
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) color(x, y, background, 0)
+  }
+  for (let y = 28; y <= 32; y++) {
+    for (let x = 14; x <= 35; x++) color(x, y, x < 19 || x > 30 ? gold : [20, 22, 30], x < 19 || x > 30 ? 32 : 255)
+  }
+  color(11, 30, gold, 0)
+  recoverPortraitEdges({ width, height, data }, { width, height, data: cutout })
+  const rgba = (x, y) => [...cutout.slice((y * width + x) * 4, (y * width + x) * 4 + 4)]
+  assert.deepEqual(rgba(14, 30), [...gold, 255])
+  assert.deepEqual(rgba(35, 30), [...gold, 255])
+  assert.deepEqual(rgba(13, 30), [...background, 0])
+  assert.deepEqual(rgba(11, 30), [...gold, 0])
 })

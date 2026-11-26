@@ -8,3 +8,8 @@ export function applyPortraitAlpha(
 export type PortraitFrame = { top: number; bottom: number; headCenter: number; headWidth: number }
 
 export function findPortraitFrame(image: { width: number; height: number; data: Uint8ClampedArray }): PortraitFrame | null
+
+export function recoverPortraitEdges(
+  source: { width: number; height: number; data: Uint8ClampedArray },
+  cutout: { width: number; height: number; data: Uint8ClampedArray }
+): void

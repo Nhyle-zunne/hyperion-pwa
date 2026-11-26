@@ -75,7 +75,9 @@ test('renders sample-aligned typography and a large two-line track heading', () 
   assert.ok(exam[1].y - exam[0].y >= 78)
   assert.ok(dividers[1] - exam[1].y <= 35)
   const school = calls.find(call => call.text === 'UNIVERSITY OF CEBU METC')
-  assert.ok(school.y > dividers[1] && school.y < 890)
+  assert.ok(school.y > dividers[1] && school.y <= 872)
+
+  assert.ok(fontSize(school.font) >= 44)
 
   calls.length = 0
   renderPoster(canvas, {}, { ...data, company: 'OSM Thome Ship Management Incorporated', track: POSTER_TRACKS.find(track => track.id === 'gmdss') })
@@ -86,6 +88,11 @@ test('renders sample-aligned typography and a large two-line track heading', () 
   assert.equal(company.x, school.x)
   assert.ok(fontSize(company.font) > 22)
   assert.ok(company.y > school.y && company.y < dividers[2])
+
+  calls.length = 0
+  renderPoster(canvas, {}, { ...data, school: 'Palompon Institute of Technology', company: 'Scanmar Maritime' })
+  assert.ok(fontSize(calls.find(call => call.text === 'PALOMPON INSTITUTE OF TECHNOLOGY').font) >= 39)
+  assert.ok(fontSize(calls.find(call => call.text === 'SCANMAR MARITIME').font) >= 37)
 
   calls.length = 0
   renderPoster(canvas, {}, { ...data, name: 'Diosdado Macapagal Arroyo' })

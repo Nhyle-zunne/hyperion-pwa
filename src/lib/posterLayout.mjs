@@ -4,8 +4,8 @@ export const POSTER_TEXT_LAYOUT = Object.freeze({
   degree: Object.freeze({ x: 400, baseline: 499, maxWidth: 650, fontSize: 37, minSize: 19 }),
   date: Object.freeze({ x: 421, baseline: 579, maxWidth: 670, fontSize: 41, minSize: 26 }),
   exam: Object.freeze({ x: 411, baseline: 736, maxWidth: 748, fontSize: 72, minSize: 29, maxLines: 2, lineHeight: 84 }),
-  school: Object.freeze({ x: 471, baseline: 882, maxWidth: 615, fontSize: 35, minSize: 17, maxLines: 2, lineHeight: 23, singleLineMinSize: 24 }),
-  company: Object.freeze({ x: 471, baseline: 925, maxWidth: 650, fontSize: 30, minSize: 14 }),
+  school: Object.freeze({ x: 447, baseline: 870, maxWidth: 700, fontSize: 47, minSize: 17, maxLines: 2, lineHeight: 34, singleLineMinSize: 32, wrappedFontSize: 31 }),
+  company: Object.freeze({ x: 447, baseline: 925, maxWidth: 700, fontSize: 38, minSize: 14 }),
 })
 
 export function fitPosterText(text, { maxWidth, preferredSize, minSize, maxLines }, measureWidth) {

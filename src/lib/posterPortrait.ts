@@ -1,4 +1,4 @@
-import { applyPortraitAlpha, findPortraitFrame } from './posterAlpha.mjs'
+import { applyPortraitAlpha, findPortraitFrame, recoverPortraitEdges } from './posterAlpha.mjs'
 
 import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_internal.js?url'
 import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url'
@@ -68,6 +68,7 @@ export async function removePortraitBackground(file: File) {
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height)
       const mask = foreground.getAsFloat32Array()
       const cutout = applyPortraitAlpha(pixels, mask, foreground.width, foreground.height)
+      recoverPortraitEdges(pixels, cutout)
       const frame = findPortraitFrame(cutout)
       if (!frame) throw new Error('No person was detected in the portrait.')
       context.putImageData(new ImageData(cutout.data, cutout.width, cutout.height), 0, 0)
