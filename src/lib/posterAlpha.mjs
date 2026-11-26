@@ -44,7 +44,8 @@ export function findPortraitFrame({ width, height, data }) {
 
   if (!rows.length) return null
   const top = rows[0].y
-  const personHeight = rows[rows.length - 1].y - top + step
+  const bottom = Math.min(height, rows[rows.length - 1].y + step)
+  const personHeight = bottom - top
   if (personHeight < height * 0.12) return null
 
   // Read the upper part of the silhouette so broad or uneven shoulders do not set the crop.
@@ -52,5 +53,5 @@ export function findPortraitFrame({ width, height, data }) {
   const headRows = rows.filter(row => row.y <= headBottom)
   const left = Math.min(...headRows.map(row => row.left))
   const right = Math.max(...headRows.map(row => row.right))
-  return { top, headCenter: (left + right) / 2, headWidth: right - left }
+  return { top, bottom, headCenter: (left + right) / 2, headWidth: right - left }
 }

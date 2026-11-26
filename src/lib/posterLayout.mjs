@@ -46,3 +46,17 @@ export function fitPosterText(text, { maxWidth, preferredSize, minSize, maxLines
 export function posterOffsetFromPercent(percent, dimension) {
   return dimension * percent / 100
 }
+
+export function posterPortraitBlend(headTop, headWidth, visibleBottom, yOffset) {
+  const torsoStart = headTop + headWidth * 1.52
+  const lowerTorso = visibleBottom - torsoStart
+  const targetBottom = Math.min(1105, 1055 + yOffset)
+  const extension = lowerTorso >= 72
+    ? Math.max(0, Math.min(225, lowerTorso * 1.6, targetBottom - visibleBottom))
+    : 0
+  const fadeEnd = Math.min(1105, visibleBottom + extension)
+  const fadeStart = lowerTorso >= 72
+    ? Math.min(fadeEnd - 24, Math.max(torsoStart, fadeEnd - 235))
+    : fadeEnd - 64
+  return { torsoStart, extension, fadeStart, fadeEnd }
+}

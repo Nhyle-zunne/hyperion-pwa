@@ -26,3 +26,6 @@ export const POSTER_TEXT_LAYOUT: Readonly<{
   school: PosterTextLayout
   company: PosterTextLayout
 }>
+
+export function posterPortraitBlend(headTop: number, headWidth: number, visibleBottom: number, yOffset: number):
+  { torsoStart: number; extension: number; fadeStart: number; fadeEnd: number }

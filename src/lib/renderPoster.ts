@@ -1,4 +1,4 @@
-import { fitPosterText, posterOffsetFromPercent, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
 import { formatPosterDate, fullPosterName } from './posterTracks.mjs'
 import type { PortraitFrame } from './posterAlpha.mjs'
 import type { PosterTrack } from './posterTracks.mjs'
@@ -59,6 +59,12 @@ function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
   layout.lines.forEach((line, index) => ctx.fillText(line, options.x, firstBaseline + index * lineHeight))
 }
 
+function addPortraitFeather(gradient: CanvasGradient, fadeIn: boolean) {
+  for (const [position, opacity] of [[0, 0], [0.25, 0.16], [0.5, 0.5], [0.75, 0.84], [1, 1]]) {
+    gradient.addColorStop(position, `rgba(0, 0, 0, ${fadeIn ? opacity : 1 - opacity})`)
+  }
+}
+
 function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement, data: PosterContent) {
   const scale = Math.max(70, Math.min(140, data.scalePercent)) / 100
   const xOffset = posterOffsetFromPercent(data.xOffsetPercent, ART_SIZE)
@@ -72,11 +78,38 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   const layerCtx = layer.getContext('2d')
   if (!layerCtx) return
   const frame = data.portraitFrame
+  let fadeStart: number
+  let fadeEnd: number
   if (frame) {
     const portraitScale = 236 / frame.headWidth * scale
     const left = 1000 + xOffset - frame.headCenter * portraitScale
-    const top = 271 + yOffset - frame.top * portraitScale
-    layerCtx.drawImage(portrait, left, top, portrait.naturalWidth * portraitScale, portrait.naturalHeight * portraitScale)
+    const headTop = 271 + yOffset
+    const top = headTop - frame.top * portraitScale
+    const width = portrait.naturalWidth * portraitScale
+    const blend = posterPortraitBlend(headTop, frame.headWidth * portraitScale, top + frame.bottom * portraitScale, yOffset)
+    fadeStart = blend.fadeStart
+    fadeEnd = blend.fadeEnd
+
+    if (blend.extension > 0) {
+      const sourceWidth = portrait.naturalWidth
+      const sourceTorso = (blend.torsoStart - top) / portraitScale
+      layerCtx.drawImage(portrait, 0, 0, sourceWidth, sourceTorso, left, top, width, blend.torsoStart - top)
+
+      // Continue the existing clothing below the shoulders, gradually increasing
+      // the stretch toward the part of the cutout covered by the lower feather.
+      const torsoHeight = frame.bottom - sourceTorso
+      const bands = 12
+      const outputY = (fraction: number) =>
+        blend.torsoStart + torsoHeight * portraitScale * fraction + blend.extension * fraction ** 2
+      for (let band = 0; band < bands; band++) {
+        const start = band / bands
+        const end = (band + 1) / bands
+        layerCtx.drawImage(portrait, 0, sourceTorso + torsoHeight * start, sourceWidth, torsoHeight / bands,
+          left, outputY(start), width, outputY(end) - outputY(start))
+      }
+    } else {
+      layerCtx.drawImage(portrait, left, top, width, portrait.naturalHeight * portraitScale)
+    }
   } else {
     const baseWidth = 565
     const baseHeight = 840
@@ -90,18 +123,18 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
     const cropX = (portrait.naturalWidth - cropWidth) / 2
     const cropY = (portrait.naturalHeight - cropHeight) * 0.15
     layerCtx.drawImage(portrait, cropX, cropY, cropWidth, cropHeight, x, y, width, height)
+    fadeEnd = Math.min(1105, y + height)
+    fadeStart = fadeEnd - 230
   }
 
   layerCtx.globalCompositeOperation = 'destination-in'
   const sideFade = layerCtx.createLinearGradient(720, 0, 875, 0)
-  sideFade.addColorStop(0, 'rgba(0, 0, 0, 0)')
-  sideFade.addColorStop(1, 'rgba(0, 0, 0, 1)')
+  addPortraitFeather(sideFade, true)
   layerCtx.fillStyle = sideFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
 
-  const lowerFade = layerCtx.createLinearGradient(0, 875, 0, 1105)
-  lowerFade.addColorStop(0, 'rgba(0, 0, 0, 1)')
-  lowerFade.addColorStop(1, 'rgba(0, 0, 0, 0)')
+  const lowerFade = layerCtx.createLinearGradient(0, fadeStart, 0, fadeEnd)
+  addPortraitFeather(lowerFade, false)
   layerCtx.fillStyle = lowerFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
   layerCtx.globalCompositeOperation = 'source-over'

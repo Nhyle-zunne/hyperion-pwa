@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fitPosterText, posterOffsetFromPercent } from '../../src/lib/posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend } from '../../src/lib/posterLayout.mjs'
 
 const width = (text, size) => text.length * size * 0.55
 
@@ -38,3 +38,21 @@ test('poster headings keep readable two-line sizing instead of shrinking to one 
   assert.equal(value.fontSize, 47)
 })
 
+
+test('short portraits extend from below the shoulders and fade to transparency at the new edge', () => {
+  const blend = posterPortraitBlend(271, 236, 782, 0)
+  assert.ok(blend.torsoStart > 610 && blend.torsoStart < 675)
+  assert.ok(blend.extension >= 200 && blend.extension <= 225)
+  assert.ok(blend.fadeStart > 782 - 65)
+  assert.equal(blend.fadeEnd, 782 + blend.extension)
+})
+
+test('full portraits and head-only crops use a fade without stretching', () => {
+  const full = posterPortraitBlend(271, 236, 1165, 0)
+  assert.equal(full.extension, 0)
+  assert.equal(full.fadeEnd, 1105)
+  const head = posterPortraitBlend(271, 236, 620, 0)
+  assert.equal(head.extension, 0)
+  assert.ok(head.fadeStart < head.fadeEnd)
+  assert.equal(head.fadeEnd, 620)
+})
