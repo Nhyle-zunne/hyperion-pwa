@@ -15,6 +15,22 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Vary': 'Origin'
 }
+const safeServerFailures = new Set([
+  'License management is not configured.',
+  'Could not load registered users.',
+  'Could not load current license statuses.',
+  'Could not load Google Play license statuses.',
+  'Could not load lifetime license statuses.',
+  'Could not load last website activity.',
+  'Could not verify pending payment dependencies.',
+  'Could not verify admin audit dependencies.',
+  'Could not update this lifetime license.',
+  'Could not check the current license.',
+  'Could not verify Google Play subscription state.',
+  'Could not revoke this license.',
+  'Could not activate or extend this license.'
+])
+const safeErrorNames = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'AggregateError'])
 function cors(req: Request) {
   const origin = req.headers.get('Origin') || ''
   const allowed = ['https://hyperionmaritime.org', 'https://www.hyperionmaritime.org', 'http://localhost:5173', 'http://127.0.0.1:5173']
@@ -23,7 +39,7 @@ function cors(req: Request) {
 function json(req: Request, body: unknown, status = 200) {
   if (status >= 500) {
     const message = body && typeof body === 'object' && 'error' in body ? (body as { error: unknown }).error : 'unknown'
-    console.error('admin-license-management failure:', typeof message === 'string' ? message : 'unknown')
+    console.error('admin-license-management failure:', typeof message === 'string' && safeServerFailures.has(message) ? message : 'unknown')
   }
   return new Response(JSON.stringify(body), {
     status,
@@ -423,7 +439,7 @@ Deno.serve(async req => {
     warning: auditError ? 'Access was updated, but the audit record could not be saved.' : null
   })
   } catch (error) {
-    const type = error && typeof error === 'object' && 'name' in error && typeof error.name === 'string' ? error.name : 'unknown'
+    const type = error && typeof error === 'object' && 'name' in error && typeof error.name === 'string' && safeErrorNames.has(error.name) ? error.name : 'unknown'
     console.error('admin-license-management unhandled:', stage, type)
     throw error
   }
