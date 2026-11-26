@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import vm from 'node:vm'
 import ts from 'typescript'
-import { gunzipSync } from 'node:zlib'
 
 const require = createRequire(import.meta.url)
 const compile = path => ts.transpileModule(readFileSync(new URL('../../' + path, import.meta.url), 'utf8'), {
@@ -122,16 +121,18 @@ try {
   }
   assert.match(legacyResponse.headers.get('Cache-Control'), /no-store/)
   assert.match(compactResponse.headers.get('Cache-Control'), /private/)
-  const compressed = await send({ action: 'list' }, { 'Accept-Encoding': 'br, gzip;q=0.8' })
-  assert.equal(compressed.headers.get('Content-Encoding'), 'gzip')
-  assert.match(compressed.headers.get('Vary'), /Origin/)
-  assert.match(compressed.headers.get('Vary'), /Accept-Encoding/)
-  assert.deepEqual(JSON.parse(gunzipSync(Buffer.from(await compressed.arrayBuffer())).toString()), legacy)
+  const browserResponse = await send({ action: 'list', compact: true }, { 'Accept-Encoding': 'gzip, br' })
+  assert.equal(browserResponse.headers.get('Content-Encoding'), null, 'Large admin lists must not use manually compressed Edge Function responses')
+  assert.equal((await browserResponse.json()).users.length, accounts.length, 'Browser-compatible JSON must retain every registered account')
+  const browserLegacy = await send({ action: 'list' }, { 'Accept-Encoding': 'br, gzip;q=0.8' })
+  assert.equal(browserLegacy.headers.get('Content-Encoding'), null)
+  assert.match(browserLegacy.headers.get('Vary'), /Origin/)
+  assert.deepEqual(await browserLegacy.json(), legacy)
   context.CompressionStream = undefined
   const withoutStreamCompression = await send({ action: 'list', compact: true }, { 'Accept-Encoding': 'gzip' })
   assert.equal(withoutStreamCompression.status, 200, 'Large account lists must load without streaming compression support')
-  assert.equal(withoutStreamCompression.headers.get('Content-Encoding'), 'gzip')
-  assert.equal(JSON.parse(gunzipSync(Buffer.from(await withoutStreamCompression.arrayBuffer())).toString()).users.length, accounts.length)
+  assert.equal(withoutStreamCompression.headers.get('Content-Encoding'), null)
+  assert.equal((await withoutStreamCompression.json()).users.length, accounts.length)
   for (const encoding of ['gzip;q=0', 'br', 'gzip;q=invalid']) {
     assert.equal((await send({ action: 'list' }, { 'Accept-Encoding': encoding })).headers.get('Content-Encoding'), null, 'Respect encoding negotiation: ' + encoding)
   }
