@@ -5,7 +5,7 @@ import { POSTER_TRACKS, POSTER_DEGREES, fullPosterName, formatPosterDate } from 
 test('all five licensure tracks are available', () => {
   assert.deepEqual(POSTER_TRACKS.map(track => [track.id, track.label, track.prefix]), [
     ['oic_nw', 'OIC-NW', 'OIC-NW'],
-    ['gmdss', 'GMDSS GOC', ''],
+    ['gmdss', 'GMDSS GOC', 'OIC-NW'],
     ['oic_ew', 'OIC-EW', 'OIC-EW'],
     ['master_mariner', 'CAPT.', 'CAPT.'],
     ['chief_engineer', 'C/E', 'C/E'],
@@ -40,7 +40,7 @@ test('rank prefix is automatic, but never duplicated', () => {
   assert.equal(fullPosterName('master_mariner', 'Juan Dela Cruz'), 'CAPT. Juan Dela Cruz')
   assert.equal(fullPosterName('chief_engineer', 'Juan Dela Cruz'), 'C/E Juan Dela Cruz')
   assert.equal(fullPosterName('chief_engineer', ' '), '')
-  assert.equal(fullPosterName('gmdss', 'Juan Dela Cruz'), 'Juan Dela Cruz')
+  assert.equal(fullPosterName('gmdss', 'Juan Dela Cruz'), 'OIC-NW Juan Dela Cruz')
 })
 
 test('calendar dates do not shift with local timezone', () => {

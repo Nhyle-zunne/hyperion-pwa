@@ -70,6 +70,7 @@ test('renders sample-aligned typography and a large two-line track heading', () 
 
   calls.length = 0
   renderPoster(canvas, {}, { ...data, track: POSTER_TRACKS.find(track => track.id === 'gmdss') })
+  assert.ok(calls.some(call => call.text === 'OIC-NW SHELDON R. ABARQUEZ'))
   assert.ok(calls.some(call => call.text === 'FOR GMDSS RADIO OPERATORS'))
   assert.ok(calls.some(call => call.text === 'Bachelor of Science in Marine Transportation'))
 })
