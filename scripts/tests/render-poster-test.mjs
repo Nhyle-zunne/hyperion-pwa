@@ -16,7 +16,9 @@ test('renders sample-aligned typography and a large two-line track heading', () 
     },
     setTransform() {},
     drawImage() {},
-    fillRect() {},
+    fillRect(x, y, width, height) { calls.push({ x, y, width, height }) },
+    createLinearGradient() { return { addColorStop() {} } },
+    closePath() {},
     beginPath() {},
     arc() {},
     fill() {},
@@ -45,28 +47,31 @@ test('renders sample-aligned typography and a large two-line track heading', () 
 
   const name = calls.find(call => call.text === 'OIC-NW SHELDON R. ABARQUEZ')
   assert.ok(name)
-  assert.equal(name.x, 399)
+  assert.equal(name.x, 423)
   assert.ok(name.y > 400 && name.y < 470)
 
   const degree = calls.find(call => call.text === data.track.defaultDegree)
   assert.ok(degree)
   assert.ok(degree.y > name.y && degree.y < 510)
 
-  const date = calls.find(call => call.text === 'November 26, 2026')
+  const date = calls.find(call => call.text === 'for passing the November 26, 2026')
   assert.ok(date)
-  assert.equal(date.align, 'left')
-  assert.ok(date.x > 440 && date.y > 650 && date.y < 675)
+  assert.equal(date.align, 'center')
+  assert.equal(date.x, 421)
+  assert.ok(date.y > 575 && date.y < 625)
 
-  const exam = calls.filter(call => call.text.startsWith('MARINA LICENSURE') || call.text === 'FOR MARINE DECK OFFICERS')
+  const exam = calls.filter(call => call.text?.startsWith('MARINA LICENSURE') || call.text === 'FOR MARINE DECK OFFICERS')
   assert.deepEqual(exam.map(call => call.text), [
     'MARINA LICENSURE EXAMINATION',
     'FOR MARINE DECK OFFICERS',
   ])
   assert.equal(exam[0].x, exam[1].x)
-  assert.ok(exam[0].y > 735 && exam[1].y < 895)
+  const dividers = calls.filter(call => call.height === 3).map(call => call.y)
+  assert.deepEqual(dividers, [641, 836, 955])
+  assert.ok(date.y < dividers[0] && exam[0].y > dividers[0] && exam[1].y < dividers[1])
   assert.ok(exam[1].y > exam[0].y)
   const school = calls.find(call => call.text === 'UNIVERSITY OF CEBU METC')
-  assert.ok(school.y > 905 && school.y < 954)
+  assert.ok(school.y > dividers[1] && school.y < dividers[2])
 
   calls.length = 0
   renderPoster(canvas, {}, { ...data, track: POSTER_TRACKS.find(track => track.id === 'gmdss') })

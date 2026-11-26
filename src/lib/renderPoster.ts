@@ -22,13 +22,13 @@ export function loadPosterArtwork(): Promise<HTMLImageElement> {
     const image = new Image()
     image.onload = () => resolve(image)
     image.onerror = () => reject(new Error('Could not load Hyperion artwork. Refresh the page.'))
-    image.src = '/posters/hyperion-background.webp'
+    image.src = '/posters/hyperion-poster-artwork.webp'
   })
 }
 
 function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
   x: number; baseline: number; maxWidth: number; fontSize: number; minSize: number
-  maxLines?: number; lineHeight?: number; singleLineMinSize?: number; align?: 'left' | 'center'; family: string; color: string; weight?: string; italic?: boolean
+  maxLines?: number; lineHeight?: number; singleLineMinSize?: number; family: string; color: string; weight?: string; italic?: boolean
 }) {
   if (!text.trim()) return
   const fontAt = (size: number) => `${options.italic ? 'italic ' : ''}${options.weight || 'normal'} ${size}px ${options.family}`
@@ -49,7 +49,7 @@ function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
   if (!layout) throw new Error('One of the text fields is too long. Shorten it before exporting.')
 
   ctx.font = fontAt(layout.fontSize)
-  ctx.textAlign = options.align ?? 'center'
+  ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = options.color
   const lineHeight = options.lineHeight || layout.fontSize * 1.08
@@ -99,6 +99,38 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   ctx.drawImage(layer, 0, 0)
 }
 
+function drawPosterDividers(ctx: CanvasRenderingContext2D) {
+  const rules = [
+    { left: 87, right: 754, y: 642, ornament: 403, hollow: true },
+    { left: 143, right: 802, y: 837, ornament: 465, hollow: false },
+    { left: 142, right: 719, y: 956 },
+  ]
+  for (const rule of rules) {
+    const gold = ctx.createLinearGradient(rule.left, 0, rule.right, 0)
+    gold.addColorStop(0, 'rgba(188, 126, 20, 0)')
+    gold.addColorStop(0.25, '#c58722')
+    gold.addColorStop(0.53, '#f9d974')
+    gold.addColorStop(0.76, '#c58722')
+    gold.addColorStop(1, 'rgba(188, 126, 20, 0)')
+    ctx.fillStyle = gold
+    ctx.fillRect(rule.left, rule.y - 1, rule.right - rule.left, 3)
+    if (rule.ornament === undefined) continue
+
+    const x = rule.ornament
+    ctx.beginPath()
+    ctx.moveTo(x - 13, rule.y)
+    ctx.lineTo(x, rule.y + 13)
+    ctx.lineTo(x + 13, rule.y)
+    ctx.lineTo(x, rule.y - 13)
+    ctx.closePath()
+    ctx.fillStyle = rule.hollow ? '#fff1ba' : '#d39527'
+    ctx.fill()
+    ctx.strokeStyle = '#fff4c8'
+    ctx.lineWidth = 3
+    ctx.stroke()
+  }
+}
+
 function drawFooter(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = '#071d3d'
   ctx.fillRect(0, 1166, ART_SIZE, 88)
@@ -145,12 +177,14 @@ export function renderPoster(canvas: HTMLCanvasElement, artwork: HTMLImageElemen
   if (!ctx) throw new Error('Canvas is unavailable in this browser.')
   ctx.setTransform(POSTER_EXPORT_SIZE / ART_SIZE, 0, 0, POSTER_EXPORT_SIZE / ART_SIZE, 0, 0)
   ctx.drawImage(artwork, 0, 0, ART_SIZE, ART_SIZE)
+  drawPosterDividers(ctx)
   if (data.portrait) drawPortrait(ctx, data.portrait, data)
 
   const name = fullPosterName(data.track.id, data.name).toUpperCase()
   drawFittedText(ctx, name, { ...POSTER_TEXT_LAYOUT.name, family: 'Georgia, serif', color: '#ffffff', weight: 'bold' })
   drawFittedText(ctx, data.track.defaultDegree, { ...POSTER_TEXT_LAYOUT.degree, family: 'Georgia, serif', color: '#f6ca68', weight: 'bold', italic: true })
-  drawFittedText(ctx, formatPosterDate(data.date), { ...POSTER_TEXT_LAYOUT.date, family: 'Georgia, serif', color: '#071c42', italic: true })
+  const date = formatPosterDate(data.date)
+  if (date) drawFittedText(ctx, `for passing the ${date}`, { ...POSTER_TEXT_LAYOUT.date, family: 'Georgia, serif', color: '#071c42', weight: 'bold', italic: true })
   drawFittedText(ctx, data.track.examTitle, { ...POSTER_TEXT_LAYOUT.exam, family: 'Impact, "Arial Narrow", "Nimbus Sans Narrow", sans-serif', color: '#071d43', weight: 'bold' })
   drawFittedText(ctx, data.school.toUpperCase(), { ...POSTER_TEXT_LAYOUT.school, family: 'Georgia, serif', color: '#082143', weight: 'bold', italic: true })
   drawFittedText(ctx, data.company.toUpperCase(), { ...POSTER_TEXT_LAYOUT.company, family: 'Georgia, serif', color: '#082143', italic: true })
