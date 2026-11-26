@@ -4,6 +4,7 @@ const sections = [
   { to: '/admin/licenses', label: 'USER LICENSES' },
   { to: '/admin/payments', label: 'PAYMENT SUBMISSIONS' },
   { to: '/admin/questions', label: 'QUESTION BANK' },
+  { to: '/admin/posters', label: 'POSTER GENERATOR' },
 ]
 
 export default function AdminNavigation() {
