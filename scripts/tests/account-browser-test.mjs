@@ -1298,9 +1298,12 @@ try {
         const box = link.getBoundingClientRect()
         return { y: box.y, width: box.width, height: box.height, fits: link.scrollWidth <= link.clientWidth + 1 && link.scrollHeight <= link.clientHeight + 1 }
       }))
-      assert.equal(boxes.length, 3)
-      for (const box of boxes) {
-        assert(Math.abs(box.y - boxes[0].y) < .5, `All admin sections share one row at ${width}px`)
+      assert.equal(boxes.length, 4, 'All four admin sections appear in navigation')
+      const columns = width <= 760 ? 2 : 4
+      for (const [index, box] of boxes.entries()) {
+        const firstInRow = boxes[Math.floor(index / columns) * columns]
+        assert(Math.abs(box.y - firstInRow.y) < .5, `Admin sections align within each row at ${width}px`)
+        if (index >= columns) assert(box.y >= boxes[0].y + boxes[0].height, `Mobile admin sections form a second row at ${width}px`)
         assert(Math.abs(box.width - boxes[0].width) < .5 && Math.abs(box.height - boxes[0].height) < .5, 'Admin section buttons have equal sizes')
         assert(box.height >= 44 && box.fits, 'Admin section labels fit inside accessible touch targets')
       }
