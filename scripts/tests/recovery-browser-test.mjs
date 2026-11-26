@@ -212,9 +212,17 @@ try {
   await flashcards.getByRole('progressbar', { name: 'Flashcard progress' }).waitFor()
   assert.equal(await flashcards.getByRole('progressbar').getAttribute('aria-valuemax'), '65')
   await flashcards.getByText('Full bank card 1', { exact: true }).waitFor()
+  const cardTextMetrics = (selector) => flashcards.locator(selector).evaluate(text => ({
+    widthRatio: text.getBoundingClientRect().width / text.closest('.flashcard-face').getBoundingClientRect().width,
+    fontSize: parseFloat(getComputedStyle(text).fontSize),
+  }))
+  const desktopQuestion = await cardTextMetrics('.flashcard-question')
   await page.screenshot({ path: '/tmp/hyperion-flashcards-card-desktop.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+  const mobileQuestion = await cardTextMetrics('.flashcard-question')
+  assert.ok(desktopQuestion.widthRatio > .9 && mobileQuestion.widthRatio > .9)
+  assert.ok(desktopQuestion.fontSize > mobileQuestion.fontSize && mobileQuestion.fontSize >= 18)
   await page.screenshot({ path: '/tmp/hyperion-flashcards-card-mobile.png', fullPage: true })
   const bookmark = flashcards.getByRole('button', { name: /Bookmark question|Remove bookmark/ })
   const bookmarkedBefore = await bookmark.getAttribute('aria-pressed')
@@ -224,6 +232,8 @@ try {
   await flashcards.getByRole('button', { name: 'Reveal answer', exact: true }).click()
   await flashcards.getByText('CORRECT ANSWER', { exact: true }).waitFor()
   await flashcards.locator('.flashcard-answer').getByText('Starboard', { exact: true }).waitFor()
+  const mobileAnswer = await cardTextMetrics('.flashcard-answer')
+  assert.ok(mobileAnswer.widthRatio > .9 && mobileAnswer.fontSize >= 18)
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
   await page.screenshot({ path: '/tmp/hyperion-flashcards-answer-mobile-dark.png', fullPage: true })
   await flashcards.getByRole('button', { name: 'Knew it →', exact: true }).click()
@@ -264,10 +274,19 @@ try {
     if (key === 'gmdss') {
       await page.setViewportSize({ width: 1191, height: 678 })
       await flashcards.screenshot({ path: '/tmp/hyperion-flashcards-gmdss.png' })
+      await page.evaluate(() => localStorage.setItem('fixture-flashcard-single-chunk', 'yes'))
     }
     await flashcards.getByRole('button', { name: /All questions/ }).click()
     await flashcards.getByRole('progressbar', { name: 'Flashcard progress' }).waitFor()
     assert.equal(await flashcards.getByRole('progressbar').getAttribute('aria-valuemax'), '65')
+    if (key === 'gmdss') {
+      await flashcards.getByText('Full bank card 1', { exact: true }).waitFor()
+      await flashcards.getByRole('button', { name: 'Next card', exact: false }).click()
+      await flashcards.getByText('Full bank card 2', { exact: true }).waitFor()
+      await flashcards.getByRole('button', { name: 'Next card', exact: false }).click()
+      await flashcards.getByText('Full bank card 3', { exact: true }).waitFor()
+      await page.evaluate(() => localStorage.removeItem('fixture-flashcard-single-chunk'))
+    }
     await flashcards.getByRole('button', { name: 'End session', exact: true }).click()
     await flashcards.getByRole('heading', { name: /^COMPETENCE DIRECTORY/ }).waitFor()
   }

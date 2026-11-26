@@ -27,5 +27,8 @@ export async function getQuestionsByCompetence(track: TrackId, competenceId: str
   if (localStorage.getItem('fixture-flashcard-page-failure')) throw new Error('Synthetic next-page failure')
   const bank = localStorage.getItem('fixture-full-flashcards') ? fullFlashcards.map(question => ({ ...question, track })) : recoveryQuestions
   const pool = bank.filter((q, index) => q.track === track && q.competenceId === competenceId && (part == null || (index < 32 || index >= 35 ? 1 : 2) === part))
+  if (track === 'GMDSS_GOC' && part === 1 && startItem === 1 && localStorage.getItem('fixture-flashcard-single-chunk')) {
+    return pool.slice(0, 1)
+  }
   return pool.slice(startItem - 1, limit == null ? undefined : startItem - 1 + limit)
 }

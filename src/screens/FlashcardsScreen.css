@@ -112,36 +112,63 @@
   font-weight: 850;
   letter-spacing: .06em;
 }
-.flashcard-face {
-  width: 100%;
-  min-height: 340px;
+.flashcard-navigation {
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  gap: clamp(.3rem, 1vw, .65rem);
+}
+.flashcard-navigation .flashcard-next {
+  min-height: 44px;
+  padding: .45rem .7rem;
+  white-space: nowrap;
+  border-radius: 0;
+}
+.flashcard-face {
+  container-type: inline-size;
+  width: 100%;
+  min-height: clamp(17rem, 43vh, 28rem);
+  min-height: clamp(17rem, 43svh, 28rem);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: clamp(.65rem, 1.8vw, 1.2rem);
   text-align: left;
-  padding: clamp(1.1rem, 4vw, 1.75rem);
+  padding: 2.75%;
   background: var(--bg-card);
   color: var(--text);
+  border: 1px solid var(--border);
   border-top: 3px solid var(--accent);
-  border-bottom: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: 0;
 }
 .flashcard-face.is-flipped { border-top-color: var(--success); }
 .flashcard-face-meta { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .flashcard-difficulty { color: var(--text-muted); font-size: .7rem; font-weight: 800; }
-.flashcard-topic { margin-top: 1.25rem; font-size: .75rem; }
-.flashcard-question { margin: .65rem 0 1.75rem; font-size: clamp(1.1rem, 2.5vw, 1.3rem); font-weight: 750; line-height: 1.75; overflow-wrap: anywhere; }
-.flashcard-answer { display: flex; gap: .8rem; align-items: flex-start; margin: 1.25rem 0; color: var(--success); font-size: 1.1rem; line-height: 1.6; }
-.flashcard-answer-letter { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; color: var(--btn-primary-text); background: var(--success); font-weight: 900; border-radius: 2px; }
-.flashcard-options { display: grid; gap: .4rem; color: var(--text-muted); font-size: .85rem; line-height: 1.6; }
+.flashcard-content, .flashcard-prompt {
+  display: grid;
+  align-content: center;
+  gap: clamp(.55rem, 1.45cqi, 1rem);
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.flashcard-question, .flashcard-answer {
+  font-size: 1.25rem;
+  font-size: clamp(1.125rem, calc(1rem + 1.3cqi), 2rem);
+  line-height: 1.36;
+}
+.flashcard-question { font-weight: 750; }
+.flashcard-answer { display: flex; gap: .6em; align-items: baseline; color: var(--success); }
+.flashcard-answer strong { min-width: 0; }
+.flashcard-answer-letter { display: inline-grid; place-items: center; flex-shrink: 0; width: 1.55em; height: 1.55em; color: var(--btn-primary-text); background: var(--success); font-weight: 900; }
+.flashcard-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: .3rem .9rem; color: var(--text-muted); font-size: .9rem; line-height: 1.45; }
 .flashcard-options .is-correct, .flashcard-face.is-flipped .flashcard-badge { color: var(--success); }
-.flashcard-explanation { border-top: 1px solid var(--border); padding-top: .9rem; margin-top: 1rem; color: var(--text-muted); font-size: .85rem; line-height: 1.7; }
-.flashcard-flip-hint { display: block; align-self: center; padding-top: 1.5rem; color: var(--text-muted); font-size: .65rem; font-weight: 850; letter-spacing: .075em; text-transform: uppercase; }
+.flashcard-explanation { border-top: 1px solid var(--border); padding-top: .65rem; color: var(--text-muted); font-size: .9rem; line-height: 1.5; }
+.flashcard-flip-hint { justify-self: center; color: var(--text-muted); font-size: .7rem; font-weight: 750; }
 .flashcard-footer { margin-top: 1.5rem; border-top: 3px solid var(--border); padding-top: 1rem; }
 .flashcard-counts { display: flex; justify-content: space-between; color: var(--text-muted); font-size: .75rem; margin-bottom: .8rem; }
 .flashcard-counts strong { color: var(--text); }
 .flashcard-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
-.flashcard-actions .btn { border-radius: 2px; min-height: 48px; }
+.flashcard-actions .btn { border-radius: 0; min-height: 48px; }
 .flashcard-end { display: block; margin: .8rem auto 0; color: var(--text-muted); font-size: .8rem; min-height: 44px; padding: .5rem 1rem; }
 .flashcard-summary { text-align: center; padding: 2rem 1rem; background: var(--bg-card); border-top: 3px solid var(--success); margin-bottom: 1.5rem; }
 .flashcard-summary h2 { margin: 1rem 0 .4rem; }

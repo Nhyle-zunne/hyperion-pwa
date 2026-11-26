@@ -93,7 +93,7 @@ export default function FlashcardsScreen() {
     }
   }
 
-  const advance = async (knew: boolean) => {
+  const advance = async (rating: 'known' | 'unknown' | 'unrated') => {
     if (!session || advancingRef.current) return
     const generation = requestGeneration.current
     advancingRef.current = true
@@ -107,8 +107,8 @@ export default function FlashcardsScreen() {
         setPage(nextPage)
       }
       if (generation !== requestGeneration.current) return
-      if (knew) setKnown(value => value + 1)
-      else setUnknown(value => value + 1)
+      if (rating === 'known') setKnown(value => value + 1)
+      if (rating === 'unknown') setUnknown(value => value + 1)
       setFlipped(false)
       setIndex(next)
     } catch (error) {
@@ -129,7 +129,8 @@ export default function FlashcardsScreen() {
     if (index >= session.total) return <div className="screen flashcards-screen">
       {header('Session complete', endSession)}
       <section className="flashcard-summary">
-        <span className="flashcard-badge">REVISION COMPLETE</span><h2>Flashcards done</h2><p>{session.total} cards reviewed</p>
+        <span className="flashcard-badge">REVISION COMPLETE</span><h2>Flashcards done</h2>
+        <p>{known + unknown} cards rated{known + unknown < session.total && ` · ${session.total - known - unknown} unrated`}</p>
         <div className="flashcard-totals"><div><strong>{known}</strong><span>Knew it</span></div><div><strong>{unknown}</strong><span>Still learning</span></div></div>
       </section>
       <div className="flashcard-actions"><button type="button" className="btn btn-outline" onClick={() => navigate('/')}>Home</button><button type="button" className="btn btn-primary" onClick={endSession}>New set</button></div>
@@ -139,24 +140,33 @@ export default function FlashcardsScreen() {
     return <div className="screen flashcards-screen">
       {header(`${session.total} cards · Active recall`, endSession)}
       <div className="flashcard-progress" role="progressbar" aria-label="Flashcard progress" aria-valuemin={0} aria-valuemax={session.total} aria-valuenow={index + 1}><span style={{ width: `${(index + 1) / session.total * 100}%` }} /></div>
-      <div className="flashcard-meta"><span>CARD {index + 1} OF {session.total} · {q.competenceId}</span><QuestionBookmarkButton question={q} /></div>
-      <button type="button" className={`flashcard-face${flipped ? ' is-flipped' : ''}`} onClick={() => setFlipped(value => !value)} aria-label={flipped ? 'Show question' : 'Reveal answer'}>
-        <div className="flashcard-content">
-          <div className="flashcard-face-meta"><span className="flashcard-badge">{flipped ? 'CORRECT ANSWER' : 'QUESTION PROMPT'}</span>{!flipped && <span className="flashcard-difficulty">{q.difficulty === 'EASY' ? 'Easy' : q.difficulty === 'MODERATE' ? 'Moderate' : 'Difficult'}</span>}</div>
-          {!flipped ? <><p className="flashcard-topic">{q.topic}</p><p className="flashcard-question">{q.questionText}</p></> : <>
-            <div className="flashcard-answer"><span className="flashcard-answer-letter">{String.fromCharCode(65 + q.correctAnswerIndex)}</span><strong>{q.options[q.correctAnswerIndex]}</strong></div>
-            <div className="flashcard-options">{q.options.map((option, optionIndex) => <div key={optionIndex} className={optionIndex === q.correctAnswerIndex ? 'is-correct' : ''}>{String.fromCharCode(65 + optionIndex)}. {option}</div>)}</div>
-            {q.explanation && <p className="flashcard-explanation">{q.explanation}</p>}
-          </>}
+      <div className="flashcard-meta">
+        <span aria-live="polite">CARD {index + 1} OF {session.total} · {q.competenceId}</span>
+        <div className="flashcard-navigation">
+          <QuestionBookmarkButton question={q} />
+          <button type="button" className="btn btn-outline flashcard-next" disabled={advancing} onClick={() => void advance('unrated')}>
+            {index + 1 < session.total ? 'Next card →' : 'Finish deck'}
+          </button>
         </div>
+      </div>
+      {error && <div className="flashcard-notice" role="alert">{error}</div>}
+      {advancing && <p role="status" className="flashcard-subtitle">Loading the next cards…</p>}
+      <button type="button" className={`flashcard-face${flipped ? ' is-flipped' : ''}`} onClick={() => setFlipped(value => !value)} aria-label={flipped ? 'Show question' : 'Reveal answer'}>
+        <span className="flashcard-face-meta"><span className="flashcard-badge">{flipped ? 'CORRECT ANSWER' : 'QUESTION PROMPT'}</span>{!flipped && <span className="flashcard-difficulty">{q.difficulty === 'EASY' ? 'Easy' : q.difficulty === 'MODERATE' ? 'Moderate' : 'Difficult'}</span>}</span>
+        {!flipped ? <span className="flashcard-prompt">
+          {q.topic && <span className="flashcard-topic">{q.topic}</span>}
+          <span className="flashcard-question">{q.questionText}</span>
+        </span> : <span className="flashcard-content">
+          <span className="flashcard-answer"><span className="flashcard-answer-letter">{String.fromCharCode(65 + q.correctAnswerIndex)}</span><strong>{q.options[q.correctAnswerIndex]}</strong></span>
+          <span className="flashcard-options">{q.options.map((option, optionIndex) => <span key={optionIndex} className={optionIndex === q.correctAnswerIndex ? 'is-correct' : ''}>{String.fromCharCode(65 + optionIndex)}. {option}</span>)}</span>
+          {q.explanation && <span className="flashcard-explanation">{q.explanation}</span>}
+        </span>}
         <span className="flashcard-flip-hint">↻ Tap to flip to {flipped ? 'question' : 'answer'}</span>
       </button>
       <QuestionImageGallery question={q} placement={flipped ? 'explanation' : 'question'} />
-      {error && <div className="flashcard-notice" role="alert">{error}</div>}
       <footer className="flashcard-footer">
         <div className="flashcard-counts"><span><strong>{known}</strong> Knew it</span><span><strong>{unknown}</strong> Still learning</span></div>
-        <div className="flashcard-actions"><button type="button" className="btn btn-outline" disabled={advancing} onClick={() => void advance(false)}>Still learning</button><button type="button" className="btn btn-primary" disabled={advancing} onClick={() => void advance(true)}>Knew it →</button></div>
-        {advancing && <p role="status" className="flashcard-subtitle">Loading the next cards…</p>}
+        <div className="flashcard-actions"><button type="button" className="btn btn-outline" disabled={advancing} onClick={() => void advance('unknown')}>Still learning</button><button type="button" className="btn btn-primary" disabled={advancing} onClick={() => void advance('known')}>Knew it →</button></div>
         <button type="button" className="flashcard-end" onClick={endSession}>End session</button>
       </footer>
     </div>

@@ -19,7 +19,7 @@ export function createFlashcardDeck(track: TrackId, counts: QuestionBankCount[],
 
 export async function loadFlashcardPage(deck: FlashcardDeck, index: number): Promise<{ questions: Question[]; pageStart: number }> {
   if (!Number.isInteger(index) || index < 0 || index >= deck.total) throw new Error('This flashcard is outside the selected deck.')
-  const pageStart = Math.floor(index / FLASHCARD_PAGE_SIZE) * FLASHCARD_PAGE_SIZE
+  const pageStart = index
   const pageEnd = Math.min(deck.total, pageStart + FLASHCARD_PAGE_SIZE)
   const questions: Question[] = []
   let groupStart = 0
@@ -29,8 +29,13 @@ export async function loadFlashcardPage(deck: FlashcardDeck, index: number): Pro
     const to = Math.min(pageEnd, groupEnd)
     if (from < to) {
       const page = await getQuestionsByCompetence(deck.track, group.competenceId, group.part ?? undefined, false, from - groupStart + 1, to - from)
-      if (page.length !== to - from) throw new Error('Could not load the complete flashcard page. Your current card is preserved; reconnect or check this track’s offline download, then retry.')
+      if (!page.length || page.length > to - from) {
+        throw new Error('Could not load the requested cards. Retry or reopen the deck to refresh it.')
+      }
       questions.push(...page)
+      // A short response is still a usable prefix. Resume at its next offset
+      // on advance before moving into a later competence or part.
+      if (page.length < to - from) break
     }
     groupStart = groupEnd
     if (groupStart >= pageEnd) break
