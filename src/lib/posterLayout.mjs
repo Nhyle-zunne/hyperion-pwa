@@ -1,8 +1,13 @@
+// Coordinates are in the artwork's original 1254 × 1254 units.
 export const POSTER_TEXT_LAYOUT = Object.freeze({
-  name: Object.freeze({ x: 430, baseline: 448, maxWidth: 790, fontSize: 58, minSize: 22, maxLines: 2, lineHeight: 42 }),
-  degree: Object.freeze({ x: 430, baseline: 497, maxWidth: 780, fontSize: 36, minSize: 19 }),
-  date: Object.freeze({ x: 580, baseline: 663, maxWidth: 380, fontSize: 34, minSize: 19 }),
-  exam: Object.freeze({ x: 402, baseline: 789, maxWidth: 706, fontSize: 47, minSize: 28, maxLines: 2, lineHeight: 58 }),
+  name: Object.freeze({ x: 399, baseline: 452, maxWidth: 724, fontSize: 59, minSize: 27, maxLines: 2, lineHeight: 38, singleLineMinSize: 39 }),
+  degree: Object.freeze({ x: 387, baseline: 499, maxWidth: 680, fontSize: 37, minSize: 19 }),
+  // The template already includes “for passing the”; start just beyond its last glyph.
+  date: Object.freeze({ x: 455, baseline: 664, maxWidth: 310, fontSize: 42, minSize: 26, align: 'left' }),
+  // The exam title sits between the gold rules at approximately y=733 and y=895.
+  exam: Object.freeze({ x: 398, baseline: 831, maxWidth: 700, fontSize: 61, minSize: 29, maxLines: 2, lineHeight: 64 }),
+  school: Object.freeze({ x: 465, baseline: 937, maxWidth: 650, fontSize: 34, minSize: 17, maxLines: 2, lineHeight: 23, singleLineMinSize: 23 }),
+  company: Object.freeze({ x: 465, baseline: 976, maxWidth: 650, fontSize: 23, minSize: 14 }),
 })
 
 export function fitPosterText(text, { maxWidth, preferredSize, minSize, maxLines }, measureWidth) {

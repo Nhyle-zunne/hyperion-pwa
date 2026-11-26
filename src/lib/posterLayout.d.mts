@@ -14,6 +14,8 @@ interface PosterTextLayout {
   minSize: number
   maxLines?: number
   lineHeight?: number
+  singleLineMinSize?: number
+  align?: 'left' | 'center'
 }
 
 export const POSTER_TEXT_LAYOUT: Readonly<{
@@ -21,4 +23,6 @@ export const POSTER_TEXT_LAYOUT: Readonly<{
   degree: PosterTextLayout
   date: PosterTextLayout
   exam: PosterTextLayout
+  school: PosterTextLayout
+  company: PosterTextLayout
 }>

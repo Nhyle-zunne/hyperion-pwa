@@ -12,7 +12,7 @@ test('renders sample-aligned typography and a large two-line track heading', () 
       return { width: text.length * size * 0.4 }
     },
     fillText(text, x, y) {
-      calls.push({ text, x, y, font: this.font })
+      calls.push({ text, x, y, font: this.font, align: this.textAlign })
     },
     setTransform() {},
     drawImage() {},
@@ -29,7 +29,6 @@ test('renders sample-aligned typography and a large two-line track heading', () 
   const data = {
     track: POSTER_TRACKS[0],
     name: 'Sheldon R. Abarquez',
-    degree: 'Bachelor of Science in Marine Transportation',
     date: '2026-11-26',
     school: 'University of Cebu METC',
     company: '',
@@ -46,25 +45,31 @@ test('renders sample-aligned typography and a large two-line track heading', () 
 
   const name = calls.find(call => call.text === 'OIC-NW SHELDON R. ABARQUEZ')
   assert.ok(name)
-  assert.equal(name.x, 430)
-  assert.match(name.font, /58px/)
+  assert.equal(name.x, 399)
+  assert.ok(name.y > 400 && name.y < 470)
 
-  const degree = calls.find(call => call.text === data.degree)
+  const degree = calls.find(call => call.text === data.track.defaultDegree)
   assert.ok(degree)
-  assert.equal(degree.x, 430)
-  assert.match(degree.font, /36px/)
+  assert.ok(degree.y > name.y && degree.y < 510)
 
   const date = calls.find(call => call.text === 'November 26, 2026')
   assert.ok(date)
-  assert.equal(date.x, 580)
-  assert.match(date.font, /34px/)
+  assert.equal(date.align, 'left')
+  assert.ok(date.x > 440 && date.y > 650 && date.y < 675)
 
   const exam = calls.filter(call => call.text.startsWith('MARINA LICENSURE') || call.text === 'FOR MARINE DECK OFFICERS')
   assert.deepEqual(exam.map(call => call.text), [
     'MARINA LICENSURE EXAMINATION',
     'FOR MARINE DECK OFFICERS',
   ])
-  assert.deepEqual(exam.map(call => call.x), [402, 402])
-  assert.match(exam[0].font, /47px/)
+  assert.equal(exam[0].x, exam[1].x)
+  assert.ok(exam[0].y > 735 && exam[1].y < 895)
   assert.ok(exam[1].y > exam[0].y)
+  const school = calls.find(call => call.text === 'UNIVERSITY OF CEBU METC')
+  assert.ok(school.y > 905 && school.y < 954)
+
+  calls.length = 0
+  renderPoster(canvas, {}, { ...data, track: POSTER_TRACKS.find(track => track.id === 'gmdss') })
+  assert.ok(calls.some(call => call.text === 'FOR GMDSS RADIO OPERATORS'))
+  assert.ok(calls.some(call => call.text === 'Bachelor of Science in Marine Transportation'))
 })

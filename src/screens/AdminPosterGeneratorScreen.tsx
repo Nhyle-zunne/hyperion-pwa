@@ -21,7 +21,6 @@ export default function AdminPosterGeneratorScreen() {
   const [trackId, setTrackId] = useState(POSTER_TRACKS[0].id)
   const track = POSTER_TRACKS.find(option => option.id === trackId) || POSTER_TRACKS[0]
   const [name, setName] = useState('')
-  const [degree, setDegree] = useState(track.defaultDegree)
   const [date, setDate] = useState(localDate)
   const [school, setSchool] = useState('')
   const [company, setCompany] = useState('')
@@ -70,12 +69,12 @@ export default function AdminPosterGeneratorScreen() {
   useEffect(() => {
     if (!artwork || !canvasRef.current || !access.allowed) return
     try {
-      renderPoster(canvasRef.current, artwork, { track, name, degree, date, school, company, portrait, scalePercent, xOffsetPercent, yOffsetPercent })
+      renderPoster(canvasRef.current, artwork, { track, name, date, school, company, portrait, scalePercent, xOffsetPercent, yOffsetPercent })
       setRenderError('')
     } catch (error) {
       setRenderError(error instanceof Error ? error.message : 'Could not render the poster.')
     }
-  }, [artwork, access.allowed, track, name, degree, date, school, company, portrait, scalePercent, xOffsetPercent, yOffsetPercent])
+  }, [artwork, access.allowed, track, name, date, school, company, portrait, scalePercent, xOffsetPercent, yOffsetPercent])
 
   async function loadPhoto(blob: Blob) {
     const url = URL.createObjectURL(blob)
@@ -134,11 +133,7 @@ export default function AdminPosterGeneratorScreen() {
       <div className="admin-poster__fields">
         <h2>CANDIDATE DETAILS</h2>
         <label htmlFor="poster-track">Licensure track</label>
-        <select id="poster-track" value={trackId} onChange={event => {
-          const selected = POSTER_TRACKS.find(item => item.id === event.target.value) || POSTER_TRACKS[0]
-          setTrackId(selected.id)
-          setDegree(selected.defaultDegree)
-        }}>
+        <select id="poster-track" value={trackId} onChange={event => setTrackId(event.target.value)}>
           {POSTER_TRACKS.map(option => <option value={option.id} key={option.id}>{option.label}</option>)}
         </select>
 
@@ -147,9 +142,7 @@ export default function AdminPosterGeneratorScreen() {
         <small className="admin-poster__hint">Appears as: {fullPosterName(trackId, name) || `${track.prefix} [FULL NAME]`.trim()}</small>
 
         <label htmlFor="poster-degree">Degree or qualification</label>
-        <select id="poster-degree" value={degree} onChange={event => setDegree(event.target.value)}>
-          {POSTER_DEGREES.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}
-        </select>
+        <input id="poster-degree" readOnly value={POSTER_DEGREES.find(option => option.value === track.defaultDegree)?.label ?? track.defaultDegree} />
 
         <label htmlFor="poster-date">Examination date</label>
         <input id="poster-date" type="date" value={date} onChange={event => setDate(event.target.value)} />

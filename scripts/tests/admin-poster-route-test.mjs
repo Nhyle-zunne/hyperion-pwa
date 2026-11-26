@@ -30,9 +30,9 @@ test('four admin links form equal columns and a mobile two-by-two grid', () => {
   assert.ok(/@media\s*\(max-width:\s*760px\)[\s\S]*?\.admin-page-navigation__sections\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/.test(navigationStyles), 'Mobile navigation has two columns')
 })
 
-test('poster degree and photo positioning use the supported dropdowns and percentages', () => {
-  assert.match(editor, /<select id="poster-degree"/)
-  assert.match(editor, /POSTER_DEGREES\.map/)
+test('poster degree follows the selected track and photo positioning uses percentages', () => {
+  assert.match(editor, /<input id="poster-degree" readOnly.*track\.defaultDegree/)
+  assert.match(renderer, /drawFittedText\(ctx, data.track.defaultDegree,/)
   assert.match(editor, /xOffsetPercent/)
   assert.match(editor, /yOffsetPercent/)
   assert.match(editor, /Move horizontally[\s\S]*?%/)

@@ -8,7 +8,6 @@ export const POSTER_EXPORT_SIZE = 2048
 export type PosterContent = {
   track: PosterTrack
   name: string
-  degree: string
   date: string
   school: string
   company: string
@@ -29,7 +28,7 @@ export function loadPosterArtwork(): Promise<HTMLImageElement> {
 
 function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
   x: number; baseline: number; maxWidth: number; fontSize: number; minSize: number
-  maxLines?: number; lineHeight?: number; family: string; color: string; weight?: string; italic?: boolean
+  maxLines?: number; lineHeight?: number; singleLineMinSize?: number; align?: 'left' | 'center'; family: string; color: string; weight?: string; italic?: boolean
 }) {
   if (!text.trim()) return
   const fontAt = (size: number) => `${options.italic ? 'italic ' : ''}${options.weight || 'normal'} ${size}px ${options.family}`
@@ -37,16 +36,20 @@ function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
     ctx.font = fontAt(size)
     return ctx.measureText(value).width
   }
-  const layout = fitPosterText(text.trim(), {
+  const bounds = {
     maxWidth: options.maxWidth,
     preferredSize: options.fontSize,
     minSize: options.minSize,
     maxLines: options.maxLines || 1,
-  }, measureWidth)
+  }
+  const singleLine = options.singleLineMinSize
+    ? fitPosterText(text, { ...bounds, minSize: options.singleLineMinSize, maxLines: 1 }, measureWidth)
+    : null
+  const layout = singleLine ?? fitPosterText(text, bounds, measureWidth)
   if (!layout) throw new Error('One of the text fields is too long. Shorten it before exporting.')
 
   ctx.font = fontAt(layout.fontSize)
-  ctx.textAlign = 'center'
+  ctx.textAlign = options.align ?? 'center'
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = options.color
   const lineHeight = options.lineHeight || layout.fontSize * 1.08
@@ -56,12 +59,14 @@ function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
 
 function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement, data: PosterContent) {
   const scale = Math.max(70, Math.min(140, data.scalePercent)) / 100
-  const width = 610 * scale
-  const height = 860 * scale
+  const baseWidth = 565
+  const baseHeight = 840
+  const width = baseWidth * scale
+  const height = baseHeight * scale
   const xOffset = posterOffsetFromPercent(data.xOffsetPercent, ART_SIZE)
   const yOffset = posterOffsetFromPercent(data.yOffsetPercent, ART_SIZE)
-  const x = 730 + xOffset - (width - 610) / 2
-  const y = 235 + yOffset - (height - 860) / 2
+  const x = 735 + xOffset - (width - baseWidth) / 2
+  const y = 272 + yOffset - (height - baseHeight) / 2
   const targetRatio = width / height
   const sourceRatio = portrait.naturalWidth / portrait.naturalHeight
   const cropWidth = sourceRatio > targetRatio ? portrait.naturalHeight * targetRatio : portrait.naturalWidth
@@ -79,13 +84,13 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   layerCtx.drawImage(portrait, cropX, cropY, cropWidth, cropHeight, x, y, width, height)
 
   layerCtx.globalCompositeOperation = 'destination-in'
-  const sideFade = layerCtx.createLinearGradient(705, 0, 905, 0)
+  const sideFade = layerCtx.createLinearGradient(720, 0, 875, 0)
   sideFade.addColorStop(0, 'rgba(0, 0, 0, 0)')
   sideFade.addColorStop(1, 'rgba(0, 0, 0, 1)')
   layerCtx.fillStyle = sideFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
 
-  const lowerFade = layerCtx.createLinearGradient(0, 865, 0, 1030)
+  const lowerFade = layerCtx.createLinearGradient(0, 875, 0, 1105)
   lowerFade.addColorStop(0, 'rgba(0, 0, 0, 1)')
   lowerFade.addColorStop(1, 'rgba(0, 0, 0, 0)')
   layerCtx.fillStyle = lowerFade
@@ -144,11 +149,11 @@ export function renderPoster(canvas: HTMLCanvasElement, artwork: HTMLImageElemen
 
   const name = fullPosterName(data.track.id, data.name).toUpperCase()
   drawFittedText(ctx, name, { ...POSTER_TEXT_LAYOUT.name, family: 'Georgia, serif', color: '#ffffff', weight: 'bold' })
-  drawFittedText(ctx, data.degree, { ...POSTER_TEXT_LAYOUT.degree, family: 'Georgia, serif', color: '#f6ca68', weight: 'bold', italic: true })
-  drawFittedText(ctx, formatPosterDate(data.date), { ...POSTER_TEXT_LAYOUT.date, family: 'Georgia, serif', color: '#071c42', weight: 'bold', italic: true })
-  drawFittedText(ctx, data.track.examTitle, { ...POSTER_TEXT_LAYOUT.exam, family: 'Impact, "Arial Narrow", sans-serif', color: '#071d43', weight: 'bold' })
-  drawFittedText(ctx, data.school.toUpperCase(), { x: 480, baseline: data.company ? 929 : 952, maxWidth: 552, fontSize: 29, minSize: 18, maxLines: 2, lineHeight: 28, family: 'Georgia, serif', color: '#082143', weight: 'bold', italic: true })
-  drawFittedText(ctx, data.company.toUpperCase(), { x: 480, baseline: 971, maxWidth: 552, fontSize: 20, minSize: 14, family: 'Georgia, serif', color: '#082143', italic: true })
+  drawFittedText(ctx, data.track.defaultDegree, { ...POSTER_TEXT_LAYOUT.degree, family: 'Georgia, serif', color: '#f6ca68', weight: 'bold', italic: true })
+  drawFittedText(ctx, formatPosterDate(data.date), { ...POSTER_TEXT_LAYOUT.date, family: 'Georgia, serif', color: '#071c42', italic: true })
+  drawFittedText(ctx, data.track.examTitle, { ...POSTER_TEXT_LAYOUT.exam, family: 'Impact, "Arial Narrow", "Nimbus Sans Narrow", sans-serif', color: '#071d43', weight: 'bold' })
+  drawFittedText(ctx, data.school.toUpperCase(), { ...POSTER_TEXT_LAYOUT.school, family: 'Georgia, serif', color: '#082143', weight: 'bold', italic: true })
+  drawFittedText(ctx, data.company.toUpperCase(), { ...POSTER_TEXT_LAYOUT.company, family: 'Georgia, serif', color: '#082143', italic: true })
 
   drawFooter(ctx)
 }
