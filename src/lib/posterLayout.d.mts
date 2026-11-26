@@ -3,3 +3,5 @@ export function fitPosterText(
   options: { maxWidth: number; preferredSize: number; minSize: number; maxLines: number },
   measureWidth: (text: string, fontSize: number) => number,
 ): { fontSize: number; lines: string[] } | null
+
+export function posterOffsetFromPercent(percent: number, dimension: number): number
