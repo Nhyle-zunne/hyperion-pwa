@@ -54,6 +54,8 @@ jobs:
           GITHUB_BANK_READ_TOKEN: ${{ secrets.BANK_READ_TOKEN }}
         run: |
           bun run test:security
+          node --test scripts/tests/poster-layout-test.mjs scripts/tests/poster-tracks-test.mjs
+          node --experimental-strip-types --test scripts/tests/render-poster-test.mjs
           node scripts/tests/payment-polling-test.mjs
           node scripts/tests/order-history-requests-test.mjs
           node scripts/tests/admin-license-payload-test.mjs

@@ -50,3 +50,18 @@
 - [ ] Exempt only `.admin-poster` from the generic 560px desktop cap; use the percentage grid and mobile stack.
 - [ ] Run the focused poster tests, then `npm run test:security` and `npm run build`.
 - [ ] Review the diff and open a focused pull request. Do not merge or deploy without authorization.
+
+### Task 2: Match sample typography and track-specific examination headings
+
+**Files:**
+- Modify: `src/lib/posterLayout.mjs` and `src/lib/posterLayout.d.mts`
+- Modify: `src/lib/posterTracks.mjs`
+- Modify: `src/lib/renderPoster.ts`
+- Test: `scripts/tests/poster-layout-test.mjs`
+- Test: `scripts/tests/poster-tracks-test.mjs`
+- Test: `scripts/tests/render-poster-test.mjs`
+
+- [x] Add failing tests for largest-font-first wrapping and all four track headings; add a renderer-level canvas regression for sample alignment.
+- [x] Verify the previous layout algorithm and track headings fail the new assertions.
+- [x] Implement explicit-newline-aware fitting, a shared poster text layout, and the four requested exam descriptions.
+- [ ] Verify focused tests, the full PWA CI suite, and a rendered production preview before merging.

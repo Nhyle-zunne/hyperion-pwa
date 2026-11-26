@@ -5,9 +5,9 @@ import { fitPosterText, posterOffsetFromPercent } from '../../src/lib/posterLayo
 const width = (text, size) => text.length * size * 0.55
 
 test('a typical candidate name stays on one line', () => {
-  const value = fitPosterText('OIC-NW SHELDON R. ABARQUEZ', { maxWidth: 710, preferredSize: 54, minSize: 20, maxLines: 2 }, width)
+  const value = fitPosterText('OIC-NW SHELDON R. ABARQUEZ', { maxWidth: 800, preferredSize: 54, minSize: 20, maxLines: 2 }, width)
   assert.deepEqual(value.lines, ['OIC-NW SHELDON R. ABARQUEZ'])
-  assert.ok(width(value.lines[0], value.fontSize) <= 710)
+  assert.ok(width(value.lines[0], value.fontSize) <= 800)
 })
 
 test('long candidate names wrap without entering the portrait area', () => {
@@ -27,3 +27,14 @@ test('unrenderable text gets an explicit failure instead of overflowing', () => 
   const value = fitPosterText('W'.repeat(180), { maxWidth: 160, preferredSize: 32, minSize: 22, maxLines: 1 }, width)
   assert.equal(value, null)
 })
+
+test('poster headings keep readable two-line sizing instead of shrinking to one line', () => {
+  const value = fitPosterText(
+    'MARINA LICENSURE EXAMINATION\nFOR MARINE DECK OFFICERS',
+    { maxWidth: 706, preferredSize: 47, minSize: 28, maxLines: 2 },
+    (text, size) => text.length * size * 0.4,
+  )
+  assert.deepEqual(value.lines, ['MARINA LICENSURE EXAMINATION', 'FOR MARINE DECK OFFICERS'])
+  assert.equal(value.fontSize, 47)
+})
+

@@ -1,7 +1,7 @@
 const marineDeck = 'Bachelor of Science in Marine Transportation'
 const marineEngine = 'Bachelor of Science in Marine Engineering'
-const deckExam = 'MARINA LICENSURE EXAMINATION\nFOR MARINE DECK OFFICERS'
-const engineExam = 'MARINA LICENSURE EXAMINATION\nFOR MARINE ENGINE OFFICERS'
+const examHeading = 'MARINA LICENSURE EXAMINATION'
+const examTitle = description => examHeading + '\n' + description
 
 export const POSTER_DEGREES = Object.freeze([
   { label: 'Marine Transportation', value: marineDeck },
@@ -9,17 +9,17 @@ export const POSTER_DEGREES = Object.freeze([
 ])
 
 export const POSTER_TRACKS = Object.freeze([
-  { id: 'oic_nw', label: 'OIC-NW', prefix: 'OIC-NW', defaultDegree: marineDeck, examTitle: deckExam },
-  { id: 'oic_ew', label: 'OIC-EW', prefix: 'OIC-EW', defaultDegree: marineEngine, examTitle: engineExam },
-  { id: 'master_mariner', label: 'CAPT.', prefix: 'CAPT.', defaultDegree: marineDeck, examTitle: deckExam },
-  { id: 'chief_engineer', label: 'C/E', prefix: 'C/E', defaultDegree: marineEngine, examTitle: engineExam },
+  { id: 'oic_nw', label: 'OIC-NW', prefix: 'OIC-NW', defaultDegree: marineDeck, examTitle: examTitle('FOR MARINE DECK OFFICERS') },
+  { id: 'oic_ew', label: 'OIC-EW', prefix: 'OIC-EW', defaultDegree: marineEngine, examTitle: examTitle('FOR MARINE ENGINEERS') },
+  { id: 'master_mariner', label: 'CAPT.', prefix: 'CAPT.', defaultDegree: marineDeck, examTitle: examTitle('FOR DECK MANAGEMENT LEVEL') },
+  { id: 'chief_engineer', label: 'C/E', prefix: 'C/E', defaultDegree: marineEngine, examTitle: examTitle('FOR ENGINE MANAGEMENT LEVEL') },
 ])
 
 export function fullPosterName(trackId, name) {
   const clean = String(name || '').trim().replace(/\s+/g, ' ')
   if (!clean) return ''
   const prefix = POSTER_TRACKS.find(track => track.id === trackId)?.prefix
-  return !prefix || clean.toUpperCase().startsWith(`${prefix} `) ? clean : `${prefix} ${clean}`
+  return !prefix || clean.toUpperCase().startsWith(prefix + ' ') ? clean : prefix + ' ' + clean
 }
 
 export function formatPosterDate(value) {

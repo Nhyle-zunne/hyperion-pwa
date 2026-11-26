@@ -48,3 +48,4 @@ test('poster page escapes the narrow desktop screen cap and uses a responsive pe
   assert.match(posterStyles, /@media\s*\(max-width:\s*950px\)[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)/)
   assert.match(posterStyles, /\.admin-poster__canvas\s*\{[^}]*width:\s*100%[^}]*aspect-ratio:\s*1/)
 })
+

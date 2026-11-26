@@ -22,3 +22,12 @@ Make the passer poster generator practical to use on desktop, tablet, and mobile
 - No changes to authentication, licensing, payment processing, Supabase data, or photo storage.
 - No additional tracks, degree values, backend image processing, or new dependencies.
 - No changes to the generated artwork's design or portrait segmentation algorithm.
+
+## Poster text alignment and track descriptions
+
+- Keep the name and degree centered on the same banner axis; align the date with the preprinted "for passing the" prompt.
+- Match the supplied sample's relative text sizing: candidate name remains prominent, degree is larger, and examination heading uses two readable lines.
+- Text fitting must choose the largest font size that fits within the allowed line count. It must wrap before shrinking to a smaller single line.
+- Preserve explicit line breaks in examination headings.
+- Track descriptions: OIC-NW = "FOR MARINE DECK OFFICERS"; OIC-EW = "FOR MARINE ENGINEERS"; CAPT. = "FOR DECK MANAGEMENT LEVEL"; C/E = "FOR ENGINE MANAGEMENT LEVEL", each below "MARINA LICENSURE EXAMINATION".
+- Keep preview and exported PNG on the same Canvas rendering path.

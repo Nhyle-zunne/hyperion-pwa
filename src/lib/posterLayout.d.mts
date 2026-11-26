@@ -5,3 +5,20 @@ export function fitPosterText(
 ): { fontSize: number; lines: string[] } | null
 
 export function posterOffsetFromPercent(percent: number, dimension: number): number
+
+interface PosterTextLayout {
+  x: number
+  baseline: number
+  maxWidth: number
+  fontSize: number
+  minSize: number
+  maxLines?: number
+  lineHeight?: number
+}
+
+export const POSTER_TEXT_LAYOUT: Readonly<{
+  name: PosterTextLayout
+  degree: PosterTextLayout
+  date: PosterTextLayout
+  exam: PosterTextLayout
+}>
