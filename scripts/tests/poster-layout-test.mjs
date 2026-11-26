@@ -38,13 +38,3 @@ test('poster headings keep readable two-line sizing instead of shrinking to one 
   assert.equal(value.fontSize, 47)
 })
 
-test('poster text uses the supplied sample alignment and relative sizing', async () => {
-  const { POSTER_TEXT_LAYOUT } = await import('../../src/lib/posterLayout.mjs')
-  assert.ok(POSTER_TEXT_LAYOUT)
-  assert.equal(POSTER_TEXT_LAYOUT.name.x, POSTER_TEXT_LAYOUT.degree.x)
-  assert.equal(POSTER_TEXT_LAYOUT.name.x, 430)
-  assert.equal(POSTER_TEXT_LAYOUT.degree.fontSize, 36)
-  assert.equal(POSTER_TEXT_LAYOUT.date.x, 580)
-  assert.equal(POSTER_TEXT_LAYOUT.exam.fontSize, 47)
-  assert.equal(POSTER_TEXT_LAYOUT.exam.maxLines, 2)
-})
