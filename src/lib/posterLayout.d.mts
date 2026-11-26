@@ -31,5 +31,5 @@ export function posterPortraitBlend(headTop: number, headWidth: number, visibleB
   { torsoStart: number; extension: number; fadeStart: number; fadeEnd: number }
 
 export const POSTER_PORTRAIT_LEFT: number
-export function posterPortraitPlacement(headWidth: number, leftShoulder: number, rightShoulder: number):
+export function posterPortraitPlacement(headWidth: number, leftExtent: number, rightExtent: number, zoom?: number, xOffset?: number):
   { headCenter: number; headTop: number; scale: number }

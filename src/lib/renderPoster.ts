@@ -83,10 +83,10 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   let shoulderBottom = 0
   if (frame) {
     const placement = posterPortraitPlacement(
-      frame.headWidth, frame.headCenter - frame.shoulderLeft, frame.shoulderRight - frame.headCenter
+      frame.headWidth, frame.headCenter - frame.silhouetteLeft, frame.silhouetteRight - frame.headCenter, scale, xOffset
     )
-    const portraitScale = placement.scale * scale
-    const left = placement.headCenter + xOffset - frame.headCenter * portraitScale
+    const portraitScale = placement.scale
+    const left = placement.headCenter - frame.headCenter * portraitScale
     const headTop = placement.headTop + yOffset
     shoulderBottom = headTop + frame.headWidth * portraitScale * 1.9
     const top = headTop - frame.top * portraitScale
@@ -116,18 +116,12 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
       layerCtx.drawImage(portrait, left, top, width, portrait.naturalHeight * portraitScale)
     }
   } else {
-    const baseWidth = 565
-    const baseHeight = 840
-    const width = baseWidth * scale
-    const height = baseHeight * scale
-    const x = 735 + xOffset - (width - baseWidth) / 2
-    const y = 246 + yOffset - (height - baseHeight) / 2
-    const targetRatio = width / height
-    const cropWidth = Math.min(portrait.naturalWidth, portrait.naturalHeight * targetRatio)
-    const cropHeight = Math.min(portrait.naturalHeight, portrait.naturalWidth / targetRatio)
-    const cropX = (portrait.naturalWidth - cropWidth) / 2
-    const cropY = (portrait.naturalHeight - cropHeight) * 0.15
-    layerCtx.drawImage(portrait, cropX, cropY, cropWidth, cropHeight, x, y, width, height)
+    const halfWidth = portrait.naturalWidth / 2
+    const placement = posterPortraitPlacement(halfWidth, halfWidth, halfWidth, scale, xOffset)
+    const width = portrait.naturalWidth * placement.scale
+    const height = portrait.naturalHeight * placement.scale
+    const y = 246 + yOffset
+    layerCtx.drawImage(portrait, placement.headCenter - width / 2, y, width, height)
     fadeEnd = Math.min(1105, y + height)
     fadeStart = fadeEnd - 230
   }
@@ -145,9 +139,8 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   }
 
   layerCtx.globalCompositeOperation = 'destination-in'
-  // Keep stray photo pixels out of the existing text column, even when a
-  // manual adjustment moves the portrait past its automatic position.
-  const sideFade = layerCtx.createLinearGradient(798, 0, frame ? POSTER_PORTRAIT_LEFT : 875, 0)
+  // Feather only stray mask pixels in the gap outside the fitted silhouette.
+  const sideFade = layerCtx.createLinearGradient(798, 0, POSTER_PORTRAIT_LEFT - 4, 0)
   addPortraitFeather(sideFade, true)
   layerCtx.fillStyle = sideFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)

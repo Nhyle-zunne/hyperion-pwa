@@ -47,14 +47,14 @@ export function posterOffsetFromPercent(percent, dimension) {
   return dimension * percent / 100
 }
 
-export const POSTER_PORTRAIT_LEFT = 803
+export const POSTER_PORTRAIT_LEFT = 811
 
-export function posterPortraitPlacement(headWidth, leftShoulder, rightShoulder) {
-  const rightEdge = 1254
+export function posterPortraitPlacement(headWidth, leftExtent, rightExtent, zoom = 1, xOffset = 0) {
+  const rightEdge = 1246
   const preferredCenter = 1017
-  const scale = Math.min(253 / headWidth, (rightEdge - POSTER_PORTRAIT_LEFT) / (leftShoulder + rightShoulder))
-  const headCenter = Math.max(POSTER_PORTRAIT_LEFT + leftShoulder * scale,
-    Math.min(preferredCenter, rightEdge - rightShoulder * scale))
+  const scale = Math.min(253 / headWidth * zoom, (rightEdge - POSTER_PORTRAIT_LEFT) / (leftExtent + rightExtent))
+  const headCenter = Math.max(POSTER_PORTRAIT_LEFT + leftExtent * scale,
+    Math.min(preferredCenter + xOffset, rightEdge - rightExtent * scale))
   // The reference hairline is roughly 22% from the top of the artwork.
   return { headCenter, headTop: 272, scale }
 }

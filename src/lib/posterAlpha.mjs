@@ -87,13 +87,20 @@ export function findPortraitFrame({ width, height, data }) {
     let count = 0
     let left = width
     let right = 0
+    let edgeLeft = width
+    let edgeRight = 0
     for (let x = 0; x < width; x += step) {
-      if (data[(y * width + x) * 4 + 3] < 153) continue
+      const opacity = data[(y * width + x) * 4 + 3]
+      if (opacity >= 40) {
+        edgeLeft = Math.min(edgeLeft, x)
+        edgeRight = Math.min(width, x + step)
+      }
+      if (opacity < 153) continue
       count++
       left = Math.min(left, x)
       right = Math.min(width, x + step)
     }
-    if (count >= minRowPixels) rows.push({ y, left, right })
+    if (count >= minRowPixels) rows.push({ y, left, right, edgeLeft, edgeRight })
   }
 
   if (!rows.length) return null
@@ -108,8 +115,21 @@ export function findPortraitFrame({ width, height, data }) {
   const left = Math.min(...headRows.map(row => row.left))
   const right = Math.max(...headRows.map(row => row.right))
   const headWidth = right - left
-  const shoulderRows = rows.filter(row => row.y >= top + headWidth && row.y <= top + headWidth * 1.95)
-  const shoulderLeft = Math.min(left, ...shoulderRows.map(row => row.left))
-  const shoulderRight = Math.max(right, ...shoulderRows.map(row => row.right))
-  return { top, bottom, headCenter: (left + right) / 2, headWidth, shoulderLeft, shoulderRight }
+  const fullLeft = Math.min(...rows.map(row => row.edgeLeft))
+  const fullRight = Math.max(...rows.map(row => row.edgeRight))
+  const upperBottom = top + Math.round(headWidth * 2.75)
+  const upperRows = rows.filter(row => row.y < upperBottom)
+  const upperLeft = Math.min(...upperRows.map(row => row.edgeLeft))
+  const upperRight = Math.max(...upperRows.map(row => row.edgeRight))
+  // If the lower body widens substantially, fade it out vertically so
+  // the remaining portrait can retain its natural sides at a larger scale.
+  const cropLowerBody = bottom > upperBottom && fullRight - fullLeft > (upperRight - upperLeft) * 1.1
+  return {
+    top,
+    bottom: cropLowerBody ? upperBottom : bottom,
+    headCenter: (left + right) / 2,
+    headWidth,
+    silhouetteLeft: cropLowerBody ? upperLeft : fullLeft,
+    silhouetteRight: cropLowerBody ? upperRight : fullRight,
+  }
 }
