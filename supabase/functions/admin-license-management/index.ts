@@ -439,7 +439,11 @@ Deno.serve(async req => {
     warning: auditError ? 'Access was updated, but the audit record could not be saved.' : null
   })
   } catch (error) {
-    const type = error && typeof error === 'object' && 'name' in error && typeof error.name === 'string' && safeErrorNames.has(error.name) ? error.name : 'unknown'
+    let type = 'unknown'
+    try {
+      const candidateName = error && typeof error === 'object' && 'name' in error ? error.name : null
+      if (typeof candidateName === 'string' && safeErrorNames.has(candidateName)) type = candidateName
+    } catch { /* An unusual error getter must not replace the original failure. */ }
     console.error('admin-license-management unhandled:', stage, type)
     throw error
   }
