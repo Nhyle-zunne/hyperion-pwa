@@ -12,7 +12,7 @@ const compile = path => ts.transpileModule(readFileSync(new URL('../../' + path,
 const codes = ['oic_nw', 'gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt']
 const userId = '11111111-1111-4111-8111-111111111111'
 const adminEmail = 'admin@fixture.invalid'
-const accounts = Array.from({ length: 12 }, (_, i) => ({ id: i ? 'free-' + i : userId, email: `user${i}@fixture.invalid`, created_at: '2025-01-01T00:00:00Z', user_metadata: { full_name: `Member ${i}` } }))
+const accounts = Array.from({ length: 381 }, (_, i) => ({ id: i ? 'free-' + i : userId, email: `user${i}@fixture.invalid`, created_at: '2025-01-01T00:00:00Z', user_metadata: { full_name: `Member ${i}` } }))
 const row = (product_code, status, expires_at) => ({ id: product_code, user_id: userId, product_code, track_id: product_code, status, expires_at, license_term: 'month', granted_at: '2025-01-01T00:00:00Z', renewed_at: null, order_id: null })
 const website = [row('oic_nw', 'active', '2099-01-01T00:00:00Z'), row('gmdss', 'active', '2025-01-01T00:00:00Z'), row('engine_ew', 'revoked', '2099-01-01T00:00:00Z'), row('deck_mgt', 'active', null)]
 const play = [{ ...row('oic_nw', 'active', '2099-02-01T00:00:00Z'), updated_at: '2025-01-01T00:00:00Z' }]
@@ -127,6 +127,11 @@ try {
   assert.match(compressed.headers.get('Vary'), /Origin/)
   assert.match(compressed.headers.get('Vary'), /Accept-Encoding/)
   assert.deepEqual(JSON.parse(gunzipSync(Buffer.from(await compressed.arrayBuffer())).toString()), legacy)
+  context.CompressionStream = undefined
+  const withoutStreamCompression = await send({ action: 'list', compact: true }, { 'Accept-Encoding': 'gzip' })
+  assert.equal(withoutStreamCompression.status, 200, 'Large account lists must load without streaming compression support')
+  assert.equal(withoutStreamCompression.headers.get('Content-Encoding'), 'gzip')
+  assert.equal(JSON.parse(gunzipSync(Buffer.from(await withoutStreamCompression.arrayBuffer())).toString()).users.length, accounts.length)
   for (const encoding of ['gzip;q=0', 'br', 'gzip;q=invalid']) {
     assert.equal((await send({ action: 'list' }, { 'Accept-Encoding': encoding })).headers.get('Content-Encoding'), null, 'Respect encoding negotiation: ' + encoding)
   }
