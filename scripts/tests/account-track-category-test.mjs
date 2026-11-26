@@ -70,3 +70,19 @@ test('the global sign-in prompt appears only for online accounts missing a categ
     'A stalled Auth update also offers continuation without blocking reviewer access')
   assert.equal(renderPrompt(missing, true, '', true), '', 'A deferred prompt never blocks the current page')
 })
+
+test('existing-user browser fixtures carry a category so unrelated reviewer flows remain usable', async () => {
+  const values = new Map()
+  const localStorage = {
+    getItem: key => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: key => values.delete(key),
+  }
+  const { supabase, fixtureUsers, fixtureSetUser } = load('scripts/tests/recovery-supabase-fixture.ts', {
+    localStorage, navigator: { onLine: true },
+    require: name => name === '../../src/lib/supabase' ? {} : require(name),
+  })
+  assert.equal((await supabase.auth.getSession()).data.session.user.user_metadata.track_category, 'DECK')
+  fixtureSetUser(fixtureUsers.b)
+  assert.equal((await supabase.auth.getSession()).data.session.user.user_metadata.track_category, 'ENGINE')
+})

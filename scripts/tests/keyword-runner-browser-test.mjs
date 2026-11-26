@@ -18,6 +18,8 @@ try {
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(process.env.HYPERION_RECOVERY_TEST_URL)
     await page.waitForFunction(() => window.recoveryFixture?.settled())
+    assert.equal(await page.getByRole('dialog', { name: 'Choose your track category' }).count(), 0,
+      'Synthetic returning reviewer accounts must already have a track category before exercising question editing')
     const cookies = page.getByRole('region', { name: 'Cookie preferences' })
     if (await cookies.count()) await cookies.getByRole('button', { name: 'Essential only', exact: true }).click()
     const start = async direct => {
