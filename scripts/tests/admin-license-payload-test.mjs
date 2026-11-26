@@ -11,7 +11,7 @@ const compile = path => ts.transpileModule(readFileSync(new URL('../../' + path,
 const codes = ['oic_nw', 'gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt']
 const userId = '11111111-1111-4111-8111-111111111111'
 const adminEmail = 'admin@fixture.invalid'
-const accounts = Array.from({ length: 381 }, (_, i) => ({ id: i ? 'free-' + i : userId, email: `user${i}@fixture.invalid`, created_at: '2025-01-01T00:00:00Z', user_metadata: { full_name: `Member ${i}` } }))
+const accounts = Array.from({ length: 381 }, (_, i) => ({ id: i ? `22222222-2222-4222-8222-${String(i).padStart(12, '0')}` : userId, email: `user${i}@fixture.invalid`, created_at: '2025-01-01T00:00:00Z', user_metadata: { full_name: `Member ${i}` } }))
 const row = (product_code, status, expires_at) => ({ id: product_code, user_id: userId, product_code, track_id: product_code, status, expires_at, license_term: 'month', granted_at: '2025-01-01T00:00:00Z', renewed_at: null, order_id: null })
 const website = [row('oic_nw', 'active', '2099-01-01T00:00:00Z'), row('gmdss', 'active', '2025-01-01T00:00:00Z'), row('engine_ew', 'revoked', '2099-01-01T00:00:00Z'), row('deck_mgt', 'active', null)]
 const play = [{ ...row('oic_nw', 'active', '2099-02-01T00:00:00Z'), updated_at: '2025-01-01T00:00:00Z' }]
@@ -32,6 +32,9 @@ globalThis.fetch = async (input, init) => {
     return authFails ? json({ message: 'Invalid token' }, 401) : json({ id: 'admin-fixture', email })
   }
   dbReads++
+  if (['/user_activity', '/orders', '/checkout_batches', '/license_admin_audit', '/manual_checkout_claims'].some(path => url.pathname.endsWith(path)) && req.url.length > 7000) {
+    return json({ code: 'PGRST414', message: 'Dependency query URL exceeds the gateway limit' }, 414)
+  }
   if (url.pathname.endsWith('/rpc/set_admin_lifetime_entitlement') && req.method === 'POST') {
     const change = await req.json()
     manualChanges.push(change)
@@ -46,6 +49,9 @@ globalThis.fetch = async (input, init) => {
   if (url.pathname.endsWith('/entitlements')) return json(url.searchParams.has('product_code') ? website[0] : website)
   if (url.pathname.endsWith('/user_activity') && explodeDependency) return json([{ user_id: accounts[1].id, last_accessed_at: '+275760-09-13T00:00:00.000Z' }])
   if (url.pathname.endsWith('/user_activity') && failDependency) return json({ code: 'PGRST100', message: 'fixture private details must not be logged' }, 400)
+  if (url.pathname.endsWith('/user_activity')) return json(url.searchParams.get('user_id')?.includes(accounts[380].id) ? [{ user_id: accounts[380].id, last_accessed_at: '2026-11-26T00:00:00Z' }] : [])
+  if (url.pathname.endsWith('/orders') && url.searchParams.get('status')?.includes('pending')) return json(url.searchParams.get('user_id')?.includes(accounts[380].id) ? [{ user_id: accounts[380].id }] : [])
+  if (url.pathname.endsWith('/license_admin_audit') && url.searchParams.has('admin_user_id')) return json(url.searchParams.get('admin_user_id')?.includes(accounts[150].id) ? [{ admin_user_id: accounts[150].id }] : [])
   if (url.pathname.endsWith('/license_admin_audit') || url.pathname.endsWith('/user_activity') || url.pathname.endsWith('/orders') || url.pathname.endsWith('/checkout_batches') || url.pathname.endsWith('/manual_checkout_claims')) return json([])
   throw new Error('Unexpected request ' + req.url)
 }
@@ -63,6 +69,7 @@ try {
   const legacyText = await legacyResponse.text(), legacy = JSON.parse(legacyText)
   const compactResponse = await send({ action: 'list', compact: true })
   const compactText = await compactResponse.text(), compact = JSON.parse(compactText)
+  assert.equal(legacyResponse.status, 200, 'Hundreds of real-length UUIDs must not exceed the dependency-query URL limit')
   assert.ok(diagnosticSteps.some(message => message.endsWith('list.start')), 'Authorized list requests leave a start breadcrumb')
   assert.ok(diagnosticSteps.some(message => message.endsWith('list.dependencies-loaded')), 'Completed database work leaves a breadcrumb')
   assert.ok(diagnosticSteps.some(message => message.endsWith('list.ready')), 'Completed response shaping leaves a breadcrumb')
@@ -71,6 +78,9 @@ try {
   assert.equal(legacy.licenseFormat, undefined, 'Legacy response contract is unchanged')
   assert.equal(legacy.users.length, accounts.length)
   assert.equal(compact.users.length, accounts.length, 'Compaction must not truncate accounts')
+  assert.equal(compact.users.find(account => account.id === accounts[380].id).last_access_source, 'website_activity', 'The final account batch retains activity records')
+  assert.equal(compact.users.find(account => account.id === accounts[380].id).retention_status, 'pending_payment_hold', 'Pending orders in the final batch protect accounts')
+  assert.equal(compact.users.find(account => account.id === accounts[150].id).retention_status, 'admin_audit_hold', 'Middle-batch admin audit records remain protected')
   assert.equal(Object.keys(compact.users[1].licenses).length, 0)
   assert.equal(Object.keys(compact.users[0].licenses).length, 4, 'Expired and revoked records remain present')
   assert.equal(compact.users[0].licenses.oic_nw.has_active_google_play, true)
