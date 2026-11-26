@@ -171,7 +171,25 @@ try {
   await assert.rejects(send({ action: 'list', compact: true }), /Invalid time value/)
   assert.match(diagnosticErrors.at(-1), /shape-users.*RangeError/, 'An unexpected exception records its stage and error type')
   assert.doesNotMatch(diagnosticErrors.at(-1), /@fixture\.invalid/)
+  context.Date = class PrivateErrorDate extends Date {
+    toISOString() {
+      const error = new Error('intentional date failure')
+      error.name = 'private-person@fixture.invalid'
+      throw error
+    }
+  }
+  try {
+    await assert.rejects(send({ action: 'list', compact: true }), /intentional date failure/)
+    assert.match(diagnosticErrors.at(-1), /shape-users.*unknown/, 'Unrecognized error names are replaced with a fixed label')
+    assert.doesNotMatch(diagnosticErrors.at(-1), /private-person@fixture\.invalid/, 'Exception names cannot leak customer identifiers')
+  } finally {
+    delete context.Date
+  }
   explodeDependency = false
+  assert.equal(typeof context.json, 'function')
+  const directFailure = context.json(new Request('http://fixture.invalid/admin-license-management'), { error: 'private-person@fixture.invalid' }, 500)
+  assert.equal(directFailure.status, 500)
+  assert.doesNotMatch(diagnosticErrors.at(-1), /private-person@fixture\.invalid/, 'A future dynamic error response cannot leak through central diagnostics')
   const readsBeforeDenied = dbReads
   email = 'member@fixture.invalid'
   assert.equal((await send({ action: 'list', compact: true })).status, 403)
