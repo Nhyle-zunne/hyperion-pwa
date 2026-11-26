@@ -69,12 +69,12 @@ test('a crop ending near the collar fades without reshaping the shoulder boards'
 
 test('portrait placement uses the reference head position and fills more of the photo column', () => {
   const reference = posterPortraitPlacement(250, 210, 225)
-  assert.equal(reference.headTop, 272)
-  assert.ok(Math.abs(reference.headCenter - 1017) <= 12)
+  assert.equal(reference.headTop, 283)
+  assert.ok(Math.abs(reference.headCenter - 1020) <= 12)
   assert.ok(reference.scale >= 1)
 
   const wide = posterPortraitPlacement(310, 347, 349)
-  assert.equal(wide.headTop, 272)
+  assert.equal(wide.headTop, 283)
   assert.ok(Math.round(wide.headCenter - 347 * wide.scale) >= 811)
   assert.ok(Math.round(wide.headCenter + 349 * wide.scale) <= 1246)
   assert.ok(wide.scale > 417 / (347 + 349))

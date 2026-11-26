@@ -115,21 +115,14 @@ export function findPortraitFrame({ width, height, data }) {
   const left = Math.min(...headRows.map(row => row.left))
   const right = Math.max(...headRows.map(row => row.right))
   const headWidth = right - left
-  const fullLeft = Math.min(...rows.map(row => row.edgeLeft))
-  const fullRight = Math.max(...rows.map(row => row.edgeRight))
-  const upperBottom = top + Math.round(headWidth * 2.75)
-  const upperRows = rows.filter(row => row.y < upperBottom)
-  const upperLeft = Math.min(...upperRows.map(row => row.edgeLeft))
-  const upperRight = Math.max(...upperRows.map(row => row.edgeRight))
-  // If the lower body widens substantially, fade it out vertically so
-  // the remaining portrait can retain its natural sides at a larger scale.
-  const cropLowerBody = bottom > upperBottom && fullRight - fullLeft > (upperRight - upperLeft) * 1.1
+  // Keep the shoulders in frame without letting wider sleeves lower down shrink the face.
+  const upperRows = rows.filter(row => row.y < top + headWidth * 2.2)
   return {
     top,
-    bottom: cropLowerBody ? upperBottom : bottom,
+    bottom,
     headCenter: (left + right) / 2,
     headWidth,
-    silhouetteLeft: cropLowerBody ? upperLeft : fullLeft,
-    silhouetteRight: cropLowerBody ? upperRight : fullRight,
+    upperBodyLeft: Math.min(...upperRows.map(row => row.edgeLeft)),
+    upperBodyRight: Math.max(...upperRows.map(row => row.edgeRight)),
   }
 }

@@ -1,4 +1,4 @@
-import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend, posterPortraitPlacement, POSTER_PORTRAIT_LEFT, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend, posterPortraitPlacement, POSTER_PORTRAIT_LEFT, POSTER_PORTRAIT_RIGHT, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
 import { formatPosterDate, fullPosterName } from './posterTracks.mjs'
 import type { PortraitFrame } from './posterAlpha.mjs'
 import type { PosterTrack } from './posterTracks.mjs'
@@ -83,7 +83,7 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   let shoulderBottom = 0
   if (frame) {
     const placement = posterPortraitPlacement(
-      frame.headWidth, frame.headCenter - frame.silhouetteLeft, frame.silhouetteRight - frame.headCenter, scale, xOffset
+      frame.headWidth, frame.headCenter - frame.upperBodyLeft, frame.upperBodyRight - frame.headCenter, scale, xOffset
     )
     const portraitScale = placement.scale
     const left = placement.headCenter - frame.headCenter * portraitScale
@@ -139,10 +139,15 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   }
 
   layerCtx.globalCompositeOperation = 'destination-in'
-  // Feather only stray mask pixels in the gap outside the fitted silhouette.
-  const sideFade = layerCtx.createLinearGradient(798, 0, POSTER_PORTRAIT_LEFT - 4, 0)
+  // The wider lower shirt blends out before reaching the text or poster edge.
+  const sideFade = layerCtx.createLinearGradient(798, 0, POSTER_PORTRAIT_LEFT, 0)
   addPortraitFeather(sideFade, true)
   layerCtx.fillStyle = sideFade
+  layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
+
+  const rightFade = layerCtx.createLinearGradient(POSTER_PORTRAIT_RIGHT, 0, ART_SIZE, 0)
+  addPortraitFeather(rightFade, false)
+  layerCtx.fillStyle = rightFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
 
   const lowerFade = layerCtx.createLinearGradient(0, fadeStart, 0, fadeEnd)

@@ -43,7 +43,7 @@ test('framing finds the head above offset shoulders and ignores faint background
       data[(y * width + x) * 4 + 3] = head || shoulders ? 255 : 24
     }
   }
-  assert.deepEqual(findPortraitFrame({ width, height, data }), { top: 26, bottom: 114, headCenter: 60, headWidth: 24, silhouetteLeft: 28, silhouetteRight: 98 })
+  assert.deepEqual(findPortraitFrame({ width, height, data }), { top: 26, bottom: 114, headCenter: 60, headWidth: 24, upperBodyLeft: 28, upperBodyRight: 98 })
   assert.equal(findPortraitFrame({ width, height, data: data.fill(0) }), null)
 })
 
@@ -74,17 +74,17 @@ test('restores connected gold uniform trim without recovering the plain backgrou
   assert.deepEqual(rgba(11, 30), [...gold, 0])
 })
 
-test('a wider lower body fades earlier so the upper silhouette can keep its full width', () => {
+test('a wider lower body keeps its original length and does not shrink the upper portrait', () => {
   const width = 100
   const height = 110
   const data = new Uint8ClampedArray(width * height * 4)
   for (let y = 10; y < height; y++) {
-    const [left, right] = y < 43 ? [40, 60] : y < 80 ? [22, 78] : [7, 93]
+    const [left, right] = y < 43 ? [40, 60] : y < 65 ? [22, 78] : [7, 93]
     for (let x = left; x < right; x++) data[(y * width + x) * 4 + 3] = 255
   }
   const frame = findPortraitFrame({ width, height, data })
   assert.equal(frame.top, 10)
-  assert.ok(frame.bottom > 43 && frame.bottom < 80)
-  assert.equal(frame.silhouetteLeft, 22)
-  assert.equal(frame.silhouetteRight, 78)
+  assert.equal(frame.bottom, height)
+  assert.equal(frame.upperBodyLeft, 22)
+  assert.equal(frame.upperBodyRight, 78)
 })
