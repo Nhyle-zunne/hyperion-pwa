@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import AdminNavigation from '../components/AdminNavigation'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import { supabase } from '../lib/supabase'
-import { POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
+import { POSTER_DEGREES, POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
 import { removePortraitBackground } from '../lib/posterPortrait'
 import { downloadPoster, loadPosterArtwork, renderPoster } from '../lib/renderPoster'
 import './AdminPosterGeneratorScreen.css'
@@ -127,7 +127,7 @@ export default function AdminPosterGeneratorScreen() {
     <AdminNavigation />
     <header className="admin-poster__heading">
       <h1>POSTER GENERATOR</h1>
-      <p>Create a Hyperion congratulatory poster for any licensure track. Everything stays in this browser until you download.</p>
+      <p>Create a Hyperion congratulatory poster for any of the four licensure tracks. Everything stays in this browser until you download.</p>
     </header>
 
     <div className="admin-poster__grid">
@@ -146,8 +146,10 @@ export default function AdminPosterGeneratorScreen() {
         <input id="poster-name" value={name} maxLength={120} placeholder="e.g. Sheldon R. Abarquez" onChange={event => setName(event.target.value)} />
         <small className="admin-poster__hint">Appears as: {fullPosterName(trackId, name) || `${track.prefix} [FULL NAME]`.trim()}</small>
 
-        <label htmlFor="poster-degree">Degree or qualification</label>
-        <input id="poster-degree" value={degree} maxLength={110} placeholder="Bachelor of Science in..." onChange={event => setDegree(event.target.value)} />
+        <label htmlFor="poster-degree">Degree</label>
+        <select id="poster-degree" value={degree} onChange={event => setDegree(event.target.value)}>
+          {POSTER_DEGREES.map(option => <option value={option} key={option}>{option}</option>)}
+        </select>
 
         <label htmlFor="poster-date">Examination date</label>
         <input id="poster-date" type="date" value={date} onChange={event => setDate(event.target.value)} />
