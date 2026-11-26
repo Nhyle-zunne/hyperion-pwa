@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fitPosterText, posterOffsetFromPercent } from '../../src/lib/posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent, POSTER_TEXT_LAYOUT } from '../../src/lib/posterLayout.mjs'
 
 const width = (text, size) => text.length * size * 0.55
 
@@ -26,4 +26,23 @@ test('percentage-based portrait movement converts to poster coordinates', () => 
 test('unrenderable text gets an explicit failure instead of overflowing', () => {
   const value = fitPosterText('W'.repeat(180), { maxWidth: 160, preferredSize: 32, minSize: 22, maxLines: 1 }, width)
   assert.equal(value, null)
+})
+
+test('poster headings keep readable two-line sizing instead of shrinking to one line', () => {
+  const value = fitPosterText(
+    'MARINA LICENSURE EXAMINATION\\nFOR MARINE DECK OFFICERS',
+    { maxWidth: 706, preferredSize: 47, minSize: 28, maxLines: 2 },
+    (text, size) => text.length * size * 0.4,
+  )
+  assert.deepEqual(value.lines, ['MARINA LICENSURE EXAMINATION', 'FOR MARINE DECK OFFICERS'])
+  assert.equal(value.fontSize, 47)
+})
+
+test('poster text uses the supplied sample alignment and relative sizing', () => {
+  assert.equal(POSTER_TEXT_LAYOUT.name.x, POSTER_TEXT_LAYOUT.degree.x)
+  assert.equal(POSTER_TEXT_LAYOUT.name.x, 430)
+  assert.equal(POSTER_TEXT_LAYOUT.degree.fontSize, 36)
+  assert.equal(POSTER_TEXT_LAYOUT.date.x, 580)
+  assert.equal(POSTER_TEXT_LAYOUT.exam.fontSize, 47)
+  assert.equal(POSTER_TEXT_LAYOUT.exam.maxLines, 2)
 })

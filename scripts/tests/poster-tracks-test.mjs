@@ -24,9 +24,9 @@ test('deck and engine degrees and licensure headings follow track selection', ()
   const deck = POSTER_TRACKS.find(track => track.id === 'master_mariner')
   const engine = POSTER_TRACKS.find(track => track.id === 'chief_engineer')
   assert.match(deck.defaultDegree, /Marine Transportation/)
-  assert.match(deck.examTitle, /MARINE DECK OFFICERS/)
+  assert.equal(deck.examTitle, 'MARINA LICENSURE EXAMINATION\\nFOR DECK MANAGEMENT LEVEL')
   assert.match(engine.defaultDegree, /Marine Engineering/)
-  assert.match(engine.examTitle, /MARINE ENGINE OFFICERS/)
+  assert.equal(engine.examTitle, 'MARINA LICENSURE EXAMINATION\\nFOR ENGINE MANAGEMENT LEVEL')
 })
 
 test('rank prefix is automatic, but never duplicated', () => {
@@ -41,4 +41,13 @@ test('calendar dates do not shift with local timezone', () => {
   assert.equal(formatPosterDate('2026-11-26'), 'November 26, 2026')
   assert.equal(formatPosterDate('2026-02-30'), '')
   assert.equal(formatPosterDate(''), '')
+})
+
+test('each active track uses its correct two-line examination description', () => {
+  assert.deepEqual(POSTER_TRACKS.map(track => [track.id, track.examTitle]), [
+    ['oic_nw', 'MARINA LICENSURE EXAMINATION\\nFOR MARINE DECK OFFICERS'],
+    ['oic_ew', 'MARINA LICENSURE EXAMINATION\\nFOR MARINE ENGINEERS'],
+    ['master_mariner', 'MARINA LICENSURE EXAMINATION\\nFOR DECK MANAGEMENT LEVEL'],
+    ['chief_engineer', 'MARINA LICENSURE EXAMINATION\\nFOR ENGINE MANAGEMENT LEVEL'],
+  ])
 })
