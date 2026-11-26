@@ -3,14 +3,13 @@ const marineEngine = 'Bachelor of Science in Marine Engineering'
 const deckExam = 'MARINA LICENSURE EXAMINATION\nFOR MARINE DECK OFFICERS'
 const engineExam = 'MARINA LICENSURE EXAMINATION\nFOR MARINE ENGINE OFFICERS'
 
+export const POSTER_DEGREES = Object.freeze([marineDeck, marineEngine])
+
 export const POSTER_TRACKS = Object.freeze([
   { id: 'oic_nw', label: 'OIC-NW', prefix: 'OIC-NW', defaultDegree: marineDeck, examTitle: deckExam },
   { id: 'oic_ew', label: 'OIC-EW', prefix: 'OIC-EW', defaultDegree: marineEngine, examTitle: engineExam },
-  { id: 'chief_mate', label: 'Chief Mate', prefix: 'C/M', defaultDegree: marineDeck, examTitle: deckExam },
-  { id: 'master_mariner', label: 'Master Mariner', prefix: 'CAPT.', defaultDegree: marineDeck, examTitle: deckExam },
-  { id: 'second_engineer', label: 'Second Engineer', prefix: '2/E', defaultDegree: marineEngine, examTitle: engineExam },
-  { id: 'chief_engineer', label: 'Chief Engineer', prefix: 'C/E', defaultDegree: marineEngine, examTitle: engineExam },
-  { id: 'gmdss', label: 'GMDSS GOC', prefix: '', defaultDegree: '', examTitle: 'GLOBAL MARITIME DISTRESS AND SAFETY SYSTEM\n(GMDSS) RADIO OPERATORS LICENSURE EXAMINATION' },
+  { id: 'master_mariner', label: 'CAPT.', prefix: 'CAPT.', defaultDegree: marineDeck, examTitle: deckExam },
+  { id: 'chief_engineer', label: 'C/E', prefix: 'C/E', defaultDegree: marineEngine, examTitle: engineExam },
 ])
 
 export function fullPosterName(trackId, name) {
