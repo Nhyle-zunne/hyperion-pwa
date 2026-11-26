@@ -188,8 +188,10 @@ Deno.serve(async req => {
     const pendingPaymentUsers = new Set<string>()
     const adminAuditUsers = new Set<string>()
     stage = 'account-dependencies'
-    for (let start = 0; start < users.length; start += 1000) {
-      const ids = users.slice(start, start + 1000).map(account => account.id)
+    // Keep PostgREST GET URLs short: 1000 UUID filters exceeded 15 KB and failed in the Edge runtime.
+    const dependencyBatchSize = 128
+    for (let start = 0; start < users.length; start += dependencyBatchSize) {
+      const ids = users.slice(start, start + dependencyBatchSize).map(account => account.id)
       const [activityResult, pendingOrdersResult, failedCheckoutResult, pendingBatchesResult, adminAuditResult, manualClaimsResult] = await Promise.all([
         admin.from('user_activity').select('user_id,last_accessed_at').in('user_id', ids),
         admin.from('orders').select('user_id').in('user_id', ids).in('status', ['pending', 'submitted']).limit(10000),
