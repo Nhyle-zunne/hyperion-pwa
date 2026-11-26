@@ -55,8 +55,8 @@ export function posterPortraitPlacement(headWidth, leftShoulder, rightShoulder, 
   const scale = Math.min(251 / headWidth, (rightEdge - POSTER_PORTRAIT_LEFT) / (leftShoulder + rightShoulder))
   const headCenter = Math.max(POSTER_PORTRAIT_LEFT + leftShoulder * scale,
     Math.min(preferredCenter, rightEdge - rightShoulder * scale))
-  // Move a short cutout down so its real torso can fill more of the poster.
-  const headTop = Math.max(305, Math.min(435, 1020 - visibleHeight * scale))
+  // Lower short crops only within the space above the name banner at row 375.
+  const headTop = Math.max(271, Math.min(345, 1020 - visibleHeight * scale))
   return { headCenter, headTop, scale }
 }
 

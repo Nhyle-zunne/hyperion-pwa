@@ -73,10 +73,13 @@ test('portrait placement keeps both shoulder edges in the portrait column', () =
   assert.ok(wide.headCenter + 300 * wide.scale <= 1238)
 })
 
-test('a short portrait starts lower so its existing torso reaches farther down', () => {
+test('automatic placement keeps the hair above the name banner for either crop length', () => {
   const short = posterPortraitPlacement(236, 225, 225, 520)
   const long = posterPortraitPlacement(236, 225, 225, 785)
   assert.ok(short.headTop > long.headTop)
-  assert.ok(short.headTop + 520 * short.scale > 900)
+  // The name banner starts at art row 375.
+  assert.ok(short.headTop <= 345)
+  assert.ok(long.headTop <= 345)
+  assert.ok(short.headTop + 520 * short.scale > 820)
   assert.ok(long.headTop + 785 * long.scale >= 1020)
 })
