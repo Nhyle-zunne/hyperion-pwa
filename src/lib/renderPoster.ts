@@ -1,4 +1,4 @@
-import { fitPosterText, posterOffsetFromPercent } from './posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
 import { formatPosterDate, fullPosterName } from './posterTracks.mjs'
 import type { PosterTrack } from './posterTracks.mjs'
 
@@ -143,12 +143,10 @@ export function renderPoster(canvas: HTMLCanvasElement, artwork: HTMLImageElemen
   if (data.portrait) drawPortrait(ctx, data.portrait, data)
 
   const name = fullPosterName(data.track.id, data.name).toUpperCase()
-  drawFittedText(ctx, name, { x: 412, baseline: 448, maxWidth: 728, fontSize: 54, minSize: 22, maxLines: 2, lineHeight: 42, family: 'Georgia, serif', color: '#ffffff', weight: 'bold' })
-  drawFittedText(ctx, data.degree, { x: 408, baseline: 497, maxWidth: 720, fontSize: 28, minSize: 19, family: 'Georgia, serif', color: '#f6ca68', weight: 'bold', italic: true })
-  drawFittedText(ctx, formatPosterDate(data.date), { x: 637, baseline: 663, maxWidth: 308, fontSize: 32, minSize: 19, family: 'Georgia, serif', color: '#071c42', weight: 'bold', italic: true })
-
-  const examLines = data.track.examTitle.replace(/\n/g, ' ')
-  drawFittedText(ctx, examLines, { x: 402, baseline: 789, maxWidth: 706, fontSize: 47, minSize: 28, maxLines: 2, lineHeight: 47, family: 'Impact, "Arial Narrow", sans-serif', color: '#071d43', weight: 'bold' })
+  drawFittedText(ctx, name, { ...POSTER_TEXT_LAYOUT.name, family: 'Georgia, serif', color: '#ffffff', weight: 'bold' })
+  drawFittedText(ctx, data.degree, { ...POSTER_TEXT_LAYOUT.degree, family: 'Georgia, serif', color: '#f6ca68', weight: 'bold', italic: true })
+  drawFittedText(ctx, formatPosterDate(data.date), { ...POSTER_TEXT_LAYOUT.date, family: 'Georgia, serif', color: '#071c42', weight: 'bold', italic: true })
+  drawFittedText(ctx, data.track.examTitle, { ...POSTER_TEXT_LAYOUT.exam, family: 'Impact, "Arial Narrow", sans-serif', color: '#071d43', weight: 'bold' })
   drawFittedText(ctx, data.school.toUpperCase(), { x: 480, baseline: data.company ? 929 : 952, maxWidth: 552, fontSize: 29, minSize: 18, maxLines: 2, lineHeight: 28, family: 'Georgia, serif', color: '#082143', weight: 'bold', italic: true })
   drawFittedText(ctx, data.company.toUpperCase(), { x: 480, baseline: 971, maxWidth: 552, fontSize: 20, minSize: 14, family: 'Georgia, serif', color: '#082143', italic: true })
 
