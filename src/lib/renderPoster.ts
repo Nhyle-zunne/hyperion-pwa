@@ -1,4 +1,4 @@
-import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend, posterPortraitPlacement, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
 import { formatPosterDate, fullPosterName } from './posterTracks.mjs'
 import type { PortraitFrame } from './posterAlpha.mjs'
 import type { PosterTrack } from './posterTracks.mjs'
@@ -82,11 +82,9 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   let fadeEnd: number
   let shoulderBottom = 0
   if (frame) {
-    const headCenter = 1000
-    const shoulderRoom = ART_SIZE - 16 - headCenter
-    const shoulderWidth = frame.shoulderRight - frame.headCenter
-    const portraitScale = Math.min(236 / frame.headWidth, shoulderRoom / shoulderWidth) * scale
-    const left = headCenter + xOffset - frame.headCenter * portraitScale
+    const placement = posterPortraitPlacement(frame.headWidth, frame.shoulderRight - frame.headCenter)
+    const portraitScale = placement.scale * scale
+    const left = placement.headCenter + xOffset - frame.headCenter * portraitScale
     const headTop = 271 + yOffset
     shoulderBottom = headTop + frame.headWidth * portraitScale * 1.9
     const top = headTop - frame.top * portraitScale
@@ -130,6 +128,18 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
     layerCtx.drawImage(portrait, cropX, cropY, cropWidth, cropHeight, x, y, width, height)
     fadeEnd = Math.min(1105, y + height)
     fadeStart = fadeEnd - 230
+  }
+
+  const tintStart = Math.max(shoulderBottom + 35, fadeStart)
+  if (frame && tintStart < fadeEnd) {
+    // Color only existing portrait pixels below the shoulder boards.
+    layerCtx.globalCompositeOperation = 'source-atop'
+    const tint = layerCtx.createLinearGradient(0, tintStart, 0, fadeEnd)
+    tint.addColorStop(0, 'rgba(54, 105, 187, 0)')
+    tint.addColorStop(0.55, 'rgba(54, 105, 187, 0.08)')
+    tint.addColorStop(1, 'rgba(54, 105, 187, 0.20)')
+    layerCtx.fillStyle = tint
+    layerCtx.fillRect(0, tintStart, ART_SIZE, fadeEnd - tintStart)
   }
 
   layerCtx.globalCompositeOperation = 'destination-in'

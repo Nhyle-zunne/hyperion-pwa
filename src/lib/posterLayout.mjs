@@ -47,6 +47,15 @@ export function posterOffsetFromPercent(percent, dimension) {
   return dimension * percent / 100
 }
 
+export function posterPortraitPlacement(headWidth, shoulderWidth) {
+  const rightEdge = 1238
+  const minCenter = 960
+  const preferredCenter = 1009
+  const scale = Math.min(251 / headWidth, (rightEdge - minCenter) / shoulderWidth)
+  const headCenter = Math.min(preferredCenter, rightEdge - shoulderWidth * scale)
+  return { headCenter, scale }
+}
+
 export function posterPortraitBlend(headTop, headWidth, visibleBottom, yOffset) {
   // Keep the shoulders and upper chest at the original scale. Stretch only
   // a narrow strip at the bottom, where the artwork blends into the shirt.
@@ -61,8 +70,12 @@ export function posterPortraitBlend(headTop, headWidth, visibleBottom, yOffset) 
     ? Math.max(0, Math.min(36, lowerTorso * 0.35, targetBottom - visibleBottom))
     : 0
   const fadeEnd = Math.min(1105, visibleBottom + extension)
+  // Keep a longer portrait clear farther down the right side. Short crops
+  // still feather into the artwork before the original edge becomes visible.
+  const torsoCoverage = Math.max(0, Math.min(1, (visibleBottom - yOffset - 840) / 160))
+  const featherLength = 235 - torsoCoverage * 65
   const fadeStart = canExtend
-    ? Math.min(fadeEnd - 24, Math.max(chestBottom, fadeEnd - 235))
+    ? Math.min(fadeEnd - 24, Math.max(chestBottom, fadeEnd - featherLength))
     : fadeEnd - 64
   return { torsoStart, extension, fadeStart, fadeEnd }
 }

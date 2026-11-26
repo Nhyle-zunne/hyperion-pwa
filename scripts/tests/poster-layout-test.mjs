@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend } from '../../src/lib/posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend, posterPortraitPlacement } from '../../src/lib/posterLayout.mjs'
 
 const width = (text, size) => text.length * size * 0.55
 
@@ -53,7 +53,7 @@ test('full portraits and head-only crops use a fade without stretching', () => {
   const full = posterPortraitBlend(271, 236, 1165, 0)
   assert.equal(full.extension, 0)
   assert.equal(full.fadeEnd, 1105)
-  assert.ok(full.fadeEnd - full.fadeStart >= 200)
+  assert.ok(full.fadeStart >= 925 && full.fadeEnd - full.fadeStart >= 155)
   const head = posterPortraitBlend(271, 236, 620, 0)
   assert.equal(head.extension, 0)
   assert.ok(head.fadeStart < head.fadeEnd)
@@ -65,4 +65,13 @@ test('a crop ending near the collar fades without reshaping the shoulder boards'
   assert.equal(blend.extension, 0)
   assert.ok(blend.fadeStart < blend.fadeEnd)
   assert.equal(blend.fadeEnd, 724)
+})
+
+test('portrait placement makes room for wider shoulders before shrinking the face', () => {
+  const standard = posterPortraitPlacement(236, 210)
+  assert.ok(standard.scale > 1)
+  const wide = posterPortraitPlacement(236, 300)
+  assert.ok(wide.headCenter < standard.headCenter && wide.headCenter >= 960)
+  assert.ok(wide.scale > (1254 - 16 - 1000) / 300)
+  assert.ok(wide.headCenter + 300 * wide.scale <= 1238)
 })
