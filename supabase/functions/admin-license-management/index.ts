@@ -1,5 +1,4 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { gzipSync } from 'node:zlib'
 
 type LicenseTerm = 'week' | 'month' | 'year'
 const PRODUCTS = [
@@ -22,17 +21,10 @@ function cors(req: Request) {
   return { ...corsHeaders, 'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : 'https://hyperionmaritime.org' }
 }
 function json(req: Request, body: unknown, status = 200) {
-  const serialized = JSON.stringify(body)
-  const headers = new Headers({ ...cors(req), 'Content-Type': 'application/json', 'Cache-Control': 'no-store, private', 'Vary': 'Origin, Accept-Encoding' })
-  const acceptsGzip = (req.headers.get('Accept-Encoding') || '').split(',').some(encoding => {
-    const match = /^\s*gzip\s*(?:;\s*q=(0(?:\.\d{0,3})?|1(?:\.0{0,3})?))?\s*$/i.exec(encoding)
-    return match !== null && (match[1] === undefined || Number(match[1]) > 0)
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...cors(req), 'Content-Type': 'application/json', 'Cache-Control': 'no-store, private' }
   })
-  if (acceptsGzip && new TextEncoder().encode(serialized).byteLength >= 4096) {
-    headers.set('Content-Encoding', 'gzip')
-    return new Response(new Uint8Array(gzipSync(serialized)), { status, headers })
-  }
-  return new Response(serialized, { status, headers })
 }
 function expiryForTerm(base: Date, term: LicenseTerm) {
   const result = new Date(base)
