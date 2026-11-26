@@ -52,5 +52,5 @@ test('poster page escapes the narrow desktop screen cap and uses a responsive pe
 test('poster renderer preserves explicit track heading lines and shared sample-aligned text layout', () => {
   assert.match(renderer, /POSTER_TEXT_LAYOUT/)
   assert.match(renderer, /data\.track\.examTitle/)
-  assert.doesNotMatch(renderer, /examTitle\.replace\\(/)
+  assert.doesNotMatch(renderer, /examTitle\.replace\(/)
 })
