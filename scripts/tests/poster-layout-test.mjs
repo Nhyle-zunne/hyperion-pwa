@@ -39,9 +39,9 @@ test('poster headings keep readable two-line sizing instead of shrinking to one 
 })
 
 
-test('short portraits extend from below the shoulders and fade to transparency at the new edge', () => {
+test('short portraits preserve the shoulder boards and extend the shirt below them', () => {
   const blend = posterPortraitBlend(271, 236, 782, 0)
-  assert.ok(blend.torsoStart > 610 && blend.torsoStart < 675)
+  assert.ok(blend.torsoStart >= 730 && blend.torsoStart < 782)
   assert.ok(blend.extension >= 200 && blend.extension <= 225)
   assert.ok(blend.fadeStart > 782 - 65)
   assert.equal(blend.fadeEnd, 782 + blend.extension)
@@ -51,8 +51,16 @@ test('full portraits and head-only crops use a fade without stretching', () => {
   const full = posterPortraitBlend(271, 236, 1165, 0)
   assert.equal(full.extension, 0)
   assert.equal(full.fadeEnd, 1105)
+  assert.ok(full.fadeEnd - full.fadeStart >= 200)
   const head = posterPortraitBlend(271, 236, 620, 0)
   assert.equal(head.extension, 0)
   assert.ok(head.fadeStart < head.fadeEnd)
   assert.equal(head.fadeEnd, 620)
+})
+
+test('a crop ending near the collar fades without reshaping the shoulder boards', () => {
+  const blend = posterPortraitBlend(271, 236, 724, 0)
+  assert.equal(blend.extension, 0)
+  assert.ok(blend.fadeStart < blend.fadeEnd)
+  assert.equal(blend.fadeEnd, 724)
 })

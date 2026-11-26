@@ -48,15 +48,19 @@ export function posterOffsetFromPercent(percent, dimension) {
 }
 
 export function posterPortraitBlend(headTop, headWidth, visibleBottom, yOffset) {
-  const torsoStart = headTop + headWidth * 1.52
+  // Keep the shoulders and upper chest at the original scale. Stretch only
+  // a narrow strip at the bottom, where the artwork blends into the shirt.
+  const chestBottom = headTop + headWidth * 1.95
+  const torsoStart = Math.max(chestBottom, visibleBottom - headWidth * 0.25)
   const lowerTorso = visibleBottom - torsoStart
   const targetBottom = Math.min(1105, 1055 + yOffset)
-  const extension = lowerTorso >= 72
-    ? Math.max(0, Math.min(225, lowerTorso * 1.6, targetBottom - visibleBottom))
+  const canExtend = lowerTorso >= headWidth * 0.1
+  const extension = canExtend
+    ? Math.max(0, Math.min(225, lowerTorso * 5, targetBottom - visibleBottom))
     : 0
   const fadeEnd = Math.min(1105, visibleBottom + extension)
-  const fadeStart = lowerTorso >= 72
-    ? Math.min(fadeEnd - 24, Math.max(torsoStart, fadeEnd - 235))
+  const fadeStart = canExtend
+    ? Math.min(fadeEnd - 24, Math.max(chestBottom, fadeEnd - 235))
     : fadeEnd - 64
   return { torsoStart, extension, fadeStart, fadeEnd }
 }
