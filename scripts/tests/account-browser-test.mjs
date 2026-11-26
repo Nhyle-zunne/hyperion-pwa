@@ -942,7 +942,7 @@ try {
   const calls = await page.evaluate(() => window.accountFixtureCalls)
   assert.equal(calls.filter(call => call.action === 'table:google_play_entitlements').length, 0, 'Profile layout must not load store entitlements')
   assert.equal(calls.filter(call => call.action === 'verify-checkout:').length, 0, 'Profile layout must not duplicate payment verification')
-  assert.deepEqual(calls.find(call => call.action === 'update-profile').data, { full_name: 'Updated Member', company: 'Fixture Company', school: 'Fixture School' })
+  assert.deepEqual(calls.find(call => call.action === 'update-profile').data, { full_name: 'Updated Member', company: 'Fixture Company', school: 'Fixture School', track_category: 'DECK' })
   // Checkout intentionally hides account tabs on phones; restore desktop
   // before using the desktop tab navigation to return to the store.
   await page.setViewportSize({ width: 1531, height: 900 })
