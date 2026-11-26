@@ -47,13 +47,17 @@ export function posterOffsetFromPercent(percent, dimension) {
   return dimension * percent / 100
 }
 
-export function posterPortraitPlacement(headWidth, shoulderWidth) {
+export const POSTER_PORTRAIT_LEFT = 821
+
+export function posterPortraitPlacement(headWidth, leftShoulder, rightShoulder, visibleHeight) {
   const rightEdge = 1238
-  const minCenter = 960
-  const preferredCenter = 1009
-  const scale = Math.min(251 / headWidth, (rightEdge - minCenter) / shoulderWidth)
-  const headCenter = Math.min(preferredCenter, rightEdge - shoulderWidth * scale)
-  return { headCenter, scale }
+  const preferredCenter = 1030
+  const scale = Math.min(251 / headWidth, (rightEdge - POSTER_PORTRAIT_LEFT) / (leftShoulder + rightShoulder))
+  const headCenter = Math.max(POSTER_PORTRAIT_LEFT + leftShoulder * scale,
+    Math.min(preferredCenter, rightEdge - rightShoulder * scale))
+  // Move a short cutout down so its real torso can fill more of the poster.
+  const headTop = Math.max(305, Math.min(435, 1020 - visibleHeight * scale))
+  return { headCenter, headTop, scale }
 }
 
 export function posterPortraitBlend(headTop, headWidth, visibleBottom, yOffset) {

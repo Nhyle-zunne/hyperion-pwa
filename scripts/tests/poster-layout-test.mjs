@@ -67,11 +67,16 @@ test('a crop ending near the collar fades without reshaping the shoulder boards'
   assert.equal(blend.fadeEnd, 724)
 })
 
-test('portrait placement makes room for wider shoulders before shrinking the face', () => {
-  const standard = posterPortraitPlacement(236, 210)
-  assert.ok(standard.scale > 1)
-  const wide = posterPortraitPlacement(236, 300)
-  assert.ok(wide.headCenter < standard.headCenter && wide.headCenter >= 960)
-  assert.ok(wide.scale > (1254 - 16 - 1000) / 300)
+test('portrait placement keeps both shoulder edges in the portrait column', () => {
+  const wide = posterPortraitPlacement(236, 260, 300, 650)
+  assert.ok(wide.headCenter - 260 * wide.scale >= 821)
   assert.ok(wide.headCenter + 300 * wide.scale <= 1238)
+})
+
+test('a short portrait starts lower so its existing torso reaches farther down', () => {
+  const short = posterPortraitPlacement(236, 225, 225, 520)
+  const long = posterPortraitPlacement(236, 225, 225, 785)
+  assert.ok(short.headTop > long.headTop)
+  assert.ok(short.headTop + 520 * short.scale > 900)
+  assert.ok(long.headTop + 785 * long.scale >= 1020)
 })

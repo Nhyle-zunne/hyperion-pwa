@@ -1,4 +1,4 @@
-import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend, posterPortraitPlacement, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend, posterPortraitPlacement, POSTER_PORTRAIT_LEFT, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
 import { formatPosterDate, fullPosterName } from './posterTracks.mjs'
 import type { PortraitFrame } from './posterAlpha.mjs'
 import type { PosterTrack } from './posterTracks.mjs'
@@ -82,10 +82,12 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   let fadeEnd: number
   let shoulderBottom = 0
   if (frame) {
-    const placement = posterPortraitPlacement(frame.headWidth, frame.shoulderRight - frame.headCenter)
+    const placement = posterPortraitPlacement(
+      frame.headWidth, frame.headCenter - frame.shoulderLeft, frame.shoulderRight - frame.headCenter, frame.bottom - frame.top
+    )
     const portraitScale = placement.scale * scale
     const left = placement.headCenter + xOffset - frame.headCenter * portraitScale
-    const headTop = 271 + yOffset
+    const headTop = placement.headTop + yOffset
     shoulderBottom = headTop + frame.headWidth * portraitScale * 1.9
     const top = headTop - frame.top * portraitScale
     const width = portrait.naturalWidth * portraitScale
@@ -143,25 +145,12 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   }
 
   layerCtx.globalCompositeOperation = 'destination-in'
-  // Let the cutout define the shoulders and start the artwork blend below them.
-  // The original-photo fallback still needs a full-height side feather.
-  const mask = document.createElement('canvas')
-  mask.width = ART_SIZE
-  mask.height = ART_SIZE
-  const maskCtx = mask.getContext('2d')
-  if (maskCtx) {
-    const sideFade = maskCtx.createLinearGradient(720, 0, 875, 0)
-    addPortraitFeather(sideFade, true)
-    maskCtx.fillStyle = sideFade
-    maskCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
-    if (frame) {
-      const shoulderProtection = maskCtx.createLinearGradient(0, shoulderBottom, 0, shoulderBottom + 145)
-      addPortraitFeather(shoulderProtection, false)
-      maskCtx.fillStyle = shoulderProtection
-      maskCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
-    }
-    layerCtx.drawImage(mask, 0, 0)
-  }
+  // Keep stray photo pixels out of the existing text column, even when a
+  // manual adjustment moves the portrait past its automatic position.
+  const sideFade = layerCtx.createLinearGradient(POSTER_PORTRAIT_LEFT - 17, 0, frame ? POSTER_PORTRAIT_LEFT : 875, 0)
+  addPortraitFeather(sideFade, true)
+  layerCtx.fillStyle = sideFade
+  layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
 
   const lowerFade = layerCtx.createLinearGradient(0, fadeStart, 0, fadeEnd)
   addPortraitFeather(lowerFade, false)

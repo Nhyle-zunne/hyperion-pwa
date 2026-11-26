@@ -30,4 +30,6 @@ export const POSTER_TEXT_LAYOUT: Readonly<{
 export function posterPortraitBlend(headTop: number, headWidth: number, visibleBottom: number, yOffset: number):
   { torsoStart: number; extension: number; fadeStart: number; fadeEnd: number }
 
-export function posterPortraitPlacement(headWidth: number, shoulderWidth: number): { headCenter: number; scale: number }
+export const POSTER_PORTRAIT_LEFT: number
+export function posterPortraitPlacement(headWidth: number, leftShoulder: number, rightShoulder: number, visibleHeight: number):
+  { headCenter: number; headTop: number; scale: number }
