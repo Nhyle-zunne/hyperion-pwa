@@ -1,37 +1,37 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { POSTER_TRACKS, fullPosterName, formatPosterDate } from '../../src/lib/posterTracks.mjs'
+import { POSTER_TRACKS, POSTER_DEGREES, fullPosterName, formatPosterDate } from '../../src/lib/posterTracks.mjs'
 
-test('every Hyperion licensure track has a distinct poster title', () => {
-  assert.deepEqual(POSTER_TRACKS.map(track => [track.id, track.prefix]), [
-    ['oic_nw', 'OIC-NW'],
-    ['oic_ew', 'OIC-EW'],
-    ['chief_mate', 'C/M'],
-    ['master_mariner', 'CAPT.'],
-    ['second_engineer', '2/E'],
-    ['chief_engineer', 'C/E'],
-    ['gmdss', ''],
+test('poster generator exposes only the four requested license tracks', () => {
+  assert.deepEqual(POSTER_TRACKS.map(track => [track.label, track.prefix]), [
+    ['OIC-NW', 'OIC-NW'],
+    ['OIC-EW', 'OIC-EW'],
+    ['CAPT.', 'CAPT.'],
+    ['C/E', 'C/E'],
   ])
-  assert.equal(new Set(POSTER_TRACKS.map(track => track.id)).size, 7)
+  assert.equal(POSTER_TRACKS.length, 4)
 })
 
-test('deck and engine degrees and licensure headings follow track selection', () => {
-  const deck = POSTER_TRACKS.find(track => track.id === 'chief_mate')
+test('degree dropdown contains only Marine Transportation and Marine Engineering', () => {
+  assert.deepEqual(POSTER_DEGREES, [
+    'Bachelor of Science in Marine Transportation',
+    'Bachelor of Science in Marine Engineering',
+  ])
+  assert.deepEqual([...new Set(POSTER_TRACKS.map(track => track.defaultDegree))].sort(), [...POSTER_DEGREES].sort())
+})
+
+test('deck and engine exam headings follow the selected track', () => {
+  const deck = POSTER_TRACKS.find(track => track.id === 'oic_nw')
   const engine = POSTER_TRACKS.find(track => track.id === 'chief_engineer')
-  const gmdss = POSTER_TRACKS.find(track => track.id === 'gmdss')
-  assert.match(deck.defaultDegree, /Marine Transportation/)
   assert.match(deck.examTitle, /MARINE DECK OFFICERS/)
-  assert.match(engine.defaultDegree, /Marine Engineering/)
   assert.match(engine.examTitle, /MARINE ENGINE OFFICERS/)
-  assert.match(gmdss.examTitle, /GMDSS.*RADIO OPERATORS/)
-  assert.equal(gmdss.defaultDegree, '')
 })
 
 test('rank prefix is automatic, but never duplicated', () => {
   assert.equal(fullPosterName('oic_nw', '  Sheldon   R. Abarquez  '), 'OIC-NW Sheldon R. Abarquez')
   assert.equal(fullPosterName('oic_nw', 'OIC-NW Sheldon R. Abarquez'), 'OIC-NW Sheldon R. Abarquez')
   assert.equal(fullPosterName('master_mariner', 'Juan Dela Cruz'), 'CAPT. Juan Dela Cruz')
-  assert.equal(fullPosterName('gmdss', 'Juan Dela Cruz'), 'Juan Dela Cruz')
+  assert.equal(fullPosterName('chief_engineer', 'Juan Dela Cruz'), 'C/E Juan Dela Cruz')
   assert.equal(fullPosterName('chief_engineer', ' '), '')
 })
 
