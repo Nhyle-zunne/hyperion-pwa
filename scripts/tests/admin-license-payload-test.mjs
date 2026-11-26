@@ -185,6 +185,25 @@ try {
   } finally {
     delete context.Date
   }
+  context.Date = class ChangingErrorNameDate extends Date {
+    toISOString() {
+      const error = new Error('changing error name')
+      let reads = 0
+      Object.defineProperty(error, 'name', { get: () => ++reads <= 2 ? 'RangeError' : 'private-person@fixture.invalid' })
+      throw error
+    }
+  }
+  try {
+    let caught = false
+    try { await send({ action: 'list', compact: true }) } catch (error) {
+      assert.equal(error.message, 'changing error name')
+      caught = true
+    }
+    assert.equal(caught, true)
+    assert.doesNotMatch(diagnosticErrors.at(-1), /private-person@fixture\.invalid/, 'A stateful error name getter cannot bypass the safe-label allowlist')
+  } finally {
+    delete context.Date
+  }
   explodeDependency = false
   assert.equal(typeof context.json, 'function')
   const directFailure = context.json(new Request('http://fixture.invalid/admin-license-management'), { error: 'private-person@fixture.invalid' }, 500)
