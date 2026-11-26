@@ -20,3 +20,7 @@ export function fitPosterText(text, { maxWidth, preferredSize, minSize, maxLines
   }
   return null
 }
+
+export function posterOffsetFromPercent(percent, dimension) {
+  return dimension * percent / 100
+}
