@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fitPosterText } from '../../src/lib/posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent } from '../../src/lib/posterLayout.mjs'
 
 const width = (text, size) => text.length * size * 0.55
 
@@ -15,6 +15,12 @@ test('long candidate names wrap without entering the portrait area', () => {
   assert.ok(value)
   assert.ok(value.lines.length <= 2)
   assert.ok(value.lines.every(line => width(line, value.fontSize) <= 590))
+})
+
+test('percentage-based portrait movement converts to poster coordinates', () => {
+  assert.equal(posterOffsetFromPercent(16, 1254), 200.64)
+  assert.equal(posterOffsetFromPercent(-13, 1254), -163.02)
+  assert.equal(posterOffsetFromPercent(0, 1254), 0)
 })
 
 test('unrenderable text gets an explicit failure instead of overflowing', () => {

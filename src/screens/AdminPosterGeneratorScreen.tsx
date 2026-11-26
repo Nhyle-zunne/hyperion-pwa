@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import AdminNavigation from '../components/AdminNavigation'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import { supabase } from '../lib/supabase'
-import { POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
+import { POSTER_DEGREES, POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
 import { removePortraitBackground } from '../lib/posterPortrait'
 import { downloadPoster, loadPosterArtwork, renderPoster } from '../lib/renderPoster'
 import './AdminPosterGeneratorScreen.css'
@@ -32,9 +32,9 @@ export default function AdminPosterGeneratorScreen() {
   const [photoStatus, setPhotoStatus] = useState('Upload a candidate portrait to remove its background automatically.')
   const [photoBusy, setPhotoBusy] = useState(false)
   const [renderError, setRenderError] = useState('')
-  const [scale, setScale] = useState(1)
-  const [xOffset, setXOffset] = useState(0)
-  const [yOffset, setYOffset] = useState(0)
+  const [scalePercent, setScalePercent] = useState(100)
+  const [xOffsetPercent, setXOffsetPercent] = useState(0)
+  const [yOffsetPercent, setYOffsetPercent] = useState(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const photoRequestRef = useRef(0)
   const objectUrlsRef = useRef<string[]>([])
@@ -70,12 +70,12 @@ export default function AdminPosterGeneratorScreen() {
   useEffect(() => {
     if (!artwork || !canvasRef.current || !access.allowed) return
     try {
-      renderPoster(canvasRef.current, artwork, { track, name, degree, date, school, company, portrait, scale, xOffset, yOffset })
+      renderPoster(canvasRef.current, artwork, { track, name, degree, date, school, company, portrait, scalePercent, xOffsetPercent, yOffsetPercent })
       setRenderError('')
     } catch (error) {
       setRenderError(error instanceof Error ? error.message : 'Could not render the poster.')
     }
-  }, [artwork, access.allowed, track, name, degree, date, school, company, portrait, scale, xOffset, yOffset])
+  }, [artwork, access.allowed, track, name, degree, date, school, company, portrait, scalePercent, xOffsetPercent, yOffsetPercent])
 
   async function loadPhoto(blob: Blob) {
     const url = URL.createObjectURL(blob)
@@ -147,7 +147,9 @@ export default function AdminPosterGeneratorScreen() {
         <small className="admin-poster__hint">Appears as: {fullPosterName(trackId, name) || `${track.prefix} [FULL NAME]`.trim()}</small>
 
         <label htmlFor="poster-degree">Degree or qualification</label>
-        <input id="poster-degree" value={degree} maxLength={110} placeholder="Bachelor of Science in..." onChange={event => setDegree(event.target.value)} />
+        <select id="poster-degree" value={degree} onChange={event => setDegree(event.target.value)}>
+          {POSTER_DEGREES.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}
+        </select>
 
         <label htmlFor="poster-date">Examination date</label>
         <input id="poster-date" type="date" value={date} onChange={event => setDate(event.target.value)} />
@@ -165,13 +167,13 @@ export default function AdminPosterGeneratorScreen() {
         {cutoutPhoto && <label className="admin-poster__checkbox"><input type="checkbox" checked={useOriginal} onChange={event => setUseOriginal(event.target.checked)} />Use original photo without background removal</label>}
 
         <div className="admin-poster__sliders">
-          <label htmlFor="poster-scale">Portrait size <output>{Math.round(scale * 100)}%</output></label>
-          <input id="poster-scale" type="range" min="0.7" max="1.4" step="0.05" value={scale} onChange={event => setScale(Number(event.target.value))} />
-          <label htmlFor="poster-horizontal">Move horizontally <output>{xOffset}px</output></label>
-          <input id="poster-horizontal" type="range" min="-200" max="200" step="10" value={xOffset} onChange={event => setXOffset(Number(event.target.value))} />
-          <label htmlFor="poster-vertical">Move vertically <output>{yOffset}px</output></label>
-          <input id="poster-vertical" type="range" min="-160" max="160" step="10" value={yOffset} onChange={event => setYOffset(Number(event.target.value))} />
-          <button type="button" className="btn btn-outline" onClick={() => { setScale(1); setXOffset(0); setYOffset(0) }}>RESET PHOTO POSITION</button>
+          <label htmlFor="poster-scale">Portrait size <output>{scalePercent}%</output></label>
+          <input id="poster-scale" type="range" min="70" max="140" step="5" value={scalePercent} onChange={event => setScalePercent(Number(event.target.value))} />
+          <label htmlFor="poster-horizontal">Move horizontally <output>{xOffsetPercent > 0 ? '+' : ''}{xOffsetPercent}%</output></label>
+          <input id="poster-horizontal" type="range" min="-16" max="16" step="1" value={xOffsetPercent} onChange={event => setXOffsetPercent(Number(event.target.value))} />
+          <label htmlFor="poster-vertical">Move vertically <output>{yOffsetPercent > 0 ? '+' : ''}{yOffsetPercent}%</output></label>
+          <input id="poster-vertical" type="range" min="-13" max="13" step="1" value={yOffsetPercent} onChange={event => setYOffsetPercent(Number(event.target.value))} />
+          <button type="button" className="btn btn-outline" onClick={() => { setScalePercent(100); setXOffsetPercent(0); setYOffsetPercent(0) }}>RESET PHOTO POSITION</button>
         </div>
       </div>
 

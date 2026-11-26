@@ -1,4 +1,4 @@
-import { fitPosterText } from './posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent } from './posterLayout.mjs'
 import { formatPosterDate, fullPosterName } from './posterTracks.mjs'
 import type { PosterTrack } from './posterTracks.mjs'
 
@@ -13,9 +13,9 @@ export type PosterContent = {
   school: string
   company: string
   portrait: HTMLImageElement | null
-  scale: number
-  xOffset: number
-  yOffset: number
+  scalePercent: number
+  xOffsetPercent: number
+  yOffsetPercent: number
 }
 
 export function loadPosterArtwork(): Promise<HTMLImageElement> {
@@ -55,11 +55,13 @@ function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
 }
 
 function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement, data: PosterContent) {
-  const scale = Math.max(0.7, Math.min(1.4, data.scale))
+  const scale = Math.max(70, Math.min(140, data.scalePercent)) / 100
   const width = 610 * scale
   const height = 860 * scale
-  const x = 730 + data.xOffset - (width - 610) / 2
-  const y = 235 + data.yOffset - (height - 860) / 2
+  const xOffset = posterOffsetFromPercent(data.xOffsetPercent, ART_SIZE)
+  const yOffset = posterOffsetFromPercent(data.yOffsetPercent, ART_SIZE)
+  const x = 730 + xOffset - (width - 610) / 2
+  const y = 235 + yOffset - (height - 860) / 2
   const targetRatio = width / height
   const sourceRatio = portrait.naturalWidth / portrait.naturalHeight
   const cropWidth = sourceRatio > targetRatio ? portrait.naturalHeight * targetRatio : portrait.naturalWidth
@@ -146,7 +148,7 @@ export function renderPoster(canvas: HTMLCanvasElement, artwork: HTMLImageElemen
   drawFittedText(ctx, formatPosterDate(data.date), { x: 637, baseline: 663, maxWidth: 308, fontSize: 32, minSize: 19, family: 'Georgia, serif', color: '#071c42', weight: 'bold', italic: true })
 
   const examLines = data.track.examTitle.replace(/\n/g, ' ')
-  drawFittedText(ctx, examLines, { x: 402, baseline: 789, maxWidth: 706, fontSize: 47, minSize: 28, maxLines: data.track.id === 'gmdss' ? 3 : 2, lineHeight: 47, family: 'Impact, "Arial Narrow", sans-serif', color: '#071d43', weight: 'bold' })
+  drawFittedText(ctx, examLines, { x: 402, baseline: 789, maxWidth: 706, fontSize: 47, minSize: 28, maxLines: 2, lineHeight: 47, family: 'Impact, "Arial Narrow", sans-serif', color: '#071d43', weight: 'bold' })
   drawFittedText(ctx, data.school.toUpperCase(), { x: 480, baseline: data.company ? 929 : 952, maxWidth: 552, fontSize: 29, minSize: 18, maxLines: 2, lineHeight: 28, family: 'Georgia, serif', color: '#082143', weight: 'bold', italic: true })
   drawFittedText(ctx, data.company.toUpperCase(), { x: 480, baseline: 971, maxWidth: 552, fontSize: 20, minSize: 14, family: 'Georgia, serif', color: '#082143', italic: true })
 
