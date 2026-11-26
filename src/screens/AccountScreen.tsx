@@ -133,6 +133,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [savedTrackCategory, setSavedTrackCategory] = useState<TrackCategory | ''>('')
   const [profileExpanded, setProfileExpanded] = useState(true)
   const [savedProfile, setSavedProfile] = useState({ fullName: '', company: '', school: '' })
+  const profileHasChanges = fullName.trim() !== savedProfile.fullName || company.trim() !== savedProfile.company || school.trim() !== savedProfile.school || trackCategory !== savedTrackCategory
+  const [profileFeedback, setProfileFeedback] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const checkoutAvailability = useWebsiteCheckoutAvailability(!isLayout && accountTab === 'payments')
   const canBuyOnWebsite = isAdmin || (checkoutAvailability.checked && canPerformPwaPaymentAction('buy', checkoutAvailability.enabled))
@@ -356,9 +358,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   }, [session?.user.id])
   const saveProfile = async () => withPageLoading('Saving profile', async () => {
     if (!supabase || !session) return
-    if (!fullName.trim()) { setMessage('Please enter your full name.'); return }
-    if (!trackCategory) { setMessage('Please choose your track category.'); return }
-    setBusy(true); setMessage('Saving your profile…')
+    if (!fullName.trim()) { setProfileFeedback('Please enter your full name.'); return }
+    if (!trackCategory) { setProfileFeedback('Please choose your track category.'); return }
+    if (!profileHasChanges) { setProfileFeedback('No changes to save.'); return }
+    setBusy(true); setMessage('Saving your profile…'); setProfileFeedback('Saving changes…')
     try {
       const { data, error } = await supabase.auth.updateUser({ data: { full_name: fullName.trim(), company: company.trim(), school: school.trim(), track_category: trackCategory } })
       if (error) throw error
@@ -366,7 +369,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       setSavedProfile({ fullName: fullName.trim(), company: company.trim(), school: school.trim() })
       setSavedTrackCategory(trackCategory)
       setMessage('Your profile has been saved.')
-    } catch { setMessage('Unable to save profile details. Please try again.') }
+      setProfileFeedback('Your profile has been saved.')
+    } catch { setMessage('Unable to save profile details. Please try again.'); setProfileFeedback('Unable to save profile details. Please try again.') }
     finally { setBusy(false) }
   })
   const refreshAccount = async (quiet = false, refreshEntitlements = false) => {
@@ -883,14 +887,14 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
               <h3 style={{ margin: '0 0 .2rem', fontSize: '.85rem' }}>Your profile</h3>
               <p className="profile-side-links" style={{ margin: '0 0 .25rem' }}>Saved details appear on your checkout records.</p>
               <div className="account-profile-fields">
-                <label style={compactProfileLabel}>Full name<input required maxLength={160} value={fullName} onChange={e => setFullName(e.target.value)} style={compactProfileField} /></label>
-                <label style={compactProfileLabel}>Company (optional)<input maxLength={160} value={company} onChange={e => setCompany(e.target.value)} style={compactProfileField} /></label>
-                <label style={compactProfileLabel}>School (optional)<input maxLength={160} value={school} onChange={e => setSchool(e.target.value)} style={compactProfileField} /></label>
+                <label style={compactProfileLabel}>Full name<input required maxLength={160} value={fullName} onChange={e => { setFullName(e.target.value); setProfileFeedback('') }} style={compactProfileField} /></label>
+                <label style={compactProfileLabel}>Company (optional)<input maxLength={160} value={company} onChange={e => { setCompany(e.target.value); setProfileFeedback('') }} style={compactProfileField} /></label>
+                <label style={compactProfileLabel}>School (optional)<input maxLength={160} value={school} onChange={e => { setSchool(e.target.value); setProfileFeedback('') }} style={compactProfileField} /></label>
                 <div role="group" aria-label="Your track categories" style={{ display: 'grid', gap: '.2rem' }}>
                   <span style={compactProfileLabel}>Track categories</span>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '2%' }}>
                     {TRACK_CATEGORIES.map(category => <button key={category} type="button" aria-label={category} aria-pressed={hasTrackCategory(trackCategory, category)} disabled={busy}
-                      onClick={() => setTrackCategory(current => toggleTrackCategory(current, category) || '')}
+                      onClick={() => { setTrackCategory(current => toggleTrackCategory(current, category) || ''); setProfileFeedback('') }}
                       style={{ minWidth: 0, minHeight: 44, padding: '.3rem 1%', cursor: 'pointer', fontSize: 'clamp(.68rem,.8vw,.78rem)', fontWeight: 800,
                         background: hasTrackCategory(trackCategory, category) ? 'var(--accent-soft)' : 'var(--bg-elevated)', color: 'var(--text)',
                         border: hasTrackCategory(trackCategory, category) ? '2px solid var(--accent)' : '1px solid var(--border)', borderRadius: 0 }}>
@@ -900,9 +904,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 </div>
               </div>
               <div className="account-profile-actions">
-                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setTrackCategory(savedTrackCategory); setMessage('') }}>CANCEL</button>
-                <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || !trackCategory || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school && trackCategory === savedTrackCategory)} onClick={() => void saveProfile()}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
+                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setTrackCategory(savedTrackCategory); setMessage(''); setProfileFeedback(profileHasChanges ? 'Changes discarded.' : 'No unsaved changes to cancel.') }}>CANCEL</button>
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveProfile()}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
               </div>
+              {profileFeedback && <p role="status" className="profile-side-links" style={{ margin: '.3rem 0 0' }}>{profileFeedback}</p>}
               <div className="account-profile-actions">
                 <button type="button" className="btn btn-outline" onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')} style={{ borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>Delete account</button>
                 <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void signOut()}>{busy ? 'Signing out…' : 'Sign out'}</button>
