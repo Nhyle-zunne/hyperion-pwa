@@ -47,6 +47,7 @@ test('renders sample-aligned typography and a large two-line track heading', () 
   const name = calls.find(call => call.text === 'OIC-NW SHELDON R. ABARQUEZ')
   assert.ok(name)
   assert.equal(name.x, 430)
+  assert.match(name.font, /58px/)
 
   const degree = calls.find(call => call.text === data.degree)
   assert.ok(degree)
