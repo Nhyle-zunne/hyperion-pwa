@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fitPosterText, posterOffsetFromPercent, POSTER_TEXT_LAYOUT } from '../../src/lib/posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent } from '../../src/lib/posterLayout.mjs'
 
 const width = (text, size) => text.length * size * 0.55
 
@@ -38,7 +38,8 @@ test('poster headings keep readable two-line sizing instead of shrinking to one 
   assert.equal(value.fontSize, 47)
 })
 
-test('poster text uses the supplied sample alignment and relative sizing', () => {
+test('poster text uses the supplied sample alignment and relative sizing', async () => {
+  const { POSTER_TEXT_LAYOUT } = await import('../../src/lib/posterLayout.mjs')
   assert.equal(POSTER_TEXT_LAYOUT.name.x, POSTER_TEXT_LAYOUT.degree.x)
   assert.equal(POSTER_TEXT_LAYOUT.name.x, 430)
   assert.equal(POSTER_TEXT_LAYOUT.degree.fontSize, 36)
