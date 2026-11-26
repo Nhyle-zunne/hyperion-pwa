@@ -83,7 +83,7 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   let shoulderBottom = 0
   if (frame) {
     const placement = posterPortraitPlacement(
-      frame.headWidth, frame.headCenter - frame.shoulderLeft, frame.shoulderRight - frame.headCenter, frame.bottom - frame.top
+      frame.headWidth, frame.headCenter - frame.shoulderLeft, frame.shoulderRight - frame.headCenter
     )
     const portraitScale = placement.scale * scale
     const left = placement.headCenter + xOffset - frame.headCenter * portraitScale
@@ -147,7 +147,7 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   layerCtx.globalCompositeOperation = 'destination-in'
   // Keep stray photo pixels out of the existing text column, even when a
   // manual adjustment moves the portrait past its automatic position.
-  const sideFade = layerCtx.createLinearGradient(POSTER_PORTRAIT_LEFT - 17, 0, frame ? POSTER_PORTRAIT_LEFT : 875, 0)
+  const sideFade = layerCtx.createLinearGradient(798, 0, frame ? POSTER_PORTRAIT_LEFT : 875, 0)
   addPortraitFeather(sideFade, true)
   layerCtx.fillStyle = sideFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)

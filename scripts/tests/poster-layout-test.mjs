@@ -67,19 +67,15 @@ test('a crop ending near the collar fades without reshaping the shoulder boards'
   assert.equal(blend.fadeEnd, 724)
 })
 
-test('portrait placement keeps both shoulder edges in the portrait column', () => {
-  const wide = posterPortraitPlacement(236, 260, 300, 650)
-  assert.ok(wide.headCenter - 260 * wide.scale >= 821)
-  assert.ok(wide.headCenter + 300 * wide.scale <= 1238)
-})
+test('portrait placement uses the reference head position and fills more of the photo column', () => {
+  const reference = posterPortraitPlacement(250, 210, 225)
+  assert.equal(reference.headTop, 272)
+  assert.ok(Math.abs(reference.headCenter - 1017) <= 12)
+  assert.ok(reference.scale > 1)
 
-test('automatic placement keeps the hair above the name banner for either crop length', () => {
-  const short = posterPortraitPlacement(236, 225, 225, 520)
-  const long = posterPortraitPlacement(236, 225, 225, 785)
-  assert.ok(short.headTop > long.headTop)
-  // The name banner starts at art row 375.
-  assert.ok(short.headTop <= 345)
-  assert.ok(long.headTop <= 345)
-  assert.ok(short.headTop + 520 * short.scale > 820)
-  assert.ok(long.headTop + 785 * long.scale >= 1020)
+  const wide = posterPortraitPlacement(310, 347, 349)
+  assert.equal(wide.headTop, 272)
+  assert.ok(Math.round(wide.headCenter - 347 * wide.scale) >= 803)
+  assert.ok(Math.round(wide.headCenter + 349 * wide.scale) <= 1254)
+  assert.ok(wide.scale > 417 / (347 + 349) * 1.07)
 })

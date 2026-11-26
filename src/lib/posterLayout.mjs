@@ -47,17 +47,16 @@ export function posterOffsetFromPercent(percent, dimension) {
   return dimension * percent / 100
 }
 
-export const POSTER_PORTRAIT_LEFT = 821
+export const POSTER_PORTRAIT_LEFT = 803
 
-export function posterPortraitPlacement(headWidth, leftShoulder, rightShoulder, visibleHeight) {
-  const rightEdge = 1238
-  const preferredCenter = 1030
-  const scale = Math.min(251 / headWidth, (rightEdge - POSTER_PORTRAIT_LEFT) / (leftShoulder + rightShoulder))
+export function posterPortraitPlacement(headWidth, leftShoulder, rightShoulder) {
+  const rightEdge = 1254
+  const preferredCenter = 1017
+  const scale = Math.min(253 / headWidth, (rightEdge - POSTER_PORTRAIT_LEFT) / (leftShoulder + rightShoulder))
   const headCenter = Math.max(POSTER_PORTRAIT_LEFT + leftShoulder * scale,
     Math.min(preferredCenter, rightEdge - rightShoulder * scale))
-  // Lower short crops only within the space above the name banner at row 375.
-  const headTop = Math.max(271, Math.min(345, 1020 - visibleHeight * scale))
-  return { headCenter, headTop, scale }
+  // The reference hairline is roughly 22% from the top of the artwork.
+  return { headCenter, headTop: 272, scale }
 }
 
 export function posterPortraitBlend(headTop, headWidth, visibleBottom, yOffset) {
