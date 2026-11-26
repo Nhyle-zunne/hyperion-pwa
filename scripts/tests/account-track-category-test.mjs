@@ -15,13 +15,30 @@ const load = (path, context = {}) => {
   return exports
 }
 
-test('only DECK, ENGINE, and GMDSS are valid account display categories', () => {
+test('single categories and DECK+GMDSS are valid account display categories', () => {
   const { parseTrackCategory, TRACK_CATEGORIES } = load('src/lib/accountTrackCategory.ts')
   assert.deepEqual(Array.from(TRACK_CATEGORIES), ['DECK', 'ENGINE', 'GMDSS'])
   for (const category of TRACK_CATEGORIES) assert.equal(parseTrackCategory(category), category)
-  for (const category of [undefined, null, '', 'deck', 'GMDSS_GOC', 'ENGINE_OIC_EW', [], {}]) {
+  assert.equal(parseTrackCategory('DECK+GMDSS'), 'DECK+GMDSS')
+  for (const category of [undefined, null, '', 'deck', 'GMDSS_GOC', 'ENGINE_OIC_EW', 'ENGINE+DECK', 'GMDSS+DECK', [], {}]) {
     assert.equal(parseTrackCategory(category), null)
   }
+})
+
+test('DECK and GMDSS toggle together while ENGINE remains exclusive', () => {
+  const { toggleTrackCategory, hasTrackCategory } = load('src/lib/accountTrackCategory.ts')
+  assert.equal(toggleTrackCategory(null, 'DECK'), 'DECK')
+  assert.equal(toggleTrackCategory('DECK', 'GMDSS'), 'DECK+GMDSS')
+  assert.equal(toggleTrackCategory('GMDSS', 'DECK'), 'DECK+GMDSS')
+  assert.equal(hasTrackCategory('DECK+GMDSS', 'DECK'), true)
+  assert.equal(hasTrackCategory('DECK+GMDSS', 'GMDSS'), true)
+  assert.equal(hasTrackCategory('DECK+GMDSS', 'ENGINE'), false)
+  assert.equal(toggleTrackCategory('DECK+GMDSS', 'DECK'), 'GMDSS')
+  assert.equal(toggleTrackCategory('DECK+GMDSS', 'GMDSS'), 'DECK')
+  assert.equal(toggleTrackCategory('DECK+GMDSS', 'ENGINE'), 'ENGINE')
+  assert.equal(toggleTrackCategory('ENGINE', 'GMDSS'), 'GMDSS')
+  assert.equal(toggleTrackCategory('ENGINE', 'DECK'), 'DECK')
+  assert.equal(toggleTrackCategory('ENGINE', 'ENGINE'), null)
 })
 
 test('account category badge shows only validated display data', () => {
@@ -33,6 +50,10 @@ test('account category badge shows only validated display data', () => {
   const render = require('react-dom/server').renderToStaticMarkup
   assert.match(render(Badge({ category: 'DECK' })), /DECK/)
   assert.match(render(Badge({ category: 'GMDSS' })), /GMDSS/)
+  const combined = render(Badge({ category: 'DECK+GMDSS' }))
+  assert.equal((combined.match(/title="Self-selected account category \(not a license\)"/g) || []).length, 2)
+  assert.match(combined, />DECK<\/span>/)
+  assert.match(combined, />GMDSS<\/span>/)
   assert.equal(render(Badge({ category: 'ADMIN' })), '')
   assert.equal(render(Badge({ category: null })), '')
 })
@@ -58,11 +79,13 @@ test('the global sign-in prompt appears only for online accounts missing a categ
   }
   const missing = { id: 'member', user_metadata: { full_name: 'Test Member' } }
   const marked = { id: 'member', user_metadata: { track_category: 'ENGINE' } }
+  const both = { id: 'member', user_metadata: { track_category: 'DECK+GMDSS' } }
   assert.match(renderPrompt(missing), /Choose your track category/)
   assert.match(renderPrompt(missing), /aria-modal="true"/)
   assert.match(renderPrompt(missing), /SAVE TRACK CATEGORY/)
   assert.equal(renderPrompt(null), '', 'Guests can continue without a profile')
   assert.equal(renderPrompt(marked), '', 'Valid stored categories do not cause repeated prompts')
+  assert.equal(renderPrompt(both), '', 'A saved DECK and GMDSS selection does not re-prompt')
   assert.equal(renderPrompt(missing, false), '', 'Offline reviewer access is never blocked by the prompt')
   assert.match(renderPrompt(missing, true, 'Save failed'), /CONTINUE TO REVIEWER FOR NOW/,
     'A failed network save offers a safe way to keep using the reviewer')

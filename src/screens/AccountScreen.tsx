@@ -12,7 +12,7 @@ import { useLicenseStore } from '../stores/licenseStore'
 import { getCachedOfflineEntitlementSnapshot, type CachedOfflineEntitlementSnapshot } from '../lib/offlineQuestionCache'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 import { useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
-import { parseTrackCategory, TRACK_CATEGORIES, type TrackCategory } from '../lib/accountTrackCategory'
+import { hasTrackCategory, parseTrackCategory, toggleTrackCategory, TRACK_CATEGORIES, type TrackCategory } from '../lib/accountTrackCategory'
 import TrackCategoryBadge from '../components/TrackCategoryBadge'
 
 type Order = {
@@ -885,13 +885,19 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 <label style={label}>Full name<input required maxLength={160} readOnly={!profileEditing} value={fullName} onChange={e => setFullName(e.target.value)} style={profileField(profileEditing)} /></label>
                 <label style={label}>Company (optional)<input maxLength={160} readOnly={!profileEditing} value={company} onChange={e => setCompany(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
                 <label style={label}>School (optional)<input maxLength={160} readOnly={!profileEditing} value={school} onChange={e => setSchool(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
-                {profileEditing && <label style={label}>Track category
-                  <select aria-label="Your track category" value={trackCategory} onChange={e => setTrackCategory(e.target.value as TrackCategory)} style={field}>
-                    <option value="" disabled>Select your category</option>
-                    {TRACK_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
-                  </select>
-                </label>}
-                {profileEditing && <p style={{ margin: 0, fontSize: '.74rem', color: 'var(--text-muted)' }}>Your category is an account label only. It does not change your licenses.</p>}
+                {profileEditing && <div role="group" aria-label="Your track categories" style={{ display: 'grid', gap: '.35rem' }}>
+                  <span style={label}>Track categories</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '.3rem' }}>
+                    {TRACK_CATEGORIES.map(category => <button key={category} type="button" aria-label={category} aria-pressed={hasTrackCategory(trackCategory, category)} disabled={busy}
+                      onClick={() => setTrackCategory(current => toggleTrackCategory(current, category) || '')}
+                      style={{ minWidth: 0, minHeight: 44, padding: '.4rem .2rem', cursor: 'pointer', fontSize: '.74rem', fontWeight: 800,
+                        background: hasTrackCategory(trackCategory, category) ? 'var(--accent-soft)' : 'var(--bg-elevated)', color: 'var(--text)',
+                        border: hasTrackCategory(trackCategory, category) ? '2px solid var(--accent)' : '1px solid var(--border)', borderRadius: 0 }}>
+                      {hasTrackCategory(trackCategory, category) ? '✓ ' : ''}{category}
+                    </button>)}
+                  </div>
+                </div>}
+                {profileEditing && <p style={{ margin: 0, fontSize: '.74rem', color: 'var(--text-muted)' }}>Select DECK, GMDSS, or both. ENGINE is exclusive. These tags do not change your licenses.</p>}
               </div>
               {!profileEditing ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setMessage(''); setProfileEditing(true) }} style={{ width: '100%', marginTop: '.65rem', minHeight: 44, padding: '.45rem .65rem', fontSize: '.82rem' }}>EDIT PROFILE</button> : <div style={{ display: 'flex', gap: 8, marginTop: '.65rem' }}>
                 <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setTrackCategory(savedTrackCategory); setProfileEditing(false); setMessage('') }} style={{ flex: 1 }}>CANCEL</button>

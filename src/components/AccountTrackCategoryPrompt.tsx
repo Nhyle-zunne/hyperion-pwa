@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { parseTrackCategory, TRACK_CATEGORIES, type TrackCategory } from '../lib/accountTrackCategory'
+import { hasTrackCategory, parseTrackCategory, toggleTrackCategory, TRACK_CATEGORIES, type TrackCategory } from '../lib/accountTrackCategory'
 
 /** One-time profile setup for any signed-in user missing a category (including existing accounts). */
 export default function AccountTrackCategoryPrompt() {
@@ -105,18 +105,18 @@ export default function AccountTrackCategoryPrompt() {
       }}>
       <h2 id="track-category-title" style={{ margin: '0 0 .65rem', fontSize: '1.35rem' }}>Choose your track category</h2>
       <p id="track-category-description" style={{ margin: '0 0 1rem', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-        Help Hyperion identify which reviewer you may need when you send a payment. Choose one account label: DECK, ENGINE, or GMDSS.
-        Deck and GMDSS users may choose whichever label they prefer. Engine users should select Engine.
+        Help Hyperion identify which reviewer you may need when you send a payment. You can select DECK, GMDSS, or both.
+        ENGINE is a separate category and cannot be combined with the others.
       </p>
       <div role="group" aria-label="Select your account track category" style={{ display: 'grid', gap: '.55rem' }}>
         {TRACK_CATEGORIES.map(category => <button key={category} type="button" autoFocus={category === 'DECK'}
-          aria-pressed={choice === category} aria-disabled={busy} onClick={() => { if (!busy) setChoice(category) }}
+          aria-pressed={hasTrackCategory(choice, category)} aria-disabled={busy} onClick={() => { if (!busy) setChoice(current => toggleTrackCategory(current, category)) }}
           style={{ minHeight: 48, textAlign: 'left', padding: '.8rem 1rem', cursor: busy ? 'wait' : 'pointer',
-            border: choice === category ? '2px solid var(--accent)' : '1px solid var(--border)',
-            background: choice === category ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+            border: hasTrackCategory(choice, category) ? '2px solid var(--accent)' : '1px solid var(--border)',
+            background: hasTrackCategory(choice, category) ? 'var(--accent-soft)' : 'var(--bg-elevated)',
             color: 'var(--text)', borderRadius: 0, fontWeight: 850,
           }}>
-          {choice === category ? '✓  ' : '○  '}{category}
+          {hasTrackCategory(choice, category) ? '✓  ' : '○  '}{category}
         </button>)}
       </div>
       <p style={{ margin: '.9rem 0', fontSize: '.82rem', lineHeight: 1.5, color: 'var(--text-muted)' }}>

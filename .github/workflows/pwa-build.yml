@@ -59,6 +59,7 @@ jobs:
           node scripts/tests/payment-polling-test.mjs
           node scripts/tests/order-history-requests-test.mjs
           node scripts/tests/admin-license-payload-test.mjs
+          node --test scripts/tests/account-track-category-test.mjs
           node scripts/tests/admin-lifetime-sql-test.mjs
           node scripts/tests/paymongo-verification-test.mjs
           node scripts/tests/production-auth-build-test.mjs

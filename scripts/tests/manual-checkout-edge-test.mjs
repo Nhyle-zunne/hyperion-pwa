@@ -130,9 +130,19 @@ test('admin payments uses Google identity name when profile metadata is missing'
   assert.equal(list.data.claims[0].track_category, null)
 })
 
+test('admin payments preserves both DECK and GMDSS tags in listings and claim lookup', async () => {
+  const send = adminListFixture({ full_name: 'Boss Both', track_category: 'DECK+GMDSS' })
+  const list = await send('list')
+  assert.equal(list.data.claims[0].track_category, 'DECK+GMDSS')
+  assert.equal(list.data.orders[0].track_category, 'DECK+GMDSS')
+  assert.equal((await send('find-claim')).data.claim.track_category, 'DECK+GMDSS')
+})
+
 test('admin payments ignores arbitrary, non-category profile metadata', async () => {
   const send = adminListFixture({ full_name: 'Boss Test', track_category: 'ENGINE_OIC_EW' })
   assert.equal((await send('list')).data.claims[0].track_category, null)
+  const mixed = adminListFixture({ full_name: 'Boss Test', track_category: 'ENGINE+GMDSS' })
+  assert.equal((await mixed('list')).data.claims[0].track_category, null)
 })
 
 test('claim endpoint derives owner from verified JWT, not spoofable request fields',async()=>{
