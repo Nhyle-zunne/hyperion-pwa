@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 import { POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
 import type { PortraitFrame } from '../lib/posterAlpha.mjs'
 import { preparePortraitAssets, removePortraitBackground } from '../lib/posterPortrait'
-import { downloadPoster, loadPosterArtwork, renderPoster } from '../lib/renderPoster'
+import { downloadPoster, loadPosterArtwork, renderPoster, type PosterArtwork } from '../lib/renderPoster'
 import './AdminPosterGeneratorScreen.css'
 
 function localDate() {
@@ -30,7 +30,7 @@ export default function AdminPosterGeneratorScreen() {
   const [date, setDate] = useState(localDate)
   const [school, setSchool] = useState('')
   const [company, setCompany] = useState('')
-  const [artwork, setArtwork] = useState<HTMLImageElement | null>(null)
+  const [artwork, setArtwork] = useState<PosterArtwork | null>(null)
   const [originalPhoto, setOriginalPhoto] = useState<HTMLImageElement | null>(null)
   const [cutoutPhoto, setCutoutPhoto] = useState<{ image: HTMLImageElement; frame: PortraitFrame } | null>(null)
   const [useOriginal, setUseOriginal] = useState(false)

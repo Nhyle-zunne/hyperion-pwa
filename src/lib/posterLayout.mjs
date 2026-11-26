@@ -60,23 +60,20 @@ export function posterPortraitPlacement(headWidth, leftExtent, rightExtent, zoom
 }
 
 export function posterPortraitBlend(headTop, headWidth, visibleBottom, yOffset) {
-  // Keep the shoulders and upper chest at the original scale. Stretch only
-  // a narrow strip at the bottom, where the artwork blends into the shirt.
+  // Preserve the original scale through the collar and boards. Continue the
+  // available shirt below the chest, easing the extra length into the fade.
   const chestBottom = headTop + headWidth * 1.95
-  const torsoStart = Math.max(chestBottom, visibleBottom - headWidth * 0.25)
+  const torsoStart = Math.max(chestBottom, visibleBottom - headWidth * 1.25)
   const lowerTorso = visibleBottom - torsoStart
-  const targetBottom = Math.min(1105, 1055 + yOffset)
+  const targetBottom = Math.min(1110, 1095 + yOffset)
   const canExtend = lowerTorso >= headWidth * 0.1
-  // The quadratic stretch increases toward the bottom of the strip. Limit the
-  // total extension so the shirt keeps its proportions during the fade.
   const extension = canExtend
-    ? Math.max(0, Math.min(36, lowerTorso * 0.35, targetBottom - visibleBottom))
+    ? Math.max(0, Math.min(84, headWidth * 0.33, lowerTorso * 0.28, targetBottom - visibleBottom))
     : 0
-  const fadeEnd = Math.min(1105, visibleBottom + extension)
-  // Keep a longer portrait clear farther down the right side. Short crops
-  // still feather into the artwork before the original edge becomes visible.
+
+  const fadeEnd = Math.min(1110, visibleBottom + extension)
   const torsoCoverage = Math.max(0, Math.min(1, (visibleBottom - yOffset - 840) / 160))
-  const featherLength = 235 - torsoCoverage * 65
+  const featherLength = 182 - torsoCoverage * 55
   const fadeStart = canExtend
     ? Math.min(fadeEnd - 24, Math.max(chestBottom, fadeEnd - featherLength))
     : fadeEnd - 64

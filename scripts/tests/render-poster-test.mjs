@@ -17,7 +17,7 @@ test('renders sample-aligned typography and a large two-line track heading', () 
       calls.push({ text, x, y, font: this.font, align: this.textAlign })
     },
     setTransform() {},
-    drawImage() {},
+    drawImage(image, ...bounds) { calls.push({ image, bounds }) },
     fillRect(x, y, width, height) { calls.push({ x, y, width, height }) },
     createLinearGradient() { return { addColorStop() {} } },
     closePath() {},
@@ -42,10 +42,19 @@ test('renders sample-aligned typography and a large two-line track heading', () 
     yOffsetPercent: 0,
   }
 
-  renderPoster(canvas, {}, data)
+  const artwork = { background: {}, closingMessage: { naturalWidth: 850, naturalHeight: 145 } }
+  renderPoster(canvas, artwork, data)
 
   assert.equal(canvas.width, POSTER_EXPORT_SIZE)
   assert.equal(canvas.height, POSTER_EXPORT_SIZE)
+
+  const closingMessage = calls.find(call => call.image === artwork.closingMessage)
+  assert.ok(closingMessage?.bounds[2] >= 830)
+  const facebook = calls.find(call => call.text === '@HyperionMaritime')
+  const website = calls.find(call => call.text === 'HyperionMaritime.org')
+  assert.ok(facebook.x >= 175 && website.x >= 745)
+  assert.equal(facebook.y, website.y)
+  assert.ok(fontSize(facebook.font) >= 33 && fontSize(website.font) >= 33)
 
   const name = calls.find(call => call.text === 'OIC-NW SHELDON R. ABARQUEZ')
   assert.ok(name)
@@ -80,7 +89,7 @@ test('renders sample-aligned typography and a large two-line track heading', () 
   assert.ok(fontSize(school.font) >= 44)
 
   calls.length = 0
-  renderPoster(canvas, {}, { ...data, company: 'OSM Thome Ship Management Incorporated', track: POSTER_TRACKS.find(track => track.id === 'gmdss') })
+  renderPoster(canvas, artwork, { ...data, company: 'OSM Thome Ship Management Incorporated', track: POSTER_TRACKS.find(track => track.id === 'gmdss') })
   assert.ok(calls.some(call => call.text === 'OIC-NW SHELDON R. ABARQUEZ'))
   assert.ok(calls.some(call => call.text === 'FOR GMDSS RADIO OPERATORS'))
   assert.ok(calls.some(call => call.text === 'Bachelor of Science in Marine Transportation'))
@@ -90,12 +99,12 @@ test('renders sample-aligned typography and a large two-line track heading', () 
   assert.ok(company.y > school.y && company.y < dividers[2])
 
   calls.length = 0
-  renderPoster(canvas, {}, { ...data, school: 'Palompon Institute of Technology', company: 'Scanmar Maritime' })
+  renderPoster(canvas, artwork, { ...data, school: 'Palompon Institute of Technology', company: 'Scanmar Maritime' })
   assert.ok(fontSize(calls.find(call => call.text === 'PALOMPON INSTITUTE OF TECHNOLOGY').font) >= 39)
   assert.ok(fontSize(calls.find(call => call.text === 'SCANMAR MARITIME').font) >= 37)
 
   calls.length = 0
-  renderPoster(canvas, {}, { ...data, name: 'Diosdado Macapagal Arroyo' })
+  renderPoster(canvas, artwork, { ...data, name: 'Diosdado Macapagal Arroyo' })
   const wrappedName = calls.filter(call => call.text?.startsWith('OIC-NW DIOSDADO') || call.text?.includes('ARROYO'))
   assert.equal(wrappedName.length, 2)
   for (const line of wrappedName) {

@@ -19,13 +19,26 @@ export type PosterContent = {
   yOffsetPercent: number
 }
 
-export function loadPosterArtwork(): Promise<HTMLImageElement> {
+export type PosterArtwork = {
+  background: HTMLImageElement
+  closingMessage: HTMLImageElement
+}
+
+function loadArtworkImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image()
     image.onload = () => resolve(image)
     image.onerror = () => reject(new Error('Could not load Hyperion artwork. Refresh the page.'))
-    image.src = '/posters/hyperion-poster-artwork.webp'
+    image.src = src
   })
+}
+
+export async function loadPosterArtwork(): Promise<PosterArtwork> {
+  const [background, closingMessage] = await Promise.all([
+    loadArtworkImage('/posters/hyperion-poster-artwork.webp'),
+    loadArtworkImage('/posters/hyperion-poster-closing-message.webp'),
+  ])
+  return { background, closingMessage }
 }
 
 function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
@@ -154,6 +167,11 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   addPortraitFeather(lowerFade, false)
   layerCtx.fillStyle = lowerFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
+  // Follow the diagonal of the lower-right trim as the shirt meets the sea.
+  const cornerFade = layerCtx.createLinearGradient(1060, 1060, 1118, 1118)
+  addPortraitFeather(cornerFade, false)
+  layerCtx.fillStyle = cornerFade
+  layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
   layerCtx.globalCompositeOperation = 'source-over'
   ctx.drawImage(layer, 0, 0)
 }
@@ -191,51 +209,55 @@ function drawPosterDividers(ctx: CanvasRenderingContext2D) {
 }
 
 function drawFooter(ctx: CanvasRenderingContext2D) {
+  const top = 1166
+  const centerY = 1210
   ctx.fillStyle = '#071d3d'
-  ctx.fillRect(0, 1166, ART_SIZE, 88)
-  ctx.fillStyle = '#f3bc4a'
-  ctx.fillRect(0, 1161, ART_SIZE, 5)
+  ctx.fillRect(0, top, ART_SIZE, ART_SIZE - top)
+  const divider = ctx.createLinearGradient(0, top - 5, 0, top)
+  divider.addColorStop(0, '#fff1ba')
+  divider.addColorStop(0.5, '#e8ae36')
+  divider.addColorStop(1, '#a96c10')
+  ctx.fillStyle = divider
+  ctx.fillRect(0, top - 5, ART_SIZE, 5)
 
-  // White Facebook badge and website globe, matching the supplied final sample.
   ctx.beginPath()
-  ctx.arc(85, 1212, 24, 0, Math.PI * 2)
+  ctx.arc(135, centerY, 27, 0, Math.PI * 2)
   ctx.fillStyle = '#fff'
   ctx.fill()
   ctx.fillStyle = '#071d3d'
   ctx.textAlign = 'center'
-  ctx.font = 'bold 44px Arial, sans-serif'
-  ctx.fillText('f', 85, 1230)
+  ctx.font = 'bold 46px Arial, sans-serif'
+  ctx.fillText('f', 135, centerY + 19)
+
+  const globeX = 711
+  ctx.strokeStyle = '#fff'
+  ctx.lineWidth = 2.7
+  ctx.beginPath()
+  ctx.arc(globeX, centerY, 25, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.ellipse(globeX, centerY, 11, 25, 0, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(globeX - 21, centerY - 8, 42, 16)
+  ctx.fillStyle = '#071d3d'
+  ctx.font = 'bold 11px Arial, sans-serif'
+  ctx.fillText('WWW', globeX, centerY + 4)
 
   ctx.fillStyle = '#fff'
   ctx.textAlign = 'left'
-  ctx.font = 'bold 30px Arial, sans-serif'
-  ctx.fillText('@HyperionMaritime', 123, 1224)
-
-  const globeX = 710
-  const globeY = 1212
-  ctx.strokeStyle = '#fff'
-  ctx.lineWidth = 3
-  ctx.beginPath()
-  ctx.arc(globeX, globeY, 22, 0, Math.PI * 2)
-  ctx.ellipse(globeX, globeY, 9, 22, 0, 0, Math.PI * 2)
-  ctx.moveTo(globeX - 20, globeY)
-  ctx.lineTo(globeX + 20, globeY)
-  ctx.moveTo(globeX - 17, globeY - 11)
-  ctx.lineTo(globeX + 17, globeY - 11)
-  ctx.moveTo(globeX - 17, globeY + 11)
-  ctx.lineTo(globeX + 17, globeY + 11)
-  ctx.stroke()
-  ctx.font = 'bold 30px Arial, sans-serif'
-  ctx.fillText('HyperionMaritime.org', 749, 1224)
+  ctx.font = 'bold 33px Arial, sans-serif'
+  ctx.fillText('@HyperionMaritime', 180, centerY + 11)
+  ctx.fillText('HyperionMaritime.org', 751, centerY + 11)
 }
 
-export function renderPoster(canvas: HTMLCanvasElement, artwork: HTMLImageElement, data: PosterContent) {
+export function renderPoster(canvas: HTMLCanvasElement, artwork: PosterArtwork, data: PosterContent) {
   canvas.width = POSTER_EXPORT_SIZE
   canvas.height = POSTER_EXPORT_SIZE
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas is unavailable in this browser.')
   ctx.setTransform(POSTER_EXPORT_SIZE / ART_SIZE, 0, 0, POSTER_EXPORT_SIZE / ART_SIZE, 0, 0)
-  ctx.drawImage(artwork, 0, 0, ART_SIZE, ART_SIZE)
+  ctx.drawImage(artwork.background, 0, 0, ART_SIZE, ART_SIZE)
   drawPosterDividers(ctx)
   if (data.portrait) drawPortrait(ctx, data.portrait, data)
 
@@ -248,6 +270,9 @@ export function renderPoster(canvas: HTMLCanvasElement, artwork: HTMLImageElemen
   drawFittedText(ctx, data.school.toUpperCase(), { ...POSTER_TEXT_LAYOUT.school, family: 'Georgia, serif', color: '#082143', weight: 'bold', italic: true })
   drawFittedText(ctx, data.company.toUpperCase(), { ...POSTER_TEXT_LAYOUT.company, family: 'Georgia, serif', color: '#082143', italic: true })
 
+  const closingWidth = 850
+  const closingHeight = closingWidth * artwork.closingMessage.naturalHeight / artwork.closingMessage.naturalWidth
+  ctx.drawImage(artwork.closingMessage, 96, 975, closingWidth, closingHeight)
   drawFooter(ctx)
 }
 
