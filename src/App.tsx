@@ -1,5 +1,6 @@
 import { localProgressReady, subscribeLocalProgressReady } from './lib/localProgressIdentity'
 import CookieConsent from './components/CookieConsent'
+import AccountTrackCategoryPrompt from './components/AccountTrackCategoryPrompt'
 import { savedQuestionsReturnPath } from './lib/savedQuestionSets'
 import type { Question } from './types/question'
 import QuestionBookmarkButton from './components/QuestionBookmarkButton'
@@ -720,6 +721,7 @@ export default function App() {
 
       {!hideNav && <BottomNav />}
       <CookieConsent />
+      <AccountTrackCategoryPrompt />
       {localOwnerReady && <ResultsProcessing />}
       {localOwnerReady && resumeSession && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(3,8,18,.72)', display: 'grid', placeItems: 'center', padding: 16, boxSizing: 'border-box' }}>
         <section role="dialog" aria-modal="true" aria-labelledby="resume-learning-title" className="card" style={{ width: 'min(100%, 460px)', boxSizing: 'border-box', padding: 24, background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.4)' }}>

@@ -8,17 +8,18 @@ import AdminPaymentsScreen from '../../src/screens/AdminPaymentsScreen'
 import AdminQuestionBankScreen from '../../src/screens/AdminQuestionBankScreen'
 import AdminLicensesScreen from '../../src/screens/AdminLicensesScreen'
 import AccountScreen from '../../src/screens/AccountScreen'
+import AccountTrackCategoryPrompt from '../../src/components/AccountTrackCategoryPrompt'
 import DesktopAccountMenu from '../../src/components/DesktopAccountMenu'
 import BasketScreen from '../../src/screens/BasketScreen'
 import AdminQrCheckoutScreen from '../../src/screens/AdminQrCheckoutScreen'
 import OrdersPaymentHistoryScreen from '../../src/screens/OrdersPaymentHistoryScreen'
-import { fixtureCalls, releaseFixtureEntitlements, switchFixtureAccount, releaseFixtureHeldNullSession, emitFixtureAuth } from '../../src/lib/supabase'
+import { fixtureCalls, releaseFixtureEntitlements, switchFixtureAccount, clearFixtureTrackCategory, releaseFixtureHeldNullSession, emitFixtureAuth } from '../../src/lib/supabase'
 import StudyTimeScreen from '../../src/screens/StudyTimeScreen'
 import { useStudyTimeStore } from '../../src/stores/studyTimeStore'
 import '../../src/index.css'
 
 Object.assign(window, {
-  releaseFixtureEntitlements, switchFixtureAccount, releaseFixtureHeldNullSession, emitFixtureAuth,
+  releaseFixtureEntitlements, switchFixtureAccount, clearFixtureTrackCategory, releaseFixtureHeldNullSession, emitFixtureAuth,
   accountFixtureCalls: fixtureCalls, beginFixtureLoading: beginPageLoading,
   setFixtureOfflineLicense: (enabled: boolean) => useLicenseStore.setState({
     entitlementUserId: enabled ? '11111111-1111-4111-8111-111111111111' : null,
@@ -50,4 +51,5 @@ createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries
     <Route path="/orders" element={<AccountScreen key="orders"><OrdersPaymentHistoryScreen /></AccountScreen>} />
   </Routes>
   </div>
+  <AccountTrackCategoryPrompt />
 </MemoryRouter>)

@@ -336,6 +336,7 @@ Deno.serve(async req => {
         id: account.id,
         email: account.email || '',
         display_name: profileName(account),
+        track_category: ['DECK', 'ENGINE', 'GMDSS'].includes(account.user_metadata?.track_category) ? account.user_metadata.track_category : null,
         created_at: account.created_at,
         last_accessed_at: lastAccessedAt,
         last_access_source: lastAccessSource,

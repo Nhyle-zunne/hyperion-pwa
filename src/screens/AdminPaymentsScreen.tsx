@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AdminNavigation from '../components/AdminNavigation'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
+import TrackCategoryBadge from '../components/TrackCategoryBadge'
+import type { TrackCategory } from '../lib/accountTrackCategory'
 import { applyAdminCheckoutAvailability, refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 
-type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; license_term: 'week'|'month'|'year'; amount_php: number; status: string; access_status: string; access_expires_at: string | null; manual_claim_id: string | null; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; customer_name: string | null; customer_company: string | null; customer_school: string | null; admin_note: string | null; created_at: string }
+type Order = { id: string; user_id: string; email: string; product_code: string; track_id: string; license_term: 'week'|'month'|'year'; amount_php: number; status: string; access_status: string; access_expires_at: string | null; manual_claim_id: string | null; payment_reference: string | null; payment_method: string | null; proof_url: string | null; customer_note: string | null; customer_name: string | null; track_category: TrackCategory | null; customer_company: string | null; customer_school: string | null; admin_note: string | null; created_at: string }
 type ManualClaimStatus = 'awaiting_proof' | 'pending_verification' | 'approved' | 'rejected' | 'expired'
 type PaymentStatusTab = 'active' | 'pending' | 'failed' | 'expired'
-type ManualClaim = { id: string; user_id: string; email: string; customer_name: string | null; items: { code: string; label: string; term: string; amountPhp: number }[]; total_amount_php: number; status: ManualClaimStatus; created_at: string; expires_at: string; proof_received_at: string | null; reviewed_at: string | null; reviewed_by: string | null; admin_note: string | null }
+type ManualClaim = { id: string; user_id: string; email: string; customer_name: string | null; track_category: TrackCategory | null; items: { code: string; label: string; term: string; amountPhp: number }[]; total_amount_php: number; status: ManualClaimStatus; created_at: string; expires_at: string; proof_received_at: string | null; reviewed_at: string | null; reviewed_by: string | null; admin_note: string | null }
 type ReconciliationAlert = { id: string; checkout_reference: string; checkout_session_id: string; paymongo_payment_id: string; expected_amount_php: number; observed_amount_minor: number; observed_currency: string; reason: string; created_at: string }
 function safeAdminError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : ''
@@ -295,7 +297,7 @@ export default function AdminPaymentsScreen() {
         <div id="admin-payment-status-panel" role="tabpanel" aria-label={`${statusTab} payment submissions`}>
         {statusTab === 'pending' && visibleClaims.length > 0 && <div className="admin-claim-grid" style={{ marginBottom: tableEntries.length ? '.8rem' : 0 }}>
           {visibleClaims.map(claim => <article className="admin-claim-card" key={claim.id}>
-            <p><strong>{claim.customer_name || 'Name unavailable'}</strong></p>
+            <p style={{ display: 'flex', alignItems: 'center', gap: '.4rem', flexWrap: 'wrap' }}><strong>{claim.customer_name || 'Name unavailable'}</strong><TrackCategoryBadge category={claim.track_category} /></p>
             <p>{claim.email} · Manual QR Ph / bank transfer</p>
             <p><span className="admin-payment-detail-label">Submission ID</span><strong style={{ userSelect:'all' }}>{claim.id}</strong></p>
             <p><span className="admin-payment-detail-label">Started</span>{new Date(claim.created_at).toLocaleString()}</p>
@@ -330,7 +332,7 @@ export default function AdminPaymentsScreen() {
               const statusLabel = claim.status === 'approved' ? 'ACTIVE' : claim.status === 'rejected' ? 'FAILED' : 'EXPIRED'
               return <tbody key={`claim-${claim.id}`}>
                 <tr className="payment-main-row">
-                  <td className="admin-payment-customer">{claim.customer_name || 'Name unavailable'}</td>
+                  <td className="admin-payment-customer"><span style={{ display: 'inline-flex', alignItems: 'center', gap: '.4rem', flexWrap: 'wrap' }}>{claim.customer_name || 'Name unavailable'}<TrackCategoryBadge category={claim.track_category} /></span></td>
                   <td className="admin-payment-email">{claim.email}</td>
                   <td className="admin-payment-date">{new Date(claim.created_at).toLocaleString()}</td>
                   <td className="admin-payment-purchase">
@@ -363,7 +365,7 @@ export default function AdminPaymentsScreen() {
             const statusClass = group === 'active' ? 'active' : group === 'pending' ? 'pending' : group === 'failed' ? 'failed' : 'expired'
             return <tbody key={order.id}>
               <tr className="payment-main-row">
-                <td className="admin-payment-customer">{order.customer_name || 'Not provided'}</td>
+                <td className="admin-payment-customer"><span style={{ display: 'inline-flex', alignItems: 'center', gap: '.4rem', flexWrap: 'wrap' }}>{order.customer_name || 'Not provided'}<TrackCategoryBadge category={order.track_category} /></span></td>
                 <td className="admin-payment-email">{order.email || 'Not provided'}</td>
                 <td className="admin-payment-date">{new Date(order.created_at).toLocaleString()}</td>
                 <td className="admin-payment-purchase">

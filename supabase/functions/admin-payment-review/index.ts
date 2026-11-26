@@ -12,6 +12,10 @@ function profileName(user: any): string | null {
     .find((value: unknown) => typeof value === 'string' && value.trim())
   return typeof name === 'string' ? name.trim() : null
 }
+function trackCategory(user: any): 'DECK' | 'ENGINE' | 'GMDSS' | null {
+  const value = user?.user_metadata?.track_category
+  return value === 'DECK' || value === 'ENGINE' || value === 'GMDSS' ? value : null
+}
 function expiryForTerm(base: Date, term: LicenseTerm) {
   const result = new Date(base)
   if (term === 'week') { result.setUTCDate(result.getUTCDate() + 7); return result }
@@ -94,6 +98,7 @@ Deno.serve(async req => {
     const ids = [...new Set([...rows.map(row => row.user_id), ...claimRows.map(row => row.user_id)])];
     const emails: Record<string,string> = {};
     const customerNames: Record<string,string> = {};
+    const customerCategories: Record<string, 'DECK' | 'ENGINE' | 'GMDSS'> = {};
     // One paginated Auth request replaces one getUserById request per order owner.
     // The current dashboard is capped at 200 orders; stop as soon as every distinct
     // owner is found, and retain pagination for accounts beyond the first 1,000.
@@ -110,6 +115,8 @@ Deno.serve(async req => {
         if (customer.email) emails[customer.id] = customer.email;
         const name = profileName(customer);
         if (name) customerNames[customer.id] = name;
+        const category = trackCategory(customer);
+        if (category) customerCategories[customer.id] = category;
       }
       if (users.length < 1000) break;
       page += 1;
@@ -131,12 +138,14 @@ Deno.serve(async req => {
         ...row,
         email: emails[row.user_id] || '(email unavailable)',
         customer_name: row.customer_name || customerNames[row.user_id] || null,
+        track_category: customerCategories[row.user_id] || null,
         access_status: row.status !== 'paid' ? 'none' : accessByOrder[row.id]?.status || 'not_current',
         access_expires_at: accessByOrder[row.id]?.expires_at || null
       })),
       claims: claimRows.map(claim => ({
         ...claim, email: emails[claim.user_id] || '(email unavailable)',
-        customer_name: customerNames[claim.user_id] || null
+        customer_name: customerNames[claim.user_id] || null,
+        track_category: customerCategories[claim.user_id] || null
       })),
       alerts: alertsResult.data || []
     });
@@ -191,7 +200,7 @@ Deno.serve(async req => {
     if (!claim) return json({ error: 'No submission matches that ID.' }, 404)
     const { data: owner, error: ownerError } = await admin.auth.admin.getUserById(claim.user_id)
     if (ownerError) return json({ error: 'Could not resolve the submission account.' }, 500)
-    return json({ claim: { ...claim,email:owner?.user?.email || '(email unavailable)',customer_name:profileName(owner?.user) } })
+    return json({ claim: { ...claim,email:owner?.user?.email || '(email unavailable)',customer_name:profileName(owner?.user),track_category:trackCategory(owner?.user) } })
   }
   if (body.action === 'reconciliation-alerts') {
     const { data, error } = await admin.from('paymongo_reconciliation_alerts')

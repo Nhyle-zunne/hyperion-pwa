@@ -12,6 +12,8 @@ import { useLicenseStore } from '../stores/licenseStore'
 import { getCachedOfflineEntitlementSnapshot, type CachedOfflineEntitlementSnapshot } from '../lib/offlineQuestionCache'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 import { useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
+import { parseTrackCategory, TRACK_CATEGORIES, type TrackCategory } from '../lib/accountTrackCategory'
+import TrackCategoryBadge from '../components/TrackCategoryBadge'
 
 type Order = {
   id: string
@@ -127,6 +129,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [fullName, setFullName] = useState('')
   const [company, setCompany] = useState('')
   const [school, setSchool] = useState('')
+  const [trackCategory, setTrackCategory] = useState<TrackCategory | ''>('')
+  const [savedTrackCategory, setSavedTrackCategory] = useState<TrackCategory | ''>('')
   const [profileEditing, setProfileEditing] = useState(false)
   const [profileExpanded, setProfileExpanded] = useState(false)
   const [savedProfile, setSavedProfile] = useState({ fullName: '', company: '', school: '' })
@@ -340,6 +344,11 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     setProfileEditing(false)
   }, [session?.user.id])
   useEffect(() => {
+    const category = parseTrackCategory(session?.user.user_metadata?.track_category) || ''
+    setTrackCategory(category)
+    setSavedTrackCategory(category)
+  }, [session?.user.id, session?.user.user_metadata?.track_category])
+  useEffect(() => {
     if (!supabase || !session) { setIsAdmin(false); return }
     let active = true
     void supabase.functions.invoke('admin-payment-review', { body: { action: 'check-admin' } })
@@ -350,12 +359,14 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const saveProfile = async () => withPageLoading('Saving profile', async () => {
     if (!supabase || !session) return
     if (!fullName.trim()) { setMessage('Please enter your full name.'); return }
+    if (!trackCategory) { setMessage('Please choose your track category.'); return }
     setBusy(true); setMessage('Saving your profile…')
     try {
-      const { data, error } = await supabase.auth.updateUser({ data: { full_name: fullName.trim(), company: company.trim(), school: school.trim() } })
+      const { data, error } = await supabase.auth.updateUser({ data: { full_name: fullName.trim(), company: company.trim(), school: school.trim(), track_category: trackCategory } })
       if (error) throw error
       if (data.user) setSession(current => current ? { ...current, user: data.user! } : current)
       setSavedProfile({ fullName: fullName.trim(), company: company.trim(), school: school.trim() })
+      setSavedTrackCategory(trackCategory)
       setProfileEditing(false)
       setMessage('Your profile has been saved.')
     } catch { setMessage('Unable to save profile details. Please try again.') }
@@ -857,7 +868,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             <div style={{ display: 'flex', gap: '.6rem', alignItems: 'center', marginBottom: '.6rem' }}>
               <div className="profile-avatar">{(fullName || 'H').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase()}</div>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <h2 style={{ margin: 0, fontSize: '1rem', overflowWrap: 'anywhere' }}>{fullName || 'Hyperion Member'}</h2>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.35rem' }}><h2 style={{ margin: 0, fontSize: '1rem', overflowWrap: 'anywhere' }}>{fullName || 'Hyperion Member'}</h2><TrackCategoryBadge category={savedTrackCategory} /></div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', overflowWrap: 'anywhere', marginTop: '.2rem' }}>{session.user.email}</div>
                 {isAdmin && <button type="button" title="Open admin dashboard" aria-label="Admin" onClick={() => navigate('/admin/licenses')} style={{ display: 'inline-flex', alignItems: 'center', marginTop: '.35rem', border: '1px solid #86cba0', borderRadius: 999, background: '#dcfce7', color: '#166534', padding: '.15rem .5rem', fontWeight: 800, fontSize: '.68rem', lineHeight: 1.2, cursor: 'pointer' }}>Admin</button>}
               </div>
@@ -874,10 +885,17 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 <label style={label}>Full name<input required maxLength={160} readOnly={!profileEditing} value={fullName} onChange={e => setFullName(e.target.value)} style={profileField(profileEditing)} /></label>
                 <label style={label}>Company (optional)<input maxLength={160} readOnly={!profileEditing} value={company} onChange={e => setCompany(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
                 <label style={label}>School (optional)<input maxLength={160} readOnly={!profileEditing} value={school} onChange={e => setSchool(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
+                {profileEditing && <label style={label}>Track category
+                  <select aria-label="Your track category" value={trackCategory} onChange={e => setTrackCategory(e.target.value as TrackCategory)} style={field}>
+                    <option value="" disabled>Select your category</option>
+                    {TRACK_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
+                  </select>
+                </label>}
+                {profileEditing && <p style={{ margin: 0, fontSize: '.74rem', color: 'var(--text-muted)' }}>Your category is an account label only. It does not change your licenses.</p>}
               </div>
               {!profileEditing ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setMessage(''); setProfileEditing(true) }} style={{ width: '100%', marginTop: '.65rem', minHeight: 44, padding: '.45rem .65rem', fontSize: '.82rem' }}>EDIT PROFILE</button> : <div style={{ display: 'flex', gap: 8, marginTop: '.65rem' }}>
-                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setProfileEditing(false); setMessage('') }} style={{ flex: 1 }}>CANCEL</button>
-                <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
+                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setTrackCategory(savedTrackCategory); setProfileEditing(false); setMessage('') }} style={{ flex: 1 }}>CANCEL</button>
+                <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || !trackCategory || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school && trackCategory === savedTrackCategory)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
               </div>}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '.5rem', marginTop: '.5rem' }}>
                 <button type="button" className="btn btn-outline" onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')} style={{ minWidth: 0, minHeight: 44, padding: '.45rem .5rem', fontSize: '.78rem', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>Delete account</button>
