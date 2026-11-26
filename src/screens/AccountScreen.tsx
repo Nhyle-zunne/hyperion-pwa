@@ -898,7 +898,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                     </button>)}
                   </div>
                 </div>
-                <p style={{ margin: '.2rem 0 0', fontSize: '.7rem', lineHeight: 1.3, color: 'var(--text-muted)' }}>DECK + GMDSS allowed; ENGINE is exclusive. Tags do not change licenses.</p>
               </div>
               <div className="account-profile-actions">
                 <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setTrackCategory(savedTrackCategory); setMessage('') }}>CANCEL</button>
