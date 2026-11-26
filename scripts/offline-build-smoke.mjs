@@ -54,7 +54,14 @@ for (const asset of requiredOfflineAssets) {
   assert.ok(serviceWorker.includes(asset), `Generated service worker precaches ${asset}`);
 }
 
-const appChunks = files.filter(file => file.startsWith('assets/') && /\.(?:js|css)$/i.test(file));
+const portraitRuntime = files.filter(file => /^assets\/vision_wasm_internal-[\w-]+\.(?:js|wasm)$/.test(file));
+assert.equal(portraitRuntime.length, 2, 'Production publishes the local MediaPipe loader and WASM binary');
+assert.ok(files.includes('posters/selfie-segmenter-v1.tflite'), 'Production publishes the versioned portrait model');
+assert.ok(serviceWorker.includes('hyperion-poster-assets-v1'), 'Poster assets have an on-demand offline cache');
+for (const file of portraitRuntime) {
+  assert.ok(!serviceWorker.includes(file), 'Portrait runtime stays out of the shared app precache');
+}
+const appChunks = files.filter(file => file.startsWith('assets/') && /\.(?:js|css)$/i.test(file) && !portraitRuntime.includes(file));
 assert.ok(appChunks.length > 0, 'Production bundle contains JS/CSS application chunks');
 for (const chunk of appChunks) {
   assert.ok(serviceWorker.includes(chunk), `Generated service worker precaches app chunk ${chunk}`);

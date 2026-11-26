@@ -1,13 +1,29 @@
 import { applyPortraitAlpha, findPortraitFrame } from './posterAlpha.mjs'
 
-const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite'
-const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm'
+import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_internal.js?url'
+import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url'
+
+// MediaPipe Selfie Segmenter, float16 v1, from the Google AI Edge Image Segmenter model catalog.
+const MODEL_URL = '/posters/selfie-segmenter-v1.tflite'
+const PORTRAIT_CACHE = 'hyperion-poster-assets-v1'
+
+export async function preparePortraitAssets(online: boolean) {
+  if (!('caches' in window) || !('serviceWorker' in navigator)) return false
+  const cache = await caches.open(PORTRAIT_CACHE)
+  const assets = [MODEL_URL, wasmLoaderPath, wasmBinaryPath]
+  const missing = (await Promise.all(assets.map(async url => await cache.match(url) ? null : url)))
+    .filter((url): url is string => url !== null)
+  if (missing.length && !online) return false
+  if (missing.length) await cache.addAll(missing)
+  await navigator.serviceWorker.ready
+  return true
+}
+
 let segmenterPromise: ReturnType<typeof createSegmenter> | null = null
 
 async function createSegmenter() {
-  const { FilesetResolver, ImageSegmenter } = await import('@mediapipe/tasks-vision')
-  const wasm = await FilesetResolver.forVisionTasks(WASM_URL)
-  return ImageSegmenter.createFromOptions(wasm, {
+  const { ImageSegmenter } = await import('@mediapipe/tasks-vision')
+  return ImageSegmenter.createFromOptions({ wasmLoaderPath, wasmBinaryPath }, {
     baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
     runningMode: 'IMAGE',
     outputCategoryMask: false,

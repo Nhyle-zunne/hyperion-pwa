@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import AdminNavigation from '../components/AdminNavigation'
+import { useOfflineAdminAccess, useOnlineStatus } from '../hooks/useOfflineAdminAccess'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import { supabase } from '../lib/supabase'
 import { POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
 import type { PortraitFrame } from '../lib/posterAlpha.mjs'
-import { removePortraitBackground } from '../lib/posterPortrait'
+import { preparePortraitAssets, removePortraitBackground } from '../lib/posterPortrait'
 import { downloadPoster, loadPosterArtwork, renderPoster } from '../lib/renderPoster'
 import './AdminPosterGeneratorScreen.css'
 
@@ -17,7 +18,11 @@ function localDate() {
 export default function AdminPosterGeneratorScreen() {
   const [userId, setUserId] = useState<string | undefined>()
   const [authReady, setAuthReady] = useState(false)
-  const access = useAdminCheckoutAccess(userId)
+  const online = useOnlineStatus()
+  const onlineAccess = useAdminCheckoutAccess(online ? userId : undefined)
+  const offlineAccess = useOfflineAdminAccess(true, userId)
+  const access = online ? onlineAccess : offlineAccess
+  const [offlineAssetsReady, setOfflineAssetsReady] = useState<boolean | null>(null)
 
   const [trackId, setTrackId] = useState(POSTER_TRACKS[0].id)
   const track = POSTER_TRACKS.find(option => option.id === trackId) || POSTER_TRACKS[0]
@@ -40,7 +45,11 @@ export default function AdminPosterGeneratorScreen() {
   const objectUrlsRef = useRef<string[]>([])
 
   useEffect(() => {
-    if (!supabase) { setAuthReady(true); return }
+    if (!supabase || !online) {
+      setAuthReady(!supabase)
+      return
+    }
+    setAuthReady(false)
     let active = true
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (active) { setUserId(session?.user.id); setAuthReady(true) }
@@ -50,7 +59,7 @@ export default function AdminPosterGeneratorScreen() {
       .catch(() => { if (active) setUserId(undefined) })
       .finally(() => { if (active) setAuthReady(true) })
     return () => { active = false; subscription.unsubscribe() }
-  }, [])
+  }, [online])
 
   useEffect(() => {
     if (!access.allowed) return
@@ -60,6 +69,15 @@ export default function AdminPosterGeneratorScreen() {
       .catch(error => { if (active) setRenderError(error instanceof Error ? error.message : 'Artwork unavailable.') })
     return () => { active = false }
   }, [access.allowed])
+
+  useEffect(() => {
+    if (!access.allowed) return
+    let active = true
+    void preparePortraitAssets(online)
+      .then(ready => { if (active) setOfflineAssetsReady(ready) })
+      .catch(() => { if (active) setOfflineAssetsReady(false) })
+    return () => { active = false }
+  }, [access.allowed, online])
 
   useEffect(() => () => {
     photoRequestRef.current++
@@ -129,14 +147,21 @@ export default function AdminPosterGeneratorScreen() {
 
   const canDownload = Boolean(access.allowed && artwork && name.trim() && school.trim() && formatPosterDate(date) && portrait && !photoBusy && !renderError)
 
-  if (!authReady || !access.checked) return <section className="screen admin-poster"><p role="status">Checking administrator access...</p></section>
-  if (!access.allowed) return <section className="screen admin-poster"><AdminNavigation /><h1>Poster Generator</h1><p role="alert">Administrator access is required to use this tool.</p></section>
+  if ((online && !authReady) || !access.checked) return <section className="screen admin-poster"><p role="status">Checking administrator access...</p></section>
+  if (!access.allowed) return <section className="screen admin-poster"><AdminNavigation /><h1>Poster Generator</h1><p role="alert">{online ? 'Administrator access is required to use this tool.' : 'Reconnect to verify admin access for this device.'}</p></section>
 
   return <section className="screen admin-poster">
     <AdminNavigation />
     <header className="admin-poster__heading">
       <h1>POSTER GENERATOR</h1>
       <p>Create a Hyperion congratulatory poster for any licensure track. Everything stays in this browser until you download.</p>
+      <p className="admin-poster__hint" role="status">
+        {offlineAssetsReady && offlineAccess.allowed
+          ? 'Ready to use offline on this device.'
+          : !online ? 'Reconnect to finish preparing automatic background removal.'
+          : offlineAssetsReady === false ? 'Offline setup could not finish. Reopen this page to retry.'
+          : 'Preparing offline access on this device…'}
+      </p>
     </header>
 
     <div className="admin-poster__grid">

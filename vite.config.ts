@@ -51,12 +51,22 @@ export default defineConfig({
       workbox: {
         // Question banks are delivered by the protected Supabase Edge Function.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,avif,woff2,webmanifest}'],
+        globIgnores: ['**/vision_wasm_internal-*.js'],
         // The poster editor prefers the current deployment on direct visits.
         // Its offline fallback is handled by the runtime route below.
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/admin\/posters\/?(?:\?|$)/],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         runtimeCaching: [
+          {
+            urlPattern: ({ request, sameOrigin }) => sameOrigin &&
+              /\/(?:assets\/vision_wasm_internal-[\w-]+\.(?:js|wasm)|posters\/selfie-segmenter-v1\.tflite)$/.test(request.url),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'hyperion-poster-assets-v1',
+              cacheableResponse: { statuses: [200] }
+            }
+          },
           {
             urlPattern: ({ request, sameOrigin }) => sameOrigin &&
               request.mode === 'navigate' && /^https?:\/\/[^/]+\/admin\/posters\/?(?:[?#]|$)/.test(request.url),

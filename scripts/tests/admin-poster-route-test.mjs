@@ -17,7 +17,7 @@ test('poster generator has its own lazy admin route and navigation entry', () =>
 
 test('poster editor uses server-verified admin permission and local photo processing', () => {
   const editor = readFileSync(new URL('../../src/screens/AdminPosterGeneratorScreen.tsx', import.meta.url), 'utf8')
-  assert.match(editor, /useAdminCheckoutAccess\(userId\)/)
+  assert.match(editor, /useAdminCheckoutAccess\(online \? userId : undefined\)/)
   assert.match(editor, /if \(!access\.allowed\)/)
   assert.match(editor, /removePortraitBackground\(file\)/)
   assert.doesNotMatch(editor, /\.storage\.|upload\(|\.from\('candidate/)
@@ -49,3 +49,17 @@ test('poster page escapes the narrow desktop screen cap and uses a responsive pe
   assert.match(posterStyles, /\.admin-poster__canvas\s*\{[^}]*width:\s*100%[^}]*aspect-ratio:\s*1/)
 })
 
+
+test('the poster editor uses the signed offline admin pass and prepares local portrait assets', () => {
+  const offlineAccess = readFileSync(new URL('../../src/hooks/useOfflineAdminAccess.ts', import.meta.url), 'utf8')
+  const portrait = readFileSync(new URL('../../src/lib/posterPortrait.ts', import.meta.url), 'utf8')
+  const account = readFileSync(new URL('../../src/screens/AccountScreen.tsx', import.meta.url), 'utf8')
+  assert.match(offlineAccess, /getCachedOfflineEntitlementSnapshot/)
+  assert.match(offlineAccess, /snapshot\?\.isAdmin === true/)
+  assert.match(editor, /useOfflineAdminAccess/)
+  assert.match(editor, /preparePortraitAssets/)
+  assert.match(account, /offlineAdmin\.allowed/)
+  assert.doesNotMatch(portrait, /https:\/\//)
+  assert.match(portrait, /\/posters\/selfie-segmenter-v1\.tflite/)
+  assert.match(globalStyles, /> div:not\(\.admin-page-navigation\)/)
+})

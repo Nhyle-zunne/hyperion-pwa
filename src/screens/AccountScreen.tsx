@@ -11,6 +11,7 @@ import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
 import { getCachedOfflineEntitlementSnapshot, type CachedOfflineEntitlementSnapshot } from '../lib/offlineQuestionCache'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
+import { useOfflineAdminAccess } from '../hooks/useOfflineAdminAccess'
 import { useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 import { hasTrackCategory, parseTrackCategory, toggleTrackCategory, TRACK_CATEGORIES, type TrackCategory } from '../lib/accountTrackCategory'
 import TrackCategoryBadge from '../components/TrackCategoryBadge'
@@ -97,6 +98,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [session, setSession] = useState<Session | null>(null)
   const [sessionChecked, setSessionChecked] = useState(!supabase)
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  const offlineAdmin = useOfflineAdminAccess(!online, session?.user.id)
   // License access and account authentication have different lifetimes. A
   // verified device-bound offline pass must not be described as a guest login.
   const licenseOwnerId = useLicenseStore(state => state.entitlementUserId)
@@ -349,13 +351,13 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     setSavedTrackCategory(category)
   }, [session?.user.id, session?.user.user_metadata?.track_category])
   useEffect(() => {
-    if (!supabase || !session) { setIsAdmin(false); return }
+    if (!online || !supabase || !session) { setIsAdmin(false); return }
     let active = true
     void supabase.functions.invoke('admin-payment-review', { body: { action: 'check-admin' } })
       .then(({ data, error }) => { if (active) setIsAdmin(!error && data?.isAdmin === true) })
       .catch(() => { if (active) setIsAdmin(false) })
     return () => { active = false }
-  }, [session?.user.id])
+  }, [online, session?.user.id])
   const saveProfile = async () => withPageLoading('Saving profile', async () => {
     if (!supabase || !session) return
     if (!fullName.trim()) { setProfileFeedback('Please enter your full name.'); return }
@@ -875,7 +877,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.35rem' }}><h2 style={{ margin: 0, fontSize: '1rem', overflowWrap: 'anywhere' }}>{fullName || 'Hyperion Member'}</h2><TrackCategoryBadge category={savedTrackCategory} /></div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', overflowWrap: 'anywhere', marginTop: '.2rem' }}>{session.user.email}</div>
-                {isAdmin && <button type="button" title="Open admin dashboard" aria-label="Admin" onClick={() => navigate('/admin/licenses')} style={{ display: 'inline-flex', alignItems: 'center', marginTop: '.35rem', border: '1px solid #86cba0', borderRadius: 999, background: '#dcfce7', color: '#166534', padding: '.15rem .5rem', fontWeight: 800, fontSize: '.68rem', lineHeight: 1.2, cursor: 'pointer' }}>Admin</button>}
+                {(online ? isAdmin : offlineAdmin.allowed) && <button type="button" title="Open admin dashboard" aria-label="Admin" onClick={() => navigate(online ? '/admin/licenses' : '/admin/posters')} style={{ display: 'inline-flex', alignItems: 'center', marginTop: '.35rem', border: '1px solid #86cba0', borderRadius: 999, background: '#dcfce7', color: '#166534', padding: '.15rem .5rem', fontWeight: 800, fontSize: '.68rem', lineHeight: 1.2, cursor: 'pointer' }}>Admin</button>}
               </div>
             </div>
             <button type="button" className="profile-mobile-toggle" aria-expanded={profileExpanded} aria-controls="account-profile-content" onClick={() => setProfileExpanded(value => !value)}>
@@ -944,6 +946,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
               <button type="button" className="btn btn-primary" disabled={!sessionChecked || !supabaseConfigured || busy || !online} onClick={() => void signInWithGoogle()} style={{ width: '100%', minHeight: 46 }}>
                 {!sessionChecked ? 'Checking session…' : !online ? 'Reconnect when online' : busy ? 'Opening Google…' : hasSavedOfflineAccess ? 'Reconnect Google account' : 'Sign in with Google'}
               </button>
+              {offlineAdmin.allowed && <button type="button" className="btn btn-outline" onClick={() => navigate('/admin/posters')}>Admin · Poster Generator</button>}
               {!hasSavedOfflineAccess && sessionChecked && <p className="profile-side-links" style={{ margin: '.7rem 0 0' }}>You can browse the Bond Store without signing in. Selecting BUY NOW or opening Checkout requires Google sign-in.</p>}
             </div>
           </section>}

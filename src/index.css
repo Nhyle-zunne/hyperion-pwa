@@ -759,7 +759,7 @@ a:focus-visible,
 [data-theme='light'] .screen:has(input[type="range"]) {
   color: var(--text) !important;
 }
-[data-theme='light'] .screen:has(input[type="range"]) > div,
+[data-theme='light'] .screen:has(input[type="range"]) > div:not(.admin-page-navigation),
 [data-theme='light'] .screen:has(input[type="range"]) section {
   background: var(--bg-card) !important;
   border-color: var(--border) !important;

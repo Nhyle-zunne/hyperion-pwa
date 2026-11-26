@@ -1,5 +1,6 @@
 import { localProgressReady, subscribeLocalProgressReady } from './lib/localProgressIdentity'
 import CookieConsent from './components/CookieConsent'
+import AdminOnlineSection from './components/AdminOnlineSection'
 import AccountTrackCategoryPrompt from './components/AccountTrackCategoryPrompt'
 import { savedQuestionsReturnPath } from './lib/savedQuestionSets'
 import type { Question } from './types/question'
@@ -685,9 +686,9 @@ export default function App() {
           <Route path="/checkout/qr" element={<AdminQrCheckoutScreen />} />
           <Route path="/basket" element={<AccountScreen key="basket"><BasketScreen /></AccountScreen>} />
           <Route path="/auth/callback" element={<OAuthCallbackScreen />} />
-          <Route path="/admin/licenses" element={<AdminLicensesScreen />} />
-          <Route path="/admin/payments" element={<AdminPaymentsScreen />} />
-          <Route path="/admin/questions" element={<AdminQuestionBankScreen />} />
+          <Route path="/admin/licenses" element={<AdminOnlineSection title="User Licenses"><AdminLicensesScreen /></AdminOnlineSection>} />
+          <Route path="/admin/payments" element={<AdminOnlineSection title="Payment Submissions"><AdminPaymentsScreen /></AdminOnlineSection>} />
+          <Route path="/admin/questions" element={<AdminOnlineSection title="Question Bank"><AdminQuestionBankScreen /></AdminOnlineSection>} />
           <Route path="/admin/posters" element={<AdminPosterGeneratorScreen />} />
           <Route path="/tracks" element={<DashboardLanding />} />
           <Route path="/track" element={<TrackHubScreen />} />
