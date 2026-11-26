@@ -39,7 +39,7 @@ test('renders sample-aligned typography and a large two-line track heading', () 
     yOffsetPercent: 0,
   }
 
-  renderPoster(canvas, {} as HTMLImageElement, data)
+  renderPoster(canvas, {}, data)
 
   assert.equal(canvas.width, POSTER_EXPORT_SIZE)
   assert.equal(canvas.height, POSTER_EXPORT_SIZE)
