@@ -74,8 +74,11 @@ test('renders sample-aligned typography and a large two-line track heading', () 
   assert.ok(school.y > dividers[1] && school.y < dividers[2])
 
   calls.length = 0
-  renderPoster(canvas, {}, { ...data, track: POSTER_TRACKS.find(track => track.id === 'gmdss') })
+  renderPoster(canvas, {}, { ...data, company: 'OSM Thome Shipmanagement', track: POSTER_TRACKS.find(track => track.id === 'gmdss') })
   assert.ok(calls.some(call => call.text === 'OIC-NW SHELDON R. ABARQUEZ'))
   assert.ok(calls.some(call => call.text === 'FOR GMDSS RADIO OPERATORS'))
   assert.ok(calls.some(call => call.text === 'Bachelor of Science in Marine Transportation'))
+  const company = calls.find(call => call.text === 'OSM THOME SHIPMANAGEMENT')
+  assert.equal(company.x, school.x)
+  assert.ok(company.y > school.y && company.y < dividers[2])
 })

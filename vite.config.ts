@@ -51,10 +51,21 @@ export default defineConfig({
       workbox: {
         // Question banks are delivered by the protected Supabase Edge Function.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,avif,woff2,webmanifest}'],
-        // Every client-side route should open from the cached app shell when offline.
+        // The poster editor prefers the current deployment on direct visits.
+        // Its offline fallback is handled by the runtime route below.
         navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/admin\/posters\/?(?:\?|$)/],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         runtimeCaching: [
+          {
+            urlPattern: ({ request, sameOrigin }) => sameOrigin &&
+              request.mode === 'navigate' && /^https?:\/\/[^/]+\/admin\/posters\/?(?:[?#]|$)/.test(request.url),
+            handler: 'NetworkOnly',
+            options: {
+              fetchOptions: { cache: 'reload' },
+              precacheFallback: { fallbackURL: 'index.html' }
+            }
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
