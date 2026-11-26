@@ -146,7 +146,7 @@ export function renderPoster(canvas: HTMLCanvasElement, artwork: HTMLImageElemen
   drawFittedText(ctx, formatPosterDate(data.date), { x: 637, baseline: 663, maxWidth: 308, fontSize: 32, minSize: 19, family: 'Georgia, serif', color: '#071c42', weight: 'bold', italic: true })
 
   const examLines = data.track.examTitle.replace(/\n/g, ' ')
-  drawFittedText(ctx, examLines, { x: 402, baseline: 789, maxWidth: 706, fontSize: 47, minSize: 28, maxLines: data.track.id === 'gmdss' ? 3 : 2, lineHeight: 47, family: 'Impact, "Arial Narrow", sans-serif', color: '#071d43', weight: 'bold' })
+  drawFittedText(ctx, examLines, { x: 402, baseline: 789, maxWidth: 706, fontSize: 47, minSize: 28, maxLines: 2, lineHeight: 47, family: 'Impact, "Arial Narrow", sans-serif', color: '#071d43', weight: 'bold' })
   drawFittedText(ctx, data.school.toUpperCase(), { x: 480, baseline: data.company ? 929 : 952, maxWidth: 552, fontSize: 29, minSize: 18, maxLines: 2, lineHeight: 28, family: 'Georgia, serif', color: '#082143', weight: 'bold', italic: true })
   drawFittedText(ctx, data.company.toUpperCase(), { x: 480, baseline: 971, maxWidth: 552, fontSize: 20, minSize: 14, family: 'Georgia, serif', color: '#082143', italic: true })
 
