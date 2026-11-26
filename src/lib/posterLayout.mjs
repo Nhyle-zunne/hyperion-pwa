@@ -6,7 +6,7 @@ export const POSTER_TEXT_LAYOUT = Object.freeze({
 })
 
 export function fitPosterText(text, { maxWidth, preferredSize, minSize, maxLines }, measureWidth) {
-  const paragraphs = String(text || '').split(/\\r?\\n/).map(line => line.trim()).filter(Boolean)
+  const paragraphs = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean)
   if (!paragraphs.length) return { fontSize: preferredSize, lines: [] }
 
   for (let fontSize = preferredSize; fontSize >= minSize; fontSize--) {
@@ -15,12 +15,12 @@ export function fitPosterText(text, { maxWidth, preferredSize, minSize, maxLines
 
     for (const paragraph of paragraphs) {
       let current = ''
-      for (const word of paragraph.split(/\\s+/)) {
+      for (const word of paragraph.split(/\s+/)) {
         if (measureWidth(word, fontSize) > maxWidth) {
           fits = false
           break
         }
-        const next = current ? `${current} ${word}` : word
+        const next = current ? current + ' ' + word : word
         if (measureWidth(next, fontSize) <= maxWidth) current = next
         else {
           if (current) lines.push(current)
