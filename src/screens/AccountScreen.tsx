@@ -885,12 +885,12 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 <label style={label}>Full name<input required maxLength={160} readOnly={!profileEditing} value={fullName} onChange={e => setFullName(e.target.value)} style={profileField(profileEditing)} /></label>
                 <label style={label}>Company (optional)<input maxLength={160} readOnly={!profileEditing} value={company} onChange={e => setCompany(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
                 <label style={label}>School (optional)<input maxLength={160} readOnly={!profileEditing} value={school} onChange={e => setSchool(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
-                <label style={label}>Track category
-                  <select aria-label="Your track category" disabled={!profileEditing} value={trackCategory} onChange={e => setTrackCategory(e.target.value as TrackCategory)} style={{ ...field, opacity: profileEditing ? 1 : 0.85 }}>
+                {profileEditing && <label style={label}>Track category
+                  <select aria-label="Your track category" value={trackCategory} onChange={e => setTrackCategory(e.target.value as TrackCategory)} style={field}>
                     <option value="" disabled>Select your category</option>
                     {TRACK_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
                   </select>
-                </label>
+                </label>}
                 {profileEditing && <p style={{ margin: 0, fontSize: '.74rem', color: 'var(--text-muted)' }}>Your category is an account label only. It does not change your licenses.</p>}
               </div>
               {!profileEditing ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setMessage(''); setProfileEditing(true) }} style={{ width: '100%', marginTop: '.65rem', minHeight: 44, padding: '.45rem .65rem', fontSize: '.82rem' }}>EDIT PROFILE</button> : <div style={{ display: 'flex', gap: 8, marginTop: '.65rem' }}>
