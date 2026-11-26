@@ -28,7 +28,7 @@ export function loadPosterArtwork(): Promise<HTMLImageElement> {
 
 function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
   x: number; baseline: number; maxWidth: number; fontSize: number; minSize: number
-  maxLines?: number; lineHeight?: number; singleLineMinSize?: number; family: string; color: string; weight?: string; italic?: boolean
+  maxLines?: number; lineHeight?: number; singleLineMinSize?: number; wrappedFontSize?: number; family: string; color: string; weight?: string; italic?: boolean
 }) {
   if (!text.trim()) return
   const fontAt = (size: number) => `${options.italic ? 'italic ' : ''}${options.weight || 'normal'} ${size}px ${options.family}`
@@ -45,7 +45,7 @@ function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
   const singleLine = options.singleLineMinSize
     ? fitPosterText(text, { ...bounds, minSize: options.singleLineMinSize, maxLines: 1 }, measureWidth)
     : null
-  const layout = singleLine ?? fitPosterText(text, bounds, measureWidth)
+  const layout = singleLine ?? fitPosterText(text, { ...bounds, preferredSize: options.wrappedFontSize ?? bounds.preferredSize }, measureWidth)
   if (!layout) throw new Error('One of the text fields is too long. Shorten it before exporting.')
 
   ctx.font = fontAt(layout.fontSize)
@@ -101,8 +101,8 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
 
 function drawPosterDividers(ctx: CanvasRenderingContext2D) {
   const rules = [
-    { left: 87, right: 754, y: 642, ornament: 403, hollow: true },
-    { left: 143, right: 802, y: 837, ornament: 465, hollow: false },
+    { left: 87, right: 754, y: 610, ornament: 403, hollow: true },
+    { left: 143, right: 802, y: 813, ornament: 465, hollow: false },
     { left: 142, right: 719, y: 956 },
   ]
   for (const rule of rules) {

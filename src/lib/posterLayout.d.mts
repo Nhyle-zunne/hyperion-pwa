@@ -15,6 +15,7 @@ interface PosterTextLayout {
   maxLines?: number
   lineHeight?: number
   singleLineMinSize?: number
+  wrappedFontSize?: number
 }
 
 export const POSTER_TEXT_LAYOUT: Readonly<{
