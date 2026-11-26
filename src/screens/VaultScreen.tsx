@@ -24,11 +24,11 @@ export default function VaultScreen() {
   const navigate = useNavigate()
   const openPaywall = useUIStore(state => state.openPaywall)
   const [searchParams] = useSearchParams()
-  const requestedTrack = searchParams.get('track') as TrackId | null
+  const trackParam = searchParams.get('track')
+  const requestedTrack = (Object.keys(TRACK_KEYS) as TrackId[]).find(track => track === trackParam || TRACK_KEYS[track] === trackParam)
   const items = useVaultStore((s) => s.items)
   const remove = useVaultStore((s) => s.remove)
   const clear = useVaultStore((s) => s.clear)
-  const asQuestions = useVaultStore((s) => s.asQuestions)
   const entitlementsVerified = useLicenseStore((s) => s.entitlementsVerified)
   const isAllAccessUnlocked = useLicenseStore((s) => s.isAllAccessUnlocked)
   const isTrackUnlocked = useLicenseStore((s) => s.isTrackUnlocked)
@@ -44,8 +44,13 @@ export default function VaultScreen() {
   const visibleItems = entitlementsVerified
     ? items.filter(item => isAllAccessUnlocked || cloudTrackIds.includes('ALL') || isTrackUnlocked(item.track))
     : []
-  const scopedItems = requestedTrack && Object.prototype.hasOwnProperty.call(TRACK_LABELS,requestedTrack)
-    ? visibleItems.filter(item => item.track === requestedTrack) : visibleItems
+  const scopedItems = requestedTrack ? visibleItems.filter(item => item.track === requestedTrack) : visibleItems
+  const studyItemsByTrack = new Map<TrackId, VaultItem[]>()
+  for (const item of scopedItems) {
+    const trackItems = studyItemsByTrack.get(item.track)
+    if (trackItems) trackItems.push(item)
+    else studyItemsByTrack.set(item.track, [item])
+  }
   const query = searchQuery.trim().toLocaleLowerCase()
   const filteredItems = useMemo(() => scopedItems.filter(item => !query || [
     item.questionText,item.id,item.functionId,item.competenceId,item.track,item.topic,item.explanation,
@@ -64,11 +69,10 @@ export default function VaultScreen() {
   },[filteredItems])
 
   const practiceVault = async (track:TrackId,selected:VaultItem[],competenceId:string|null=null) => {
-    const ids=new Set(selected.map(item=>item.id))
-    const questions=asQuestions().filter(q=>q.track===track&&ids.has(q.id))
-    if(!questions.length) return
+    const ids = selected.filter(item => item.track === track).map(item => item.id)
+    if (!ids.length) return
     setSaveError(null)
-    try { navigate(await createSavedQuestionSelection('mistakes',track,[...ids],competenceId)) }
+    try { navigate(await createSavedQuestionSelection('mistakes',track,ids,competenceId)) }
     catch { setSaveError('Could not prepare this selection. Your saved mistakes remain on this device.') }
   }
   const toggle=(list:string[],setList:(v:string[])=>void,key:string)=>setList(list.includes(key)?list.filter(v=>v!==key):[...list,key])
@@ -76,17 +80,17 @@ export default function VaultScreen() {
   return <div className="screen">
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
       <h1 className="page-title">Mistakes Notebook</h1>
-      <button type="button" className="btn btn-outline" onClick={()=>navigate(requestedTrack?'/track?track='+encodeURIComponent(({DECK_OIC_NW:'oic_nw',GMDSS_GOC:'gmdss',ENGINE_OIC_EW:'engine_ew',DECK_MGT:'deck_mgt',ENGINE_MGT:'engine_mgt'} as Record<TrackId,string>)[requestedTrack]||'oic_nw'):'/')}>Back</button>
+      <button type="button" className="btn btn-outline" onClick={()=>navigate(requestedTrack?'/track?track='+TRACK_KEYS[requestedTrack]:'/')}>Back</button>
     </div>
     <p className="subtitle">{scopedItems.length} mistakes to redeem · grouped by track and competence</p>
     {saveError&&<p role="alert" style={{color:'var(--danger)'}}>{saveError}</p>}
     {!entitlementsVerified ? <div className="card" role="status">Verifying your active license…</div> :
-      (!hasAnyActiveLicense||(requestedTrack&&Object.prototype.hasOwnProperty.call(TRACK_LABELS,requestedTrack)&&!(isAllAccessUnlocked||cloudTrackIds.includes('ALL')||isTrackUnlocked(requestedTrack)))) ?
+      (!hasAnyActiveLicense||(requestedTrack&&!(isAllAccessUnlocked||cloudTrackIds.includes('ALL')||isTrackUnlocked(requestedTrack)))) ?
       <div className="card" style={{textAlign:'center'}}>
         <h2 style={{marginTop:0}}>Mistakes Notebook is locked</h2>
         <p style={{color:'var(--text-muted)'}}>An active license is required. Your notebook shows mistakes only for tracks with an active license.</p>
         <button className="btn btn-primary" onClick={()=>{
-          if (requestedTrack && TRACK_KEYS[requestedTrack]) {
+          if (requestedTrack) {
             navigate(`/track?track=${TRACK_KEYS[requestedTrack]}`)
             openPaywall('Mistakes Notebook')
           } else navigate('/account')
@@ -97,7 +101,7 @@ export default function VaultScreen() {
         <div className="card" style={{marginBottom:'1rem'}}>
           <strong>Redemption queue ({scopedItems.length} questions)</strong>
           <p style={{color:'var(--text-muted)',margin:'.35rem 0 .8rem'}}>A mistake is automatically redeemed and removed after 2 consecutive correct answers. Wrong answers reset its progress.</p>
-          {groups.map(([track,comps])=><button key={track} className="btn btn-outline" style={{width:'100%',marginTop:'.35rem'}} onClick={()=>void practiceVault(track,comps.flatMap(([,list])=>list))}>Drill all {TRACK_LABELS[track]} mistakes ({comps.reduce((n,[,list])=>n+list.length,0)})</button>)}
+          {[...studyItemsByTrack].map(([track,trackItems])=><button key={track} className="btn btn-outline" style={{width:'100%',marginTop:'.35rem'}} onClick={()=>void practiceVault(track,trackItems)}>Drill all {TRACK_LABELS[track]} mistakes ({trackItems.length})</button>)}
         </div>
         <SavedQuestionSearch value={searchQuery} onChange={setSearchQuery} collection="mistakes" />
         <h2 className="section-title">{query? `Search results (${filteredItems.length})`:'Mistakes by track & competence'}</h2>
@@ -111,7 +115,7 @@ export default function VaultScreen() {
                   <button className="btn btn-outline" style={{flex:1,textAlign:'left'}} aria-expanded={trackOpen} onClick={()=>toggle(expandedTracks,setExpandedTracks,track)}>
                     {trackOpen?'▾':'▸'} <strong>{TRACK_LABELS[track]}</strong> · {total} mistake{total===1?'':'s'}
                   </button>
-                  <button className="btn btn-primary" onClick={()=>void practiceVault(track,comps.flatMap(([,list])=>list))}>Practice track</button>
+                  <button className="btn btn-primary" onClick={()=>void practiceVault(track,studyItemsByTrack.get(track) ?? [])}>Practice track</button>
                 </div>
                 {trackOpen&&<div style={{display:'grid',gap:'.5rem',marginTop:'.6rem',paddingLeft:'.5rem'}}>
                   {comps.map(([competence,list])=>{

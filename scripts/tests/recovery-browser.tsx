@@ -30,6 +30,17 @@ Object.assign(window, { recoveryFixture: {
   resumePaid: (id:string) => usePracticeStore.getState().restoreSavedProgress(id),
   settled: () => progressSettled,
   ids: () => ({ bookmarks: useBookmarksStore.getState().items.map(q => q.id), mistakes: useVaultStore.getState().items.map(q => q.id), owner: localStorage.getItem('hyperion-progress-owner') }),
+  seedGmdssMistakes: () => {
+    for (let number = 1; number <= 37; number++) {
+      useVaultStore.getState().addMistake({
+        ...recoveryQuestions[0],
+        id: `recovery-fixture-gmdss-${number}`,
+        track: 'GMDSS_GOC',
+        competenceId: number <= 20 ? 'C1' : 'C2',
+        questionText: number === 1 ? 'Unique antenna query' : `GMDSS fixture question ${number}`
+      }, 0)
+    }
+  },
   license: (enabled: boolean) => useLicenseStore.setState({ entitlementsVerified: true, cloudSyncVerified: true, entitlementUserId: localStorage.getItem('fixture-user') || fixtureUsers.a, cloudSyncExpiresAt: enabled ? Infinity : 0, isAllAccessUnlocked: enabled, cloudTrackIds: enabled ? ['DECK_OIC_NW'] : [] }),
   cloud: () => fixtureCloud(), users: fixtureUsers, calls: fixtureCalls,
   switchUser: (id: string) => { fixtureSetUser(id); useLicenseStore.setState({ entitlementUserId: id }) },
@@ -86,5 +97,5 @@ Object.assign(window, { recoveryFixture: {
   }
 } })
 createRoot(document.getElementById('root')!).render(<MemoryRouter initialEntries={['/bookmarks']}>
-  <nav><Link to="/mock/exam">Mock fixture</Link> · <Link to="/practice/quiz">Runner fixture</Link> · <Link to="/">Dashboard fixture</Link> · <Link to="/bookmarks">Bookmarks fixture</Link> · <Link to="/vault">Mistakes fixture</Link> · <Link to="/history">History fixture</Link> · <Link to="/track?track=oic_nw">Track fixture</Link> · <Link to="/flashcards?track=oic_nw">Flashcards fixture</Link>{['gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt'].map(track => <React.Fragment key={track}> · <Link to={'/flashcards?track=' + track}>Flashcards {track} fixture</Link></React.Fragment>)}</nav><App />
+  <nav><Link to="/mock/exam">Mock fixture</Link> · <Link to="/practice/quiz">Runner fixture</Link> · <Link to="/">Dashboard fixture</Link> · <Link to="/bookmarks">Bookmarks fixture</Link> · <Link to="/vault">Mistakes fixture</Link> · <Link to="/vault?track=gmdss">GMDSS mistakes fixture</Link> · <Link to="/history">History fixture</Link> · <Link to="/track?track=oic_nw">Track fixture</Link> · <Link to="/flashcards?track=oic_nw">Flashcards fixture</Link>{['gmdss', 'engine_ew', 'deck_mgt', 'engine_mgt'].map(track => <React.Fragment key={track}> · <Link to={'/flashcards?track=' + track}>Flashcards {track} fixture</Link></React.Fragment>)}</nav><App />
 </MemoryRouter>)
