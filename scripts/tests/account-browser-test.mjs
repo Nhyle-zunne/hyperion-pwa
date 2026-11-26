@@ -10,6 +10,39 @@ const PWA_PURCHASES_PAUSED = true
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: ['--no-sandbox'] })
 try {
+  // The same global prompt applies to new sign-ins and existing accounts lacking a label.
+  const categoryPage = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  await categoryPage.goto(process.env.HYPERION_RECOVERY_TEST_URL + '?section=account')
+  await categoryPage.getByRole('button', { name: 'Edit profile' }).waitFor()
+  assert.equal(await categoryPage.getByRole('dialog', { name: 'Choose your track category' }).count(), 0,
+    'Already-tagged accounts are not prompted again')
+  await categoryPage.evaluate(() => window.clearFixtureTrackCategory())
+  const categoryDialog = categoryPage.getByRole('dialog', { name: 'Choose your track category' })
+  await categoryDialog.waitFor()
+  for (const label of ['DECK', 'ENGINE', 'GMDSS']) {
+    assert.equal(await categoryDialog.getByRole('button', { name: new RegExp(label) }).count(), 1)
+  }
+  assert.equal(await categoryDialog.getByRole('button', { name: 'SAVE TRACK CATEGORY' }).isDisabled(), true)
+  await categoryDialog.getByRole('button', { name: /GMDSS/ }).click()
+  await categoryDialog.getByRole('button', { name: 'SAVE TRACK CATEGORY' }).click()
+  await categoryDialog.waitFor({ state: 'hidden' })
+  assert.equal(await categoryPage.getByTitle('Self-selected account category (not a license)').innerText(), 'GMDSS')
+  assert.deepEqual(await categoryPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'update-profile').map(call => call.data)),
+    [{ track_category: 'GMDSS' }], 'Saving the prompt changes metadata only, without creating licenses')
+  await categoryPage.getByRole('button', { name: 'Edit profile' }).click()
+  await categoryPage.getByRole('button', { name: 'EDIT PROFILE' }).click()
+  await categoryPage.getByRole('combobox', { name: 'Your track category' }).selectOption('DECK')
+  await categoryPage.getByRole('button', { name: 'SAVE CHANGES' }).click()
+  await categoryPage.waitForFunction(() =>
+    document.querySelector('[title="Self-selected account category (not a license)"]')?.textContent === 'DECK')
+  await categoryPage.evaluate(() => { window.dispatchEvent(new Event('offline')); window.clearFixtureTrackCategory() })
+  assert.equal(await categoryPage.getByRole('dialog', { name: 'Choose your track category' }).count(), 0,
+    'Missing metadata must not block disconnected reviewer use')
+  await categoryPage.evaluate(() => window.dispatchEvent(new Event('online')))
+  await categoryPage.getByRole('dialog', { name: 'Choose your track category' }).waitFor()
+  await categoryPage.close()
+  console.log('PASS: required account category prompt, profile edits, and offline safety')
+
   // Real admin editor UI in a synthetic auth/API fixture. No network writes
   // to real question banks; this exercises click feedback and publish staging.
   const editorPage = await browser.newPage({ viewport: { width: 1531, height: 900 } })

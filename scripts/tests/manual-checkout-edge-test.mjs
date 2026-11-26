@@ -66,6 +66,10 @@ function adminListFixture(metadata, identityName) {
     id: claimId, user_id: customerId, items: [{ code: 'oic_nw', term: 'month', amountPhp: 50 }],
     total_amount_php: 50, status: 'awaiting_proof', created_at: '2026-11-25T00:00:00Z',
   }
+  const order = {
+    id: '44444444-4444-4444-8444-444444444444', user_id: customerId, product_code: 'oic_nw',
+    status: 'pending', amount_php: 50, created_at: '2026-11-25T00:00:00Z', customer_name: null,
+  }
   const owner = {
     id: customerId, email: 'seafarer@example.invalid', user_metadata: metadata,
     identities: identityName ? [{ provider: 'google', identity_data: { name: identityName } }] : [],
@@ -83,7 +87,7 @@ function adminListFixture(metadata, identityName) {
         select: () => ({
           in: () => ({ order: () => ({
             range: async () => ({ data: table === 'manual_checkout_claims' ? [claim] : [], error: null }),
-            limit: async () => ({ data: [], error: null }),
+            limit: async () => ({ data: table === 'orders' ? [order] : [], error: null }),
           }) }),
           order: () => ({ limit: async () => ({ data: [], error: null }) }),
           eq: () => ({ maybeSingle: async () => ({ data: claim, error: null }) }),
@@ -105,13 +109,17 @@ function adminListFixture(metadata, identityName) {
 }
 
 test('admin payments resolves the Google full name for pending and searched claims', async () => {
-  const send = adminListFixture({ full_name: 'Boss Maria Santos' })
+  const send = adminListFixture({ full_name: 'Boss Maria Santos', track_category: 'GMDSS' })
   const list = await send('list')
   assert.equal(list.status, 200)
   assert.equal(list.data.claims[0].customer_name, 'Boss Maria Santos')
+  assert.equal(list.data.claims[0].track_category, 'GMDSS')
+  assert.equal(list.data.orders[0].customer_name, 'Boss Maria Santos')
+  assert.equal(list.data.orders[0].track_category, 'GMDSS')
   const found = await send('find-claim')
   assert.equal(found.status, 200)
   assert.equal(found.data.claim.customer_name, 'Boss Maria Santos')
+  assert.equal(found.data.claim.track_category, 'GMDSS')
 })
 
 test('admin payments uses Google identity name when profile metadata is missing', async () => {
@@ -119,6 +127,12 @@ test('admin payments uses Google identity name when profile metadata is missing'
   const list = await send('list')
   assert.equal(list.status, 200)
   assert.equal(list.data.claims[0].customer_name, 'Boss Juan Dela Cruz')
+  assert.equal(list.data.claims[0].track_category, null)
+})
+
+test('admin payments ignores arbitrary, non-category profile metadata', async () => {
+  const send = adminListFixture({ full_name: 'Boss Test', track_category: 'ENGINE_OIC_EW' })
+  assert.equal((await send('list')).data.claims[0].track_category, null)
 })
 
 test('claim endpoint derives owner from verified JWT, not spoofable request fields',async()=>{

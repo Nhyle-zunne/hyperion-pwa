@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import AdminNavigation from '../components/AdminNavigation'
 import { supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
+import TrackCategoryBadge from '../components/TrackCategoryBadge'
+import type { TrackCategory } from '../lib/accountTrackCategory'
 
 type ProductCode = 'oic_nw' | 'gmdss' | 'engine_ew' | 'deck_mgt' | 'engine_mgt'
 type LicenseTerm = 'week' | 'month' | 'year' | 'lifetime'
@@ -26,6 +28,7 @@ type ManagedUser = {
   id: string
   email: string
   display_name: string | null
+  track_category: TrackCategory | null
   created_at: string
   last_accessed_at: string
   last_access_source: 'website_activity' | 'last_sign_in_baseline' | 'created_at_baseline'
@@ -344,7 +347,7 @@ export default function AdminLicensesScreen() {
             onClick={() => setSelectedUserId(user.id)}
             aria-label={'Manage licenses for ' + (user.display_name || user.email || 'Hyperion user')}
           >
-            <strong style={{ display: 'block', fontSize: '.9rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{user.display_name || 'Hyperion user'}</strong>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '.4rem', flexWrap: 'wrap' }}><strong style={{ fontSize: '.9rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{user.display_name || 'Hyperion user'}</strong><TrackCategoryBadge category={user.track_category} /></span>
             <span style={{ display: 'block', marginTop: '.2rem', color: 'var(--text-muted)', fontSize: '.8rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{user.email || '(email unavailable)'}</span>
             <span style={{ display: 'block', marginTop: '.45rem', color: 'var(--text-muted)', fontSize: '.72rem', lineHeight: 1.4, overflowWrap: 'anywhere' }}>{lastAccessLabel(user)}: {dateLabel(user.last_accessed_at)}</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', marginTop: '.4rem', padding: '.22rem .4rem', border: '1px solid', borderRadius: 999, fontSize: '.62rem', lineHeight: 1.3, fontWeight: 850, ...retentionTone(user.retention_status) }}>{retentionLabel(user)}</span>
@@ -370,7 +373,7 @@ export default function AdminLicensesScreen() {
           >
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, padding: '1rem', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
               <div style={{ minWidth: 0 }}>
-                <h2 id="admin-license-modal-title" style={{ margin: 0, fontSize: '1.15rem', overflowWrap: 'anywhere' }}>{user.display_name || 'Hyperion user'}</h2>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.5rem' }}><h2 id="admin-license-modal-title" style={{ margin: 0, fontSize: '1.15rem', overflowWrap: 'anywhere' }}>{user.display_name || 'Hyperion user'}</h2><TrackCategoryBadge category={user.track_category} /></div>
                 <div style={{ marginTop: '.25rem', color: 'var(--text-muted)', fontSize: '.88rem', overflowWrap: 'anywhere' }}>{user.email || '(email unavailable)'}</div>
                 <div style={{ marginTop: '.25rem', color: 'var(--text-muted)', fontSize: '.72rem' }}>Joined {dateLabel(user.created_at)}</div>
                 <div style={{ marginTop: '.35rem', color: 'var(--text-muted)', fontSize: '.78rem', lineHeight: 1.45 }}>{lastAccessLabel(user)}: {dateLabel(user.last_accessed_at)}</div>

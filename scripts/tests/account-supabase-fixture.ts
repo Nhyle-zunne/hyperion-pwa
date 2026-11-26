@@ -8,7 +8,7 @@ export const fixtureCalls: { action: string; data?: unknown }[] = []
 let user = {
   id: '11111111-1111-4111-8111-111111111111',
   email: 'synthetic@example.invalid',
-  user_metadata: { full_name: 'Synthetic Member', company: 'Fixture Company', school: 'Fixture School' },
+  user_metadata: { full_name: 'Synthetic Member', company: 'Fixture Company', school: 'Fixture School', track_category: 'DECK' },
 }
 const fixtureOrders = () => user.id !== '11111111-1111-4111-8111-111111111111' ? [] : localStorage.getItem('fixture-large-history') === 'yes' ? Array.from({ length: 65 }, (_, index) => ({
   id: `00000000-0000-4000-8000-${String(999 - index).padStart(12, '0')}`,
@@ -36,10 +36,15 @@ export function releaseFixtureHeldNullSession() {
 export function emitFixtureAuth(event: 'SIGNED_IN' | 'SIGNED_OUT') {
   for (const listener of authListeners) listener(event, event === 'SIGNED_OUT' ? null : session())
 }
+export function clearFixtureTrackCategory() {
+  const { track_category: _oldCategory, ...details } = user.user_metadata
+  user = { ...user, user_metadata: { ...details, track_category: '' } }
+  emitFixtureAuth('SIGNED_IN')
+}
 let releaseEntitlements: (() => void) | undefined
 export function releaseFixtureEntitlements() { releaseEntitlements?.(); releaseEntitlements = undefined }
 export function switchFixtureAccount() {
-  user = { ...user, id: '22222222-2222-4222-8222-222222222222', email: 'other@example.invalid', user_metadata: { full_name: 'Other Member', company: '', school: '' } }
+  user = { ...user, id: '22222222-2222-4222-8222-222222222222', email: 'other@example.invalid', user_metadata: { full_name: 'Other Member', company: '', school: '', track_category: 'ENGINE' } }
   for (const listener of authListeners) listener('SIGNED_IN', session())
 }
 export const supabase = {
@@ -60,9 +65,10 @@ export const supabase = {
       authListeners.add(listener)
       return { data: { subscription: { unsubscribe() { authListeners.delete(listener) } } } }
     },
-    updateUser: async ({ data }: { data: typeof user.user_metadata }) => {
+    updateUser: async ({ data }: { data: Partial<typeof user.user_metadata> }) => {
       fixtureCalls.push({ action: 'update-profile', data })
-      user = { ...user, user_metadata: data }
+      user = { ...user, user_metadata: { ...user.user_metadata, ...data } }
+      for (const listener of authListeners) listener('USER_UPDATED', session())
       return { data: { user }, error: null }
     },
     signOut: async (options?: { scope?: string }) => {
