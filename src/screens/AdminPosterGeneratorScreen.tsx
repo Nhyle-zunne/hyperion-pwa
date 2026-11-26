@@ -3,6 +3,7 @@ import AdminNavigation from '../components/AdminNavigation'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import { supabase } from '../lib/supabase'
 import { POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
+import type { PortraitFrame } from '../lib/posterAlpha.mjs'
 import { removePortraitBackground } from '../lib/posterPortrait'
 import { downloadPoster, loadPosterArtwork, renderPoster } from '../lib/renderPoster'
 import './AdminPosterGeneratorScreen.css'
@@ -26,7 +27,7 @@ export default function AdminPosterGeneratorScreen() {
   const [company, setCompany] = useState('')
   const [artwork, setArtwork] = useState<HTMLImageElement | null>(null)
   const [originalPhoto, setOriginalPhoto] = useState<HTMLImageElement | null>(null)
-  const [cutoutPhoto, setCutoutPhoto] = useState<HTMLImageElement | null>(null)
+  const [cutoutPhoto, setCutoutPhoto] = useState<{ image: HTMLImageElement; frame: PortraitFrame } | null>(null)
   const [useOriginal, setUseOriginal] = useState(false)
   const [photoStatus, setPhotoStatus] = useState('Upload a candidate portrait to remove its background automatically.')
   const [photoBusy, setPhotoBusy] = useState(false)
@@ -65,16 +66,17 @@ export default function AdminPosterGeneratorScreen() {
     objectUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
   }, [])
 
-  const portrait = useOriginal ? originalPhoto : cutoutPhoto || originalPhoto
+  const portrait = useOriginal ? originalPhoto : cutoutPhoto?.image || originalPhoto
+  const portraitFrame = useOriginal ? undefined : cutoutPhoto?.frame
   useEffect(() => {
     if (!artwork || !canvasRef.current || !access.allowed) return
     try {
-      renderPoster(canvasRef.current, artwork, { track, name, date, school, company, portrait, scalePercent, xOffsetPercent, yOffsetPercent })
+      renderPoster(canvasRef.current, artwork, { track, name, date, school, company, portrait, portraitFrame, scalePercent, xOffsetPercent, yOffsetPercent })
       setRenderError('')
     } catch (error) {
       setRenderError(error instanceof Error ? error.message : 'Could not render the poster.')
     }
-  }, [artwork, access.allowed, track, name, date, school, company, portrait, scalePercent, xOffsetPercent, yOffsetPercent])
+  }, [artwork, access.allowed, track, name, date, school, company, portrait, portraitFrame, scalePercent, xOffsetPercent, yOffsetPercent])
 
   async function loadPhoto(blob: Blob) {
     const url = URL.createObjectURL(blob)
@@ -87,15 +89,23 @@ export default function AdminPosterGeneratorScreen() {
     })
   }
 
+  function resetPhotoPosition() {
+    setScalePercent(100)
+    setXOffsetPercent(0)
+    setYOffsetPercent(0)
+  }
+
   async function handlePhoto(file: File) {
     const request = ++photoRequestRef.current
     setOriginalPhoto(null)
     setCutoutPhoto(null)
     setUseOriginal(false)
     if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 20 * 1024 * 1024) {
+      setPhotoBusy(false)
       setPhotoStatus('Use a PNG, JPEG or WebP photo smaller than 20 MB.')
       return
     }
+    resetPhotoPosition()
     setPhotoBusy(true)
     setPhotoStatus('Preparing portrait and removing background on this device...')
     try {
@@ -104,12 +114,12 @@ export default function AdminPosterGeneratorScreen() {
       setOriginalPhoto(original)
       // Yield one frame so the processing state can be painted before inference starts.
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-      const blob = await removePortraitBackground(file)
+      const { blob, frame } = await removePortraitBackground(file)
       if (request !== photoRequestRef.current) return
       const cutout = await loadPhoto(blob)
       if (request !== photoRequestRef.current) return
-      setCutoutPhoto(cutout)
-      setPhotoStatus('Background removed. Check the hair and shoulder edges in the preview.')
+      setCutoutPhoto({ image: cutout, frame })
+      setPhotoStatus('Background removed and portrait positioned. Adjust the sliders if needed.')
     } catch {
       if (request === photoRequestRef.current) setPhotoStatus('Automatic removal was unavailable. The original photo is still available. Check your connection and try another photo.')
     } finally {
@@ -163,7 +173,7 @@ export default function AdminPosterGeneratorScreen() {
           <input id="poster-horizontal" type="range" min="-16" max="16" step="1" value={xOffsetPercent} onChange={event => setXOffsetPercent(Number(event.target.value))} />
           <label htmlFor="poster-vertical">Move vertically <output>{yOffsetPercent > 0 ? '+' : ''}{yOffsetPercent}%</output></label>
           <input id="poster-vertical" type="range" min="-13" max="13" step="1" value={yOffsetPercent} onChange={event => setYOffsetPercent(Number(event.target.value))} />
-          <button type="button" className="btn btn-outline" onClick={() => { setScalePercent(100); setXOffsetPercent(0); setYOffsetPercent(0) }}>RESET PHOTO POSITION</button>
+          <button type="button" className="btn btn-outline" onClick={resetPhotoPosition}>RESET PHOTO POSITION</button>
         </div>
       </div>
 

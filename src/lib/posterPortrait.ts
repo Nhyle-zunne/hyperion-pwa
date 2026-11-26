@@ -1,6 +1,6 @@
-import { applyPortraitAlpha } from './posterAlpha.mjs'
+import { applyPortraitAlpha, findPortraitFrame } from './posterAlpha.mjs'
 
-const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite'
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite'
 const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm'
 let segmenterPromise: ReturnType<typeof createSegmenter> | null = null
 
@@ -29,7 +29,7 @@ function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   })
 }
 
-export async function removePortraitBackground(file: File): Promise<Blob> {
+export async function removePortraitBackground(file: File) {
   if (!file.type.startsWith('image/')) throw new Error('Choose a JPEG, PNG or WebP portrait.')
   const image = await createImageBitmap(file)
   try {
@@ -46,13 +46,16 @@ export async function removePortraitBackground(file: File): Promise<Blob> {
     try {
       const segmenter = await getSegmenter()
       result = segmenter.segment(canvas)
-      const foreground = result.confidenceMasks?.[1]
+      // The selfie model exposes one confidence mask labeled “selfie”.
+      const foreground = result.confidenceMasks?.[0]
       if (!foreground) throw new Error('No person was detected in the portrait.')
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height)
       const mask = foreground.getAsFloat32Array()
       const cutout = applyPortraitAlpha(pixels, mask, foreground.width, foreground.height)
+      const frame = findPortraitFrame(cutout)
+      if (!frame) throw new Error('No person was detected in the portrait.')
       context.putImageData(new ImageData(cutout.data, cutout.width, cutout.height), 0, 0)
-      return await canvasBlob(canvas)
+      return { blob: await canvasBlob(canvas), frame }
     } finally {
       result?.confidenceMasks?.forEach(mask => mask.close())
       result?.categoryMask?.close()

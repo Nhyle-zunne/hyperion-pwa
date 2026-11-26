@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { applyPortraitAlpha } from '../../src/lib/posterAlpha.mjs'
+import { applyPortraitAlpha, findPortraitFrame } from '../../src/lib/posterAlpha.mjs'
 
 test('background removal changes alpha without changing face, hair, or uniform RGB', () => {
   const image = { width: 2, height: 2, data: Uint8ClampedArray.from([
@@ -30,4 +30,19 @@ test('upscaled masks blend at the edge instead of producing a hard staircase', (
   ]) }
   const result = applyPortraitAlpha(image, Float32Array.from([0, 1]), 2, 1)
   assert.deepEqual(Array.from(result.data).filter((_, i) => i % 4 === 3), [0, 64, 191, 255])
+})
+
+test('framing finds the head above offset shoulders and ignores faint background pixels', () => {
+  const width = 100
+  const height = 120
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const head = y >= 26 && y < 67 && x >= 48 && x < 72
+      const shoulders = y >= 65 && y < 114 && x >= 28 && x < 98
+      data[(y * width + x) * 4 + 3] = head || shoulders ? 255 : 24
+    }
+  }
+  assert.deepEqual(findPortraitFrame({ width, height, data }), { top: 26, headCenter: 60, headWidth: 24 })
+  assert.equal(findPortraitFrame({ width, height, data: data.fill(0) }), null)
 })

@@ -1,5 +1,6 @@
 import { fitPosterText, posterOffsetFromPercent, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
 import { formatPosterDate, fullPosterName } from './posterTracks.mjs'
+import type { PortraitFrame } from './posterAlpha.mjs'
 import type { PosterTrack } from './posterTracks.mjs'
 
 const ART_SIZE = 1254
@@ -12,6 +13,7 @@ export type PosterContent = {
   school: string
   company: string
   portrait: HTMLImageElement | null
+  portraitFrame?: PortraitFrame
   scalePercent: number
   xOffsetPercent: number
   yOffsetPercent: number
@@ -59,20 +61,8 @@ function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
 
 function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement, data: PosterContent) {
   const scale = Math.max(70, Math.min(140, data.scalePercent)) / 100
-  const baseWidth = 565
-  const baseHeight = 840
-  const width = baseWidth * scale
-  const height = baseHeight * scale
   const xOffset = posterOffsetFromPercent(data.xOffsetPercent, ART_SIZE)
   const yOffset = posterOffsetFromPercent(data.yOffsetPercent, ART_SIZE)
-  const x = 735 + xOffset - (width - baseWidth) / 2
-  const y = 272 + yOffset - (height - baseHeight) / 2
-  const targetRatio = width / height
-  const sourceRatio = portrait.naturalWidth / portrait.naturalHeight
-  const cropWidth = sourceRatio > targetRatio ? portrait.naturalHeight * targetRatio : portrait.naturalWidth
-  const cropHeight = sourceRatio > targetRatio ? portrait.naturalHeight : portrait.naturalWidth / targetRatio
-  const cropX = (portrait.naturalWidth - cropWidth) / 2
-  const cropY = Math.max(0, (portrait.naturalHeight - cropHeight) * 0.15)
 
   // A soft left and lower edge lets the uniform meet the maritime artwork
   // naturally without a visible photo box or covering the closing message.
@@ -81,7 +71,26 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   layer.height = ART_SIZE
   const layerCtx = layer.getContext('2d')
   if (!layerCtx) return
-  layerCtx.drawImage(portrait, cropX, cropY, cropWidth, cropHeight, x, y, width, height)
+  const frame = data.portraitFrame
+  if (frame) {
+    const portraitScale = 236 / frame.headWidth * scale
+    const left = 1000 + xOffset - frame.headCenter * portraitScale
+    const top = 271 + yOffset - frame.top * portraitScale
+    layerCtx.drawImage(portrait, left, top, portrait.naturalWidth * portraitScale, portrait.naturalHeight * portraitScale)
+  } else {
+    const baseWidth = 565
+    const baseHeight = 840
+    const width = baseWidth * scale
+    const height = baseHeight * scale
+    const x = 735 + xOffset - (width - baseWidth) / 2
+    const y = 246 + yOffset - (height - baseHeight) / 2
+    const targetRatio = width / height
+    const cropWidth = Math.min(portrait.naturalWidth, portrait.naturalHeight * targetRatio)
+    const cropHeight = Math.min(portrait.naturalHeight, portrait.naturalWidth / targetRatio)
+    const cropX = (portrait.naturalWidth - cropWidth) / 2
+    const cropY = (portrait.naturalHeight - cropHeight) * 0.15
+    layerCtx.drawImage(portrait, cropX, cropY, cropWidth, cropHeight, x, y, width, height)
+  }
 
   layerCtx.globalCompositeOperation = 'destination-in'
   const sideFade = layerCtx.createLinearGradient(720, 0, 875, 0)

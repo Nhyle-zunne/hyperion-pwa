@@ -2,13 +2,18 @@ const marineDeck = 'Bachelor of Science in Marine Transportation'
 const marineEngine = 'Bachelor of Science in Marine Engineering'
 const examHeading = 'MARINA LICENSURE EXAMINATION'
 const examTitle = description => examHeading + '\n' + description
+const deckManagementExam = examTitle('FOR DECK MANAGEMENT LEVEL')
+const engineManagementExam = examTitle('FOR ENGINE MANAGEMENT LEVEL')
 
 export const POSTER_TRACKS = Object.freeze([
   { id: 'oic_nw', label: 'OIC-NW', prefix: 'OIC-NW', defaultDegree: marineDeck, examTitle: examTitle('FOR MARINE DECK OFFICERS') },
   { id: 'gmdss', label: 'GMDSS GOC', prefix: 'OIC-NW', defaultDegree: marineDeck, examTitle: examTitle('FOR GMDSS RADIO OPERATORS') },
   { id: 'oic_ew', label: 'OIC-EW', prefix: 'OIC-EW', defaultDegree: marineEngine, examTitle: examTitle('FOR MARINE ENGINEERS') },
-  { id: 'master_mariner', label: 'CAPT.', prefix: 'CAPT.', defaultDegree: marineDeck, examTitle: examTitle('FOR DECK MANAGEMENT LEVEL') },
-  { id: 'chief_engineer', label: 'C/E', prefix: 'C/E', defaultDegree: marineEngine, examTitle: examTitle('FOR ENGINE MANAGEMENT LEVEL') },
+  { id: 'master_mariner', label: 'CAPT.', prefix: 'CAPT.', defaultDegree: marineDeck, examTitle: deckManagementExam },
+  { id: 'chief_mate', label: 'C/M', prefix: 'C/M', defaultDegree: marineDeck, examTitle: deckManagementExam },
+  { id: 'chief_engineer', label: 'C/E', prefix: 'C/E', defaultDegree: marineEngine, examTitle: engineManagementExam },
+  { id: 'first_engineer', label: '1/E', prefix: '1/E', defaultDegree: marineEngine, examTitle: engineManagementExam },
+  { id: 'second_engineer', label: '2/E', prefix: '2/E', defaultDegree: marineEngine, examTitle: engineManagementExam },
 ])
 
 export function fullPosterName(trackId, name) {

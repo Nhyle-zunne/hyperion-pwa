@@ -4,3 +4,7 @@ export function applyPortraitAlpha(
   maskWidth: number,
   maskHeight: number,
 ): { width: number; height: number; data: Uint8ClampedArray }
+
+export type PortraitFrame = { top: number; headCenter: number; headWidth: number }
+
+export function findPortraitFrame(image: { width: number; height: number; data: Uint8ClampedArray }): PortraitFrame | null

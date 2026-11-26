@@ -2,22 +2,25 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { POSTER_TRACKS, fullPosterName, formatPosterDate } from '../../src/lib/posterTracks.mjs'
 
-test('all five licensure tracks are available', () => {
+test('all eight licensure options are available', () => {
   assert.deepEqual(POSTER_TRACKS.map(track => [track.id, track.label, track.prefix]), [
     ['oic_nw', 'OIC-NW', 'OIC-NW'],
     ['gmdss', 'GMDSS GOC', 'OIC-NW'],
     ['oic_ew', 'OIC-EW', 'OIC-EW'],
     ['master_mariner', 'CAPT.', 'CAPT.'],
+    ['chief_mate', 'C/M', 'C/M'],
     ['chief_engineer', 'C/E', 'C/E'],
+    ['first_engineer', '1/E', '1/E'],
+    ['second_engineer', '2/E', '2/E'],
   ])
-  assert.equal(new Set(POSTER_TRACKS.map(track => track.id)).size, 5)
+  assert.equal(new Set(POSTER_TRACKS.map(track => track.id)).size, 8)
 })
 
 test('deck and engine degrees and licensure headings follow track selection', () => {
   const deck = POSTER_TRACKS.find(track => track.id === 'master_mariner')
   const engine = POSTER_TRACKS.find(track => track.id === 'chief_engineer')
   for (const track of POSTER_TRACKS) {
-    const engineering = ['oic_ew', 'chief_engineer'].includes(track.id)
+    const engineering = ['oic_ew', 'chief_engineer', 'first_engineer', 'second_engineer'].includes(track.id)
     assert.equal(track.defaultDegree, `Bachelor of Science in Marine ${engineering ? 'Engineering' : 'Transportation'}`)
   }
   assert.match(deck.defaultDegree, /Marine Transportation/)
@@ -31,6 +34,9 @@ test('rank prefix is automatic, but never duplicated', () => {
   assert.equal(fullPosterName('oic_nw', 'OIC-NW Sheldon R. Abarquez'), 'OIC-NW Sheldon R. Abarquez')
   assert.equal(fullPosterName('master_mariner', 'Juan Dela Cruz'), 'CAPT. Juan Dela Cruz')
   assert.equal(fullPosterName('chief_engineer', 'Juan Dela Cruz'), 'C/E Juan Dela Cruz')
+  assert.equal(fullPosterName('chief_mate', 'Juan Dela Cruz'), 'C/M Juan Dela Cruz')
+  assert.equal(fullPosterName('first_engineer', '1/E Juan Dela Cruz'), '1/E Juan Dela Cruz')
+  assert.equal(fullPosterName('second_engineer', 'Juan Dela Cruz'), '2/E Juan Dela Cruz')
   assert.equal(fullPosterName('chief_engineer', ' '), '')
   assert.equal(fullPosterName('gmdss', 'Juan Dela Cruz'), 'OIC-NW Juan Dela Cruz')
 })
@@ -47,6 +53,9 @@ test('each active track uses its correct two-line examination description', () =
     ['gmdss', 'MARINA LICENSURE EXAMINATION\nFOR GMDSS RADIO OPERATORS'],
     ['oic_ew', 'MARINA LICENSURE EXAMINATION\nFOR MARINE ENGINEERS'],
     ['master_mariner', 'MARINA LICENSURE EXAMINATION\nFOR DECK MANAGEMENT LEVEL'],
+    ['chief_mate', 'MARINA LICENSURE EXAMINATION\nFOR DECK MANAGEMENT LEVEL'],
     ['chief_engineer', 'MARINA LICENSURE EXAMINATION\nFOR ENGINE MANAGEMENT LEVEL'],
+    ['first_engineer', 'MARINA LICENSURE EXAMINATION\nFOR ENGINE MANAGEMENT LEVEL'],
+    ['second_engineer', 'MARINA LICENSURE EXAMINATION\nFOR ENGINE MANAGEMENT LEVEL'],
   ])
 })
