@@ -6,6 +6,7 @@ export interface PosterTrack {
   examTitle: string
 }
 
+export const POSTER_DEGREES: ReadonlyArray<string>
 export const POSTER_TRACKS: ReadonlyArray<PosterTrack>
 export function fullPosterName(trackId: string, name: string): string
 export function formatPosterDate(value: string): string
