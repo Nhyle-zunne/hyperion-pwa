@@ -55,8 +55,10 @@ export function posterPortraitBlend(headTop, headWidth, visibleBottom, yOffset) 
   const lowerTorso = visibleBottom - torsoStart
   const targetBottom = Math.min(1105, 1055 + yOffset)
   const canExtend = lowerTorso >= headWidth * 0.1
+  // The quadratic stretch increases toward the bottom of the strip. Limit the
+  // total extension so the shirt keeps its proportions during the fade.
   const extension = canExtend
-    ? Math.max(0, Math.min(225, lowerTorso * 5, targetBottom - visibleBottom))
+    ? Math.max(0, Math.min(36, lowerTorso * 0.35, targetBottom - visibleBottom))
     : 0
   const fadeEnd = Math.min(1105, visibleBottom + extension)
   const fadeStart = canExtend

@@ -42,8 +42,10 @@ test('poster headings keep readable two-line sizing instead of shrinking to one 
 test('short portraits preserve the shoulder boards and extend the shirt below them', () => {
   const blend = posterPortraitBlend(271, 236, 782, 0)
   assert.ok(blend.torsoStart >= 730 && blend.torsoStart < 782)
-  assert.ok(blend.extension >= 200 && blend.extension <= 225)
-  assert.ok(blend.fadeStart > 782 - 65)
+  const originalShirt = 782 - blend.torsoStart
+  assert.ok(blend.extension > 0 && blend.extension <= originalShirt * 0.35)
+  assert.ok(blend.extension <= 36)
+  assert.ok(blend.fadeStart < 782, 'The fade should already be active at the original bottom edge')
   assert.equal(blend.fadeEnd, 782 + blend.extension)
 })
 
