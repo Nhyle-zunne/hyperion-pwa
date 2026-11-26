@@ -131,8 +131,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [school, setSchool] = useState('')
   const [trackCategory, setTrackCategory] = useState<TrackCategory | ''>('')
   const [savedTrackCategory, setSavedTrackCategory] = useState<TrackCategory | ''>('')
-  const [profileEditing, setProfileEditing] = useState(false)
-  const [profileExpanded, setProfileExpanded] = useState(false)
+  const [profileExpanded, setProfileExpanded] = useState(true)
   const [savedProfile, setSavedProfile] = useState({ fullName: '', company: '', school: '' })
   const [isAdmin, setIsAdmin] = useState(false)
   const checkoutAvailability = useWebsiteCheckoutAvailability(!isLayout && accountTab === 'payments')
@@ -341,7 +340,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     setCompany(resolvedCompany)
     setSchool(resolvedSchool)
     setSavedProfile({ fullName: resolvedFullName, company: resolvedCompany, school: resolvedSchool })
-    setProfileEditing(false)
   }, [session?.user.id])
   useEffect(() => {
     const category = parseTrackCategory(session?.user.user_metadata?.track_category) || ''
@@ -367,7 +365,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       if (data.user) setSession(current => current ? { ...current, user: data.user! } : current)
       setSavedProfile({ fullName: fullName.trim(), company: company.trim(), school: school.trim() })
       setSavedTrackCategory(trackCategory)
-      setProfileEditing(false)
       setMessage('Your profile has been saved.')
     } catch { setMessage('Unable to save profile details. Please try again.') }
     finally { setBusy(false) }
@@ -633,8 +630,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
 
   const card: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1rem', marginBottom: '1rem', borderRadius: 0 }
   const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', minHeight: 40, padding: '.45rem .55rem', marginTop: '.25rem', background: 'var(--bg-elevated)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, font: 'inherit', fontSize: '.85rem' }
-  const profileField = (editable: boolean): React.CSSProperties => ({ ...field, background: editable ? 'var(--bg-elevated)' : 'var(--bg)', color: editable ? 'var(--text)' : 'var(--text-muted)', border: editable ? '1px solid var(--border)' : '1px solid #cbd5e1', boxShadow: 'none', outline: 'none', cursor: editable ? 'text' : 'default', userSelect: editable ? 'text' : 'none', WebkitUserSelect: editable ? 'text' : 'none', pointerEvents: editable ? 'auto' : 'none', caretColor: editable ? 'auto' : 'transparent' })
   const label: React.CSSProperties = { display: 'block', marginTop: '.5rem', fontSize: '.8rem', lineHeight: 1.35 }
+  const compactProfileLabel: React.CSSProperties = { ...label, marginTop: '.3rem', fontSize: '.77rem' }
+  const compactProfileField: React.CSSProperties = { ...field, minHeight: 36, padding: '.32rem .5rem', marginTop: '.15rem', borderRadius: 0 }
   const pendingPayMongoOrders = orders.filter(order => order.status === 'pending' && order.payment_method === 'PayMongo Checkout')
   const pendingCheckoutIds = pendingPaymentCheckoutIds(orders)
   const paymentPolling = useRef<{ userId: string; state: ReturnType<typeof createPaymentPollingState> } | null>(null)
@@ -777,6 +775,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .profile-mobile-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}
       @media(prefers-reduced-motion:reduce){.account-page .profile-mobile-toggle svg{transition:none}}
       .account-page .account-profile-content{display:block}
+      .account-page .account-profile-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2%;margin-top:.45rem}
+      .account-page .account-profile-actions .btn{min-width:0;width:100%;min-height:44px;padding:.4rem 2%;font-size:clamp(.72rem,.8vw,.82rem);line-height:1.2;white-space:nowrap}
+      .account-page .account-profile-fields input{width:100%}
       .account-page .account-section-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
       .account-page .account-section-tabs button{min-height:48px;padding:.75rem 1rem;font-weight:850;border-radius:var(--store-control-radius)}
       .account-page .profile-side-links{font-size:.76rem;color:var(--text-muted);line-height:1.4}
@@ -794,7 +795,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .payment-method-pills span{padding:.3rem .5rem;border:1px solid var(--border);background:var(--bg-elevated);border-radius:6px;font-size:.7rem;font-weight:750}
       @media(max-width:1279px){.account-page .account-products-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
       @media(max-width:950px){.account-page .account-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-toolbar-actions{display:flex;justify-content:flex-end}.account-page .profile-mobile-toggle{display:inline-flex}.account-page .account-profile-content{display:none}.account-page .account-profile-content.is-expanded{display:block}.account-page .account-section-tabs{display:grid;grid-template-columns:1fr;gap:.45rem}.account-page .account-section-tabs button{text-align:left}}
+      @media(max-width:800px){.account-page .account-layout{grid-template-columns:minmax(0,1fr)}.account-page .account-sidebar{position:static;grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .8rem}.account-page .account-profile-fields input{min-height:44px!important}.account-page .account-toolbar-actions{display:flex;justify-content:flex-end}.account-page .profile-mobile-toggle{display:inline-flex}.account-page .account-profile-content{display:none}.account-page .account-profile-content.is-expanded{display:block}.account-page .account-section-tabs{display:grid;grid-template-columns:1fr;gap:.45rem}.account-page .account-section-tabs button{text-align:left}}
       @media(max-width:520px){.account-page .account-products-grid{grid-template-columns:minmax(0,1fr)}.account-page .account-profile-fields{grid-template-columns:minmax(0,1fr)}.account-page .account-product-card .product-art{min-height:64px}.account-page .account-cart-row{align-items:flex-start}}
       /* Checkout is a focused mobile purchase flow, not the profile overview. */
       @media(max-width:800px){
@@ -864,8 +865,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
 
       <div className="account-layout">
         <aside className="account-sidebar">
-          {session && <section style={{ ...card, padding: '.8rem', marginBottom: 0 }}>
-            <div style={{ display: 'flex', gap: '.6rem', alignItems: 'center', marginBottom: '.6rem' }}>
+          {session && <section style={{ ...card, padding: 'clamp(.6rem,.75vw,.8rem)', marginBottom: 0 }}>
+            <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', marginBottom: '.4rem' }}>
               <div className="profile-avatar">{(fullName || 'H').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase()}</div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.35rem' }}><h2 style={{ margin: 0, fontSize: '1rem', overflowWrap: 'anywhere' }}>{fullName || 'Hyperion Member'}</h2><TrackCategoryBadge category={savedTrackCategory} /></div>
@@ -874,38 +875,38 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
               </div>
             </div>
             <button type="button" className="profile-mobile-toggle" aria-expanded={profileExpanded} aria-controls="account-profile-content" onClick={() => setProfileExpanded(value => !value)}>
-              {profileExpanded ? 'Hide profile' : 'Edit profile'}
+              {profileExpanded ? 'Hide profile' : 'Show profile'}
               <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
             </button>
             <div id="account-profile-content" className={`account-profile-content${profileExpanded ? ' is-expanded' : ''}`}>
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '.6rem' }}>
-              <h3 style={{ margin: '0 0 .25rem', fontSize: '.88rem' }}>Your profile</h3>
-              <p className="profile-side-links" style={{ margin: '0 0 .4rem' }}>Your saved details are reused for checkout and purchase records.</p>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '.4rem' }}>
+              <h3 style={{ margin: '0 0 .2rem', fontSize: '.85rem' }}>Your profile</h3>
+              <p className="profile-side-links" style={{ margin: '0 0 .25rem' }}>Saved details appear on your checkout records.</p>
               <div className="account-profile-fields">
-                <label style={label}>Full name<input required maxLength={160} readOnly={!profileEditing} value={fullName} onChange={e => setFullName(e.target.value)} style={profileField(profileEditing)} /></label>
-                <label style={label}>Company (optional)<input maxLength={160} readOnly={!profileEditing} value={company} onChange={e => setCompany(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
-                <label style={label}>School (optional)<input maxLength={160} readOnly={!profileEditing} value={school} onChange={e => setSchool(e.target.value)} style={{ ...field, opacity: profileEditing ? 1 : 0.8, cursor: profileEditing ? 'text' : 'default' }} /></label>
-                {profileEditing && <div role="group" aria-label="Your track categories" style={{ display: 'grid', gap: '.35rem' }}>
-                  <span style={label}>Track categories</span>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '.3rem' }}>
+                <label style={compactProfileLabel}>Full name<input required maxLength={160} value={fullName} onChange={e => setFullName(e.target.value)} style={compactProfileField} /></label>
+                <label style={compactProfileLabel}>Company (optional)<input maxLength={160} value={company} onChange={e => setCompany(e.target.value)} style={compactProfileField} /></label>
+                <label style={compactProfileLabel}>School (optional)<input maxLength={160} value={school} onChange={e => setSchool(e.target.value)} style={compactProfileField} /></label>
+                <div role="group" aria-label="Your track categories" style={{ display: 'grid', gap: '.2rem' }}>
+                  <span style={compactProfileLabel}>Track categories</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '2%' }}>
                     {TRACK_CATEGORIES.map(category => <button key={category} type="button" aria-label={category} aria-pressed={hasTrackCategory(trackCategory, category)} disabled={busy}
                       onClick={() => setTrackCategory(current => toggleTrackCategory(current, category) || '')}
-                      style={{ minWidth: 0, minHeight: 44, padding: '.4rem .2rem', cursor: 'pointer', fontSize: '.74rem', fontWeight: 800,
+                      style={{ minWidth: 0, minHeight: 44, padding: '.3rem 1%', cursor: 'pointer', fontSize: 'clamp(.68rem,.8vw,.78rem)', fontWeight: 800,
                         background: hasTrackCategory(trackCategory, category) ? 'var(--accent-soft)' : 'var(--bg-elevated)', color: 'var(--text)',
                         border: hasTrackCategory(trackCategory, category) ? '2px solid var(--accent)' : '1px solid var(--border)', borderRadius: 0 }}>
                       {hasTrackCategory(trackCategory, category) ? '✓ ' : ''}{category}
                     </button>)}
                   </div>
-                </div>}
-                {profileEditing && <p style={{ margin: 0, fontSize: '.74rem', color: 'var(--text-muted)' }}>Select DECK, GMDSS, or both. ENGINE is exclusive. These tags do not change your licenses.</p>}
+                </div>
+                <p style={{ margin: '.2rem 0 0', fontSize: '.7rem', lineHeight: 1.3, color: 'var(--text-muted)' }}>DECK + GMDSS allowed; ENGINE is exclusive. Tags do not change licenses.</p>
               </div>
-              {!profileEditing ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setMessage(''); setProfileEditing(true) }} style={{ width: '100%', marginTop: '.65rem', minHeight: 44, padding: '.45rem .65rem', fontSize: '.82rem' }}>EDIT PROFILE</button> : <div style={{ display: 'flex', gap: 8, marginTop: '.65rem' }}>
-                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setTrackCategory(savedTrackCategory); setProfileEditing(false); setMessage('') }} style={{ flex: 1 }}>CANCEL</button>
-                <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || !trackCategory || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school && trackCategory === savedTrackCategory)} onClick={() => void saveProfile()} style={{ flex: 1 }}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
-              </div>}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '.5rem', marginTop: '.5rem' }}>
-                <button type="button" className="btn btn-outline" onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')} style={{ minWidth: 0, minHeight: 44, padding: '.45rem .5rem', fontSize: '.78rem', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>Delete account</button>
-                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void signOut()} style={{ minWidth: 0, minHeight: 44, padding: '.45rem .5rem', fontSize: '.78rem' }}>{busy ? 'Signing out…' : 'Sign out'}</button>
+              <div className="account-profile-actions">
+                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setTrackCategory(savedTrackCategory); setMessage('') }}>CANCEL</button>
+                <button type="button" className="btn btn-primary" disabled={busy || !fullName.trim() || !trackCategory || (fullName.trim() === savedProfile.fullName && company.trim() === savedProfile.company && school.trim() === savedProfile.school && trackCategory === savedTrackCategory)} onClick={() => void saveProfile()}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
+              </div>
+              <div className="account-profile-actions">
+                <button type="button" className="btn btn-outline" onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')} style={{ borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>Delete account</button>
+                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void signOut()}>{busy ? 'Signing out…' : 'Sign out'}</button>
               </div>
               {accountTab === 'delete' && <section style={{ ...card, marginTop: '1rem', borderColor: 'var(--danger, #dc2626)' }}>
                 <h3 style={{ marginTop: 0, color: 'var(--danger, #dc2626)' }}>Delete account</h3>
