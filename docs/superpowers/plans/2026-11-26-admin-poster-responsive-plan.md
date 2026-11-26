@@ -59,9 +59,9 @@
 - Modify: `src/lib/renderPoster.ts`
 - Test: `scripts/tests/poster-layout-test.mjs`
 - Test: `scripts/tests/poster-tracks-test.mjs`
-- Test: `scripts/tests/admin-poster-route-test.mjs`
+- Test: `scripts/tests/render-poster-test.mjs`
 
-- [ ] Add failing tests for largest-font-first wrapping, sample-aligned text positions, and all four track headings.
-- [ ] Verify the current renderer fails those assertions.
-- [ ] Implement explicit-newline-aware fitting, a shared poster text layout, and the four requested exam descriptions.
+- [x] Add failing tests for largest-font-first wrapping and all four track headings; add a renderer-level canvas regression for sample alignment.
+- [x] Verify the previous layout algorithm and track headings fail the new assertions.
+- [x] Implement explicit-newline-aware fitting, a shared poster text layout, and the four requested exam descriptions.
 - [ ] Verify focused tests, the full PWA CI suite, and a rendered production preview before merging.
