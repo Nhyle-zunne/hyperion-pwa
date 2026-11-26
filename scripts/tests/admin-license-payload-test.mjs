@@ -20,7 +20,9 @@ const lifetime = ['admin', 'paymongo'].map(provider => ({
   provider, status: 'active', purchased_at: '2025-01-01T00:00:00Z'
 }))
 const manualChanges = []
-let email = adminEmail, authFails = false, dbReads = 0, authReads = 0, writes = 0, handler
+const diagnosticErrors = []
+const diagnosticSteps = []
+let email = adminEmail, authFails = false, failDependency = false, explodeDependency = false, dbReads = 0, authReads = 0, writes = 0, handler
 const originalFetch = globalThis.fetch
 globalThis.fetch = async (input, init) => {
   const req = new Request(input, init), url = new URL(req.url)
@@ -42,12 +44,14 @@ globalThis.fetch = async (input, init) => {
   if (url.pathname.endsWith('/lifetime_entitlements')) return json(lifetime)
   if (url.pathname.endsWith('/google_play_entitlements')) return json(play)
   if (url.pathname.endsWith('/entitlements')) return json(url.searchParams.has('product_code') ? website[0] : website)
+  if (url.pathname.endsWith('/user_activity') && explodeDependency) return json([{ user_id: accounts[1].id, last_accessed_at: '+275760-09-13T00:00:00.000Z' }])
+  if (url.pathname.endsWith('/user_activity') && failDependency) return json({ code: 'PGRST100', message: 'fixture private details must not be logged' }, 400)
   if (url.pathname.endsWith('/license_admin_audit') || url.pathname.endsWith('/user_activity') || url.pathname.endsWith('/orders') || url.pathname.endsWith('/checkout_batches') || url.pathname.endsWith('/manual_checkout_claims')) return json([])
   throw new Error('Unexpected request ' + req.url)
 }
 const env = { SUPABASE_URL: 'http://fixture.invalid', SUPABASE_ANON_KEY: 'fixture-anon', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service', ADMIN_EMAILS: adminEmail }
 try {
-  const context = { require: name => require(name.replace('npm:', '').replace('@2', '')), exports: {}, Deno: { env: { get: key => env[key] }, serve: fn => { handler = fn } }, Request, Response, Headers, Blob, CompressionStream, TextEncoder, console, URL, setTimeout, clearTimeout }
+  const context = { require: name => require(name.replace('npm:', '').replace('@2', '')), exports: {}, Deno: { env: { get: key => env[key] }, serve: fn => { handler = fn } }, Request, Response, Headers, Blob, CompressionStream, TextEncoder, console: { log: console.log, info: (...args) => diagnosticSteps.push(args.join(' ')), error: (...args) => diagnosticErrors.push(args.join(' ')) }, URL, setTimeout, clearTimeout }
   vm.runInNewContext(compile('supabase/functions/admin-license-management/index.ts'), context)
   const send = async (body, headers = {}) => {
     const before = authReads
@@ -59,6 +63,10 @@ try {
   const legacyText = await legacyResponse.text(), legacy = JSON.parse(legacyText)
   const compactResponse = await send({ action: 'list', compact: true })
   const compactText = await compactResponse.text(), compact = JSON.parse(compactText)
+  assert.ok(diagnosticSteps.some(message => message.endsWith('list.start')), 'Authorized list requests leave a start breadcrumb')
+  assert.ok(diagnosticSteps.some(message => message.endsWith('list.dependencies-loaded')), 'Completed database work leaves a breadcrumb')
+  assert.ok(diagnosticSteps.some(message => message.endsWith('list.ready')), 'Completed response shaping leaves a breadcrumb')
+  assert.doesNotMatch(diagnosticSteps.join(' '), /@fixture\.invalid/, 'Diagnostic milestones never log customer data')
   assert.equal(compact.licenseFormat, 'owned-only', 'Compact responses identify omitted unowned defaults')
   assert.equal(legacy.licenseFormat, undefined, 'Legacy response contract is unchanged')
   assert.equal(legacy.users.length, accounts.length)
@@ -154,6 +162,53 @@ try {
     { p_user_id: userId, p_product_code: 'oic_nw', p_active: true, p_admin_user_id: 'admin-fixture', p_admin_email: adminEmail, p_note: 'Test grant' },
   ])
   assert.equal(writes, 0)
+  failDependency = true
+  assert.equal((await send({ action: 'list', compact: true })).status, 500)
+  assert.match(diagnosticErrors.at(-1), /Could not load last website activity/, 'A handled server failure records its safe stage')
+  assert.doesNotMatch(diagnosticErrors.at(-1), /fixture private details/)
+  failDependency = false
+  explodeDependency = true
+  await assert.rejects(send({ action: 'list', compact: true }), /Invalid time value/)
+  assert.match(diagnosticErrors.at(-1), /shape-users.*RangeError/, 'An unexpected exception records its stage and error type')
+  assert.doesNotMatch(diagnosticErrors.at(-1), /@fixture\.invalid/)
+  context.Date = class PrivateErrorDate extends Date {
+    toISOString() {
+      const error = new Error('intentional date failure')
+      error.name = 'private-person@fixture.invalid'
+      throw error
+    }
+  }
+  try {
+    await assert.rejects(send({ action: 'list', compact: true }), /intentional date failure/)
+    assert.match(diagnosticErrors.at(-1), /shape-users.*unknown/, 'Unrecognized error names are replaced with a fixed label')
+    assert.doesNotMatch(diagnosticErrors.at(-1), /private-person@fixture\.invalid/, 'Exception names cannot leak customer identifiers')
+  } finally {
+    delete context.Date
+  }
+  context.Date = class ChangingErrorNameDate extends Date {
+    toISOString() {
+      const error = new Error('changing error name')
+      let reads = 0
+      Object.defineProperty(error, 'name', { get: () => ++reads <= 2 ? 'RangeError' : 'private-person@fixture.invalid' })
+      throw error
+    }
+  }
+  try {
+    let caught = false
+    try { await send({ action: 'list', compact: true }) } catch (error) {
+      assert.equal(error.message, 'changing error name')
+      caught = true
+    }
+    assert.equal(caught, true)
+    assert.doesNotMatch(diagnosticErrors.at(-1), /private-person@fixture\.invalid/, 'A stateful error name getter cannot bypass the safe-label allowlist')
+  } finally {
+    delete context.Date
+  }
+  explodeDependency = false
+  assert.equal(typeof context.json, 'function')
+  const directFailure = context.json(new Request('http://fixture.invalid/admin-license-management'), { error: 'private-person@fixture.invalid' }, 500)
+  assert.equal(directFailure.status, 500)
+  assert.doesNotMatch(diagnosticErrors.at(-1), /private-person@fixture\.invalid/, 'A future dynamic error response cannot leak through central diagnostics')
   const readsBeforeDenied = dbReads
   email = 'member@fixture.invalid'
   assert.equal((await send({ action: 'list', compact: true })).status, 403)

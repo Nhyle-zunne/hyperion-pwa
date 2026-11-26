@@ -15,12 +15,32 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Vary': 'Origin'
 }
+const safeServerFailures = new Set([
+  'License management is not configured.',
+  'Could not load registered users.',
+  'Could not load current license statuses.',
+  'Could not load Google Play license statuses.',
+  'Could not load lifetime license statuses.',
+  'Could not load last website activity.',
+  'Could not verify pending payment dependencies.',
+  'Could not verify admin audit dependencies.',
+  'Could not update this lifetime license.',
+  'Could not check the current license.',
+  'Could not verify Google Play subscription state.',
+  'Could not revoke this license.',
+  'Could not activate or extend this license.'
+])
+const safeErrorNames = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'AggregateError'])
 function cors(req: Request) {
   const origin = req.headers.get('Origin') || ''
   const allowed = ['https://hyperionmaritime.org', 'https://www.hyperionmaritime.org', 'http://localhost:5173', 'http://127.0.0.1:5173']
   return { ...corsHeaders, 'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : 'https://hyperionmaritime.org' }
 }
 function json(req: Request, body: unknown, status = 200) {
+  if (status >= 500) {
+    const message = body && typeof body === 'object' && 'error' in body ? (body as { error: unknown }).error : 'unknown'
+    console.error('admin-license-management failure:', typeof message === 'string' && safeServerFailures.has(message) ? message : 'unknown')
+  }
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...cors(req), 'Content-Type': 'application/json', 'Cache-Control': 'no-store, private' }
@@ -74,6 +94,8 @@ function profileName(user: any): string | null {
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 Deno.serve(async req => {
+  let stage = 'authenticate'
+  try {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req) })
   if (req.method !== 'POST') return json(req, { error: 'Method not allowed.' }, 405)
 
@@ -90,6 +112,7 @@ Deno.serve(async req => {
   const allowed = (Deno.env.get('ADMIN_EMAILS') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean)
   if (!allowed.includes(user.email.toLowerCase())) return json(req, { error: 'Admin access denied.' }, 403)
 
+  stage = 'parse-request'
   let body: { action?: string; userId?: string; productCode?: string; term?: string; note?: string; compact?: boolean }
   try {
     body = await req.json()
@@ -98,6 +121,8 @@ Deno.serve(async req => {
   const admin = createClient(url, service, { auth: { persistSession: false } })
 
   if (body.action === 'list') {
+    stage = 'read-users'
+    console.info('admin-license-management stage: list.start')
     const users: any[] = []
     for (let page = 1; page <= 50; page++) {
       const result = await admin.auth.admin.listUsers({ page, perPage: 1000 })
@@ -107,6 +132,7 @@ Deno.serve(async req => {
       if (pageUsers.length < 1000) break
     }
 
+    stage = 'read-entitlements'
     const entitlements: any[] = []
     for (let offset = 0; offset < 50000; offset += 1000) {
       const result = await admin.from('entitlements')
@@ -118,6 +144,7 @@ Deno.serve(async req => {
       entitlements.push(...rows.map((row: any) => ({ ...row, source: 'website' })))
       if (rows.length < 1000) break
     }
+    stage = 'read-google-play'
     for (let offset = 0; ; offset += 1000) {
       const result = await admin.from('google_play_entitlements')
         .select('id,user_id,product_code,track_id,status,granted_at,expires_at,updated_at')
@@ -138,6 +165,7 @@ Deno.serve(async req => {
       if (playTableMissing || rows.length < 1000) break
     }
 
+    stage = 'read-lifetime'
     for (let offset = 0; ; offset += 1000) {
       const result = await admin.from('lifetime_entitlements')
         .select('id,user_id,product_code,track_id,provider,status,purchased_at')
@@ -159,6 +187,7 @@ Deno.serve(async req => {
     const activityByUser = new Map<string, string>()
     const pendingPaymentUsers = new Set<string>()
     const adminAuditUsers = new Set<string>()
+    stage = 'account-dependencies'
     for (let start = 0; start < users.length; start += 1000) {
       const ids = users.slice(start, start + 1000).map(account => account.id)
       const [activityResult, pendingOrdersResult, failedCheckoutResult, pendingBatchesResult, adminAuditResult, manualClaimsResult] = await Promise.all([
@@ -185,6 +214,8 @@ Deno.serve(async req => {
       for (const row of adminAuditResult.data || []) adminAuditUsers.add(row.admin_user_id)
     }
 
+    stage = 'shape-users'
+    console.info('admin-license-management stage: list.dependencies-loaded')
     const retentionNow = Date.now()
     const dayMs = 24 * 60 * 60 * 1000
     const inactivityMs = 30 * dayMs
@@ -312,6 +343,7 @@ Deno.serve(async req => {
       }
     }).sort((a, b) => (a.email || '').localeCompare(b.email || ''))
 
+    stage = 'read-audit'
     const auditResult = await admin.from('license_admin_audit')
       .select('id,user_id,product_code,track_id,action,prior_status,new_status,prior_expires_at,new_expires_at,license_term,admin_email,note,created_at')
       .order('created_at', { ascending: false }).limit(50)
@@ -319,6 +351,8 @@ Deno.serve(async req => {
     const audit = auditResult.error ? [] : (auditResult.data || []).map(row => ({
       ...row, user_email: emailById.get(row.user_id) || '(account unavailable)'
     }))
+    stage = 'respond-list'
+    console.info('admin-license-management stage: list.ready')
     return json(req, {
       ...(body.compact === true ? { licenseFormat: 'owned-only' } : {}),
       users: shapedUsers,
@@ -328,6 +362,7 @@ Deno.serve(async req => {
     })
   }
 
+  stage = 'write-license'
   if (!['grant', 'revoke'].includes(body.action || '')) return json(req, { error: 'Invalid license action.' }, 400)
   if (!body.userId || !uuidPattern.test(body.userId)) return json(req, { error: 'Choose a valid user.' }, 400)
   if (!body.productCode || !PRODUCTS.some(product => product.code === body.productCode)) return json(req, { error: 'Choose a valid track.' }, 400)
@@ -403,4 +438,13 @@ Deno.serve(async req => {
     ok: true, status: 'active', action, expiresAt: expiresAt.toISOString(),
     warning: auditError ? 'Access was updated, but the audit record could not be saved.' : null
   })
+  } catch (error) {
+    let type = 'unknown'
+    try {
+      const candidateName = error && typeof error === 'object' && 'name' in error ? error.name : null
+      if (typeof candidateName === 'string' && safeErrorNames.has(candidateName)) type = candidateName
+    } catch { /* An unusual error getter must not replace the original failure. */ }
+    console.error('admin-license-management unhandled:', stage, type)
+    throw error
+  }
 })
