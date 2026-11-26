@@ -41,6 +41,14 @@ test('DECK and GMDSS toggle together while ENGINE remains exclusive', () => {
   assert.equal(toggleTrackCategory('ENGINE', 'ENGINE'), null)
 })
 
+test('account profile presents the tag editor without a separate edit-mode step', () => {
+  const screen = readFileSync(new URL('../../src/screens/AccountScreen.tsx', import.meta.url), 'utf8')
+  assert.match(screen, /useState\(true\).*profileExpanded|profileExpanded.*useState\(true\)/)
+  assert.doesNotMatch(screen, /profileEditing|EDIT PROFILE|readOnly=/)
+  assert.match(screen, /Your track categories/)
+  assert.match(screen, /SAVE CHANGES/)
+})
+
 test('account category badge shows only validated display data', () => {
   const { default: Badge } = load('src/components/TrackCategoryBadge.tsx', {
     require: name => name === '../lib/accountTrackCategory'
