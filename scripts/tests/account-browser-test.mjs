@@ -691,7 +691,17 @@ try {
   await blockedMessengerPage.locator('.qr-checkout-image-wrap img').waitFor()
   await blockedMessengerPage.evaluate(() => { window.open = () => null })
   await blockedMessengerPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
-  await blockedMessengerPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
+  try {
+    await blockedMessengerPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor({ timeout: 5000 })
+  } catch (error) {
+    const state = await blockedMessengerPage.evaluate(() => ({
+      url: location.href,
+      content: document.body.innerText.slice(0, 1500),
+      calls: window.accountFixtureCalls.filter(call => /manual_checkout_claims|create-manual-checkout-claim/.test(call.action)).slice(-10),
+      claimRecorded: localStorage.getItem('fixture-manual-claim'),
+    }))
+    throw new Error(`Blocked Messenger payment state: ${JSON.stringify(state)}`, { cause: error })
+  }
   assert.equal(await blockedMessengerPage.getByRole('link', { name: 'OPEN MESSENGER AGAIN' }).getAttribute('target'), '_blank')
   assert.equal(await blockedMessengerPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true)
   await blockedMessengerPage.close()
