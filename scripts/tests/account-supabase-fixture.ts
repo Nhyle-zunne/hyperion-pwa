@@ -154,8 +154,10 @@ export const supabase = {
       if (name === 'create-manual-checkout-claim') {
         if (!user || localStorage.getItem('fixture-guest') === 'yes') return { data: { error: 'Sign in required' }, error: null }
         if (request.body?.selection !== 'oic_nw:month') return { data: { error: 'Invalid selection' }, error: null }
-        if (localStorage.getItem('fixture-duplicate-conflict') === 'yes') return {
-          data: { error: 'You already have a pending request for this track. Do not pay again. View your payment history instead.' }, error: null,
+        if (localStorage.getItem('fixture-duplicate-conflict') === 'yes') {
+          // Another checkout tab persisted the overlapping claim before this request arrived.
+          localStorage.setItem('fixture-manual-claim', 'yes')
+          return { data: { error: 'You already have a pending request for this track. Do not pay again. View your payment history instead.' }, error: null }
         }
         if (localStorage.getItem('fixture-lost-claim-response') === 'yes') {
           localStorage.setItem('fixture-manual-claim', 'yes')
