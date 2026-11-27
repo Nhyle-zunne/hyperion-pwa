@@ -25,6 +25,20 @@ test('QR preview and download stay tied to the current payload and optional logo
   assert.match(screen, /REMOVE LOGO/)
 })
 
+test('uploaded QR and logo keep their chosen filenames, and full decoded data is visible locally', () => {
+  const screen = readFileSync(new URL('../../src/screens/AdminQrEditorScreen.tsx', import.meta.url), 'utf8')
+  assert.doesNotMatch(screen, /event\.target\.value\s*=\s*''/)
+  assert.match(screen, /QR image loaded:.*file\.name/)
+  assert.match(screen, /ref={logoInputRef}/)
+  assert.match(screen, /logoInputRef\.current\.value = ''/)
+  assert.match(screen, /listQrPhDataFields\(dataPayload\)/)
+  assert.match(screen, /DECODED QR DATA/)
+  assert.match(screen, /value={dataPayload} readOnly/)
+  assert.match(screen, /admin-poster__hint admin-qr__upload-status/)
+  const styles = readFileSync(new URL('../../src/screens/AdminQrEditorScreen.css', import.meta.url), 'utf8')
+  assert.match(styles, /\.admin-qr__upload-status\s*\{[^}]*overflow-wrap:\s*anywhere/)
+})
+
 test('admin navigation accommodates the fifth tool without overflowing desktop tabs', () => {
   const styles = readFileSync(new URL('../../src/index.css', import.meta.url), 'utf8')
   assert.match(styles, /\.admin-page-navigation__sections\s*\{[^}]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/)

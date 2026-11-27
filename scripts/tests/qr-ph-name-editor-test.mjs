@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { crc16Qr, parseQrPhPayload, replaceQrPhRecipientName } from '../../src/lib/qrPhNameEditor.mjs'
+import { crc16Qr, listQrPhDataFields, parseQrPhPayload, replaceQrPhRecipientName } from '../../src/lib/qrPhNameEditor.mjs'
 
 // Synthetic account details; no real payment destination or customer data.
 const ORIGINAL = '00020101021127300012com.p2pqrpay0102AB040496025204601653036085802PH5908OLD NAME6004TEST6304F723'
@@ -8,6 +8,24 @@ const ORIGINAL = '00020101021127300012com.p2pqrpay0102AB040496025204601653036085
 test('recognizes a valid QR Ph payload and reads the encoded recipient name', () => {
   assert.equal(crc16Qr('123456789'), '29B1')
   assert.deepEqual(parseQrPhPayload(ORIGINAL), { recipientName: 'OLD NAME', country: 'PH', currency: 'PHP' })
+})
+
+test('lists every QR Ph field including nested account and additional-data fields', () => {
+  const body = ORIGINAL.slice(0, -4).replace('6304', '62100506ABCDEF6304')
+  const encoded = body + crc16Qr(body)
+  const fields = listQrPhDataFields(encoded)
+  assert.deepEqual(fields.filter(field => ['27', '27.00', '27.04', '59', '62', '62.05', '63'].includes(field.tag))
+    .map(field => [field.tag, field.value]), [
+      ['27', '0012com.p2pqrpay0102AB04049602'],
+      ['27.00', 'com.p2pqrpay'],
+      ['27.04', '9602'],
+      ['59', 'OLD NAME'],
+      ['62', '0506ABCDEF'],
+      ['62.05', 'ABCDEF'],
+      ['63', crc16Qr(body)],
+    ])
+  assert.deepEqual(listQrPhDataFields(replaceQrPhRecipientName(encoded, 'NEW NAME'))
+    .filter(field => field.tag === '59').map(field => field.value), ['NEW NAME'])
 })
 
 test('replaces only the recipient name and updates the EMV checksum', () => {

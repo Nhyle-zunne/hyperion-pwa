@@ -3,7 +3,7 @@ import AdminNavigation from '../components/AdminNavigation'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import { useOfflineAdminAccess, useOnlineStatus } from '../hooks/useOfflineAdminAccess'
 import { decodeQrPixels, renderQrPng } from '../lib/qrImageEditor.mjs'
-import { parseQrPhPayload, replaceQrPhRecipientName } from '../lib/qrPhNameEditor.mjs'
+import { listQrPhDataFields, parseQrPhPayload, replaceQrPhRecipientName } from '../lib/qrPhNameEditor.mjs'
 import { supabase } from '../lib/supabase'
 import './AdminPosterGeneratorScreen.css'
 import './AdminQrEditorScreen.css'
@@ -48,6 +48,8 @@ function QrEditorWorkspace() {
   const [previewError, setPreviewError] = useState('')
   const uploadRequest = useRef(0)
   const logoRequest = useRef(0)
+  const qrInputRef = useRef<HTMLInputElement>(null)
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => () => { uploadRequest.current++; logoRequest.current++ }, [])
 
@@ -58,6 +60,8 @@ function QrEditorWorkspace() {
     catch (error) { nameError = error instanceof Error ? error.message : 'Invalid recipient name.' }
   }
   const previewUrl = preview?.payload === editedPayload && preview.logo === logoFile ? preview.url : ''
+  const dataPayload = editedPayload || payload
+  const dataFields = dataPayload ? listQrPhDataFields(dataPayload) : []
 
   useEffect(() => {
     let active = true
@@ -87,7 +91,10 @@ function QrEditorWorkspace() {
       } finally { bitmap.close() }
       if (request === logoRequest.current) setLogoFile(file)
     } catch (error) {
-      if (request === logoRequest.current) setLogoError(error instanceof Error ? error.message : 'Could not read the logo image.')
+      if (request === logoRequest.current) {
+        setLogoError(error instanceof Error ? error.message : 'Could not read the logo image.')
+        if (logoInputRef.current) logoInputRef.current.value = ''
+      }
     } finally {
       if (request === logoRequest.current) setLogoBusy(false)
     }
@@ -120,11 +127,12 @@ function QrEditorWorkspace() {
         setPayload(decoded)
         setOriginalName(details.recipientName)
         setRecipientName(details.recipientName)
-        setUploadStatus('QR Ph payment code loaded. The receiving-account data will remain unchanged.')
+        setUploadStatus(`QR image loaded: ${file.name}. The receiving-account data will remain unchanged.`)
       } finally { bitmap.close() }
     } catch (error) {
       if (request === uploadRequest.current) {
         setUploadStatus(error instanceof Error ? error.message : 'Could not read this QR code.')
+        if (qrInputRef.current) qrInputRef.current.value = ''
       }
     } finally {
       if (request === uploadRequest.current) setBusy(false)
@@ -142,9 +150,9 @@ function QrEditorWorkspace() {
       <div className="admin-poster__fields">
         <h2>1. UPLOAD PAYMENT QR</h2>
         <label htmlFor="qr-editor-file">QR code image</label>
-        <input id="qr-editor-file" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy}
-          onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void handleUpload(file) }} />
-        <p role="status" aria-live="polite" className="admin-poster__hint">{uploadStatus}</p>
+        <input ref={qrInputRef} id="qr-editor-file" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy}
+          onChange={event => { const file = event.target.files?.[0]; if (file) void handleUpload(file) }} />
+        <p role="status" aria-live="polite" className="admin-poster__hint admin-qr__upload-status">{uploadStatus}</p>
 
         <h2>2. EDIT RECIPIENT NAME</h2>
         {payload ? <>
@@ -159,15 +167,15 @@ function QrEditorWorkspace() {
 
         <h2>3. ADD A CENTER LOGO (OPTIONAL)</h2>
         <label htmlFor="qr-editor-logo">Logo image</label>
-        <input id="qr-editor-logo" type="file" accept="image/png,image/jpeg,image/webp" disabled={logoBusy}
+        <input ref={logoInputRef} id="qr-editor-logo" type="file" accept="image/png,image/jpeg,image/webp" disabled={logoBusy}
           aria-describedby="qr-editor-logo-hint" aria-invalid={Boolean(logoError)}
-          onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void handleLogoUpload(file) }} />
+          onChange={event => { const file = event.target.files?.[0]; if (file) void handleLogoUpload(file) }} />
         <p id="qr-editor-logo-hint" className="admin-poster__hint">PNG, JPG or WebP, up to 5 MB. The logo is centered on a white backing and scaled to keep the QR readable.</p>
         {logoBusy && <p role="status" className="admin-poster__hint">Checking logo…</p>}
         {logoError && <p role="alert" className="admin-poster__error">{logoError}</p>}
         {logoFile && <div className="admin-qr__logo-selected">
           <span>Logo selected: <strong>{logoFile.name}</strong></span>
-          <button type="button" className="btn btn-secondary" onClick={() => { logoRequest.current++; setLogoFile(null); setLogoError(''); setLogoBusy(false) }}>REMOVE LOGO</button>
+          <button type="button" className="btn btn-secondary" onClick={() => { logoRequest.current++; setLogoFile(null); setLogoError(''); setLogoBusy(false); if (logoInputRef.current) logoInputRef.current.value = '' }}>REMOVE LOGO</button>
         </div>}
 
         <div className="admin-qr__notice" role="note">
@@ -188,5 +196,19 @@ function QrEditorWorkspace() {
         <p className="admin-poster__hint">The downloaded image is a new QR code, not a bank-issued payment confirmation.</p>
       </aside>
     </div>
+
+    {dataPayload && <section className="admin-qr__data" aria-labelledby="qr-editor-data-heading">
+      <h2 id="qr-editor-data-heading">DECODED QR DATA</h2>
+      <p className="admin-poster__hint">All decoded fields, including account subfields. Values reflect the currently valid QR payload; editing the recipient name updates its checksum.</p>
+      <table className="admin-qr__data-table">
+        <thead><tr><th scope="col">TAG</th><th scope="col">FIELD</th><th scope="col">VALUE</th></tr></thead>
+        <tbody>{dataFields.map(field => <tr key={field.tag}>
+          <td>{field.tag}</td><td>{field.label}</td><td>{field.value}</td>
+        </tr>)}</tbody>
+      </table>
+      <label htmlFor="qr-editor-raw">COMPLETE QR CONTENT (RAW)</label>
+      <textarea id="qr-editor-raw" value={dataPayload} readOnly rows={5} spellCheck={false} />
+      <p className="admin-poster__hint">Includes payment account identifiers. Keep this data private and verify the account in your banking app before sharing the generated QR.</p>
+    </section>}
   </section>
 }
