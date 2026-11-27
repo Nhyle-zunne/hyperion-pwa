@@ -33,6 +33,12 @@
 .qr-checkout-bank .qr-checkout-caution{margin:.45rem 0 0}
 .qr-checkout-copy,.qr-checkout-messenger{display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;min-height:44px;margin-top:.55rem;text-align:center;text-decoration:none;border-radius:0}
 .qr-checkout-messenger:disabled{opacity:.55;cursor:not-allowed}
+.qr-checkout-confirm{box-sizing:border-box;width:min(calc(100% - 2rem),440px);max-height:calc(100dvh - 2rem);padding:1.35rem;overflow:auto;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-top:4px solid var(--accent);border-radius:0;box-shadow:0 20px 70px rgba(0,0,0,.4)}
+.qr-checkout-confirm::backdrop{background:rgba(3,8,18,.72)}
+.qr-checkout-confirm h2{margin:0 0 .75rem;font-size:1.25rem}
+.qr-checkout-confirm p{margin:0;color:var(--text-muted);line-height:1.5}
+.qr-checkout-confirm-actions{display:flex;gap:.75rem;margin-top:1.25rem}
+.qr-checkout-confirm-actions .btn{flex:1;min-height:48px;border-radius:0}
 .qr-checkout-account-email{padding:.6rem .7rem;border:1px solid var(--border);background:var(--bg-elevated);overflow-wrap:anywhere}
 .qr-checkout-pending-reference{display:grid;gap:.3rem;padding:.65rem .7rem;border:1px solid var(--border);background:var(--bg-elevated);font-size:.86rem;line-height:1.4;overflow-wrap:anywhere}
 .qr-checkout-pending-actions{margin-top:.65rem}

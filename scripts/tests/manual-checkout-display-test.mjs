@@ -20,6 +20,15 @@ test('a clicked claim remains pending without treating the Messenger click as ve
   assert.equal(claimStatusLabel('cancelled'), 'CANCELLED')
 })
 
+test('payment proof confirmation has YES and NO choices before creating a request', () => {
+  const checkout = readFileSync(new URL('../../src/screens/AdminQrCheckoutScreen.tsx', import.meta.url), 'utf8')
+  assert.match(checkout, /Have you already sent the payment\?/)
+  assert.match(checkout, /<button[^>]*>NO<\/button>/)
+  assert.match(checkout, /<button[^>]*>YES<\/button>/)
+  assert.match(checkout, /onClick=\{\(\) => setConfirmPaymentOpen\(true\)\}/)
+  assert.match(checkout, /onConfirm=\{\(\) => \{ setConfirmPaymentOpen\(false\); void submitToMessenger\(\) \}\}/)
+})
+
 test('pending tracks block duplicate checkout until approval or expiry, without blocking unrelated tracks', () => {
   const open = claim('awaiting_proof', '2026-11-30T02:00:00Z', ['oic_nw', 'gmdss'])
   const expired = claim('awaiting_proof', '2026-11-27T02:00:00Z', ['deck_mgt'])

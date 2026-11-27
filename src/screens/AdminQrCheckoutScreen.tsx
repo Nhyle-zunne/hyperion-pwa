@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { PAID_PRODUCTS, supabase } from '../lib/supabase'
 import { BANK_TRANSFER, parseManualCheckoutItems } from '../lib/manualQrCheckout'
@@ -14,6 +15,31 @@ import '../components/ManualCheckoutStatus.css'
 const messengerUrl = 'https://m.me/HyperionMaritime'
 const facebookPageUrl = 'https://www.facebook.com/HyperionMaritime/'
 
+function ConfirmPaymentSent({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const previousFocus = document.activeElement
+    dialog.showModal()
+    return () => {
+      dialog.close()
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus()
+    }
+  }, [])
+
+  return createPortal(<dialog ref={dialogRef} className="qr-checkout-confirm" aria-labelledby="qr-confirm-title"
+    aria-describedby="qr-confirm-description" onCancel={event => { event.preventDefault(); onCancel() }}>
+    <h2 id="qr-confirm-title">Have you already sent the payment?</h2>
+    <p id="qr-confirm-description">Select YES only if you have completed the bank transfer or QR payment. Messenger will open so you can send your receipt for verification.</p>
+    <div className="qr-checkout-confirm-actions">
+      <button type="button" className="btn btn-outline" autoFocus onClick={onCancel}>NO</button>
+      <button type="button" className="btn btn-primary" onClick={onConfirm}>YES</button>
+    </div>
+  </dialog>, document.body)
+}
+
 export default function AdminQrCheckoutScreen() {
   const location = useLocation()
   const [params] = useSearchParams()
@@ -27,6 +53,7 @@ export default function AdminQrCheckoutScreen() {
   const [submissionError, setSubmissionError] = useState(false)
   const [claimId, setClaimId] = useState('')
   const [claimBusy, setClaimBusy] = useState(false)
+  const [confirmPaymentOpen, setConfirmPaymentOpen] = useState(false)
   const [bankCopyStatus, setBankCopyStatus] = useState('')
   const [signingIn, setSigningIn] = useState(false)
   const [signInError, setSignInError] = useState('')
@@ -70,6 +97,7 @@ export default function AdminQrCheckoutScreen() {
   const paymentStatus = readiness && readiness.userId === userId && readiness.selection === itemQuery ? readiness.status : 'checking'
 
   useEffect(() => {
+    setConfirmPaymentOpen(false)
     setClaimId('')
     setSubmissionStatus('')
     setSubmissionError(false)
@@ -328,9 +356,11 @@ export default function AdminQrCheckoutScreen() {
         <p>After paying, tap <strong>SUBMIT PAYMENT PROOF</strong> to open Messenger. Send a screenshot or photo of your receipt and tell us the Google email linked to your Hyperion account so we can match your payment.</p>
         <p className="qr-checkout-account-email"><strong>Your account email:</strong> {email}</p>
         {!checkoutAvailability.enabled && <p role="status" className="qr-checkout-transfer-notice">Website checkout is disabled. Do not transfer money while purchases are paused.</p>}
-        <button type="button" className="btn btn-primary qr-checkout-messenger" disabled={claimBusy || Boolean(claimId) || !checkoutAvailability.enabled} onClick={() => void submitToMessenger()}>
+        <button type="button" className="btn btn-primary qr-checkout-messenger" disabled={claimBusy || Boolean(claimId) || !checkoutAvailability.enabled} onClick={() => setConfirmPaymentOpen(true)}>
           {claimBusy ? 'OPENING MESSENGER…' : 'SUBMIT PAYMENT PROOF'}
         </button>
+        {confirmPaymentOpen && <ConfirmPaymentSent onCancel={() => setConfirmPaymentOpen(false)}
+          onConfirm={() => { setConfirmPaymentOpen(false); void submitToMessenger() }} />}
         {submissionStatus && <p role={submissionError ? 'alert' : 'status'} aria-live="polite" className={`qr-checkout-copy-status${submissionError ? ' is-error' : ''}`}>{submissionStatus}</p>}
         {claimId && <p className="qr-checkout-note">Your request is pending verification. Pressing the button again is disabled. If you have not sent your receipt, use the Messenger link below.</p>}
         <p className="qr-checkout-activation-notice"><strong>Activation notice:</strong> Please allow 24–48 hours after submitting your payment receipt for verification and license activation. If still inactive after 48 hours, message our <a href={facebookPageUrl} target="_blank" rel="noopener noreferrer">Hyperion Facebook page</a> to follow up.</p>
