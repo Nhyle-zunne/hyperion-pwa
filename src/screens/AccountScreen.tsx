@@ -199,9 +199,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const buyNow = (code: PaidTrack, term: LicenseTerm) => {
     if (!canBuyOnWebsite || !sessionChecked) return
     const nextItem: BasketItem = { code, term }
-    const nextBasket = basket.some(item => item.code === code)
-      ? basket.map(item => item.code === code ? nextItem : item)
-      : [...basket, nextItem]
+    const availableBasket = basket.filter(item => !pendingManualCodes.has(item.code))
+    const nextBasket = availableBasket.some(item => item.code === code)
+      ? availableBasket.map(item => item.code === code ? nextItem : item)
+      : [...availableBasket, nextItem]
     try {
       if (nextBasket.length) localStorage.setItem('hyperion-account-basket-v1', JSON.stringify(nextBasket))
     } catch {
@@ -990,7 +991,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
         </aside>
 
         <main className="account-main">
-          {session && <ManualCheckoutNotice claims={manualClaims} />}
+          {session && <ManualCheckoutNotice key={session.user.id} claims={manualClaims} onCancelled={reloadManualClaims} />}
           {session && manualClaimsError && <p role="alert" style={{ padding: '.6rem .75rem', border: '1px solid var(--border)' }}>{manualClaimsError}</p>}
           {isLayout ? checkoutPath && !session ? <section style={{ ...card, maxWidth: 560, margin: 0, padding: 'clamp(1rem, 4%, 1.5rem)' }} aria-labelledby="checkout-sign-in-title">
             {!sessionChecked ? <p role="status" style={{ margin: 0 }}>Checking your saved Google session…</p> : <>

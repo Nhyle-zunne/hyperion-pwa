@@ -5,6 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 
 const migration = new URL('../../supabase/migrations/20261125013418_manual_checkout_claims.sql', import.meta.url)
 const guardMigration = new URL('../../supabase/migrations/20261127164617_prevent_overlapping_manual_checkout_claims.sql', import.meta.url)
+const cancellationMigration = new URL('../../supabase/migrations/20261127172630_customer_cancel_manual_checkout_claim.sql', import.meta.url)
 const buyer = '11111111-1111-4111-8111-111111111111'
 const secondBuyer = '22222222-2222-4222-8222-222222222222'
 
@@ -45,6 +46,7 @@ async function setup() {
   `)
   await db.exec(readFileSync(migration, 'utf8'))
   await db.exec(readFileSync(guardMigration, 'utf8'))
+  await db.exec(readFileSync(cancellationMigration, 'utf8'))
   return db
 }
 
@@ -59,6 +61,37 @@ async function createWithoutDuplicateTracks(db, user, selection) {
 async function review(db, id, action) {
   return (await db.query('select public.review_manual_checkout_claim($1,$2,$3,$4) as result', [id,action,'admin@example.com','Reviewed bank credit'])).rows[0].result
 }
+
+async function cancel(db, user, id) {
+  return (await db.query('select public.cancel_manual_checkout_claim($1,$2) as result', [user,id])).rows[0].result
+}
+
+test('owner can cancel an unverified request; history remains and tracks become purchasable again', async t => {
+  const db = await setup(); t.after(() => db.close())
+  const original = await createWithoutDuplicateTracks(db,buyer,'oic_nw:year,gmdss:month')
+  await assert.rejects(cancel(db,secondBuyer,original.id),/not found|account/i)
+  const cancelled = await cancel(db,buyer,original.id)
+  assert.equal(cancelled.status,'cancelled')
+  assert.equal((await db.query('select status from public.manual_checkout_claims where id=$1',[original.id])).rows[0].status,'cancelled')
+  assert.equal((await db.query('select count(*)::int as n from public.orders')).rows[0].n,0)
+  assert.equal((await db.query('select count(*)::int as n from public.entitlements')).rows[0].n,0)
+  await assert.rejects(cancel(db,buyer,original.id),/already|cancelled|pending/i)
+  await assert.rejects(review(db,original.id,'proof_received'),/awaiting|review|status/i)
+  const replacement = await createWithoutDuplicateTracks(db,buyer,'oic_nw:week')
+  assert.notEqual(replacement.id,original.id)
+})
+
+test('customer cannot cancel after receipt review, approval, or request expiry', async t => {
+  const db = await setup(); t.after(() => db.close())
+  const underReview = await create(db,buyer,'oic_nw:year')
+  await review(db,underReview.id,'proof_received')
+  await assert.rejects(cancel(db,buyer,underReview.id),/proof|review|cancel/i)
+  await review(db,underReview.id,'approve')
+  await assert.rejects(cancel(db,buyer,underReview.id),/proof|review|cancel/i)
+  const stale = await create(db,buyer,'gmdss:year')
+  await db.query("update public.manual_checkout_claims set expires_at=now()-interval '1 second' where id=$1",[stale.id])
+  await assert.rejects(cancel(db,buyer,stale.id),/expired|review|cancel/i)
+})
 
 test('server calculates multi-track totals, reuses an open claim, and never grants access on creation', async t => {
   const db = await setup(); t.after(() => db.close())
@@ -220,6 +253,7 @@ test('claims use own-account read RLS with no client insert/update/delete grants
     await assert.rejects(db.query('select public.review_manual_checkout_claim($1,$2,$3,$4)',[claim.id,'approve','admin@example.com','fake']),/permission denied/i)
     await assert.rejects(db.query('select public.create_manual_checkout_claim($1,$2)',[secondBuyer,'oic_nw:week']),/permission denied/i)
     await assert.rejects(db.query('select public.create_manual_checkout_claim_unique_tracks($1,$2)',[secondBuyer,'oic_nw:week']),/permission denied/i)
+    await assert.rejects(db.query('select public.cancel_manual_checkout_claim($1,$2)',[secondBuyer,claim.id]),/permission denied/i)
     await db.exec(`set test.auth_uid='${buyer}'`)
     assert.equal((await db.query('select count(id)::int as n from public.manual_checkout_claims')).rows[0].n,1)
     assert.equal((await db.query('select id,user_id,selection_key,items,total_amount_php,status,created_at,expires_at,reviewed_at from public.manual_checkout_claims')).rows[0].id,claim.id)
@@ -231,6 +265,8 @@ test('admin review merges manual claims into historical status tabs without drop
   const endpoint = readFileSync(new URL('../../supabase/functions/admin-payment-review/index.ts',import.meta.url),'utf8')
   const screen = readFileSync(new URL('../../src/screens/AdminPaymentsScreen.tsx',import.meta.url),'utf8')
   assert.match(endpoint,/from\('manual_checkout_claims'\)/)
+  assert.match(endpoint,/\['approved','rejected','expired','cancelled'\]/)
+  assert.match(screen,/claim\.status === 'cancelled' \? 'CANCELLED'/)
   assert.match(endpoint,/action === 'find-claim'/)
   assert.match(endpoint,/\.range\(offset, offset \+ pageSize - 1\)/)
   assert.match(endpoint,/rpc\('review_manual_checkout_claim'/)

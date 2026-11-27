@@ -31,6 +31,11 @@ function fixture(file, email='buyer@example.invalid', initialClaimStatus='awaiti
     rpc: async (functionName,params) => {
       calls.push({functionName,params})
       if (functionName === 'create_manual_checkout_claim_unique_tracks') return {data:{id:claimId,status:'awaiting_proof',total_amount_php:79},error:null}
+      if (functionName === 'cancel_manual_checkout_claim') {
+        if (claimStatus !== 'awaiting_proof') return {data:null,error:{code:'23514'}}
+        claimStatus = 'cancelled'
+        return {data:{ok:true,status:'cancelled',claimId},error:null}
+      }
       if (functionName === 'review_manual_checkout_claim') {
         if (params.p_action === 'proof_received' && claimStatus === 'awaiting_proof') {
           claimStatus = 'pending_verification'
@@ -159,6 +164,25 @@ test('claim endpoint derives owner from verified JWT, not spoofable request fiel
   const other=fixture('create-manual-checkout-claim');other.unlinkGoogle()
   assert.equal((await other.send({selection:'oic_nw:month'})).status,403)
   assert.equal(other.calls.length,0)
+})
+
+test('cancel endpoint accepts only the signed-in owner and rejects a second cancellation', async () => {
+  const edge = fixture('cancel-manual-checkout-claim')
+  assert.equal((await edge.send({claimId},false)).status,401)
+  assert.equal(edge.calls.length,0)
+  assert.equal((await edge.send({claimId:'not-a-uuid'})).status,400)
+  const result = await edge.send({claimId,userId:'22222222-2222-4222-8222-222222222222'})
+  assert.equal(result.status,200)
+  assert.equal(result.data.status,'cancelled')
+  assert.deepEqual(JSON.parse(JSON.stringify(edge.calls[0])),{
+    functionName:'cancel_manual_checkout_claim',params:{p_user_id:uid,p_claim_id:claimId},
+  })
+  assert.equal((await edge.send({claimId})).status,409)
+  edge.signOut()
+  assert.equal((await edge.send({claimId})).status,401)
+  assert.equal(edge.calls.length,2)
+  const nonGoogle = fixture('cancel-manual-checkout-claim'); nonGoogle.unlinkGoogle()
+  assert.equal((await nonGoogle.send({claimId})).status,403)
 })
 
 test('admin claim review denies customers and uses verified admin identity',async()=>{

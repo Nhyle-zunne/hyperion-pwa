@@ -286,6 +286,7 @@ export default function AdminQrCheckoutScreen() {
         <p className="qr-checkout-account-email"><strong>Your account email:</strong> {email}</p>
         <button type="button" className="btn btn-primary qr-checkout-messenger" disabled>SUBMIT PAYMENT PROOF</button>
         <a className="btn btn-outline qr-checkout-copy" href={messengerUrl} target="_blank" rel="noopener noreferrer">OPEN MESSENGER AGAIN</a>
+        <Link className="btn btn-outline" to="/account?tab=payments">BUY A DIFFERENT TRACK</Link>
         <Link className="qr-checkout-history-link" to="/orders">VIEW PAYMENT HISTORY</Link>
       </>}
       {paymentStatus === 'error' && <button type="button" className="btn btn-outline" onClick={() => setCheckRevision(value => value + 1)}>RETRY PAYMENT CHECK</button>}

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ManualCheckoutItem } from './manualQrCheckout'
 
-export type ManualClaimStatus = 'awaiting_proof' | 'pending_verification' | 'approved' | 'rejected' | 'expired'
+export type ManualClaimStatus = 'awaiting_proof' | 'pending_verification' | 'approved' | 'rejected' | 'expired' | 'cancelled'
 
 export type ManualCheckoutClaim = {
   id: string
@@ -21,6 +21,7 @@ const labels: Record<ManualClaimStatus, string> = {
   approved: 'APPROVED',
   rejected: 'REJECTED',
   expired: 'EXPIRED',
+  cancelled: 'CANCELLED',
 }
 
 export function claimStatusLabel(status: ManualClaimStatus): string { return labels[status] }
