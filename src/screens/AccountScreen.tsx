@@ -141,7 +141,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [savedTrackCategory, setSavedTrackCategory] = useState<TrackCategory | ''>('')
   const [profileExpanded, setProfileExpanded] = useState(true)
   const [savedProfile, setSavedProfile] = useState({ fullName: '', company: '', school: '' })
-  const profileHasChanges = fullName.trim() !== savedProfile.fullName || company.trim() !== savedProfile.company || school.trim() !== savedProfile.school || trackCategory !== savedTrackCategory
+  const profileHasChanges = fullName.trim() !== savedProfile.fullName.trim()
+    || company.trim() !== savedProfile.company.trim()
+    || school.trim() !== savedProfile.school.trim()
+    || trackCategory !== savedTrackCategory
   const [profileFeedback, setProfileFeedback] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const checkoutAvailability = useWebsiteCheckoutAvailability(!isLayout && accountTab === 'payments')
@@ -364,11 +367,18 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .catch(() => { if (active) setIsAdmin(false) })
     return () => { active = false }
   }, [online, session?.user.id])
+  const cancelProfileChanges = () => {
+    setFullName(savedProfile.fullName)
+    setCompany(savedProfile.company)
+    setSchool(savedProfile.school)
+    setTrackCategory(savedTrackCategory)
+    setMessage('')
+    setProfileFeedback('Changes discarded.')
+  }
   const saveProfile = async () => withPageLoading('Saving profile', async () => {
-    if (!supabase || !session) return
+    if (!supabase || !session || !profileHasChanges) return
     if (!fullName.trim()) { setProfileFeedback('Please enter your full name.'); return }
     if (!trackCategory) { setProfileFeedback('Please choose your track category.'); return }
-    if (!profileHasChanges) { setProfileFeedback('No changes to save.'); return }
     setBusy(true); setMessage('Saving your profile…'); setProfileFeedback('Saving changes…')
     try {
       const { data, error } = await supabase.auth.updateUser({ data: { full_name: fullName.trim(), company: company.trim(), school: school.trim(), track_category: trackCategory } })
@@ -932,10 +942,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   </div>
                 </div>
               </div>
-              <div className="account-profile-actions">
-                <button type="button" className="btn account-profile-cancel" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setTrackCategory(savedTrackCategory); setMessage(''); setProfileFeedback(profileHasChanges ? 'Changes discarded.' : 'No unsaved changes to cancel.') }}>CANCEL</button>
+              {profileHasChanges && <div className="account-profile-actions">
+                <button type="button" className="btn account-profile-cancel" disabled={busy} onClick={cancelProfileChanges}>CANCEL</button>
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveProfile()}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
-              </div>
+              </div>}
               {profileFeedback && <p role="status" className="profile-side-links" style={{ margin: '.3rem 0 0' }}>{profileFeedback}</p>}
               <div className="account-profile-utilities" role="group" aria-label="Account actions">
                 <button type="button" disabled={busy} onClick={() => void signOut()}>{busy ? 'Signing out…' : 'Sign out'}</button>
