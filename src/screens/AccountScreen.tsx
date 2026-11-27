@@ -139,7 +139,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [school, setSchool] = useState('')
   const [trackCategory, setTrackCategory] = useState<TrackCategory | ''>('')
   const [savedTrackCategory, setSavedTrackCategory] = useState<TrackCategory | ''>('')
-  const [profileExpanded, setProfileExpanded] = useState(true)
+  const [profileExpanded, setProfileExpanded] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 800px)').matches)
   const [savedProfile, setSavedProfile] = useState({ fullName: '', company: '', school: '' })
   const profileHasChanges = fullName.trim() !== savedProfile.fullName.trim()
     || company.trim() !== savedProfile.company.trim()
