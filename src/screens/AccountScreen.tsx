@@ -781,8 +781,20 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
       .account-page .profile-mobile-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}
       @media(prefers-reduced-motion:reduce){.account-page .profile-mobile-toggle svg{transition:none}}
       .account-page .account-profile-content{display:block}
-      .account-page .account-profile-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2%;margin-top:.45rem}
-      .account-page .account-profile-actions .btn{min-width:0;width:100%;min-height:44px;padding:.4rem 2%;font-size:clamp(.72rem,.8vw,.82rem);line-height:1.2;white-space:nowrap}
+      .account-page .account-profile-categories{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border:1px solid var(--border);background:var(--bg-elevated)}
+      .account-page .account-profile-categories button{min-width:0;min-height:44px;padding:.45rem .1rem;border:0;border-right:1px solid var(--border);border-bottom:3px solid transparent;border-radius:0;background:transparent;color:var(--text-muted);font-size:clamp(.7rem,.75vw,.8rem);font-weight:750;cursor:pointer}
+      .account-page .account-profile-categories button:last-child{border-right:0}
+      .account-page .account-profile-categories button[aria-pressed="true"]{background:var(--accent-soft);border-bottom-color:var(--accent);color:var(--text)}
+      .account-page .account-profile-categories button:focus-visible,.account-page .account-profile-utilities button:focus-visible,.account-page .account-profile-cancel:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+      .account-page .account-profile-categories button:disabled,.account-page .account-profile-utilities button:disabled{opacity:.5;cursor:not-allowed}
+      .account-page .account-profile-actions{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.3fr);gap:.55rem;margin-top:.65rem}
+      .account-page .account-profile-actions .btn{min-width:0;width:100%;min-height:44px;padding:.4rem .25rem;font-size:clamp(.72rem,.8vw,.82rem);line-height:1.2;white-space:nowrap}
+      .account-page .account-profile-actions .account-profile-cancel{border:0;background:transparent;color:var(--text-muted);font-weight:750}
+      .account-page .account-profile-actions .account-profile-cancel:hover{background:var(--bg-elevated)}
+      .account-page .account-profile-utilities{display:flex;gap:.35rem;align-items:center;justify-content:space-between;margin-top:.7rem;padding-top:.45rem;border-top:1px solid var(--border)}
+      .account-page .account-profile-utilities button{flex:1;min-width:0;min-height:44px;padding:.4rem .15rem;border:0;border-radius:0;background:transparent;color:var(--text-muted);font:inherit;font-size:.78rem;font-weight:700;cursor:pointer}
+      .account-page .account-profile-utilities button:hover{background:var(--bg-elevated)}
+      .account-page .account-profile-utilities .account-profile-delete{color:var(--danger, #dc2626)}
       .account-page .account-profile-fields input{width:100%}
       .account-page .account-section-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
       .account-page .account-section-tabs button{min-height:48px;padding:.75rem 1rem;font-weight:850;border-radius:var(--store-control-radius)}
@@ -894,27 +906,24 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                 <label style={compactProfileLabel}>School (optional)<input maxLength={160} value={school} onChange={e => { setSchool(e.target.value); setProfileFeedback('') }} style={compactProfileField} /></label>
                 <div role="group" aria-label="Your track categories" style={{ display: 'grid', gap: '.2rem' }}>
                   <span style={compactProfileLabel}>Track categories</span>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '2%' }}>
+                  <div className="account-profile-categories">
                     {TRACK_CATEGORIES.map(category => <button key={category} type="button" aria-label={category} aria-pressed={hasTrackCategory(trackCategory, category)} disabled={busy}
-                      onClick={() => { setTrackCategory(current => toggleTrackCategory(current, category) || ''); setProfileFeedback('') }}
-                      style={{ minWidth: 0, minHeight: 44, padding: '.3rem 1%', cursor: 'pointer', fontSize: 'clamp(.68rem,.8vw,.78rem)', fontWeight: 800,
-                        background: hasTrackCategory(trackCategory, category) ? 'var(--accent-soft)' : 'var(--bg-elevated)', color: 'var(--text)',
-                        border: hasTrackCategory(trackCategory, category) ? '2px solid var(--accent)' : '1px solid var(--border)', borderRadius: 0 }}>
+                      onClick={() => { setTrackCategory(current => toggleTrackCategory(current, category) || ''); setProfileFeedback('') }}>
                       {hasTrackCategory(trackCategory, category) ? '✓ ' : ''}{category}
                     </button>)}
                   </div>
                 </div>
               </div>
               <div className="account-profile-actions">
-                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setTrackCategory(savedTrackCategory); setMessage(''); setProfileFeedback(profileHasChanges ? 'Changes discarded.' : 'No unsaved changes to cancel.') }}>CANCEL</button>
+                <button type="button" className="btn account-profile-cancel" disabled={busy} onClick={() => { setFullName(savedProfile.fullName); setCompany(savedProfile.company); setSchool(savedProfile.school); setTrackCategory(savedTrackCategory); setMessage(''); setProfileFeedback(profileHasChanges ? 'Changes discarded.' : 'No unsaved changes to cancel.') }}>CANCEL</button>
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveProfile()}>{busy ? 'Please wait…' : 'SAVE CHANGES'}</button>
               </div>
               {profileFeedback && <p role="status" className="profile-side-links" style={{ margin: '.3rem 0 0' }}>{profileFeedback}</p>}
-              <div className="account-profile-actions">
-                <button type="button" className="btn btn-outline" onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')} style={{ borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>Delete account</button>
-                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void signOut()}>{busy ? 'Signing out…' : 'Sign out'}</button>
+              <div className="account-profile-utilities" role="group" aria-label="Account actions">
+                <button type="button" disabled={busy} onClick={() => void signOut()}>{busy ? 'Signing out…' : 'Sign out'}</button>
+                <button type="button" className="account-profile-delete" disabled={busy} aria-controls={accountTab === 'delete' ? 'account-delete-panel' : undefined} aria-expanded={accountTab === 'delete'} onClick={() => setAccountTab(accountTab === 'delete' ? 'payments' : 'delete')}>Delete account</button>
               </div>
-              {accountTab === 'delete' && <section style={{ ...card, marginTop: '1rem', borderColor: 'var(--danger, #dc2626)' }}>
+              {accountTab === 'delete' && <section id="account-delete-panel" style={{ ...card, marginTop: '1rem', borderColor: 'var(--danger, #dc2626)' }}>
                 <h3 style={{ marginTop: 0, color: 'var(--danger, #dc2626)' }}>Delete account</h3>
                 <p style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>Permanently delete your Hyperion account, linked licenses, and payment submissions associated with this account. This action cannot be undone. It does not delete records retained independently by Google Play, Google, or Facebook.</p>
                 {!deleteConfirmOpen ? <button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setDeleteConfirmation(''); setDeleteConfirmOpen(true) }} style={{ width: '100%', borderColor: 'var(--danger, #dc2626)', color: 'var(--danger, #dc2626)' }}>DELETE MY ACCOUNT</button> : <div>

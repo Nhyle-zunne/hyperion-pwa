@@ -812,12 +812,29 @@ try {
   await sidebar.getByRole('heading', { name: 'Synthetic Member', exact: true }).waitFor()
   assert.equal((await sidebar.innerText()).includes('PayMongo'), false, 'Profile copy uses provider-neutral checkout wording')
   assert.equal(await sidebar.getByRole('group', { name: 'Your track categories' }).count(), 1, 'Desktop tag choices are visible by default')
+  const categoryChoices = sidebar.getByRole('group', { name: 'Your track categories' }).locator('.account-profile-categories')
+  assert.equal(await categoryChoices.evaluate(el => getComputedStyle(el).columnGap), '0px', 'Profile category choices form one compact segmented group')
+  assert.equal(await categoryChoices.getByRole('button', { name: 'DECK' }).getAttribute('aria-pressed'), 'true', 'Selected category remains accessible')
   assert.equal(await sidebar.getByLabel('Full name', { exact: true }).inputValue(), 'Synthetic Member')
   assert.equal(await sidebar.getByLabel('Full name', { exact: true }).getAttribute('readonly'), null, 'Profile is editable immediately')
   assert.equal(await sidebar.getByRole('button', { name: 'EDIT PROFILE', exact: true }).count(), 0)
   assert.equal(await sidebar.getByRole('group', { name: 'Your track categories' }).count(), 1, 'Both deck-side tags can be changed in profile edit mode')
   const saveChanges = sidebar.getByRole('button', { name: 'SAVE CHANGES', exact: true })
   const cancelChanges = sidebar.getByRole('button', { name: 'CANCEL', exact: true })
+  assert.equal(await cancelChanges.evaluate(el => getComputedStyle(el).borderTopWidth), '0px', 'Cancel is a quiet text control rather than a competing box')
+  assert.equal(await sidebar.getByRole('group', { name: 'Account actions' }).count(), 1, 'Secondary account actions are grouped separately from Save')
+  for (const name of ['Sign out', 'Delete account']) {
+    const action = sidebar.getByRole('group', { name: 'Account actions' }).getByRole('button', { name, exact: true })
+    assert.equal(await action.evaluate(el => getComputedStyle(el).borderTopWidth), '0px', `${name} is a low-emphasis action, not an outlined tile`)
+    assert((await action.boundingBox())?.height >= 44, `${name} keeps a touch-friendly target`)
+  }
+  const deleteProfile = sidebar.getByRole('group', { name: 'Account actions' }).getByRole('button', { name: 'Delete account' })
+  assert.equal(await deleteProfile.getAttribute('aria-expanded'), 'false', 'Destructive account action starts collapsed')
+  await deleteProfile.click()
+  assert.equal(await deleteProfile.getAttribute('aria-controls'), 'account-delete-panel', 'Expanded delete control identifies its confirmation panel')
+  assert.equal(await sidebar.locator('#account-delete-panel').count(), 1, 'Existing account deletion confirmation is preserved')
+  await deleteProfile.click()
+  assert.equal(await deleteProfile.getAttribute('aria-expanded'), 'false', 'Delete panel can be closed without deleting anything')
   assert.equal(await saveChanges.isEnabled(), true, 'Save Changes is clickable before fields have changed')
   await saveChanges.click()
   await sidebar.getByRole('status').getByText('No changes to save.').waitFor()
@@ -1395,6 +1412,12 @@ try {
   await mobileAccountPage.waitForTimeout(80)
   assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Stale null auth results cannot overwrite newer SIGNED_IN')
   assert.equal(await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).count(), 1)
+  for (const button of await mobileAccountPage.locator('.account-profile-categories button').all()) {
+    const box = await button.boundingBox()
+    assert(box && box.height >= 44 && box.width >= 70, 'Mobile category segments remain readable and easy to tap')
+  }
+  assert.equal(await mobileAccountPage.getByRole('group', { name: 'Account actions' }).getByRole('button').count(), 2, 'Both secondary account actions remain available on mobile')
+  assert(await mobileAccountPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Profile actions do not cause horizontal scrolling on a 390px phone')
 
   // A verified local track lease remains visible without implying that an
   // unavailable Google session is authenticated. Checkout stays auth-gated.
