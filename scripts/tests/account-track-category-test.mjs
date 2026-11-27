@@ -41,9 +41,9 @@ test('DECK and GMDSS toggle together while ENGINE remains exclusive', () => {
   assert.equal(toggleTrackCategory('ENGINE', 'ENGINE'), null)
 })
 
-test('account profile presents the tag editor without a separate edit-mode step', () => {
+test('account profile keeps direct tag editing available inside its disclosure', () => {
   const screen = readFileSync(new URL('../../src/screens/AccountScreen.tsx', import.meta.url), 'utf8')
-  assert.match(screen, /useState\(true\).*profileExpanded|profileExpanded.*useState\(true\)/)
+  assert.match(screen, /aria-expanded=\{profileExpanded\}/)
   assert.doesNotMatch(screen, /profileEditing|EDIT PROFILE|readOnly=/)
   assert.match(screen, /Your track categories/)
   assert.match(screen, /SAVE CHANGES/)
