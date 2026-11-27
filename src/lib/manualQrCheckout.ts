@@ -1,9 +1,9 @@
 export type ManualCheckoutTerm = 'week' | 'month' | 'year' | 'lifetime'
 
 export const BANK_TRANSFER = {
-  bank: 'BPI / VYBE by BPI',
-  accountName: 'Hyperion',
-  accountNumber: '4309192465',
+  bank: 'MARIBANK PHILIPPINES INC.',
+  accountName: 'HYPERION MARITIME',
+  accountNumber: '14075599602',
 } as const
 
 type PricedProduct = {
