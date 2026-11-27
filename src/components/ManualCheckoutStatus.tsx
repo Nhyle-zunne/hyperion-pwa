@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { claimStatusLabel, isOpenManualClaim, type ManualCheckoutClaim } from '../lib/manualCheckoutClaims'
 import type { ManualCheckoutTerm } from '../lib/manualQrCheckout'
 import { supabase } from '../lib/supabase'
@@ -13,12 +13,20 @@ export function ManualCheckoutNotice({ claims, showHistoryLink = true, onCancell
   claims: readonly ManualCheckoutClaim[]; showHistoryLink?: boolean; onCancelled?: () => void
 }) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const requestedSwitchClaim = searchParams.get('switchClaim')
   const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [cancelledIds, setCancelledIds] = useState<string[]>([])
   const [switchingId, setSwitchingId] = useState<string | null>(null)
   const [selectedDurations, setSelectedDurations] = useState<Record<string, ManualCheckoutTerm>>({})
   const [error, setError] = useState('')
   const open = claims.filter(claim => isOpenManualClaim(claim) && !cancelledIds.includes(claim.id))
+  useEffect(() => {
+    if (requestedSwitchClaim && claims.some(claim => claim.id === requestedSwitchClaim && claim.status === 'awaiting_proof' &&
+      isOpenManualClaim(claim) && !cancelledIds.includes(claim.id))) {
+      setSwitchingId(requestedSwitchClaim)
+    }
+  }, [requestedSwitchClaim, claims, cancelledIds])
   if (!open.length && !cancelledIds.length) return null
 
   const cancel = async (claim: ManualCheckoutClaim, replacementSelection?: string) => {
@@ -65,8 +73,8 @@ export function ManualCheckoutNotice({ claims, showHistoryLink = true, onCancell
               </button>
             </div>
             {switchingId === claim.id && <div className="manual-checkout-duration-editor">
-              {claim.items.map(item => <label key={item.code}>{item.label} access duration
-                <select value={selectedDurations[item.code] ?? item.term} onChange={event => setSelectedDurations(current => ({ ...current, [item.code]: event.target.value as ManualCheckoutTerm }))}>
+              {claim.items.map((item, itemIndex) => <label key={item.code}>{item.label} access duration
+                <select autoFocus={requestedSwitchClaim === claim.id && itemIndex === 0} value={selectedDurations[item.code] ?? item.term} onChange={event => setSelectedDurations(current => ({ ...current, [item.code]: event.target.value as ManualCheckoutTerm }))}>
                   {termOptions.map(term => <option key={term} value={term}>{durations[term]}</option>)}
                 </select>
               </label>)}

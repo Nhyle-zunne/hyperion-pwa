@@ -667,8 +667,8 @@ try {
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '14075599602',
     'Submitting proof does not copy a payment text to the clipboard')
   await messengerPopup.close()
-  assert.equal(await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true,
-    'The submit button becomes unclickable after recording the request')
+  assert.equal(await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0,
+    'The submit action disappears after recording the request')
   assert(await adminQrPage.evaluate(() => window.accountFixtureCalls.some(call => call.action === 'create-manual-checkout-claim:' && call.data?.selection === 'oic_nw:month')),
     'The action saves a signed-in, server-priced claim before opening Messenger')
   await adminQrPage.reload()
@@ -677,12 +677,39 @@ try {
     'Returning customers can see which email to send with their Messenger receipt')
   assert.match(await adminQrPage.getByRole('status').filter({ hasText: 'Payment request pending verification' }).innerText(), /Request ID: 33333333-3333-4333-8333-333333333333.*Deck OIC-NW/s,
     'A pending request retains its exact reference and track for unambiguous Messenger matching')
-  assert.equal(await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true,
-    'The submit button remains disabled after reload because the claim is stored server-side')
-  assert.equal(await adminQrPage.getByRole('link', { name: 'OPEN MESSENGER AGAIN' }).getAttribute('target'), '_blank',
+  assert.equal(await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0,
+    'The submit action stays unavailable after reload because the claim is stored server-side')
+  assert.equal(await adminQrPage.getByRole('link', { name: 'OPEN MESSENGER', exact: true }).getAttribute('target'), '_blank',
     'Customers can reopen Messenger to finish sending their receipt without making another claim')
   assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'A pending manual claim hides the payment QR to discourage duplicate transfers')
+  for (const { width, height, direction } of [
+    { width: 390, height: 900, direction: 'column' },
+    { width: 736, height: 414, direction: 'row' },
+    { width: 1280, height: 900, direction: 'row' },
+  ]) {
+    await adminQrPage.setViewportSize({ width, height })
+    const actions = adminQrPage.locator('.qr-checkout-pending-actions')
+    assert.deepEqual((await actions.locator('a').allTextContents()).map(value => value.trim()),
+      ['VIEW PAYMENT HISTORY', 'OPEN MESSENGER', 'CHANGE REVIEWER DURATION'],
+      `Checkout action order stays consistent at ${width}px`)
+    assert.equal(await actions.evaluate(element => getComputedStyle(element).flexDirection), direction)
+    const links = await actions.locator('a').evaluateAll(elements => elements.map(element => {
+      const rect = element.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, height: rect.height, border: getComputedStyle(element).borderTopWidth }
+    }))
+    assert(links.every(link => link.border === '0px' && link.height >= 44), 'Pending checkout actions are unboxed and touch-sized')
+    assert(direction === 'column'
+      ? links.every((link, index) => index === 0 || link.y >= links[index - 1].y + links[index - 1].height - 1)
+      : links.every((link, index) => index === 0 || (Math.abs(link.y - links[0].y) <= 1 && link.x > links[index - 1].x)))
+    assert(await adminQrPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Actions fit the viewport')
+  }
+  assert.equal(await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0,
+    'Pending checkout uses explanatory text instead of a large disabled submit button')
+  await adminQrPage.getByRole('link', { name: 'CHANGE REVIEWER DURATION' }).click()
+  await adminQrPage.getByLabel('Deck OIC-NW access duration').waitFor()
+  assert.equal(await adminQrPage.getByLabel('Deck OIC-NW access duration').inputValue(), 'month',
+    'Change duration opens the editor for the pending purchase, not a different-track checkout')
   await adminQrPage.close()
 
   const blockedMessengerPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
@@ -692,8 +719,8 @@ try {
   await blockedMessengerPage.evaluate(() => { window.open = () => null })
   await blockedMessengerPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
   await blockedMessengerPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
-  assert.equal(await blockedMessengerPage.getByRole('link', { name: 'OPEN MESSENGER AGAIN' }).getAttribute('target'), '_blank')
-  assert.equal(await blockedMessengerPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true)
+  assert.equal(await blockedMessengerPage.getByRole('link', { name: 'OPEN MESSENGER', exact: true }).getAttribute('target'), '_blank')
+  assert.equal(await blockedMessengerPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0)
   await blockedMessengerPage.close()
 
   const simultaneousCheckoutPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
@@ -707,8 +734,8 @@ try {
   await simultaneousCheckoutPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
   await simultaneousCheckoutPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
   assert.match(await simultaneousCheckoutPage.locator('.qr-checkout-account-email').innerText(), /synthetic@example\.invalid/)
-  assert.equal(await simultaneousCheckoutPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true,
-    'An already-open request discovered during submission disables the second tab without another payment attempt')
+  assert.equal(await simultaneousCheckoutPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0,
+    'An already-open request discovered during submission removes the second submit action')
   assert.equal(await simultaneousCheckoutPage.locator('.qr-checkout-bank').count(), 0)
   await simultaneousCheckoutPage.close()
 
@@ -723,7 +750,7 @@ try {
   await lostResponsePage.evaluate(() => { window.open = () => null })
   await lostResponsePage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
   await lostResponsePage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
-  assert.equal(await lostResponsePage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true,
+  assert.equal(await lostResponsePage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0,
     'A saved request remains blocked even if the network loses the creation response')
   assert.equal(await lostResponsePage.locator('.qr-checkout-image-wrap img').count(), 0)
   await lostResponsePage.close()

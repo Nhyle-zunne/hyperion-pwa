@@ -35,7 +35,8 @@
 .qr-checkout-messenger:disabled{opacity:.55;cursor:not-allowed}
 .qr-checkout-account-email{padding:.6rem .7rem;border:1px solid var(--border);background:var(--bg-elevated);overflow-wrap:anywhere}
 .qr-checkout-pending-reference{display:grid;gap:.3rem;padding:.65rem .7rem;border:1px solid var(--border);background:var(--bg-elevated);font-size:.86rem;line-height:1.4;overflow-wrap:anywhere}
-.qr-checkout-history-link{display:inline-block;margin-top:.65rem;color:var(--accent);font-weight:800}
+.qr-checkout-pending-actions{margin-top:.65rem}
+.qr-checkout-pending-actions a{color:var(--accent)}
 .qr-checkout-panel .qr-checkout-activation-notice{margin:.55rem 0 .3rem;padding:.5rem .65rem;border-left:3px solid var(--accent);background:var(--bg-elevated);color:var(--text);font-size:.83rem;line-height:1.4}
 .qr-checkout-activation-notice a{color:var(--accent);font-weight:800}
 .qr-checkout-copy-status{margin:.45rem 0 0;color:var(--success,#15803d)!important}
