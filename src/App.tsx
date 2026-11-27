@@ -48,6 +48,7 @@ const AdminPaymentsScreen = lazy(() => import('./screens/AdminPaymentsScreen'))
 const AdminLicensesScreen = lazy(() => import('./screens/AdminLicensesScreen'))
 const AdminQuestionBankScreen = lazy(() => import('./screens/AdminQuestionBankScreen'))
 const AdminPosterGeneratorScreen = lazy(() => import('./screens/AdminPosterGeneratorScreen'))
+const AdminQrEditorScreen = lazy(() => import('./screens/AdminQrEditorScreen'))
 const TrackHubScreen = lazy(() => import('./screens/TrackHubScreen'))
 const AboutScreen = lazy(() => import('./screens/AboutScreen'))
 const TermsScreen = lazy(() => import('./screens/TermsScreen'))
@@ -690,6 +691,7 @@ export default function App() {
           <Route path="/admin/payments" element={<AdminOnlineSection title="Payment Submissions"><AdminPaymentsScreen /></AdminOnlineSection>} />
           <Route path="/admin/questions" element={<AdminOnlineSection title="Question Bank"><AdminQuestionBankScreen /></AdminOnlineSection>} />
           <Route path="/admin/posters" element={<AdminPosterGeneratorScreen />} />
+          <Route path="/admin/qr-editor" element={<AdminQrEditorScreen />} />
           <Route path="/tracks" element={<DashboardLanding />} />
           <Route path="/track" element={<TrackHubScreen />} />
           <Route path="/home" element={<HomeScreen />} />

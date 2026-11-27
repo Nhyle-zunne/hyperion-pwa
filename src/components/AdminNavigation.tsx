@@ -5,6 +5,7 @@ const sections = [
   { to: '/admin/payments', label: 'PAYMENT SUBMISSIONS' },
   { to: '/admin/questions', label: 'QUESTION BANK' },
   { to: '/admin/posters', label: 'POSTER GENERATOR' },
+  { to: '/admin/qr-editor', label: 'QR CODE EDITOR' },
 ]
 
 export default function AdminNavigation() {

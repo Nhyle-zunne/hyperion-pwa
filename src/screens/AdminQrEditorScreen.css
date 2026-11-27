@@ -1,0 +1,11 @@
+.admin-qr__original { display: flex; flex-direction: column; gap: 4px; margin: 16px 0 20px; padding: 13px 14px; border: 1px solid var(--border); background: var(--bg-elevated); }
+.admin-qr__original span { color: var(--text-muted); font-size: .85rem; }
+.admin-qr__original strong { color: var(--text); font-size: 1rem; overflow-wrap: anywhere; }
+.admin-qr__notice { margin-top: 28px; padding: 16px; border: 1px solid var(--border); border-left: 4px solid var(--accent); color: var(--text); background: var(--bg-elevated); line-height: 1.5; }
+.admin-qr__notice p { margin: 7px 0 0; font-size: .88rem; }
+.admin-qr__image { display: grid; place-items: center; width: 100%; min-height: 180px; aspect-ratio: 1; border: 1px solid var(--border); background: #fff; }
+.admin-qr__image img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; }
+.admin-qr__image p { color: #475569; text-align: center; padding: 16px; }
+.admin-qr__caption { margin: 12px 0 0; text-align: center; font-size: .9rem; color: var(--text); overflow-wrap: anywhere; }
+.admin-qr .admin-poster__download { display: grid; place-items: center; text-decoration: none; }
+@media (max-width: 520px) { .admin-qr__notice { margin-top: 20px; padding: 13px; } }
