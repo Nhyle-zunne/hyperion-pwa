@@ -1,24 +1,32 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { claimStatusLabel, isOpenManualClaim, type ManualCheckoutClaim } from '../lib/manualCheckoutClaims'
+import type { ManualCheckoutTerm } from '../lib/manualQrCheckout'
 import { supabase } from '../lib/supabase'
 import './ManualCheckoutStatus.css'
 
 const messengerUrl = 'https://m.me/HyperionMaritime'
 const durations = { week: 'Weekly', month: 'Monthly', year: 'Yearly', lifetime: 'Lifetime' }
+const termOptions: ManualCheckoutTerm[] = ['week', 'month', 'year', 'lifetime']
 
 export function ManualCheckoutNotice({ claims, showHistoryLink = true, onCancelled }: {
   claims: readonly ManualCheckoutClaim[]; showHistoryLink?: boolean; onCancelled?: () => void
 }) {
+  const navigate = useNavigate()
   const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [cancelledIds, setCancelledIds] = useState<string[]>([])
+  const [switchingId, setSwitchingId] = useState<string | null>(null)
+  const [selectedDurations, setSelectedDurations] = useState<Record<string, ManualCheckoutTerm>>({})
   const [error, setError] = useState('')
   const open = claims.filter(claim => isOpenManualClaim(claim) && !cancelledIds.includes(claim.id))
   if (!open.length && !cancelledIds.length) return null
 
-  const cancel = async (claim: ManualCheckoutClaim) => {
+  const cancel = async (claim: ManualCheckoutClaim, replacementSelection?: string) => {
     if (!supabase || cancellingId || claim.status !== 'awaiting_proof') return
-    if (!window.confirm('Cancel this pending purchase? Only continue if you have NOT paid. Cancelling a request does not reverse a bank transfer or refund money.')) return
+    const prompt = replacementSelection
+      ? 'Switch reviewer duration? This cancels your current pending request and opens a new checkout at the updated price. Only continue if you have NOT paid.'
+      : 'Cancel this pending purchase? Only continue if you have NOT paid. Cancelling a request does not reverse a bank transfer or refund money.'
+    if (!window.confirm(prompt)) return
     setCancellingId(claim.id)
     setError('')
     try {
@@ -26,6 +34,7 @@ export function ManualCheckoutNotice({ claims, showHistoryLink = true, onCancell
       if (requestError || data?.status !== 'cancelled') throw new Error('Unable to cancel this purchase. Refresh your payment history and contact Hyperion if it is under review.')
       setCancelledIds(previous => [...previous, claim.id])
       onCancelled?.()
+      if (replacementSelection) navigate('/checkout/qr?items=' + encodeURIComponent(replacementSelection))
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to cancel this purchase. Please try again.')
     } finally {
@@ -46,9 +55,22 @@ export function ManualCheckoutNotice({ claims, showHistoryLink = true, onCancell
         <div className="manual-checkout-cancel-list">
           {open.filter(claim => claim.status === 'awaiting_proof').map(claim => <div className="manual-checkout-cancel-row" key={claim.id}>
             <span>{claim.items.map(item => `${item.label} (${durations[item.term]})`).join(', ')}</span>
-            <button type="button" className="manual-checkout-cancel-button" disabled={Boolean(cancellingId)} onClick={() => void cancel(claim)}>
-              {cancellingId === claim.id ? 'CANCELLING…' : 'CANCEL PURCHASE'}
-            </button>
+            <div className="manual-checkout-cancel-actions">
+              <button type="button" className="manual-checkout-switch-button" aria-expanded={switchingId === claim.id} disabled={Boolean(cancellingId)} onClick={() => { setSelectedDurations({}); setSwitchingId(current => current === claim.id ? null : claim.id) }}>
+                SWITCH REVIEWER DURATION
+              </button>
+              <button type="button" className="manual-checkout-cancel-button" disabled={Boolean(cancellingId)} onClick={() => void cancel(claim)}>
+                {cancellingId === claim.id ? 'CANCELLING…' : 'CANCEL PURCHASE'}
+              </button>
+            </div>
+            {switchingId === claim.id && <div className="manual-checkout-duration-editor">
+              {claim.items.map(item => <label key={item.code}>{item.label} access duration
+                <select value={selectedDurations[item.code] ?? item.term} onChange={event => setSelectedDurations(current => ({ ...current, [item.code]: event.target.value as ManualCheckoutTerm }))}>
+                  {termOptions.map(term => <option key={term} value={term}>{durations[term]}</option>)}
+                </select>
+              </label>)}
+              <button type="button" className="manual-checkout-switch-button" disabled={Boolean(cancellingId) || !claim.items.some(item => (selectedDurations[item.code] ?? item.term) !== item.term)} onClick={() => void cancel(claim, claim.items.map(item => `${item.code}:${selectedDurations[item.code] ?? item.term}`).join(','))}>CONTINUE TO CHECKOUT</button>
+            </div>}
           </div>)}
         </div>
       </>}

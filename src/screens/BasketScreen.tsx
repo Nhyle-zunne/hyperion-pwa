@@ -13,6 +13,8 @@ import { fetchPendingLifetimeOrders } from '../lib/orderHistoryRequests'
 import type { PendingLifetimeOrder } from '../lib/orderHistoryRequests'
 import { canPerformPwaPaymentAction, PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
+import { useManualCheckoutClaims } from '../hooks/useManualCheckoutClaims'
+import { pendingManualTracks } from '../lib/manualCheckoutClaims'
 import { refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 
 type Order = {
@@ -83,6 +85,7 @@ function TimedBasketScreen() {
   const location = useLocation()
   const [params] = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
+  const { claims: manualClaims, loading: manualClaimsLoading, error: manualClaimsError } = useManualCheckoutClaims(session?.user.id)
   const adminCheckout = useAdminCheckoutAccess(session?.user.id)
   const checkoutAvailability = useWebsiteCheckoutAvailability()
   const canCheckout = adminCheckout.allowed || (checkoutAvailability.checked && canPerformPwaPaymentAction('checkout', checkoutAvailability.enabled))
@@ -104,6 +107,14 @@ function TimedBasketScreen() {
   })
   const handledSuccessOrderRef = useRef<string | null>(null)
   const refreshCloudEntitlements = useLicenseStore(s => s.refreshCloudEntitlements)
+
+  useEffect(() => {
+    if (!session || manualClaimsLoading || manualClaimsError || !manualClaims.length) return
+    const pendingCodes = pendingManualTracks(manualClaims)
+    if (!basket.some(item => pendingCodes.has(item.code))) return
+    setBasket(current => current.filter(item => !pendingCodes.has(item.code)))
+    setMessage('An existing pending purchase was excluded from this checkout. You can continue with other reviewer tracks.')
+  }, [session?.user.id, manualClaims, manualClaimsLoading, manualClaimsError, basket])
 
   useEffect(() => {
     try {
@@ -734,7 +745,7 @@ function TimedBasketScreen() {
           {selectedItems.map(({ code, term, product, price }) => <div className="basket-summary-list" key={code} style={{ display: 'flex', justifyContent: 'space-between', gap: '.5rem', padding: '.45rem 0', fontSize: '.84rem' }}><span>{product.label} <span className="basket-muted">({termLabel(term)})</span></span><strong>₱{price}</strong></div>)}
           <div className={`basket-checkout-action${canCheckout ? ' is-payable' : ''}`}>
             <div className="basket-total-row" style={{ borderTop: '1px solid var(--border)', marginTop: '.7rem', paddingTop: '.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.7rem' }}><strong>Total due</strong><strong style={{ fontSize: '1.5rem' }}>₱{totalPhp}</strong></div>
-          {canCheckout ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || !supabaseConfigured || !selectedItems.length} onClick={() => void (async () => {
+          {canCheckout ? <button type="button" className="btn btn-primary checkout-pay-button" disabled={busy || manualClaimsLoading || !supabaseConfigured || !selectedItems.length} onClick={() => void (async () => {
             if (!session) {
               await signInWithGoogle()
               return

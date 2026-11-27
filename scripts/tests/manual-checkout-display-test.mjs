@@ -39,6 +39,26 @@ test('pending notices expose per-request cancellation and preserve cancelled pur
   assert.match(account,/onCancelled=\{reloadManualClaims\}/)
 })
 
+test('a pending purchase can switch reviewer duration without changing an already reviewed payment', () => {
+  const notice = readFileSync(new URL('../../src/components/ManualCheckoutStatus.tsx',import.meta.url),'utf8')
+  assert.match(notice,/SWITCH REVIEWER DURATION/)
+  assert.match(notice,/CONTINUE TO CHECKOUT/)
+  assert.match(notice,/cancel-manual-checkout-claim/)
+  assert.match(notice,/\/checkout\/qr\?items=/)
+  assert.match(notice,/claim\.status === 'awaiting_proof'/)
+})
+
+test('new checkouts can exclude already pending tracks without blocking different reviewers', () => {
+  const basket = readFileSync(new URL('../../src/screens/BasketScreen.tsx',import.meta.url),'utf8')
+  const account = readFileSync(new URL('../../src/screens/AccountScreen.tsx',import.meta.url),'utf8')
+  const qr = readFileSync(new URL('../../src/screens/AdminQrCheckoutScreen.tsx',import.meta.url),'utf8')
+  assert.match(basket,/useManualCheckoutClaims/)
+  assert.match(basket,/pendingManualTracks/)
+  assert.match(basket,/disabled=\{busy \|\| manualClaimsLoading \|\|/)
+  assert.match(account,/pendingManualCodes/)
+  assert.match(qr,/BUY A DIFFERENT TRACK/)
+})
+
 test('request history keeps an older unresolved purchase even when 50 newer requests exist', async () => {
   const owner = '11111111-1111-4111-8111-111111111111'
   const rows = [

@@ -8,6 +8,14 @@
 .manual-checkout-cancel-list{display:grid;gap:.4rem;margin:.65rem 0}
 .manual-checkout-cancel-row{display:flex;justify-content:space-between;align-items:center;gap:.75rem;flex-wrap:wrap;padding:.5rem .6rem;border:1px solid var(--border);font-size:.85rem}
 .manual-checkout-cancel-row>span{flex:1 1 200px;overflow-wrap:anywhere}
+.manual-checkout-cancel-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem}
+.manual-checkout-switch-button{padding:.55rem .8rem;min-height:44px;border:1px solid var(--accent);border-radius:0;background:transparent;color:var(--accent);font:inherit;font-weight:800;font-size:.78rem;cursor:pointer;touch-action:manipulation}
+.manual-checkout-switch-button:hover:not(:disabled){background:var(--bg-elevated)}
+.manual-checkout-switch-button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.manual-checkout-switch-button:disabled{opacity:.55;cursor:not-allowed}
+.manual-checkout-duration-editor{width:100%;display:flex;align-items:end;flex-wrap:wrap;gap:.65rem;padding-top:.6rem;border-top:1px solid var(--border)}
+.manual-checkout-duration-editor label{display:grid;gap:.25rem;flex:1 1 145px;font-size:.8rem;font-weight:700}
+.manual-checkout-duration-editor select{min-height:44px;padding:.45rem;border:1px solid var(--border);border-radius:0;background:var(--bg-card);color:var(--text);font:inherit}
 .manual-checkout-cancel-button{padding:.55rem .8rem;min-height:44px;border:1px solid var(--danger,#dc2626);border-radius:0;background:transparent;color:var(--danger,#dc2626);font:inherit;font-weight:800;font-size:.78rem;cursor:pointer;touch-action:manipulation}
 .manual-checkout-cancel-button:hover:not(:disabled){background:var(--bg-elevated)}
 .manual-checkout-cancel-button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
