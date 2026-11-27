@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 
 const migration = new URL('../../supabase/migrations/20261125013418_manual_checkout_claims.sql', import.meta.url)
 const guardMigration = new URL('../../supabase/migrations/20261127164617_prevent_overlapping_manual_checkout_claims.sql', import.meta.url)
-const cancellationMigration = new URL('../../supabase/migrations/20261128000000_customer_cancel_manual_checkout_claim.sql', import.meta.url)
+const cancellationMigration = new URL('../../supabase/migrations/20261127172630_customer_cancel_manual_checkout_claim.sql', import.meta.url)
 const buyer = '11111111-1111-4111-8111-111111111111'
 const secondBuyer = '22222222-2222-4222-8222-222222222222'
 
