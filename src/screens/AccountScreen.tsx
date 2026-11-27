@@ -990,7 +990,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
         </aside>
 
         <main className="account-main">
-          {session && <ManualCheckoutNotice claims={manualClaims} />}
+          {session && <ManualCheckoutNotice key={session.user.id} claims={manualClaims} onCancelled={reloadManualClaims} />}
           {session && manualClaimsError && <p role="alert" style={{ padding: '.6rem .75rem', border: '1px solid var(--border)' }}>{manualClaimsError}</p>}
           {isLayout ? checkoutPath && !session ? <section style={{ ...card, maxWidth: 560, margin: 0, padding: 'clamp(1rem, 4%, 1.5rem)' }} aria-labelledby="checkout-sign-in-title">
             {!sessionChecked ? <p role="status" style={{ margin: 0 }}>Checking your saved Google session…</p> : <>

@@ -31,7 +31,8 @@ const fixtureManualClaims = () => user.id === '11111111-1111-4111-8111-111111111
   id: '33333333-3333-4333-8333-333333333333', user_id: user.id,
   selection_key: 'oic_nw:month',
   items: [{ code: 'oic_nw', label: 'Deck OIC-NW', term: 'month', amountPhp: 79 }],
-  total_amount_php: 79, status: localStorage.getItem('fixture-manual-approved') === 'yes' ? 'approved' : 'awaiting_proof',
+  total_amount_php: 79, status: localStorage.getItem('fixture-manual-approved') === 'yes' ? 'approved'
+    : localStorage.getItem('fixture-manual-cancelled') === 'yes' ? 'cancelled' : 'awaiting_proof',
   created_at: new Date(Date.now() - 10_000).toISOString(), expires_at: new Date(Date.now() + 72 * 3600_000).toISOString(),
   reviewed_at: localStorage.getItem('fixture-manual-approved') === 'yes' ? localStorage.getItem('fixture-manual-approved-at') : null,
 }] : []
@@ -149,8 +150,18 @@ export const supabase = {
     return query
   },
   functions: {
-    invoke: async (name: string, request: { body?: { action?: string; orderId?: string; selection?: string; base64?: string; track?: string; mime?: string; enabled?: boolean } }) => {
+    invoke: async (name: string, request: { body?: { action?: string; orderId?: string; claimId?: string; selection?: string; base64?: string; track?: string; mime?: string; enabled?: boolean } }) => {
       fixtureCalls.push({ action: `${name}:${request.body?.action ?? ''}`, data: request.body })
+      if (name === 'cancel-manual-checkout-claim') {
+        if (request.body?.claimId !== '33333333-3333-4333-8333-333333333333'
+          || localStorage.getItem('fixture-manual-claim') !== 'yes'
+          || localStorage.getItem('fixture-manual-approved') === 'yes'
+          || localStorage.getItem('fixture-manual-cancelled') === 'yes') {
+          return { data: null, error: new Error('Request is no longer cancellable') }
+        }
+        localStorage.setItem('fixture-manual-cancelled', 'yes')
+        return { data: { status: 'cancelled', claimId: request.body.claimId }, error: null }
+      }
       if (name === 'create-manual-checkout-claim') {
         if (!user || localStorage.getItem('fixture-guest') === 'yes') return { data: { error: 'Sign in required' }, error: null }
         if (request.body?.selection !== 'oic_nw:month') return { data: { error: 'Invalid selection' }, error: null }

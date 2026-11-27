@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { claimStatusLabel, fetchManualCheckoutClaims, isOpenManualClaim, pendingManualTracks } from '../../src/lib/manualCheckoutClaims.ts'
 
 const now = Date.parse('2026-11-28T02:00:00Z')
@@ -15,6 +16,7 @@ test('a clicked claim remains pending without treating the Messenger click as ve
   assert.equal(claimStatusLabel('approved'), 'APPROVED')
   assert.equal(claimStatusLabel('rejected'), 'REJECTED')
   assert.equal(claimStatusLabel('expired'), 'EXPIRED')
+  assert.equal(claimStatusLabel('cancelled'), 'CANCELLED')
 })
 
 test('pending tracks block duplicate checkout until approval or expiry, without blocking unrelated tracks', () => {
@@ -24,6 +26,17 @@ test('pending tracks block duplicate checkout until approval or expiry, without 
   assert.equal(isOpenManualClaim(expired, now), false)
   assert.equal(isOpenManualClaim(claim('pending_verification', '2026-11-27T02:00:00Z'), now), true)
   assert.deepEqual([...pendingManualTracks([open, expired, claim('approved', undefined, ['engine_mgt'])], now)].sort(), ['gmdss', 'oic_nw'])
+  assert.equal(isOpenManualClaim(claim('cancelled'), now), false)
+})
+
+test('pending notices expose per-request cancellation and preserve cancelled purchase history', () => {
+  const notice = readFileSync(new URL('../../src/components/ManualCheckoutStatus.tsx',import.meta.url),'utf8')
+  const account = readFileSync(new URL('../../src/screens/AccountScreen.tsx',import.meta.url),'utf8')
+  assert.match(notice,/CANCEL PURCHASE/)
+  assert.match(notice,/cancel-manual-checkout-claim/)
+  assert.match(notice,/Only cancel if you have not paid/i)
+  assert.match(notice,/status === 'cancelled'/)
+  assert.match(account,/onCancelled=\{reloadManualClaims\}/)
 })
 
 test('request history keeps an older unresolved purchase even when 50 newer requests exist', async () => {

@@ -740,6 +740,27 @@ try {
     'Unresolved PayMongo payment prevents a new QR transfer for the same track')
   await pendingCheckoutPage.close()
 
+  const customerCancelPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await customerCancelPage.addInitScript(() => {
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+    localStorage.setItem('fixture-manual-claim', 'yes')
+  })
+  await customerCancelPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  const cancelNotice = customerCancelPage.getByRole('status', { name: 'Pending payment verification' })
+  await cancelNotice.waitFor()
+  customerCancelPage.once('dialog', dialog => dialog.accept())
+  await cancelNotice.getByRole('button', { name: 'CANCEL PURCHASE' }).click()
+  const cancelledNotice = customerCancelPage.getByRole('status', { name: 'Purchase cancellation' })
+  await cancelledNotice.getByText(/Purchase request cancelled/i).waitFor()
+  assert.equal(await cancelledNotice.getByRole('button', { name: 'CANCEL PURCHASE' }).count(), 0,
+    'A cancelled request cannot be cancelled again')
+  await customerCancelPage.getByRole('button', { name: 'My licenses' }).click()
+  await customerCancelPage.getByRole('region', { name: 'Payment request status' }).getByText('CANCELLED', { exact: true }).waitFor()
+  await customerCancelPage.getByRole('button', { name: 'Orders & payment history' }).click()
+  await customerCancelPage.getByRole('region', { name: 'QR payment request history' }).getByText('CANCELLED', { exact: true }).waitFor()
+  assert.equal(await customerCancelPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'cancel-manual-checkout-claim:').length), 1)
+  await customerCancelPage.close()
+
   const customerPendingPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await customerPendingPage.addInitScript(() => {
     localStorage.setItem('fixture-checkout-enabled', 'yes')

@@ -85,7 +85,7 @@ Deno.serve(async req => {
         .limit(100),
       admin.from('manual_checkout_claims')
         .select(claimColumns)
-        .in('status', ['approved','rejected','expired'])
+        .in('status', ['approved','rejected','expired','cancelled'])
         .order('created_at', { ascending: false })
         .limit(100)
     ]);
