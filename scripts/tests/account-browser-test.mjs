@@ -1629,6 +1629,9 @@ try {
   await mobileAccountPage.waitForTimeout(80)
   assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Stale null auth results cannot overwrite newer SIGNED_IN')
   assert.equal(await mobileAccountPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).count(), 1)
+  const hydratedProfileToggle = mobileAccountPage.getByRole('button', { name: 'Show profile' })
+  assert.equal(await hydratedProfileToggle.getAttribute('aria-expanded'), 'false', 'Restored mobile sessions also start with profile details hidden')
+  await hydratedProfileToggle.click()
   for (const button of await mobileAccountPage.locator('.account-profile-categories button').all()) {
     const box = await button.boundingBox()
     assert(box && box.height >= 44 && box.width >= 70, 'Mobile category segments remain readable and easy to tap')
