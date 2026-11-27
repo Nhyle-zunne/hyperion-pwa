@@ -1620,7 +1620,7 @@ try {
   await mobileAccountPage.route('**/*', route =>
     ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
   await mobileAccountPage.addInitScript(() => localStorage.setItem('fixture-hold-account-session', 'yes'))
-  await mobileAccountPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await mobileAccountPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account-root`)
   await mobileAccountPage.getByText('Checking your saved session').waitFor()
   assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Slow session hydration must not show a false guest')
   await mobileAccountPage.evaluate(() => window.emitFixtureAuth('SIGNED_IN'))
@@ -1649,6 +1649,9 @@ try {
   })
   await mobileAccountPage.getByText('Valid offline license on this device').waitFor()
   assert.equal(await mobileAccountPage.getByText('Guest visitor').count(), 0, 'Valid offline license is not presented as a guest account')
+  const offlineBondStore = mobileAccountPage.getByRole('button', { name: 'Bond Store', exact: true })
+  assert.equal(await offlineBondStore.getAttribute('aria-current'), 'page', 'Opening Account without a tab defaults to Bond Store even with a saved offline license')
+  await mobileAccountPage.getByRole('heading', { name: 'Available reviewer tracks' }).waitFor()
   for (const width of [390, 1280]) {
     await mobileAccountPage.setViewportSize({ width, height: 844 })
     assert.equal(await mobileAccountPage.getByRole('heading', { name: 'Saved Hyperion account' }).count(), 1,
