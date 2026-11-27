@@ -53,13 +53,14 @@ export function ManualCheckoutNotice({ claims, showHistoryLink = true, onCancell
       {open.some(claim => claim.status === 'awaiting_proof') && <>
         <p className="manual-checkout-cancel-warning">Only cancel if you have not paid. Cancelling a request does not refund a bank transfer.</p>
         <div className="manual-checkout-cancel-list">
-          {open.filter(claim => claim.status === 'awaiting_proof').map(claim => <div className="manual-checkout-cancel-row" key={claim.id}>
-            <span>{claim.items.map(item => `${item.label} (${durations[item.term]})`).join(', ')}</span>
-            <div className="manual-checkout-cancel-actions">
-              <button type="button" className="manual-checkout-switch-button" aria-expanded={switchingId === claim.id} disabled={Boolean(cancellingId)} onClick={() => { setSelectedDurations({}); setSwitchingId(current => current === claim.id ? null : claim.id) }}>
+          {open.filter(claim => claim.status === 'awaiting_proof').map((claim, index) => <div className="manual-checkout-cancel-row" key={claim.id}>
+            <span id={`manual-checkout-claim-${claim.id}`}>{claim.items.map(item => `${item.label} (${durations[item.term]})`).join(', ')}</span>
+            <div className="manual-checkout-actions">
+              {showHistoryLink && index === 0 && <Link to="/orders">VIEW PAYMENT HISTORY</Link>}
+              <button type="button" className="manual-checkout-switch-button" aria-describedby={`manual-checkout-claim-${claim.id}`} aria-expanded={switchingId === claim.id} disabled={Boolean(cancellingId)} onClick={() => { setSelectedDurations({}); setSwitchingId(current => current === claim.id ? null : claim.id) }}>
                 SWITCH REVIEWER DURATION
               </button>
-              <button type="button" className="manual-checkout-cancel-button" disabled={Boolean(cancellingId)} onClick={() => void cancel(claim)}>
+              <button type="button" className="manual-checkout-cancel-button" aria-describedby={`manual-checkout-claim-${claim.id}`} disabled={Boolean(cancellingId)} onClick={() => void cancel(claim)}>
                 {cancellingId === claim.id ? 'CANCELLING…' : 'CANCEL PURCHASE'}
               </button>
             </div>
@@ -76,7 +77,7 @@ export function ManualCheckoutNotice({ claims, showHistoryLink = true, onCancell
       </>}
       {error && <p className="manual-checkout-cancel-error" role="alert">{error}</p>}
     </>}
-    {showHistoryLink && <Link to="/orders">VIEW PAYMENT HISTORY</Link>}
+    {showHistoryLink && !open.some(claim => claim.status === 'awaiting_proof') && <div className="manual-checkout-actions"><Link to="/orders">VIEW PAYMENT HISTORY</Link></div>}
   </section>
 }
 
