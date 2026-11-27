@@ -58,6 +58,30 @@ export function parseQrPhPayload(payload) {
   return { recipientName: nameField.value, country: field('58'), currency: 'PHP' }
 }
 
+export function listQrPhDataFields(payload) {
+  const { fields } = inspect(payload)
+  const names = {
+    '00': 'Payload format', '01': 'QR type', '52': 'Merchant category',
+    '53': 'Currency code', '54': 'Amount', '58': 'Country', '59': 'Recipient name',
+    '60': 'City', '61': 'Postal code', '62': 'Additional data', '63': 'Checksum',
+    '64': 'Language information',
+  }
+  return fields.flatMap(field => {
+    const tagNumber = Number(field.tag)
+    const isTemplate = (tagNumber >= 26 && tagNumber <= 51) || field.tag === '62' ||
+      field.tag === '64' || tagNumber >= 80
+    const rows = [{ tag: field.tag, label: names[field.tag] || (isTemplate ? 'Data template' : 'Other field'), value: field.value }]
+    if (isTemplate) {
+      try {
+        rows.push(...readFields(field.value).map(child => ({
+          tag: `${field.tag}.${child.tag}`, label: `Subfield ${child.tag}`, value: child.value,
+        })))
+      } catch { /* Keep the complete template value visible even if its subfields are not TLV. */ }
+    }
+    return rows
+  })
+}
+
 export function replaceQrPhRecipientName(payload, name) {
   const { fields, nameField } = inspect(payload)
   const newName = name.trim()
