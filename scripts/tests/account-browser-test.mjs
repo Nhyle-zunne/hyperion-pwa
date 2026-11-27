@@ -748,6 +748,30 @@ try {
   await customerCancelPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
   const cancelNotice = customerCancelPage.getByRole('status', { name: 'Pending payment verification' })
   await cancelNotice.waitFor()
+  for (const { width, height, direction } of [
+    { width: 390, height: 900, direction: 'column' },
+    { width: 736, height: 414, direction: 'row' },
+    { width: 1280, height: 900, direction: 'row' },
+  ]) {
+    await customerCancelPage.setViewportSize({ width, height })
+    const actions = cancelNotice.locator('.manual-checkout-actions')
+    assert.deepEqual((await actions.locator('a, button').allTextContents()).map(text => text.trim()),
+      ['VIEW PAYMENT HISTORY', 'SWITCH REVIEWER DURATION', 'CANCEL PURCHASE'],
+      `Pending purchase actions keep the requested order at ${width}px`)
+    assert.equal(await actions.evaluate(element => getComputedStyle(element).flexDirection), direction,
+      `Pending purchase actions ${direction === 'column' ? 'stack' : 'align horizontally'} at ${width}px`)
+    const boxes = await actions.locator('a, button').evaluateAll(elements => elements.map(element => {
+      const box = element.getBoundingClientRect()
+      return { x: box.x, y: box.y, height: box.height, border: getComputedStyle(element).borderTopWidth }
+    }))
+    assert(boxes.every(box => box.border === '0px' && box.height >= 44), 'Text-only actions remain easy to tap without button boxes')
+    assert(direction === 'column'
+      ? boxes.every((box, index) => index === 0 || box.y >= boxes[index - 1].y + boxes[index - 1].height - 1)
+      : boxes.every((box, index) => index === 0 || (Math.abs(box.y - boxes[0].y) <= 1 && box.x > boxes[index - 1].x)),
+    `Actions follow their visual order at ${width}px`)
+    assert(await customerCancelPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      `Pending action layout does not overflow at ${width}px`)
+  }
   customerCancelPage.once('dialog', dialog => dialog.accept())
   await cancelNotice.getByRole('button', { name: 'CANCEL PURCHASE' }).click()
   const cancelledNotice = customerCancelPage.getByRole('status', { name: 'Purchase cancellation' })

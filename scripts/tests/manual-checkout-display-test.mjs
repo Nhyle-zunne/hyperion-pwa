@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
+import postcss from 'postcss'
 import { claimStatusLabel, fetchManualCheckoutClaims, isOpenManualClaim, pendingManualTracks } from '../../src/lib/manualCheckoutClaims.ts'
 
 const now = Date.parse('2026-11-28T02:00:00Z')
@@ -46,6 +47,23 @@ test('a pending purchase can switch reviewer duration without changing an alread
   assert.match(notice,/cancel-manual-checkout-claim/)
   assert.match(notice,/\/checkout\/qr\?items=/)
   assert.match(notice,/claim\.status === 'awaiting_proof'/)
+})
+
+test('pending purchase actions are unboxed, stacked on mobile, and inline on wide or landscape screens', () => {
+  const css = postcss.parse(readFileSync(new URL('../../src/components/ManualCheckoutStatus.css', import.meta.url), 'utf8'))
+  const rules = (root, selector) => root.nodes.filter(node => node.type === 'rule' && node.selectors.includes(selector))
+  const value = (rule, property) => rule?.nodes.find(node => node.type === 'decl' && node.prop === property)?.value
+  const layout = rules(css, '.manual-checkout-actions')[0]
+  assert.equal(value(layout, 'display'), 'flex')
+  assert.equal(value(layout, 'flex-direction'), 'column')
+  const horizontal = css.nodes.filter(node => node.type === 'atrule' && node.name === 'media')
+    .filter(media => /min-width|orientation:\s*landscape/.test(media.params))
+    .some(media => rules(media, '.manual-checkout-actions').some(rule => value(rule, 'flex-direction') === 'row'))
+  assert.equal(horizontal, true)
+  const switchAction = rules(css, '.manual-checkout-actions .manual-checkout-switch-button')[0]
+  const cancelAction = rules(css, '.manual-checkout-actions .manual-checkout-cancel-button')[0]
+  assert.equal(value(switchAction, 'border'), '0')
+  assert.equal(value(cancelAction, 'border'), '0')
 })
 
 test('new checkouts can exclude already pending tracks without blocking different reviewers', () => {
