@@ -27,6 +27,14 @@ const fixtureOrders = () => user.id !== '11111111-1111-4111-8111-111111111111' ?
       payment_method: 'PayMongo Checkout', created_at: new Date(Date.now() - 60_000).toISOString(), checkout_batch_id: null },
   ] : []),
 ] : []
+const fixtureManualClaims = () => user.id === '11111111-1111-4111-8111-111111111111' && localStorage.getItem('fixture-manual-claim') === 'yes' ? [{
+  id: '33333333-3333-4333-8333-333333333333', user_id: user.id,
+  selection_key: 'oic_nw:month',
+  items: [{ code: 'oic_nw', label: 'Deck OIC-NW', term: 'month', amountPhp: 79 }],
+  total_amount_php: 79, status: localStorage.getItem('fixture-manual-approved') === 'yes' ? 'approved' : 'awaiting_proof',
+  created_at: new Date(Date.now() - 10_000).toISOString(), expires_at: new Date(Date.now() + 72 * 3600_000).toISOString(),
+  reviewed_at: localStorage.getItem('fixture-manual-approved') === 'yes' ? localStorage.getItem('fixture-manual-approved-at') : null,
+}] : []
 const session = () => localStorage.getItem('fixture-guest') === 'yes' ? null : { user, access_token: 'fixture-token' }
 const authListeners = new Set<(event: string, value: ReturnType<typeof session>) => void>()
 const heldSessionResolvers: (() => void)[] = []
@@ -93,7 +101,12 @@ export const supabase = {
         return query
       },
       in: (key: string, value: unknown[]) => { filters.push({ key, kind: 'in', value }); return query },
-      or: (value: string) => { cursor = value; return query },
+      or: (value: string) => {
+        if (table === 'manual_checkout_claims' && value.startsWith('status.eq.pending_verification,and(status.eq.awaiting_proof,expires_at.gt.')) {
+          filters.push({ key: 'status', kind: 'open-manual', value: null })
+        } else cursor = value
+        return query
+      },
       order: (key: string, { ascending }: { ascending: boolean }) => { ordering.push({ key, ascending }); return query },
       limit: (value: number) => { limit = value; return query },
       then: (resolve: (value: { data: unknown[]; error: unknown }) => unknown) => {
@@ -109,6 +122,7 @@ export const supabase = {
         }
         let rows: Record<string, any>[] = table === 'payment_settings'
           ? [{ id: 1, website_checkout_enabled: localStorage.getItem('fixture-checkout-enabled') === 'yes' }]
+          : table === 'manual_checkout_claims' ? fixtureManualClaims()
           : table === 'orders' ? fixtureOrders().map(row => ({ ...row, user_id: user.id }))
           : table === 'lifetime_orders' && user.id === '11111111-1111-4111-8111-111111111111'
             && localStorage.getItem('fixture-lifetime-pending') === 'yes'
@@ -118,7 +132,7 @@ export const supabase = {
           : table === 'entitlements' && websiteRenewal ? [{ ...fixtureLicense, order_id: null, license_term: 'week', renewed_at: null }]
           : table === 'google_play_entitlements' && playRenewal ? [{ ...fixtureLicense, updated_at: new Date().toISOString() }]
           : []
-        rows = rows.filter(row => filters.every(({ key, kind, value }) => kind === 'in' ? (value as unknown[]).includes(row[key]) : kind === 'gt' ? row[key] > value! : kind === 'not-null' ? row[key] !== null && row[key] !== undefined : row[key] === value))
+        rows = rows.filter(row => filters.every(({ key, kind, value }) => kind === 'open-manual' ? row.status === 'pending_verification' || (row.status === 'awaiting_proof' && Date.parse(row.expires_at) > Date.now()) : kind === 'in' ? (value as unknown[]).includes(row[key]) : kind === 'gt' ? row[key] > value! : kind === 'not-null' ? row[key] !== null && row[key] !== undefined : row[key] === value))
         if (cursor) {
           const match = cursor.match(/^created_at\.lt\.([^,]+),and\(created_at\.eq\.([^,]+),id\.lt\.([^\)]+)\)$/)
           if (!match) throw Error('Invalid synthetic cursor')
@@ -140,6 +154,14 @@ export const supabase = {
       if (name === 'create-manual-checkout-claim') {
         if (!user || localStorage.getItem('fixture-guest') === 'yes') return { data: { error: 'Sign in required' }, error: null }
         if (request.body?.selection !== 'oic_nw:month') return { data: { error: 'Invalid selection' }, error: null }
+        if (localStorage.getItem('fixture-duplicate-conflict') === 'yes') return {
+          data: { error: 'You already have a pending request for this track. Do not pay again. View your payment history instead.' }, error: null,
+        }
+        if (localStorage.getItem('fixture-lost-claim-response') === 'yes') {
+          localStorage.setItem('fixture-manual-claim', 'yes')
+          return { data: null, error: new Error('Synthetic connection lost after saving request') }
+        }
+        localStorage.setItem('fixture-manual-claim', 'yes')
         return { data: { id:'33333333-3333-4333-8333-333333333333',status:'awaiting_proof',totalAmountPhp:79 }, error: null }
       }
       if (name === 'question-media') {

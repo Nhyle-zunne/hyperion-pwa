@@ -558,8 +558,8 @@ try {
   const proofInstructions = adminQrPage.locator('.qr-checkout-grid > .qr-checkout-panel').nth(1)
   assert.equal(await proofInstructions.getByRole('heading', { level: 2 }).innerText(), '2. Send your payment receipt')
   const proofHelp = await proofInstructions.locator('p').first().innerText()
-  assert.match(proofHelp, /After paying.*Messenger.*Paste.*receipt.*send/s,
-    'Customers see simple steps for sending the copied details and receipt')
+  assert.match(proofHelp, /After paying.*SUBMIT PAYMENT PROOF.*Messenger.*receipt.*account/s,
+    'Customers see simple instructions to submit a receipt without copying a text block')
   assert.doesNotMatch(proofHelp, /unverified|submission|administrator|\bID\b/i,
     'Customer instructions do not expose payment-review jargon')
   const saveQr = adminQrPage.getByRole('link', { name: 'Download QR Ph image' })
@@ -584,17 +584,12 @@ try {
     'https://www.facebook.com/HyperionMaritime/', 'Follow-ups use Hyperion’s existing Facebook page')
   assert.equal(await adminQrPage.locator('.qr-checkout-bank .qr-checkout-total').count(), 1,
     'The transfer amount belongs with the bank details, not below both payment columns')
-  assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Account email: synthetic@example.invalid/)
-  assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Deck OIC-NW \(Monthly\): PHP 79\.00/)
+  assert.equal(await adminQrPage.locator('#qr-checkout-details').count(), 0, 'The copyable payment text is removed')
+  assert.match(await proofInstructions.locator('.qr-checkout-account-email').innerText(), /synthetic@example\.invalid/)
   for (const width of [1920, 1440, 1024, 860, 390, 320]) {
     await adminQrPage.setViewportSize({ width, height: 900 })
-    await adminQrPage.waitForFunction(() => {
-      const field = document.querySelector('#qr-checkout-details')
-      return field && field.scrollHeight - field.clientHeight <= 2
-    }, null, { timeout: 2000 })
     const layout = await adminQrPage.evaluate(() => {
       const [qr, proof] = [...document.querySelectorAll('.qr-checkout-grid > .qr-checkout-panel')]
-      const details = document.querySelector('#qr-checkout-details')
       const copy = document.querySelector('.qr-checkout-messenger')
       const page = document.querySelector('.qr-checkout-page')
       const image = document.querySelector('.qr-checkout-image-wrap')
@@ -618,8 +613,6 @@ try {
         bankContentBottom: bank.lastElementChild.getBoundingClientRect().bottom,
         qrContentBottom: qrContent.getBoundingClientRect().bottom,
         qrImageWidth: qrImageBox.width,
-        detailsOverflowY: details.scrollHeight - details.clientHeight,
-        detailsOverflowX: details.scrollWidth - details.clientWidth,
         pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
         qrDownloadOverlay: downloadBox.x >= imageBox.x && downloadBox.right <= imageBox.right && downloadBox.y >= imageBox.y && downloadBox.bottom <= imageBox.bottom,
         downloadClearOfCode: downloadBox.left >= qrImageBox.right,
@@ -643,12 +636,8 @@ try {
       `QR and transfer columns must be proportionally aligned at ${width}px`)
     if (width >= 960) assert(layout.pageWidth >= Math.min(width - 100, 1050),
       `Desktop QR checkout must use its available width at ${width}px (rendered ${layout.pageWidth}px)`)
-    assert(layout.detailsOverflowY <= 2,
-      `Messenger payment message must not scroll vertically at ${width}px (overflow ${layout.detailsOverflowY}px)`)
-    assert(layout.detailsOverflowX <= 2,
-      `Messenger payment message must not scroll horizontally at ${width}px (overflow ${layout.detailsOverflowX}px)`)
     assert(layout.copy.x >= 0 && layout.copy.right <= width && layout.copy.height >= 44,
-      `Combined copy-and-Messenger action must remain accessible at ${width}px`)
+      `Submit payment proof action must remain accessible at ${width}px`)
     if (width >= 960) {
       assert(layout.proof.x > layout.qr.right, `Desktop QR and proof panels must be side by side at ${width}px`)
       assert(Math.max(layout.qr.bottom, layout.proof.bottom) < 850,
@@ -671,42 +660,117 @@ try {
   await adminQrPage.context().route('https://m.me/**', route => route.fulfill({ contentType: 'text/html', body: 'Synthetic Messenger page' }))
   const checkoutUrl = adminQrPage.url()
   const messengerPopupPromise = adminQrPage.waitForEvent('popup')
-  await adminQrPage.getByRole('button', { name: 'COPY DETAILS & OPEN MESSENGER' }).click()
+  await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
   const messengerPopup = await messengerPopupPromise
   await messengerPopup.waitForURL('https://m.me/HyperionMaritime')
   assert.equal(adminQrPage.url(), checkoutUrl, 'Opening Messenger keeps the original checkout tab available')
-  assert.match(await adminQrPage.evaluate(() => window.copiedBankDetails), /Submission ID: 33333333-3333-4333-8333-333333333333/,
-    'The traceable payment message is copied before Messenger opens')
+  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '14075599602',
+    'Submitting proof does not copy a payment text to the clipboard')
   await messengerPopup.close()
-  await adminQrPage.evaluate(() => {
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Synthetic clipboard denied') } } })
-  })
-  const blockedClipboardPopupPromise = adminQrPage.waitForEvent('popup')
-  await adminQrPage.getByRole('button', { name: 'COPY DETAILS & OPEN MESSENGER' }).click()
-  const blockedClipboardPopup = await blockedClipboardPopupPromise
-  await adminQrPage.getByText(/Could not copy the details automatically/).waitFor()
-  assert(blockedClipboardPopup.isClosed(), 'Clipboard failure closes the waiting Messenger tab and keeps checkout open')
-  assert.match(await adminQrPage.locator('#qr-checkout-details').inputValue(), /Submission ID: 33333333-3333-4333-8333-333333333333/,
-    'User can manually copy a traceable submission if clipboard permission fails')
+  assert.equal(await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true,
+    'The submit button becomes unclickable after recording the request')
   assert(await adminQrPage.evaluate(() => window.accountFixtureCalls.some(call => call.action === 'create-manual-checkout-claim:' && call.data?.selection === 'oic_nw:month')),
-    'The combined action saves a signed-in, server-priced claim before opening Messenger')
-  await adminQrPage.evaluate(() => {
-    window.open = () => null
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedBankDetails = text } } })
-  })
-  await adminQrPage.getByRole('button', { name: 'COPY DETAILS & OPEN MESSENGER' }).click()
-  await adminQrPage.getByText(/Details copied\. Tap OPEN MESSENGER below/).waitFor()
-  assert.equal(await adminQrPage.getByRole('link', { name: 'OPEN MESSENGER', exact: true }).getAttribute('target'), '_blank',
-    'Popup blocking leaves a direct link that does not replace checkout')
-  assert.equal(adminQrPage.url(), checkoutUrl, 'Popup blocking must not navigate away from checkout')
-  await adminQrPage.evaluate(() => localStorage.setItem('fixture-pending-orders', 'yes'))
+    'The action saves a signed-in, server-priced claim before opening Messenger')
   await adminQrPage.reload()
-  await adminQrPage.getByRole('alert').filter({ hasText: /unresolved checkout/i }).waitFor()
+  await adminQrPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
+  assert.match(await adminQrPage.locator('.qr-checkout-account-email').innerText(), /synthetic@example\.invalid/,
+    'Returning customers can see which email to send with their Messenger receipt')
+  assert.match(await adminQrPage.getByRole('status').filter({ hasText: 'Payment request pending verification' }).innerText(), /Request ID: 33333333-3333-4333-8333-333333333333.*Deck OIC-NW/s,
+    'A pending request retains its exact reference and track for unambiguous Messenger matching')
+  assert.equal(await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true,
+    'The submit button remains disabled after reload because the claim is stored server-side')
+  assert.equal(await adminQrPage.getByRole('link', { name: 'OPEN MESSENGER AGAIN' }).getAttribute('target'), '_blank',
+    'Customers can reopen Messenger to finish sending their receipt without making another claim')
   assert.equal(await adminQrPage.locator('.qr-checkout-image-wrap img').count(), 0,
-    'Unresolved PayMongo payment prevents a new QR transfer for the same track')
-  assert.equal(await adminQrPage.locator('.qr-checkout-bank').count(), 0,
-    'Unresolved payments also prevent a duplicate bank transfer')
+    'A pending manual claim hides the payment QR to discourage duplicate transfers')
   await adminQrPage.close()
+
+  const blockedMessengerPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await blockedMessengerPage.addInitScript(() => { localStorage.setItem('fixture-admin', 'yes'); localStorage.setItem('fixture-checkout-enabled', 'yes') })
+  await blockedMessengerPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await blockedMessengerPage.locator('.qr-checkout-image-wrap img').waitFor()
+  await blockedMessengerPage.evaluate(() => { window.open = () => null })
+  await blockedMessengerPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
+  await blockedMessengerPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
+  assert.equal(await blockedMessengerPage.getByRole('link', { name: 'OPEN MESSENGER AGAIN' }).getAttribute('target'), '_blank')
+  assert.equal(await blockedMessengerPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true)
+  await blockedMessengerPage.close()
+
+  const simultaneousCheckoutPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await simultaneousCheckoutPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+  })
+  await simultaneousCheckoutPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await simultaneousCheckoutPage.locator('.qr-checkout-image-wrap img').waitFor()
+  await simultaneousCheckoutPage.evaluate(() => { localStorage.setItem('fixture-duplicate-conflict', 'yes'); window.open = () => null })
+  await simultaneousCheckoutPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
+  await simultaneousCheckoutPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
+  assert.match(await simultaneousCheckoutPage.locator('.qr-checkout-account-email').innerText(), /synthetic@example\.invalid/)
+  assert.equal(await simultaneousCheckoutPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true,
+    'An already-open request discovered during submission disables the second tab without another payment attempt')
+  assert.equal(await simultaneousCheckoutPage.locator('.qr-checkout-bank').count(), 0)
+  await simultaneousCheckoutPage.close()
+
+  const lostResponsePage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await lostResponsePage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+    localStorage.setItem('fixture-lost-claim-response', 'yes')
+  })
+  await lostResponsePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await lostResponsePage.locator('.qr-checkout-image-wrap img').waitFor()
+  await lostResponsePage.evaluate(() => { window.open = () => null })
+  await lostResponsePage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
+  await lostResponsePage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
+  assert.equal(await lostResponsePage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).isDisabled(), true,
+    'A saved request remains blocked even if the network loses the creation response')
+  assert.equal(await lostResponsePage.locator('.qr-checkout-image-wrap img').count(), 0)
+  await lostResponsePage.close()
+
+  const pendingCheckoutPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await pendingCheckoutPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+    localStorage.setItem('fixture-pending-orders', 'yes')
+  })
+  await pendingCheckoutPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await pendingCheckoutPage.getByRole('alert').filter({ hasText: /unresolved checkout/i }).waitFor()
+  assert.equal(await pendingCheckoutPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Unresolved PayMongo payment prevents a new QR transfer for the same track')
+  await pendingCheckoutPage.close()
+
+  const customerPendingPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await customerPendingPage.addInitScript(() => {
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+    localStorage.setItem('fixture-manual-claim', 'yes')
+  })
+  await customerPendingPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=account`)
+  await customerPendingPage.getByRole('status', { name: 'Pending payment verification' }).waitFor()
+  const pendingTrackCard = customerPendingPage.getByRole('article', { name: 'Deck OIC-NW reviewer plan' })
+  assert.equal(await pendingTrackCard.getByRole('button', { name: 'PENDING VERIFICATION' }).isDisabled(), true,
+    'Bond Store blocks duplicate purchase requests for an already pending track')
+  await customerPendingPage.getByRole('button', { name: 'My licenses' }).click()
+  await customerPendingPage.getByRole('region', { name: 'Payment request status' }).waitFor()
+  assert.match(await customerPendingPage.getByRole('region', { name: 'Payment request status' }).innerText(), /Deck OIC-NW.*PENDING VERIFICATION/s)
+  const entitlementReadsBeforeApproval = await customerPendingPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'select:entitlements').length)
+  await customerPendingPage.evaluate(() => {
+    localStorage.setItem('fixture-manual-approved', 'yes')
+    localStorage.setItem('fixture-manual-approved-at', new Date().toISOString())
+    window.dispatchEvent(new Event('focus'))
+  })
+  await customerPendingPage.getByRole('region', { name: 'Payment request status' }).getByText('APPROVED').waitFor()
+  await customerPendingPage.waitForFunction(expected => window.accountFixtureCalls.filter(call => call.action === 'select:entitlements').length > expected, entitlementReadsBeforeApproval)
+  assert.equal(await customerPendingPage.getByRole('status', { name: 'Pending payment verification' }).count(), 0,
+    'The pending notice disappears after admin approval')
+  await customerPendingPage.getByRole('button', { name: 'Orders & payment history' }).click()
+  await customerPendingPage.getByRole('region', { name: 'QR payment request history' }).getByText('APPROVED').waitFor()
+  assert.match(await customerPendingPage.getByRole('region', { name: 'QR payment request history' }).innerText(), /Deck OIC-NW.*APPROVED/s)
+  await customerPendingPage.evaluate(() => window.switchFixtureAccount())
+  await customerPendingPage.waitForFunction(() => !document.querySelector('.manual-checkout-request'))
+  assert.equal(await customerPendingPage.getByRole('status', { name: 'Pending payment verification' }).count(), 0,
+    'Switching accounts does not expose another member\'s pending requests')
+  await customerPendingPage.close()
 
   const adminDisabledQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await adminDisabledQrPage.addInitScript(() => localStorage.setItem('fixture-admin', 'yes'))

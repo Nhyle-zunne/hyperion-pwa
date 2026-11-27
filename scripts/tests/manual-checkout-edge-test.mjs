@@ -30,7 +30,7 @@ function fixture(file, email='buyer@example.invalid', initialClaimStatus='awaiti
     },
     rpc: async (functionName,params) => {
       calls.push({functionName,params})
-      if (functionName === 'create_manual_checkout_claim') return {data:{id:claimId,status:'awaiting_proof',total_amount_php:79},error:null}
+      if (functionName === 'create_manual_checkout_claim_unique_tracks') return {data:{id:claimId,status:'awaiting_proof',total_amount_php:79},error:null}
       if (functionName === 'review_manual_checkout_claim') {
         if (params.p_action === 'proof_received' && claimStatus === 'awaiting_proof') {
           claimStatus = 'pending_verification'
@@ -152,7 +152,7 @@ test('claim endpoint derives owner from verified JWT, not spoofable request fiel
   const response=await edge.send({selection:'oic_nw:month',userId:'22222222-2222-4222-8222-222222222222',amount:1})
   assert.equal(response.status,200)
   assert.equal(response.data.id,claimId)
-  assert.deepEqual(JSON.parse(JSON.stringify(edge.calls[0])),{functionName:'create_manual_checkout_claim',params:{p_user_id:uid,p_selection:'oic_nw:month'}})
+  assert.deepEqual(JSON.parse(JSON.stringify(edge.calls[0])),{functionName:'create_manual_checkout_claim_unique_tracks',params:{p_user_id:uid,p_selection:'oic_nw:month'}})
   edge.signOut()
   assert.equal((await edge.send({selection:'oic_nw:month'})).status,401)
   assert.equal(edge.calls.length,1)

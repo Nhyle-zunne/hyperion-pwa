@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 
 const migration = new URL('../../supabase/migrations/20261125013418_manual_checkout_claims.sql', import.meta.url)
+const guardMigration = new URL('../../supabase/migrations/20261128020000_prevent_overlapping_manual_checkout_claims.sql', import.meta.url)
 const buyer = '11111111-1111-4111-8111-111111111111'
 const secondBuyer = '22222222-2222-4222-8222-222222222222'
 
@@ -43,11 +44,16 @@ async function setup() {
     create table public.lifetime_orders(user_id uuid,product_code text,status text);
   `)
   await db.exec(readFileSync(migration, 'utf8'))
+  await db.exec(readFileSync(guardMigration, 'utf8'))
   return db
 }
 
 async function create(db, user, selection) {
   return (await db.query('select public.create_manual_checkout_claim($1,$2) as claim', [user, selection])).rows[0].claim
+}
+
+async function createWithoutDuplicateTracks(db, user, selection) {
+  return (await db.query('select public.create_manual_checkout_claim_unique_tracks($1,$2) as claim', [user, selection])).rows[0].claim
 }
 
 async function review(db, id, action) {
@@ -69,6 +75,30 @@ test('server calculates multi-track totals, reuses an open claim, and never gran
   await assert.rejects(create(db,buyer,'oic_nw:year:0'),/invalid/i)
   await assert.rejects(create(db,buyer,'oic_nw:year:'),/invalid/i)
   await assert.rejects(create(db,buyer,'oic_nw:year::'),/invalid/i)
+})
+
+test('new manual checkout blocks a second pending request for an overlapping track across different carts', async t => {
+  const db = await setup(); t.after(() => db.close())
+  const first = await createWithoutDuplicateTracks(db, buyer, 'oic_nw:year,gmdss:month')
+  const same = await createWithoutDuplicateTracks(db, buyer, 'gmdss:month,oic_nw:year')
+  assert.equal(same.id, first.id, 'the same cart reuses its original request')
+  await assert.rejects(createWithoutDuplicateTracks(db, buyer, 'oic_nw:week'), /pending.*track|already.*request/i)
+  const independent = await createWithoutDuplicateTracks(db, buyer, 'engine_ew:year')
+  assert.notEqual(independent.id, first.id, 'a different track can still be purchased')
+  const otherOwner = await createWithoutDuplicateTracks(db, secondBuyer, 'oic_nw:week')
+  assert.notEqual(otherOwner.id, first.id, 'another account is unaffected')
+  await review(db, first.id, 'proof_received')
+  await review(db, first.id, 'approve')
+  const renewed = await createWithoutDuplicateTracks(db, buyer, 'oic_nw:week')
+  assert.notEqual(renewed.id, first.id, 'approved purchases do not block later renewals')
+})
+
+test('an existing request stays reusable when older checkout already left overlapping requests', async t => {
+  const db = await setup(); t.after(() => db.close())
+  const first = await create(db, buyer, 'oic_nw:month')
+  await create(db, buyer, 'oic_nw:year')
+  const reused = await createWithoutDuplicateTracks(db, buyer, 'oic_nw:month')
+  assert.equal(reused.id, first.id)
 })
 
 test('proof stage is mandatory and approval writes subscriptions plus lifetime grants atomically', async t => {
@@ -189,8 +219,10 @@ test('claims use own-account read RLS with no client insert/update/delete grants
     await assert.rejects(db.query("update public.manual_checkout_claims set status='approved' where id=$1",[claim.id]),/permission denied/i)
     await assert.rejects(db.query('select public.review_manual_checkout_claim($1,$2,$3,$4)',[claim.id,'approve','admin@example.com','fake']),/permission denied/i)
     await assert.rejects(db.query('select public.create_manual_checkout_claim($1,$2)',[secondBuyer,'oic_nw:week']),/permission denied/i)
+    await assert.rejects(db.query('select public.create_manual_checkout_claim_unique_tracks($1,$2)',[secondBuyer,'oic_nw:week']),/permission denied/i)
     await db.exec(`set test.auth_uid='${buyer}'`)
     assert.equal((await db.query('select count(id)::int as n from public.manual_checkout_claims')).rows[0].n,1)
+    assert.equal((await db.query('select id,user_id,selection_key,items,total_amount_php,status,created_at,expires_at,reviewed_at from public.manual_checkout_claims')).rows[0].id,claim.id)
     await assert.rejects(db.query('select admin_note from public.manual_checkout_claims'),/permission denied/i)
   } finally { await db.exec('reset role') }
 })
@@ -212,17 +244,17 @@ test('admin review merges manual claims into historical status tabs without drop
   assert.match(screen,/Find by submission ID/i)
 })
 
-test('checkout first creates a server claim before copying and opening Messenger', () => {
+test('checkout creates a guarded server claim before opening Messenger', () => {
   const screen = readFileSync(new URL('../../src/screens/AdminQrCheckoutScreen.tsx',import.meta.url),'utf8')
   const endpoint = readFileSync(new URL('../../supabase/functions/create-manual-checkout-claim/index.ts',import.meta.url),'utf8')
   assert.match(screen,/functions\.invoke\('create-manual-checkout-claim'/)
-  assert.match(screen,/navigator\.clipboard\.writeText\(message\)/)
+  assert.doesNotMatch(screen,/navigator\.clipboard\.writeText\(message\)/)
   assert.match(screen,/window\.open\('about:blank', '_blank'\)/)
   assert.match(screen,/messengerTab\.location\.replace\(messengerUrl\)/)
   assert.doesNotMatch(screen,/window\.location\.assign\(messengerUrl\)/)
   assert.match(endpoint,/authClient\.auth\.getUser\(\)/)
   assert.match(endpoint,/p_user_id: user\.id/)
-  assert.match(endpoint,/rpc\('create_manual_checkout_claim'/)
+  assert.match(endpoint,/rpc\('create_manual_checkout_claim_unique_tracks'/)
   assert.doesNotMatch(screen,/\.from\('manual_checkout_claims'\)\.insert/)
   const config = readFileSync(new URL('../../supabase/config.toml',import.meta.url),'utf8')
   assert.match(config,/\[functions\.create-manual-checkout-claim\]\s*verify_jwt = true/)

@@ -250,12 +250,12 @@ assert.ok(adminCheckoutAccess.includes('result?.userId === userId && result.allo
   adminQrScreen.includes('supabase.auth.onAuthStateChange'), 'Changing or signing out of an administrator account immediately invalidates the QR checkout permission');
 assert.ok(adminCheckoutAccess.includes('!supabase?.functions?.invoke'), 'Missing Functions transport fails closed without unmounting purchase dialogs');
 assert.ok(adminQrScreen.includes("functions.invoke('create-manual-checkout-claim'") &&
-  adminQrScreen.includes('formatMessengerPaymentDetails(email, items, data.id)') &&
-  adminQrScreen.includes('navigator.clipboard.writeText(message)') &&
+  !adminQrScreen.includes('navigator.clipboard.writeText(message)') &&
+  adminQrScreen.includes('disabled={claimBusy || Boolean(claimId)') &&
   adminQrScreen.includes("window.open('about:blank', '_blank')") &&
   adminQrScreen.includes('messengerTab.location.replace(messengerUrl)') &&
   !adminQrScreen.includes('window.location.assign(messengerUrl)') &&
-  adminQrScreen.includes('https://m.me/HyperionMaritime'), 'QR checkout records an unverified account claim before copying the text and opening Messenger');
+  adminQrScreen.includes('https://m.me/HyperionMaritime'), 'QR checkout records a claim and disables repeat submissions before opening Messenger');
 assert.ok(basketScreen.includes('fetchPendingLifetimeOrders(supabase, session.user.id)') &&
   basketScreen.includes('pendingLifetimeOrders.map(order =>') &&
   basketScreen.includes('RESUME UNAVAILABLE') &&

@@ -2,6 +2,8 @@ import { createPaymentPollingState, pendingPaymentCheckoutIds, startPaymentPolli
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AccountSectionTabs from '../components/AccountSectionTabs'
+import { ManualCheckoutRequestList } from '../components/ManualCheckoutStatus'
+import { useManualCheckoutClaims } from '../hooks/useManualCheckoutClaims'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase } from '../lib/supabase'
 import { withPageLoading } from '../lib/pageLoading'
@@ -71,6 +73,7 @@ async function readableError(error: unknown, fallback: string): Promise<string> 
 export default function OrdersPaymentHistoryScreen() {
   const navigate = useNavigate()
   const [session, setSession] = useState<Session | null>(null)
+  const { claims: manualClaims, loading: manualClaimsLoading, error: manualClaimsError, reload: reloadManualClaims } = useManualCheckoutClaims(session?.user.id)
   const [authLoaded, setAuthLoaded] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
   const [lifetimeOrders, setLifetimeOrders] = useState<Array<{
@@ -264,6 +267,7 @@ export default function OrdersPaymentHistoryScreen() {
         }
       }
       if (!await loadOrders()) return
+      reloadManualClaims()
       await refreshCloudEntitlements()
       if (!mounted.current || currentOwner.current !== session.user.id) return
       if (activated.length) {
@@ -379,6 +383,16 @@ export default function OrdersPaymentHistoryScreen() {
       </section>
       : <>
         {message && <div role="status" style={{ ...card, borderColor: errorMessage ? 'var(--danger, #dc2626)' : 'var(--border)', marginBottom: '1rem', lineHeight: 1.5 }}>{message}</div>}
+        <section style={{ ...card, marginBottom: '1rem' }} aria-label="QR payment request history">
+          <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '.6rem' }}>
+            <h2 style={{ fontSize: '1.05rem', margin: 0 }}>QR payment requests</h2>
+            <p className="orders-meta" style={{ margin: '.25rem 0 0' }}>Your payment requests show Pending verification until Hyperion approves them. A request alone does not confirm payment.</p>
+          </div>
+          {manualClaimsError ? <p role="alert" className="orders-meta">{manualClaimsError}</p>
+            : manualClaimsLoading ? <p role="status" className="orders-meta">Checking QR payment requests…</p>
+              : manualClaims.length ? <ManualCheckoutRequestList claims={manualClaims} />
+                : <p className="orders-meta">No QR payment requests yet.</p>}
+        </section>
         {visibleLifetime.length > 0 && <section style={card} aria-label="One-time Lifetime Access purchases">
           <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '.6rem' }}>
             <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Lifetime Access purchases</h2>
