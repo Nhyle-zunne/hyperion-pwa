@@ -676,8 +676,26 @@ try {
   assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '14075599602')
   await adminQrPage.context().route('https://m.me/**', route => route.fulfill({ contentType: 'text/html', body: 'Synthetic Messenger page' }))
   const checkoutUrl = adminQrPage.url()
-  const messengerPopupPromise = adminQrPage.waitForEvent('popup')
+  const priorClaimCount = await adminQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length)
   await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
+  const confirmPayment = adminQrPage.getByRole('dialog', { name: 'Have you already sent the payment?' })
+  await confirmPayment.waitFor()
+  assert.match(await confirmPayment.innerText(), /completed.*transfer.*Messenger.*receipt/s)
+  assert.equal(await adminQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), priorClaimCount,
+    'Opening confirmation does not create a pending request')
+  await confirmPayment.getByRole('button', { name: 'NO', exact: true }).click()
+  await confirmPayment.waitFor({ state: 'hidden' })
+  assert.equal(await adminQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), priorClaimCount,
+    'NO leaves checkout untouched and creates no payment claim')
+  await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
+  await adminQrPage.getByRole('dialog', { name: 'Have you already sent the payment?' }).waitFor()
+  await adminQrPage.keyboard.press('Escape')
+  await adminQrPage.getByRole('dialog', { name: 'Have you already sent the payment?' }).waitFor({ state: 'hidden' })
+  assert.equal(await adminQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), priorClaimCount,
+    'Escape also dismisses without submitting a request')
+  await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
+  const messengerPopupPromise = adminQrPage.waitForEvent('popup')
+  await adminQrPage.getByRole('dialog', { name: 'Have you already sent the payment?' }).getByRole('button', { name: 'YES', exact: true }).click()
   const messengerPopup = await messengerPopupPromise
   await messengerPopup.waitForURL('https://m.me/HyperionMaritime')
   assert.equal(adminQrPage.url(), checkoutUrl, 'Opening Messenger keeps the original checkout tab available')
@@ -735,6 +753,7 @@ try {
   await blockedMessengerPage.locator('.qr-checkout-image-wrap img').waitFor()
   await blockedMessengerPage.evaluate(() => { window.open = () => null })
   await blockedMessengerPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
+  await blockedMessengerPage.getByRole('dialog', { name: 'Have you already sent the payment?' }).getByRole('button', { name: 'YES' }).click()
   await blockedMessengerPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
   assert.equal(await blockedMessengerPage.getByRole('link', { name: 'OPEN MESSENGER', exact: true }).getAttribute('target'), '_blank')
   assert.equal(await blockedMessengerPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0)
@@ -749,6 +768,7 @@ try {
   await simultaneousCheckoutPage.locator('.qr-checkout-image-wrap img').waitFor()
   await simultaneousCheckoutPage.evaluate(() => { localStorage.setItem('fixture-duplicate-conflict', 'yes'); window.open = () => null })
   await simultaneousCheckoutPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
+  await simultaneousCheckoutPage.getByRole('dialog', { name: 'Have you already sent the payment?' }).getByRole('button', { name: 'YES' }).click()
   await simultaneousCheckoutPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
   assert.match(await simultaneousCheckoutPage.locator('.qr-checkout-account-email').innerText(), /synthetic@example\.invalid/)
   assert.equal(await simultaneousCheckoutPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0,
@@ -766,6 +786,7 @@ try {
   await lostResponsePage.locator('.qr-checkout-image-wrap img').waitFor()
   await lostResponsePage.evaluate(() => { window.open = () => null })
   await lostResponsePage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
+  await lostResponsePage.getByRole('dialog', { name: 'Have you already sent the payment?' }).getByRole('button', { name: 'YES' }).click()
   await lostResponsePage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
   assert.equal(await lostResponsePage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0,
     'A saved request remains blocked even if the network loses the creation response')
