@@ -2518,7 +2518,7 @@ a:focus-visible {
 /* Shared administration navigation keeps the same geometry on every section. */
 .admin-page-navigation {
   display: grid;
-  grid-template-columns: auto minmax(0, 640px);
+  grid-template-columns: auto minmax(0, 800px);
   align-items: center;
   justify-content: space-between;
   gap: .65rem;
@@ -2535,7 +2535,7 @@ a:focus-visible {
 }
 .admin-page-navigation__sections {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: .5rem;
   min-width: 0;
 }
@@ -2559,6 +2559,7 @@ a:focus-visible {
     padding: .55rem .35rem;
     font-size: clamp(.7rem, 3.2vw, .8rem);
   }
+  .admin-page-navigation__sections .admin-section-link:last-child:nth-child(odd) { grid-column: span 2; }
 }
 
 .question-diagram-zoom::backdrop {
