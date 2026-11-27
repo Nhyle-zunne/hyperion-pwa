@@ -43,7 +43,7 @@ test('framing finds the head above offset shoulders and ignores faint background
       data[(y * width + x) * 4 + 3] = head || shoulders ? 255 : 24
     }
   }
-  assert.deepEqual(findPortraitFrame({ width, height, data }), { top: 26, bottom: 114, headCenter: 60, headWidth: 24, upperBodyLeft: 28, upperBodyRight: 98 })
+  assert.deepEqual(findPortraitFrame({ width, height, data }), { top: 26, bottom: 114, headCenter: 60, headWidth: 24 })
   assert.equal(findPortraitFrame({ width, height, data: data.fill(0) }), null)
 })
 
@@ -85,6 +85,6 @@ test('a wider lower body keeps its original length and does not shrink the upper
   const frame = findPortraitFrame({ width, height, data })
   assert.equal(frame.top, 10)
   assert.equal(frame.bottom, height)
-  assert.equal(frame.upperBodyLeft, 22)
-  assert.equal(frame.upperBodyRight, 78)
+  assert.equal(frame.headWidth, 20)
+  assert.equal(frame.headCenter, 50)
 })

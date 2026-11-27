@@ -87,20 +87,14 @@ export function findPortraitFrame({ width, height, data }) {
     let count = 0
     let left = width
     let right = 0
-    let edgeLeft = width
-    let edgeRight = 0
     for (let x = 0; x < width; x += step) {
       const opacity = data[(y * width + x) * 4 + 3]
-      if (opacity >= 40) {
-        edgeLeft = Math.min(edgeLeft, x)
-        edgeRight = Math.min(width, x + step)
-      }
       if (opacity < 153) continue
       count++
       left = Math.min(left, x)
       right = Math.min(width, x + step)
     }
-    if (count >= minRowPixels) rows.push({ y, left, right, edgeLeft, edgeRight })
+    if (count >= minRowPixels) rows.push({ y, left, right })
   }
 
   if (!rows.length) return null
@@ -115,14 +109,10 @@ export function findPortraitFrame({ width, height, data }) {
   const left = Math.min(...headRows.map(row => row.left))
   const right = Math.max(...headRows.map(row => row.right))
   const headWidth = right - left
-  // Keep the shoulders in frame without letting wider sleeves lower down shrink the face.
-  const upperRows = rows.filter(row => row.y < top + headWidth * 2.2)
   return {
     top,
     bottom,
     headCenter: (left + right) / 2,
     headWidth,
-    upperBodyLeft: Math.min(...upperRows.map(row => row.edgeLeft)),
-    upperBodyRight: Math.max(...upperRows.map(row => row.edgeRight)),
   }
 }

@@ -1,4 +1,4 @@
-import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend, posterPortraitPlacement, POSTER_PORTRAIT_LEFT, POSTER_PORTRAIT_RIGHT, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
+import { fitPosterText, posterOffsetFromPercent, posterPortraitBlend, posterPortraitPlacement, POSTER_TEXT_LAYOUT } from './posterLayout.mjs'
 import { formatPosterDate, fullPosterName } from './posterTracks.mjs'
 import type { PortraitFrame } from './posterAlpha.mjs'
 import type { PosterTrack } from './posterTracks.mjs'
@@ -41,10 +41,12 @@ export async function loadPosterArtwork(): Promise<PosterArtwork> {
   return { background, closingMessage }
 }
 
+type TextLineBounds = { top: number; bottom: number; right: number }
+
 function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
   x: number; baseline: number; maxWidth: number; fontSize: number; minSize: number
   maxLines?: number; lineHeight?: number; singleLineMinSize?: number; wrappedFontSize?: number; family: string; color: string; weight?: string; italic?: boolean
-}) {
+}, beforeDraw?: (lines: TextLineBounds[]) => void) {
   if (!text.trim()) return
   const fontAt = (size: number) => `${options.italic ? 'italic ' : ''}${options.weight || 'normal'} ${size}px ${options.family}`
   const measureWidth = (value: string, size: number) => {
@@ -69,6 +71,17 @@ function drawFittedText(ctx: CanvasRenderingContext2D, text: string, options: {
   ctx.fillStyle = options.color
   const lineHeight = options.lineHeight || layout.fontSize * 1.08
   const firstBaseline = options.baseline - (layout.lines.length - 1) * lineHeight / 2
+  if (beforeDraw) {
+    beforeDraw(layout.lines.map((line, index) => {
+      const baseline = firstBaseline + index * lineHeight
+      const metrics = ctx.measureText(line)
+      return {
+        top: baseline - metrics.actualBoundingBoxAscent,
+        bottom: baseline + metrics.actualBoundingBoxDescent,
+        right: options.x + metrics.actualBoundingBoxRight,
+      }
+    }))
+  }
   layout.lines.forEach((line, index) => ctx.fillText(line, options.x, firstBaseline + index * lineHeight))
 }
 
@@ -78,7 +91,26 @@ function addPortraitFeather(gradient: CanvasGradient, fadeIn: boolean) {
   }
 }
 
-function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement, data: PosterContent) {
+function clearExamText(ctx: CanvasRenderingContext2D, lines: TextLineBounds[]) {
+  const verticalFeather = 17
+  ctx.globalCompositeOperation = 'destination-out'
+  for (const { top, bottom, right } of lines) {
+    const safeEdge = right + 6
+    const featherEnd = safeEdge + 26
+    const fade = ctx.createLinearGradient(safeEdge, 0, featherEnd, 0)
+    addPortraitFeather(fade, false)
+    ctx.fillStyle = fade
+    for (let y = Math.floor(top - verticalFeather); y <= Math.ceil(bottom + verticalFeather); y++) {
+      const distance = Math.max(0, top - y, y - bottom)
+      const opacity = Math.max(0, 1 - distance / verticalFeather)
+      ctx.globalAlpha = opacity ** 2 * (3 - 2 * opacity)
+      ctx.fillRect(0, y, featherEnd, 1)
+    }
+  }
+  ctx.globalAlpha = 1
+}
+
+function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement, data: PosterContent, examLines: TextLineBounds[]) {
   const scale = Math.max(70, Math.min(140, data.scalePercent)) / 100
   const xOffset = posterOffsetFromPercent(data.xOffsetPercent, ART_SIZE)
   const yOffset = posterOffsetFromPercent(data.yOffsetPercent, ART_SIZE)
@@ -95,9 +127,7 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   let fadeEnd: number
   let shoulderBottom = 0
   if (frame) {
-    const placement = posterPortraitPlacement(
-      frame.headWidth, frame.headCenter - frame.upperBodyLeft, frame.upperBodyRight - frame.headCenter, scale, xOffset
-    )
+    const placement = posterPortraitPlacement(frame.headWidth, scale, xOffset)
     const portraitScale = placement.scale
     const left = placement.headCenter - frame.headCenter * portraitScale
     const headTop = placement.headTop + yOffset
@@ -129,12 +159,11 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
       layerCtx.drawImage(portrait, left, top, width, portrait.naturalHeight * portraitScale)
     }
   } else {
-    const halfWidth = portrait.naturalWidth / 2
-    const placement = posterPortraitPlacement(halfWidth, halfWidth, halfWidth, scale, xOffset)
-    const width = portrait.naturalWidth * placement.scale
-    const height = portrait.naturalHeight * placement.scale
+    const width = Math.min(506 * scale, 435)
+    const left = Math.max(811, Math.min(1020 + xOffset - width / 2, 1246 - width))
+    const height = portrait.naturalHeight * width / portrait.naturalWidth
     const y = 246 + yOffset
-    layerCtx.drawImage(portrait, placement.headCenter - width / 2, y, width, height)
+    layerCtx.drawImage(portrait, left, y, width, height)
     fadeEnd = Math.min(1105, y + height)
     fadeStart = fadeEnd - 230
   }
@@ -152,13 +181,14 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   }
 
   layerCtx.globalCompositeOperation = 'destination-in'
-  // The wider lower shirt blends out before reaching the text or poster edge.
-  const sideFade = layerCtx.createLinearGradient(798, 0, POSTER_PORTRAIT_LEFT, 0)
+  const sideFade = frame
+    ? layerCtx.createLinearGradient(700, 0, 752, 0)
+    : layerCtx.createLinearGradient(798, 0, 811, 0)
   addPortraitFeather(sideFade, true)
   layerCtx.fillStyle = sideFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
 
-  const rightFade = layerCtx.createLinearGradient(POSTER_PORTRAIT_RIGHT, 0, ART_SIZE, 0)
+  const rightFade = layerCtx.createLinearGradient(1238, 0, ART_SIZE, 0)
   addPortraitFeather(rightFade, false)
   layerCtx.fillStyle = rightFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
@@ -172,7 +202,7 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   addPortraitFeather(cornerFade, false)
   layerCtx.fillStyle = cornerFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
-  layerCtx.globalCompositeOperation = 'source-over'
+  if (frame) clearExamText(layerCtx, examLines)
   ctx.drawImage(layer, 0, 0)
 }
 
@@ -259,14 +289,15 @@ export function renderPoster(canvas: HTMLCanvasElement, artwork: PosterArtwork, 
   ctx.setTransform(POSTER_EXPORT_SIZE / ART_SIZE, 0, 0, POSTER_EXPORT_SIZE / ART_SIZE, 0, 0)
   ctx.drawImage(artwork.background, 0, 0, ART_SIZE, ART_SIZE)
   drawPosterDividers(ctx)
-  if (data.portrait) drawPortrait(ctx, data.portrait, data)
+  const portrait = data.portrait
+  drawFittedText(ctx, data.track.examTitle, { ...POSTER_TEXT_LAYOUT.exam, family: 'Impact, "Arial Narrow", "Nimbus Sans Narrow", sans-serif', color: '#071d43', weight: 'bold' },
+    portrait ? lines => drawPortrait(ctx, portrait, data, lines) : undefined)
 
   const name = fullPosterName(data.track.id, data.name).toUpperCase()
   drawFittedText(ctx, name, { ...POSTER_TEXT_LAYOUT.name, family: 'Georgia, serif', color: '#ffffff', weight: 'bold' })
   drawFittedText(ctx, data.track.defaultDegree, { ...POSTER_TEXT_LAYOUT.degree, family: 'Georgia, serif', color: '#f6ca68', weight: 'bold', italic: true })
   const date = formatPosterDate(data.date)
   if (date) drawFittedText(ctx, `for passing the ${date}`, { ...POSTER_TEXT_LAYOUT.date, family: 'Georgia, serif', color: '#071c42', weight: 'bold', italic: true })
-  drawFittedText(ctx, data.track.examTitle, { ...POSTER_TEXT_LAYOUT.exam, family: 'Impact, "Arial Narrow", "Nimbus Sans Narrow", sans-serif', color: '#071d43', weight: 'bold' })
   drawFittedText(ctx, data.school.toUpperCase(), { ...POSTER_TEXT_LAYOUT.school, family: 'Georgia, serif', color: '#082143', weight: 'bold', italic: true })
   drawFittedText(ctx, data.company.toUpperCase(), { ...POSTER_TEXT_LAYOUT.company, family: 'Georgia, serif', color: '#082143', italic: true })
 

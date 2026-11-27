@@ -72,23 +72,17 @@ test('a crop ending near the collar fades without reshaping the shoulder boards'
   assert.equal(blend.fadeEnd, 724)
 })
 
-test('portrait placement uses the reference head position and fills more of the photo column', () => {
-  const reference = posterPortraitPlacement(250, 210, 225)
-  assert.equal(reference.headTop, 283)
-  assert.ok(Math.abs(reference.headCenter - 1020) <= 12)
-  assert.ok(reference.scale >= 1)
-
-  const wide = posterPortraitPlacement(310, 347, 349)
-  assert.equal(wide.headTop, 283)
-  assert.ok(Math.round(wide.headCenter - 347 * wide.scale) >= 811)
-  assert.ok(Math.round(wide.headCenter + 349 * wide.scale) <= 1246)
-  assert.ok(wide.scale > 417 / (347 + 349))
+test('reference portrait keeps a roughly 19%-wide head even on a broad uniform', () => {
+  const placement = posterPortraitPlacement(310)
+  assert.equal(placement.headTop, 283)
+  assert.ok(Math.abs(placement.headCenter - 1020) <= 12)
+  assert.ok(placement.scale * 310 >= 230 && placement.scale * 310 <= 242)
 })
 
-test('manual zoom and horizontal offsets keep the visible silhouette inside both boundaries', () => {
+test('manual zoom and horizontal offsets keep the face inside the poster', () => {
   for (const xOffset of [-200, 200]) {
-    const placement = posterPortraitPlacement(250, 270, 240, 1.4, xOffset)
-    assert.ok(Math.round(placement.headCenter - 270 * placement.scale) >= 811)
-    assert.ok(Math.round(placement.headCenter + 240 * placement.scale) <= 1246)
+    const placement = posterPortraitPlacement(250, 1.4, xOffset)
+    assert.ok(placement.headCenter - placement.scale * 125 >= 862)
+    assert.ok(placement.headCenter + placement.scale * 125 <= 1238)
   }
 })
