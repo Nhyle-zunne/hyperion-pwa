@@ -39,13 +39,17 @@ function QrEditorWorkspace() {
   const [payload, setPayload] = useState('')
   const [originalName, setOriginalName] = useState('')
   const [recipientName, setRecipientName] = useState('')
-  const [preview, setPreview] = useState<{ payload: string; url: string } | null>(null)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoError, setLogoError] = useState('')
+  const [logoBusy, setLogoBusy] = useState(false)
+  const [preview, setPreview] = useState<{ payload: string; logo: File | null; url: string } | null>(null)
   const [uploadStatus, setUploadStatus] = useState('Upload your QR Ph person-to-person payment QR screenshot to begin.')
   const [busy, setBusy] = useState(false)
   const [previewError, setPreviewError] = useState('')
   const uploadRequest = useRef(0)
+  const logoRequest = useRef(0)
 
-  useEffect(() => () => { uploadRequest.current++ }, [])
+  useEffect(() => () => { uploadRequest.current++; logoRequest.current++ }, [])
 
   let editedPayload = ''
   let nameError = ''
@@ -53,19 +57,41 @@ function QrEditorWorkspace() {
     try { editedPayload = replaceQrPhRecipientName(payload, recipientName) }
     catch (error) { nameError = error instanceof Error ? error.message : 'Invalid recipient name.' }
   }
-  const previewUrl = preview?.payload === editedPayload ? preview.url : ''
+  const previewUrl = preview?.payload === editedPayload && preview.logo === logoFile ? preview.url : ''
 
   useEffect(() => {
     let active = true
     setPreview(null)
     setPreviewError('')
     if (editedPayload) {
-      void renderQrPng(editedPayload)
-        .then(url => { if (active) setPreview({ payload: editedPayload, url }) })
-        .catch(() => { if (active) setPreviewError('Could not generate the QR image. Try a shorter name.') })
+      void renderQrPng(editedPayload, logoFile)
+        .then(url => { if (active) setPreview({ payload: editedPayload, logo: logoFile, url }) })
+        .catch(error => { if (active) setPreviewError(error instanceof Error && /logo|readable/i.test(error.message) ? error.message : 'Could not generate the QR image. Try a shorter name.') })
     }
     return () => { active = false }
-  }, [editedPayload])
+  }, [editedPayload, logoFile])
+
+  async function handleLogoUpload(file: File) {
+    const request = ++logoRequest.current
+    setLogoBusy(true)
+    setLogoError('')
+    try {
+      if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size === 0 || file.size > 5 * 1024 * 1024) {
+        throw new Error('Use a PNG, JPG or WebP logo smaller than 5 MB.')
+      }
+      const bitmap = await createImageBitmap(file)
+      try {
+        if (!bitmap.width || !bitmap.height || Math.max(bitmap.width, bitmap.height) > 4096) {
+          throw new Error('Use a logo no larger than 4096 pixels on either side.')
+        }
+      } finally { bitmap.close() }
+      if (request === logoRequest.current) setLogoFile(file)
+    } catch (error) {
+      if (request === logoRequest.current) setLogoError(error instanceof Error ? error.message : 'Could not read the logo image.')
+    } finally {
+      if (request === logoRequest.current) setLogoBusy(false)
+    }
+  }
 
   async function handleUpload(file: File) {
     const request = ++uploadRequest.current
@@ -109,7 +135,7 @@ function QrEditorWorkspace() {
     <AdminNavigation />
     <header className="admin-poster__heading">
       <h1>QR CODE EDITOR</h1>
-      <p>Upload a QR Ph person-to-person payment code, change its embedded recipient name, and download a new scannable QR. Images and payment details stay on this device.</p>
+      <p>Upload a QR Ph person-to-person payment code, change its embedded recipient name, optionally add a centered logo, and download a new scannable QR. Images and payment details stay on this device.</p>
     </header>
 
     <div className="admin-poster__grid">
@@ -131,16 +157,29 @@ function QrEditorWorkspace() {
           {nameError && <p className="admin-poster__error" role="alert">{nameError}</p>}
         </> : <p className="admin-poster__hint">Your QR's original name will appear here after upload.</p>}
 
+        <h2>3. ADD A CENTER LOGO (OPTIONAL)</h2>
+        <label htmlFor="qr-editor-logo">Logo image</label>
+        <input id="qr-editor-logo" type="file" accept="image/png,image/jpeg,image/webp" disabled={logoBusy}
+          aria-describedby="qr-editor-logo-hint" aria-invalid={Boolean(logoError)}
+          onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void handleLogoUpload(file) }} />
+        <p id="qr-editor-logo-hint" className="admin-poster__hint">PNG, JPG or WebP, up to 5 MB. The logo is centered on a white backing and scaled to keep the QR readable.</p>
+        {logoBusy && <p role="status" className="admin-poster__hint">Checking logo…</p>}
+        {logoError && <p role="alert" className="admin-poster__error">{logoError}</p>}
+        {logoFile && <div className="admin-qr__logo-selected">
+          <span>Logo selected: <strong>{logoFile.name}</strong></span>
+          <button type="button" className="btn btn-secondary" onClick={() => { logoRequest.current++; setLogoFile(null); setLogoError(''); setLogoBusy(false) }}>REMOVE LOGO</button>
+        </div>}
+
         <div className="admin-qr__notice" role="note">
           <strong>Before using it for payments</strong>
-          <p>Editing the QR name does not rename the bank account. A payment app may still show the bank-registered name or reject a changed QR. Test a scan and verify the recipient account before sharing it.</p>
+          <p>Editing the QR name or adding a logo does not rename the bank account. A payment app may still show the bank-registered name or reject a changed QR. Test a scan and verify the recipient account before sharing it.</p>
         </div>
       </div>
 
       <aside className="admin-poster__preview">
         <div className="admin-poster__preview-heading"><h2>QR PREVIEW</h2><span>1024 × 1024 PNG</span></div>
         <div className="admin-qr__image">
-          {previewUrl ? <img src={previewUrl} alt={`Edited payment QR for ${recipientName}`} />
+          {previewUrl ? <img src={previewUrl} alt={`Edited payment QR for ${recipientName}${logoFile ? ' with centered logo' : ''}`} />
             : <p role="status">{busy ? 'Scanning image…' : payload && !nameError ? 'Generating QR preview…' : 'Your edited QR will appear here.'}</p>}
         </div>
         {previewError && <p role="alert" className="admin-poster__error">{previewError}</p>}

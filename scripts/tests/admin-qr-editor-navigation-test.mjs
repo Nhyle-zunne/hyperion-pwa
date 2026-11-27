@@ -17,9 +17,12 @@ test('QR editor workspace is remounted for each authorized account and unmounted
   assert.match(screen, /function QrEditorWorkspace\(\)/)
 })
 
-test('QR preview and download are shown only for the currently edited payload', () => {
+test('QR preview and download stay tied to the current payload and optional logo', () => {
   const screen = readFileSync(new URL('../../src/screens/AdminQrEditorScreen.tsx', import.meta.url), 'utf8')
-  assert.match(screen, /preview\?\.payload === editedPayload \? preview\.url : ''/)
+  assert.match(screen, /preview\?\.payload === editedPayload && preview\.logo === logoFile \? preview\.url : ''/)
+  assert.match(screen, /renderQrPng\(editedPayload, logoFile\)/)
+  assert.match(screen, /id="qr-editor-logo" type="file"/)
+  assert.match(screen, /REMOVE LOGO/)
 })
 
 test('admin navigation accommodates the fifth tool without overflowing desktop tabs', () => {
