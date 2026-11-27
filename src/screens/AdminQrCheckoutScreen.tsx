@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { PAID_PRODUCTS, supabase } from '../lib/supabase'
-import { BANK_TRANSFER, formatMessengerPaymentDetails, parseManualCheckoutItems } from '../lib/manualQrCheckout'
+import { BANK_TRANSFER, parseManualCheckoutItems } from '../lib/manualQrCheckout'
 import type { ManualCheckoutTerm } from '../lib/manualQrCheckout'
+import { isOpenManualClaim } from '../lib/manualCheckoutClaims'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import { refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 import { PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
@@ -20,18 +21,15 @@ export default function AdminQrCheckoutScreen() {
   const [checkoutChecked, setCheckoutChecked] = useState(false)
   const [previewCode, setPreviewCode] = useState('')
   const [previewTerm, setPreviewTerm] = useState<ManualCheckoutTerm>('month')
-  const [copyStatus, setCopyStatus] = useState('')
-  const [copyError, setCopyError] = useState(false)
+  const [submissionStatus, setSubmissionStatus] = useState('')
+  const [submissionError, setSubmissionError] = useState(false)
   const [claimId, setClaimId] = useState('')
   const [claimBusy, setClaimBusy] = useState(false)
-  const [showMessengerHelp, setShowMessengerHelp] = useState(false)
-  const [copyFallback, setCopyFallback] = useState('')
   const [bankCopyStatus, setBankCopyStatus] = useState('')
   const [signingIn, setSigningIn] = useState(false)
   const [signInError, setSignInError] = useState('')
-  const [readiness, setReadiness] = useState<{ userId: string; selection: string | null; status: 'ready' | 'blocked' | 'error'; reason?: string }>()
+  const [readiness, setReadiness] = useState<{ userId: string; selection: string | null; status: 'ready' | 'pending' | 'blocked' | 'error'; reason?: string; pendingClaim?: { id: string; items: { label: string; term: ManualCheckoutTerm }[] } }>()
   const [checkRevision, setCheckRevision] = useState(0)
-  const messageRef = useRef<HTMLTextAreaElement>(null)
   const checkoutIdentityRef = useRef('')
   const access = useAdminCheckoutAccess(userId)
   const checkoutAvailability = useWebsiteCheckoutAvailability()
@@ -67,35 +65,14 @@ export default function AdminQrCheckoutScreen() {
   checkoutIdentityRef.current = `${userId || ''}|${itemQuery || ''}`
   const items = parseManualCheckoutItems(itemQuery, PAID_PRODUCTS)
   const totalPhp = items.reduce((sum, item) => sum + item.amountPhp, 0)
-  const details = copyFallback || formatMessengerPaymentDetails(email, items, claimId || undefined)
   const paymentStatus = readiness && readiness.userId === userId && readiness.selection === itemQuery ? readiness.status : 'checking'
 
   useEffect(() => {
     setClaimId('')
-    setCopyFallback('')
-    setCopyStatus('')
-    setCopyError(false)
-    setShowMessengerHelp(false)
+    setSubmissionStatus('')
+    setSubmissionError(false)
     setClaimBusy(false)
   }, [userId, itemQuery])
-
-  useLayoutEffect(() => {
-    if (paymentStatus !== 'ready' || !messageRef.current) return
-    const field = messageRef.current
-    const sizeToContent = () => {
-      field.style.height = 'auto'
-      field.style.height = `${field.scrollHeight + 2}px`
-    }
-    sizeToContent()
-    let width = field.clientWidth
-    const observer = new ResizeObserver(() => {
-      if (field.clientWidth === width) return
-      width = field.clientWidth
-      sizeToContent()
-    })
-    observer.observe(field)
-    return () => observer.disconnect()
-  }, [details, paymentStatus])
 
   useEffect(() => {
     if (!userId || (!checkoutAvailability.enabled && !access.allowed) || !supabase || !items.length) return
@@ -120,7 +97,7 @@ export default function AdminQrCheckoutScreen() {
             .in('product_code',selectedCodes).eq('status','active').gt('expires_at',new Date().toISOString()),
           client.from('entitlements').select('product_code,expires_at').eq('user_id',userId)
             .in('product_code',selectedCodes).eq('status','active').gt('expires_at',new Date().toISOString()),
-          client.from('manual_checkout_claims').select('selection_key,status,expires_at').eq('user_id',userId)
+          client.from('manual_checkout_claims').select('id,selection_key,items,status,expires_at').eq('user_id',userId)
             .in('status',['awaiting_proof','pending_verification']),
         ])
         if (!active) return
@@ -129,14 +106,16 @@ export default function AdminQrCheckoutScreen() {
         const websiteExpiry = new Map((websiteAccess.data || []).map(row=>[row.product_code,Date.parse(row.expires_at)]))
         const overlappingPlay = (playAccess.data || []).some(row=>Date.parse(row.expires_at)> (websiteExpiry.get(row.product_code) || Date.now()))
         const selectionKey = items.map(item=>`${item.code}:${item.term}`).sort().join(',')
-        const existingClaims = (openClaims.data || []).filter(row=>row.status==='pending_verification' || Date.parse(row.expires_at)>Date.now())
+        const existingClaims = (openClaims.data || []).filter(row=>isOpenManualClaim(row))
+        const overlappingClaim = existingClaims.find(row => (row.items as {code: string}[]).some(item => selectedCodes.includes(item.code)))
         const full = existingClaims.length >= 3 && !existingClaims.some(row=>row.selection_key===selectionKey)
         const reason = lifetimeOwned.data?.length ? 'This reviewer track already has Lifetime Access. Do not pay again.'
           : overlappingPlay ? 'Your Google Play license already covers this period. Do not make an overlapping website transfer.'
           : full ? 'You already have three open payment submissions. Contact Hyperion on Messenger to resolve one before paying again.'
           : pendingOrders.data?.length || failedProviderSessions.data?.length || pendingLifetimeOrders.data?.length
             ? 'Resolve the earlier unresolved payment for this track before making another transfer.' : undefined
-        setReadiness({ userId, selection: itemQuery, status: failed ? 'error' : reason ? 'blocked' : 'ready', reason })
+        setReadiness({ userId, selection: itemQuery, status: failed ? 'error' : overlappingClaim ? 'pending' : reason ? 'blocked' : 'ready', reason,
+          pendingClaim: overlappingClaim ? { id: overlappingClaim.id, items: overlappingClaim.items as {label: string; term: ManualCheckoutTerm}[] } : undefined })
       } catch {
         if (active) setReadiness({ userId, selection: itemQuery, status: 'error' })
       }
@@ -154,14 +133,13 @@ export default function AdminQrCheckoutScreen() {
       if (messengerTab) {
         messengerTab.opener = null
         messengerTab.document.title = 'Opening Messenger'
-        messengerTab.document.body.textContent = 'Preparing your payment details. Messenger will open shortly…'
+        messengerTab.document.body.textContent = 'Preparing your payment request. Messenger will open shortly…'
       }
     } catch { /* The link below is available if a new tab is blocked. */ }
     let messengerOpened = false
     setClaimBusy(true)
-    setCopyError(false)
-    setShowMessengerHelp(false)
-    setCopyStatus('Preparing your payment details…')
+    setSubmissionError(false)
+    setSubmissionStatus('Recording your request…')
     try {
       const selection = items.map(item => `${item.code}:${item.term}`).join(',')
       const { data, error } = await supabase.functions.invoke('create-manual-checkout-claim', { body: { selection } })
@@ -171,40 +149,32 @@ export default function AdminQrCheckoutScreen() {
         if (error && typeof error === 'object' && 'context' in error && error.context instanceof Response) {
           try { reason = (await error.context.clone().json() as {error?: unknown}).error } catch { /* Use generic warning. */ }
         }
-        throw new Error(typeof reason === 'string' ? reason : 'Could not prepare your payment details. Please try again.')
+        throw new Error(typeof reason === 'string' ? reason : 'Could not record your payment request. Please try again.')
       }
       if (data.totalAmountPhp !== totalPhp) throw new Error('Price verification failed. Do not transfer funds; refresh checkout.')
-      const message = formatMessengerPaymentDetails(email, items, data.id)
       setClaimId(data.id)
-      setCopyFallback(message)
-      try {
-        await navigator.clipboard.writeText(message)
-        if (checkoutIdentityRef.current !== checkoutIdentity) return
-        if (messengerTab && !messengerTab.closed) {
-          try {
-            messengerTab.location.replace(messengerUrl)
-            messengerOpened = true
-          } catch { /* Let the customer open Messenger from the checkout link. */ }
-        }
-        if (messengerOpened) setCopyStatus('Details copied. Paste them into Messenger, attach your receipt, and send both.')
-        else {
-          setShowMessengerHelp(true)
-          setCopyStatus('Details copied. Tap OPEN MESSENGER below, paste the text, and attach your receipt.')
-        }
-      } catch {
-        if (checkoutIdentityRef.current !== checkoutIdentity) return
-        setCopyError(true)
-        setShowMessengerHelp(true)
-        setCopyStatus('Could not copy the details automatically. Copy the text above, then open Messenger and send it with your receipt.')
-        window.setTimeout(() => { messageRef.current?.focus(); messageRef.current?.select() }, 0)
+      setReadiness({ userId, selection: itemQuery, status: 'pending', pendingClaim: { id: data.id, items } })
+      if (messengerTab && !messengerTab.closed) {
+        try {
+          messengerTab.location.replace(messengerUrl)
+          messengerOpened = true
+        } catch { /* Keep a direct Messenger link available. */ }
       }
     } catch (error) {
       if (checkoutIdentityRef.current !== checkoutIdentity) return
       const message = error instanceof Error ? error.message : ''
-      setCopyError(true)
-      setShowMessengerHelp(true)
-      setCopyStatus(/^(You have three open submissions|Checkout is temporarily unavailable|Invalid checkout selection|Price verification failed)/.test(message)
-        ? message : 'Could not prepare your payment details. Please try again. No payment has been confirmed.')
+      if (message.startsWith('You already have a pending request')) {
+        setReadiness(undefined)
+        setCheckRevision(value => value + 1)
+        return
+      }
+      setSubmissionError(true)
+      setSubmissionStatus(/^(You have three open submissions|Checkout is temporarily unavailable|Invalid checkout selection|Price verification failed)/.test(message)
+        ? message : 'Could not record your request. Check Orders & payment history before retrying. No payment has been confirmed.')
+      // The server may have saved a claim before the response was lost. Check
+      // persisted status before making the QR and submit button available again.
+      setReadiness(undefined)
+      setCheckRevision(value => value + 1)
     } finally {
       if (!messengerOpened) messengerTab?.close()
       if (checkoutIdentityRef.current === checkoutIdentity) setClaimBusy(false)
@@ -297,14 +267,27 @@ export default function AdminQrCheckoutScreen() {
     {items.length === 0 ? <section className="qr-checkout-panel" role="status">
       <h2>No valid checkout selection</h2>
       <p>Choose a reviewer track and duration to prepare the payment instructions. No payment has been started.</p>
-    </section> : paymentStatus !== 'ready' ? <section className="qr-checkout-panel" role={paymentStatus === 'checking' ? 'status' : 'alert'}>
-      <h2>{paymentStatus === 'blocked' ? 'Existing unresolved checkout' : paymentStatus === 'error' ? 'Unable to verify payment status' : 'Checking existing payments…'}</h2>
-      <p>{paymentStatus === 'blocked'
+    </section> : paymentStatus !== 'ready' ? <section className="qr-checkout-panel" role={paymentStatus === 'checking' || paymentStatus === 'pending' ? 'status' : 'alert'}>
+      <h2>{paymentStatus === 'pending' ? 'Payment request pending verification' : paymentStatus === 'blocked' ? 'Existing unresolved checkout' : paymentStatus === 'error' ? 'Unable to verify payment status' : 'Checking existing payments…'}</h2>
+      <p>{paymentStatus === 'pending'
+        ? 'You have already pressed SUBMIT PAYMENT PROOF for this track. If you sent your receipt, allow 24–48 hours for verification and activation. Do not pay again.'
+        : paymentStatus === 'blocked'
         ? readiness?.reason || 'Resolve or safely cancel the existing payment for this track before making another QR transfer. Do not pay twice.'
         : paymentStatus === 'error'
           ? 'Hyperion could not check previous payments. No QR code is available until this check succeeds.'
           : 'Verifying there is no pending earlier checkout or manual payment for the selected tracks.'}</p>
       {paymentStatus === 'blocked' && <Link className="btn btn-outline" to="/orders">VIEW ORDERS &amp; PAYMENT HISTORY</Link>}
+      {paymentStatus === 'pending' && <>
+        <p>If you have not sent proof yet, send your receipt and the Google email shown below in Messenger. Include the request ID when you have more than one purchase so we can match the correct track.</p>
+        {readiness?.pendingClaim && <div className="qr-checkout-pending-reference">
+          <div><strong>Request ID:</strong> {readiness.pendingClaim.id}</div>
+          <div><strong>Reviewer track:</strong> {readiness.pendingClaim.items.map(item => item.label).join(', ')}</div>
+        </div>}
+        <p className="qr-checkout-account-email"><strong>Your account email:</strong> {email}</p>
+        <button type="button" className="btn btn-primary qr-checkout-messenger" disabled>SUBMIT PAYMENT PROOF</button>
+        <a className="btn btn-outline qr-checkout-copy" href={messengerUrl} target="_blank" rel="noopener noreferrer">OPEN MESSENGER AGAIN</a>
+        <Link className="qr-checkout-history-link" to="/orders">VIEW PAYMENT HISTORY</Link>
+      </>}
       {paymentStatus === 'error' && <button type="button" className="btn btn-outline" onClick={() => setCheckRevision(value => value + 1)}>RETRY PAYMENT CHECK</button>}
     </section> : <div className="qr-checkout-grid">
       <section className="qr-checkout-panel">
@@ -338,16 +321,14 @@ export default function AdminQrCheckoutScreen() {
 
       <section className="qr-checkout-panel">
         <h2>2. Send your payment receipt</h2>
-        <p>After paying, tap <strong>COPY DETAILS &amp; OPEN MESSENGER</strong> below. Your details will be copied and Messenger will open. Paste the text into the chat, attach a photo or screenshot of your receipt, and send both. We'll check your payment before activating your license.</p>
+        <p>After paying, tap <strong>SUBMIT PAYMENT PROOF</strong> to open Messenger. Send a screenshot or photo of your receipt and tell us the Google email linked to your Hyperion account so we can match your payment.</p>
+        <p className="qr-checkout-account-email"><strong>Your account email:</strong> {email}</p>
         {!checkoutAvailability.enabled && <p role="status" className="qr-checkout-transfer-notice">Website checkout is disabled. Do not transfer money while purchases are paused.</p>}
-        <label className="qr-checkout-copy-label" htmlFor="qr-checkout-details">Payment details</label>
-        <textarea id="qr-checkout-details" ref={messageRef} readOnly value={details} rows={Math.max(9, items.length + 7)} onFocus={event => event.currentTarget.select()} />
-        <button type="button" className="btn btn-primary qr-checkout-messenger" disabled={claimBusy || !checkoutAvailability.enabled} onClick={() => void submitToMessenger()}>
-          {claimBusy ? 'OPENING MESSENGER…' : 'COPY DETAILS & OPEN MESSENGER'}
+        <button type="button" className="btn btn-primary qr-checkout-messenger" disabled={claimBusy || Boolean(claimId) || !checkoutAvailability.enabled} onClick={() => void submitToMessenger()}>
+          {claimBusy ? 'OPENING MESSENGER…' : 'SUBMIT PAYMENT PROOF'}
         </button>
-        {copyStatus && <p role={copyError ? 'alert' : 'status'} aria-live="polite" className={`qr-checkout-copy-status${copyError ? ' is-error' : ''}`}>{copyStatus}</p>}
-        {claimId && <p className="qr-checkout-note">Remember to send the copied text and your receipt through Messenger if you haven't already.</p>}
-        {showMessengerHelp && <a className="btn btn-outline qr-checkout-copy" href={messengerUrl} target="_blank" rel="noopener noreferrer">OPEN MESSENGER</a>}
+        {submissionStatus && <p role={submissionError ? 'alert' : 'status'} aria-live="polite" className={`qr-checkout-copy-status${submissionError ? ' is-error' : ''}`}>{submissionStatus}</p>}
+        {claimId && <p className="qr-checkout-note">Your request is pending verification. Pressing the button again is disabled. If you have not sent your receipt, use the Messenger link below.</p>}
         <p className="qr-checkout-activation-notice"><strong>Activation notice:</strong> Please allow 24–48 hours after submitting your payment receipt for verification and license activation. If still inactive after 48 hours, message our <a href={facebookPageUrl} target="_blank" rel="noopener noreferrer">Hyperion Facebook page</a> to follow up.</p>
         <p className="qr-checkout-note">Never send your password, OTP or full bank account credentials.</p>
       </section>

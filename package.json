@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "node scripts/build-production.mjs",
     "preview": "vite preview",
-    "test:security": "node scripts/security-smoke-tests.mjs && node scripts/tests/paymongo-retirement-endpoints-test.mjs && node --test scripts/tests/google-play-restore-status-test.mjs scripts/tests/pwa-purchases-paused-test.mjs scripts/tests/manual-qr-checkout-test.mjs scripts/tests/manual-checkout-claims-test.mjs scripts/tests/manual-checkout-edge-test.mjs",
+    "test:security": "node scripts/security-smoke-tests.mjs && node scripts/tests/paymongo-retirement-endpoints-test.mjs && node --test scripts/tests/google-play-restore-status-test.mjs scripts/tests/pwa-purchases-paused-test.mjs scripts/tests/manual-qr-checkout-test.mjs scripts/tests/manual-checkout-claims-test.mjs scripts/tests/manual-checkout-edge-test.mjs scripts/tests/manual-checkout-display-test.mjs",
     "test:qr-editor": "node --test scripts/tests/qr-ph-name-editor-test.mjs scripts/tests/qr-ph-image-test.mjs scripts/tests/admin-qr-editor-navigation-test.mjs",
     "test:offline-build": "node scripts/offline-build-smoke.mjs",
     "test:progress-revisions": "node scripts/tests/progress-revision-storage-test.mjs && node scripts/tests/progress-revision-retention-test.mjs && node scripts/tests/progress-revision-checkpoints-test.mjs",

@@ -34,7 +34,7 @@ Deno.serve(async req => {
   if (!hasGoogleIdentity) return json({ error: 'Sign in with your Google account before submitting payment.' }, 403)
 
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } })
-  const { data, error } = await admin.rpc('create_manual_checkout_claim', {
+  const { data, error } = await admin.rpc('create_manual_checkout_claim_unique_tracks', {
     p_user_id: user.id, p_selection: body.selection,
   })
   if (error || !data) {
@@ -42,6 +42,9 @@ Deno.serve(async req => {
     if (error?.message?.includes('Website checkout is disabled')) return json({ error: 'Checkout is temporarily unavailable.' }, 403)
     if (error?.message?.includes('Too many open payment claims')) {
       return json({ error: 'You have three open submissions. Please contact Hyperion on Messenger to resolve them before starting another.' }, 409)
+    }
+    if (error?.message?.includes('A payment request is already pending')) {
+      return json({ error: 'You already have a pending request for this track. Do not pay again. View your payment history instead.' }, 409)
     }
     console.error('[create-manual-checkout-claim] Could not create claim', error?.code || 'unknown')
     return json({ error: 'Could not prepare the payment submission. Please retry.' }, 500)

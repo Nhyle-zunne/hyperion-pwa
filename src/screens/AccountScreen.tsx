@@ -1,11 +1,14 @@
 import { createPaymentPollingState, pendingPaymentCheckoutIds, startPaymentPolling } from '../lib/paymentPolling'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import AccountSectionTabs from '../components/AccountSectionTabs'
 import type { Session } from '@supabase/supabase-js'
 import { PAID_PRODUCTS, supabase, supabaseConfigured } from '../lib/supabase'
 import BondStoreCardContent from '../components/BondStoreCardContent'
+import { ManualCheckoutNotice, ManualCheckoutRequestList } from '../components/ManualCheckoutStatus'
+import { pendingManualTracks } from '../lib/manualCheckoutClaims'
+import { useManualCheckoutClaims } from '../hooks/useManualCheckoutClaims'
 import { withPageLoading } from '../lib/pageLoading'
 import type { LicenseTerm, PaidTrack } from '../lib/supabase'
 import { useLicenseStore } from '../stores/licenseStore'
@@ -37,7 +40,7 @@ type BasketItem = { code: PaidTrack; term: LicenseTerm }
 // Owner-bound in-memory display cache for this browser session. These rows are
 // informational only: server-side question/download/payment authorization never
 // relies on them. Explicit Sync, purchase confirmation and sign-out invalidate it.
-const accountOverviewCache = new Map<string, { entitlementRows: OwnedTrack[]; orders: Order[] }>()
+const accountOverviewCache = new Map<string, { entitlementRows: OwnedTrack[]; orders: Order[]; fetchedAt: number }>()
 if (typeof window !== 'undefined') {
   window.addEventListener('hyperion:license-server-refreshed', (event) => {
     const owner = (event as CustomEvent<{ userId?: string }>).detail?.userId
@@ -96,6 +99,9 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
   const [accountTab, setAccountTab] = useState<'licenses' | 'payments' | 'delete'>(() => params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments')
   useEffect(() => { setAccountTab(params.get('tab') === 'licenses' ? 'licenses' : params.get('tab') === 'delete' ? 'delete' : 'payments') }, [params])
   const [session, setSession] = useState<Session | null>(null)
+  const { claims: manualClaims, error: manualClaimsError, reload: reloadManualClaims } = useManualCheckoutClaims(session?.user.id)
+  const approvalRefreshRef = useRef('')
+  const pendingManualCodes = pendingManualTracks(manualClaims)
   const [sessionChecked, setSessionChecked] = useState(!supabase)
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
   const offlineAdmin = useOfflineAdminAccess(!online, session?.user.id)
@@ -383,6 +389,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     // invalidates previously displayed rows before retrieving fresh details.
     if (refreshEntitlements) await refreshCloudEntitlements()
     const ownerId = session.user.id
+    const fetchedAt = Date.now()
     const cached = refreshEntitlements ? undefined : accountOverviewCache.get(ownerId)
     if (cached) {
       const now = Date.now()
@@ -496,12 +503,23 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     combinedOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     setOrders(combinedOrders)
     if (!entitlementError && !orderResult.error) {
-      accountOverviewCache.set(ownerId, { entitlementRows, orders: combinedOrders })
+      accountOverviewCache.set(ownerId, { entitlementRows, orders: combinedOrders, fetchedAt })
     }
     }
     return quiet ? loadAccount() : withPageLoading('Loading account and licenses', loadAccount)
   }
   useEffect(() => { void refreshAccount() }, [session?.user.id, isLayout])
+  useEffect(() => {
+    if (isLayout || !online || !session?.user.id) return
+    const latestApproval = manualClaims.reduce((latest, claim) => claim.status === 'approved' && claim.reviewed_at
+      ? Math.max(latest, Date.parse(claim.reviewed_at) || 0) : latest, 0)
+    const cache = accountOverviewCache.get(session.user.id)
+    if (!cache || latestApproval <= cache.fetchedAt) return
+    const key = `${session.user.id}:${latestApproval}`
+    if (approvalRefreshRef.current === key) return
+    approvalRefreshRef.current = key
+    void refreshAccount(true, true)
+  }, [session?.user.id, manualClaims, isLayout, online])
   useEffect(() => {
     if (entitlementExpiryRevision > 0) void refreshAccount(true, false)
   }, [entitlementExpiryRevision, isLayout])
@@ -962,6 +980,8 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
         </aside>
 
         <main className="account-main">
+          {session && <ManualCheckoutNotice claims={manualClaims} />}
+          {session && manualClaimsError && <p role="alert" style={{ padding: '.6rem .75rem', border: '1px solid var(--border)' }}>{manualClaimsError}</p>}
           {isLayout ? checkoutPath && !session ? <section style={{ ...card, maxWidth: 560, margin: 0, padding: 'clamp(1rem, 4%, 1.5rem)' }} aria-labelledby="checkout-sign-in-title">
             {!sessionChecked ? <p role="status" style={{ margin: 0 }}>Checking your saved Google session…</p> : <>
               <h1 id="checkout-sign-in-title" style={{ margin: '0 0 .5rem', fontSize: 'clamp(1.3rem, 3vw, 1.6rem)' }}>Sign in to checkout</h1>
@@ -1002,13 +1022,20 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
               </p>
             </section>
           ) : session && accountTab === 'licenses' ? <>
+          {manualClaims.length > 0 && <section style={{ ...card, marginBottom: '1rem' }} aria-label="Payment request status">
+            <div className="account-panel-title">
+              <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>PAYMENT STATUS</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.12rem' }}>Payment requests</h2></div>
+              <Link className="btn btn-outline" to="/orders">VIEW HISTORY</Link>
+            </div>
+            <ManualCheckoutRequestList claims={manualClaims} limit={5} />
+          </section>}
           <section style={card}>
             <div className="account-panel-title">
               <div><div style={{ color: 'var(--accent)', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.12em' }}>YOUR LICENSES</div><h2 style={{ margin: '.2rem 0 0', fontSize: '1.25rem' }}>Active licenses</h2></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
                 <span style={{ borderRadius: 999, border: '1px solid var(--border)', padding: '.35rem .65rem', fontWeight: 850, fontSize: '.78rem' }}>{owned.length} active</span>
                 <button type="button" className="btn btn-outline" style={{ padding: '.35rem .7rem', minHeight: 38, fontSize: '.78rem' }}
-                  onClick={() => void withPageLoading('Syncing licenses', () => refreshAccount(false, true))}>
+                  onClick={() => { reloadManualClaims(); void withPageLoading('Syncing licenses', () => refreshAccount(false, true)) }}>
                   Sync licenses
                 </button>
               </div>
@@ -1099,7 +1126,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                   const basketItem = basket.find(entry => entry.code === item.code)
                   const inBasket = Boolean(basketItem)
                   const selectedTerm = selectedTerms[item.code]
-                  const manualPending = orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
+                  const manualPending = pendingManualCodes.has(item.code) || orders.some(order => order.product_code === item.code && ['submitted','pending'].includes(order.status) && order.payment_method !== 'PayMongo Checkout')
                   const paymongoPending = pendingPayMongoOrders.some(order => order.product_code === item.code)
                   return <div className="account-product-slot" key={item.code}>
                     <article className={`account-product-card bond-store-card${expandedStorePerks === item.code ? ' perks-expanded' : ''}`} aria-label={`${item.label} reviewer plan`}>
@@ -1109,7 +1136,7 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                         lifetimeSelected={isLifetime}
                         onLifetimeSelect={() => setSelectedLifetime(old => ({ ...old, [item.code]: true }))}
                         term={selectedTerm}
-                        disabled={busy || alreadyLifetime}
+                        disabled={busy || alreadyLifetime || manualPending}
                         termOptionsDisabled={isGooglePlayOwned || manualPending}
                         onTermChange={newTerm => {
                           setSelectedTerms(old => ({ ...old, [item.code]: newTerm }))
@@ -1119,15 +1146,15 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
                         benefitsId={`store-benefits-${item.code}`}
                         onToggleBenefits={() => setExpandedStorePerks(current => current === item.code ? null : item.code)}
                       />
-                    <span className="product-status" style={isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : !isLifetime && inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>
-                      {alreadyLifetime ? '✓ LIFETIME OWNED' : isLifetime ? (pendingLifetime ? 'LIFETIME CHECKOUT OPEN' : 'NO EXPIRATION') : isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : manualPending ? 'MANUAL REVIEW PENDING' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}
+                    <span className="product-status" style={manualPending ? { color: 'var(--accent)', borderColor: 'var(--accent)' } : isOwned ? { color: 'var(--success, #15803d)', borderColor: '#86cba0' } : !isLifetime && inBasket ? { color: 'var(--accent)', borderColor: 'rgba(34,197,94,.5)', background: 'rgba(34,197,94,.1)' } : undefined}>
+                      {alreadyLifetime ? '✓ LIFETIME OWNED' : manualPending ? 'PENDING VERIFICATION' : isLifetime ? (pendingLifetime ? 'LIFETIME CHECKOUT OPEN' : 'NO EXPIRATION') : isOwned ? '✓ LICENSE ACTIVE' : inBasket ? '✓ IN YOUR BASKET' : paymongoPending ? 'CHECKOUT ALREADY OPEN' : 'AVAILABLE'}
                     </span>
                     <button type="button" className="btn btn-primary store-buy-button"
-                      disabled={!canBuyOnWebsite || !sessionChecked || busy || alreadyLifetime || (!isLifetime && (isGooglePlayOwned || manualPending))}
+                      disabled={!canBuyOnWebsite || !sessionChecked || busy || alreadyLifetime || manualPending || (!isLifetime && isGooglePlayOwned)}
                       onClick={() => isLifetime ? buyLifetime(item.code) : buyNow(item.code, selectedTerm)}>
-                      {alreadyLifetime ? 'LIFETIME OWNED' : isLifetime
+                      {alreadyLifetime ? 'LIFETIME OWNED' : manualPending ? 'PENDING VERIFICATION' : isLifetime
                         ? 'BUY NOW'
-                        : isGooglePlayOwned ? 'GOOGLE PLAY ACTIVE' : manualPending ? 'AWAITING REVIEW' : isOwned ? 'EXTEND LICENSE' : 'BUY NOW'}
+                        : isGooglePlayOwned ? 'GOOGLE PLAY ACTIVE' : isOwned ? 'EXTEND LICENSE' : 'BUY NOW'}
                     </button>
                     {isLifetime && !alreadyLifetime && <>
                       {pendingLifetime && <button type="button" className="btn btn-outline store-lifetime-cancel" disabled={busy}

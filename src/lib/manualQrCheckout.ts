@@ -22,10 +22,6 @@ export type ManualCheckoutItem = {
   amountPhp: number
 }
 
-const termNames: Record<ManualCheckoutTerm, string> = {
-  week: 'Weekly', month: 'Monthly', year: 'Yearly', lifetime: 'Lifetime',
-}
-
 export function parseManualCheckoutItems(raw: string | null, products: readonly PricedProduct[]): ManualCheckoutItem[] {
   const selected = new Set<string>()
   const items: ManualCheckoutItem[] = []
@@ -48,20 +44,4 @@ export function parseManualCheckoutItems(raw: string | null, products: readonly 
     })
   }
   return items
-}
-
-export function formatMessengerPaymentDetails(email: string, items: readonly ManualCheckoutItem[], claimId?: string): string {
-  const total = items.reduce((sum, item) => sum + item.amountPhp, 0)
-  return [
-    'Hyperion Maritime - Payment Verification',
-    ...(claimId ? [`Submission ID: ${claimId}`] : []),
-    `Account email: ${email}`,
-    '',
-    'Purchased:',
-    ...items.map(item => `${item.label} (${termNames[item.term]}): PHP ${item.amountPhp.toFixed(2)}`),
-    `Total amount: PHP ${total.toFixed(2)}`,
-    '',
-    ...(claimId ? ['Status: Pending verification (NOT payment confirmation).'] : []),
-    'I have attached my payment receipt. Please verify my payment and activate the selected licenses.',
-  ].join('\n')
 }
