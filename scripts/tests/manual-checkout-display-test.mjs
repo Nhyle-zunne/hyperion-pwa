@@ -74,7 +74,8 @@ test('new checkouts can exclude already pending tracks without blocking differen
   assert.match(basket,/pendingManualTracks/)
   assert.match(basket,/disabled=\{busy \|\| manualClaimsLoading \|\|/)
   assert.match(account,/pendingManualCodes/)
-  assert.match(qr,/BUY A DIFFERENT TRACK/)
+  assert.match(qr,/CHANGE REVIEWER DURATION/)
+  assert.doesNotMatch(qr,/BUY A DIFFERENT TRACK|OPEN MESSENGER AGAIN/)
 })
 
 test('request history keeps an older unresolved purchase even when 50 newer requests exist', async () => {

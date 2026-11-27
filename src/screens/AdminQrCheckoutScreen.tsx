@@ -4,10 +4,12 @@ import { PAID_PRODUCTS, supabase } from '../lib/supabase'
 import { BANK_TRANSFER, parseManualCheckoutItems } from '../lib/manualQrCheckout'
 import type { ManualCheckoutTerm } from '../lib/manualQrCheckout'
 import { isOpenManualClaim } from '../lib/manualCheckoutClaims'
+import type { ManualClaimStatus } from '../lib/manualCheckoutClaims'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import { refreshWebsiteCheckoutAvailability, useWebsiteCheckoutAvailability } from '../hooks/useWebsiteCheckoutAvailability'
 import { PWA_PURCHASE_PAUSE_NOTICE } from '../lib/pwaPurchaseAvailability'
 import './AdminQrCheckoutScreen.css'
+import '../components/ManualCheckoutStatus.css'
 
 const messengerUrl = 'https://m.me/HyperionMaritime'
 const facebookPageUrl = 'https://www.facebook.com/HyperionMaritime/'
@@ -28,7 +30,7 @@ export default function AdminQrCheckoutScreen() {
   const [bankCopyStatus, setBankCopyStatus] = useState('')
   const [signingIn, setSigningIn] = useState(false)
   const [signInError, setSignInError] = useState('')
-  const [readiness, setReadiness] = useState<{ userId: string; selection: string | null; status: 'ready' | 'pending' | 'blocked' | 'error'; reason?: string; pendingClaim?: { id: string; items: { label: string; term: ManualCheckoutTerm }[] } }>()
+  const [readiness, setReadiness] = useState<{ userId: string; selection: string | null; status: 'ready' | 'pending' | 'blocked' | 'error'; reason?: string; pendingClaim?: { id: string; status: ManualClaimStatus; items: { label: string; term: ManualCheckoutTerm }[] } }>()
   const [checkRevision, setCheckRevision] = useState(0)
   const checkoutIdentityRef = useRef('')
   const access = useAdminCheckoutAccess(userId)
@@ -115,7 +117,7 @@ export default function AdminQrCheckoutScreen() {
           : pendingOrders.data?.length || failedProviderSessions.data?.length || pendingLifetimeOrders.data?.length
             ? 'Resolve the earlier unresolved payment for this track before making another transfer.' : undefined
         setReadiness({ userId, selection: itemQuery, status: failed ? 'error' : overlappingClaim ? 'pending' : reason ? 'blocked' : 'ready', reason,
-          pendingClaim: overlappingClaim ? { id: overlappingClaim.id, items: overlappingClaim.items as {label: string; term: ManualCheckoutTerm}[] } : undefined })
+          pendingClaim: overlappingClaim ? { id: overlappingClaim.id, status: overlappingClaim.status as ManualClaimStatus, items: overlappingClaim.items as {label: string; term: ManualCheckoutTerm}[] } : undefined })
       } catch {
         if (active) setReadiness({ userId, selection: itemQuery, status: 'error' })
       }
@@ -153,7 +155,7 @@ export default function AdminQrCheckoutScreen() {
       }
       if (data.totalAmountPhp !== totalPhp) throw new Error('Price verification failed. Do not transfer funds; refresh checkout.')
       setClaimId(data.id)
-      setReadiness({ userId, selection: itemQuery, status: 'pending', pendingClaim: { id: data.id, items } })
+      setReadiness({ userId, selection: itemQuery, status: 'pending', pendingClaim: { id: data.id, status: data.status === 'pending_verification' ? 'pending_verification' : 'awaiting_proof', items } })
       if (messengerTab && !messengerTab.closed) {
         try {
           messengerTab.location.replace(messengerUrl)
@@ -284,10 +286,11 @@ export default function AdminQrCheckoutScreen() {
           <div><strong>Reviewer track:</strong> {readiness.pendingClaim.items.map(item => item.label).join(', ')}</div>
         </div>}
         <p className="qr-checkout-account-email"><strong>Your account email:</strong> {email}</p>
-        <button type="button" className="btn btn-primary qr-checkout-messenger" disabled>SUBMIT PAYMENT PROOF</button>
-        <a className="btn btn-outline qr-checkout-copy" href={messengerUrl} target="_blank" rel="noopener noreferrer">OPEN MESSENGER AGAIN</a>
-        <Link className="btn btn-outline" to="/account?tab=payments">BUY A DIFFERENT TRACK</Link>
-        <Link className="qr-checkout-history-link" to="/orders">VIEW PAYMENT HISTORY</Link>
+        <div className="manual-checkout-actions qr-checkout-pending-actions">
+          <Link to="/orders">VIEW PAYMENT HISTORY</Link>
+          <a href={messengerUrl} target="_blank" rel="noopener noreferrer">OPEN MESSENGER</a>
+          {readiness?.pendingClaim?.status === 'awaiting_proof' && <Link to={`/account?tab=payments&switchClaim=${encodeURIComponent(readiness.pendingClaim.id)}`}>CHANGE REVIEWER DURATION</Link>}
+        </div>
       </>}
       {paymentStatus === 'error' && <button type="button" className="btn btn-outline" onClick={() => setCheckRevision(value => value + 1)}>RETRY PAYMENT CHECK</button>}
     </section> : <div className="qr-checkout-grid">
