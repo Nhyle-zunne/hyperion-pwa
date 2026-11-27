@@ -48,7 +48,7 @@ test('bank transfer copy text contains the exact receiving account supplied by H
   })
 })
 
-test('checkout keeps the supplied QR-only Hyperion image byte-for-byte', () => {
+test('checkout keeps the supplied Hyperion Maritime QR image byte-for-byte', () => {
   const qrImage = readFileSync(new URL('../../public/qr-ph.png', import.meta.url))
-  assert.equal(createHash('sha256').update(qrImage).digest('hex'), '806683055bed9e87124692566bf1d1150dbc4b03d32503767a78035d76626afe')
+  assert.equal(createHash('sha256').update(qrImage).digest('hex'), 'f874612442151198a3f7e950917fbd8445cdc686c5d310be964ff1a0e975e5ea')
 })
