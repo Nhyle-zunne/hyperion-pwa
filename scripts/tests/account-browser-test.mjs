@@ -1359,13 +1359,18 @@ try {
         const box = link.getBoundingClientRect()
         return { y: box.y, width: box.width, height: box.height, fits: link.scrollWidth <= link.clientWidth + 1 && link.scrollHeight <= link.clientHeight + 1 }
       }))
-      assert.equal(boxes.length, 4, 'All four admin sections appear in navigation')
-      const columns = width <= 760 ? 2 : 4
+      assert.equal(boxes.length, 5, 'All five admin sections appear in navigation')
+      const columns = width <= 760 ? 2 : 5
       for (const [index, box] of boxes.entries()) {
         const firstInRow = boxes[Math.floor(index / columns) * columns]
         assert(Math.abs(box.y - firstInRow.y) < .5, `Admin sections align within each row at ${width}px`)
-        if (index >= columns) assert(box.y >= boxes[0].y + boxes[0].height, `Mobile admin sections form a second row at ${width}px`)
-        assert(Math.abs(box.width - boxes[0].width) < .5 && Math.abs(box.height - boxes[0].height) < .5, 'Admin section buttons have equal sizes')
+        if (index >= columns) assert(box.y >= boxes[0].y + boxes[0].height, `Wrapped admin sections move to a later row at ${width}px`)
+        if (width <= 760 && index === boxes.length - 1) {
+          assert(box.width > boxes[0].width, 'The last mobile admin section fills its own row')
+        } else {
+          assert(Math.abs(box.width - boxes[0].width) < .5, 'Admin section buttons share equal column widths')
+        }
+        assert(Math.abs(box.height - boxes[0].height) < .5, 'Admin section buttons share equal heights')
         assert(box.height >= 44 && box.fits, 'Admin section labels fit inside accessible touch targets')
       }
       if (previousHeight !== null) assert(Math.abs(previousHeight - boxes[0].height) < .5, `Changing admin sections preserves navigation height at ${width}px ${label}: ${previousHeight} vs ${boxes[0].height}`)
