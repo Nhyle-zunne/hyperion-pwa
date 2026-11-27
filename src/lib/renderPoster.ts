@@ -126,6 +126,7 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   let fadeStart: number
   let fadeEnd: number
   let shoulderBottom = 0
+  let leftFeatherStart = 700
   if (frame) {
     const placement = posterPortraitPlacement(frame.headWidth, scale, xOffset)
     const portraitScale = placement.scale
@@ -159,8 +160,11 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
       layerCtx.drawImage(portrait, left, top, width, portrait.naturalHeight * portraitScale)
     }
   } else {
-    const width = Math.min(506 * scale, 435)
-    const left = Math.max(811, Math.min(1020 + xOffset - width / 2, 1246 - width))
+    const width = Math.min(506 * scale, 435 * Math.max(1, scale))
+    const defaultCenter = Math.max(1020, 811 + Math.min(width, 435) / 2)
+    const center = Math.max(930, Math.min(1140, defaultCenter + xOffset))
+    const left = center - width / 2
+    leftFeatherStart = Math.max(leftFeatherStart, left)
     const height = portrait.naturalHeight * width / portrait.naturalWidth
     const y = 246 + yOffset
     layerCtx.drawImage(portrait, left, y, width, height)
@@ -181,9 +185,7 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   }
 
   layerCtx.globalCompositeOperation = 'destination-in'
-  const sideFade = frame
-    ? layerCtx.createLinearGradient(700, 0, 752, 0)
-    : layerCtx.createLinearGradient(798, 0, 811, 0)
+  const sideFade = layerCtx.createLinearGradient(leftFeatherStart, 0, leftFeatherStart + 52, 0)
   addPortraitFeather(sideFade, true)
   layerCtx.fillStyle = sideFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
@@ -202,8 +204,9 @@ function drawPortrait(ctx: CanvasRenderingContext2D, portrait: HTMLImageElement,
   addPortraitFeather(cornerFade, false)
   layerCtx.fillStyle = cornerFade
   layerCtx.fillRect(0, 0, ART_SIZE, ART_SIZE)
-  if (frame) clearExamText(layerCtx, examLines)
+  clearExamText(layerCtx, examLines)
   ctx.drawImage(layer, 0, 0)
+  return layer
 }
 
 function drawPosterDividers(ctx: CanvasRenderingContext2D) {
@@ -290,8 +293,9 @@ export function renderPoster(canvas: HTMLCanvasElement, artwork: PosterArtwork, 
   ctx.drawImage(artwork.background, 0, 0, ART_SIZE, ART_SIZE)
   drawPosterDividers(ctx)
   const portrait = data.portrait
+  let portraitLayer: HTMLCanvasElement | undefined
   drawFittedText(ctx, data.track.examTitle, { ...POSTER_TEXT_LAYOUT.exam, family: 'Impact, "Arial Narrow", "Nimbus Sans Narrow", sans-serif', color: '#071d43', weight: 'bold' },
-    portrait ? lines => drawPortrait(ctx, portrait, data, lines) : undefined)
+    portrait ? lines => { portraitLayer = drawPortrait(ctx, portrait, data, lines) } : undefined)
 
   const name = fullPosterName(data.track.id, data.name).toUpperCase()
   drawFittedText(ctx, name, { ...POSTER_TEXT_LAYOUT.name, family: 'Georgia, serif', color: '#ffffff', weight: 'bold' })
@@ -305,6 +309,7 @@ export function renderPoster(canvas: HTMLCanvasElement, artwork: PosterArtwork, 
   const closingHeight = closingWidth * artwork.closingMessage.naturalHeight / artwork.closingMessage.naturalWidth
   ctx.drawImage(artwork.closingMessage, 96, 975, closingWidth, closingHeight)
   drawFooter(ctx)
+  return portraitLayer
 }
 
 export function downloadPoster(canvas: HTMLCanvasElement, name: string) {

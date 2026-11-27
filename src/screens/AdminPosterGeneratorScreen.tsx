@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import AdminNavigation from '../components/AdminNavigation'
 import { useOfflineAdminAccess, useOnlineStatus } from '../hooks/useOfflineAdminAccess'
+import { usePosterPortraitGestures } from '../hooks/usePosterPortraitGestures'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import { supabase } from '../lib/supabase'
 import { POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
@@ -8,6 +9,8 @@ import type { PortraitFrame } from '../lib/posterAlpha.mjs'
 import { preparePortraitAssets, removePortraitBackground } from '../lib/posterPortrait'
 import { downloadPoster, loadPosterArtwork, renderPoster, type PosterArtwork } from '../lib/renderPoster'
 import './AdminPosterGeneratorScreen.css'
+
+const DEFAULT_POSITION = { scalePercent: 100, xOffsetPercent: 0, yOffsetPercent: 0 }
 
 function localDate() {
   const date = new Date()
@@ -37,10 +40,10 @@ export default function AdminPosterGeneratorScreen() {
   const [photoStatus, setPhotoStatus] = useState('Upload a candidate portrait to remove its background automatically.')
   const [photoBusy, setPhotoBusy] = useState(false)
   const [renderError, setRenderError] = useState('')
-  const [scalePercent, setScalePercent] = useState(100)
-  const [xOffsetPercent, setXOffsetPercent] = useState(0)
-  const [yOffsetPercent, setYOffsetPercent] = useState(0)
+  const [position, setPosition] = useState(DEFAULT_POSITION)
+  const { scalePercent, xOffsetPercent, yOffsetPercent } = position
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const portraitLayerRef = useRef<HTMLCanvasElement | null>(null)
   const photoRequestRef = useRef(0)
   const objectUrlsRef = useRef<string[]>([])
 
@@ -86,15 +89,17 @@ export default function AdminPosterGeneratorScreen() {
 
   const portrait = useOriginal ? originalPhoto : cutoutPhoto?.image || originalPhoto
   const portraitFrame = useOriginal ? undefined : cutoutPhoto?.frame
+  const gestures = usePosterPortraitGestures(canvasRef, portraitLayerRef,
+    Boolean(access.allowed && artwork && portrait && !photoBusy && !renderError), position, setPosition)
   useEffect(() => {
     if (!artwork || !canvasRef.current || !access.allowed) return
     try {
-      renderPoster(canvasRef.current, artwork, { track, name, date, school, company, portrait, portraitFrame, scalePercent, xOffsetPercent, yOffsetPercent })
+      portraitLayerRef.current = renderPoster(canvasRef.current, artwork, { track, name, date, school, company, portrait, portraitFrame, ...position }) ?? null
       setRenderError('')
     } catch (error) {
       setRenderError(error instanceof Error ? error.message : 'Could not render the poster.')
     }
-  }, [artwork, access.allowed, track, name, date, school, company, portrait, portraitFrame, scalePercent, xOffsetPercent, yOffsetPercent])
+  }, [artwork, access.allowed, track, name, date, school, company, portrait, portraitFrame, position])
 
   async function loadPhoto(blob: Blob) {
     const url = URL.createObjectURL(blob)
@@ -108,13 +113,12 @@ export default function AdminPosterGeneratorScreen() {
   }
 
   function resetPhotoPosition() {
-    setScalePercent(100)
-    setXOffsetPercent(0)
-    setYOffsetPercent(0)
+    setPosition(DEFAULT_POSITION)
   }
 
   async function handlePhoto(file: File) {
     const request = ++photoRequestRef.current
+    gestures.select(false)
     setOriginalPhoto(null)
     setCutoutPhoto(null)
     setUseOriginal(false)
@@ -137,7 +141,7 @@ export default function AdminPosterGeneratorScreen() {
       const cutout = await loadPhoto(blob)
       if (request !== photoRequestRef.current) return
       setCutoutPhoto({ image: cutout, frame })
-      setPhotoStatus('Background removed and portrait positioned. Adjust the sliders if needed.')
+      setPhotoStatus('Background removed and portrait positioned. Adjust it in the preview or use the sliders.')
     } catch {
       if (request === photoRequestRef.current) setPhotoStatus('Automatic removal was unavailable. The original photo is still available. Check your connection and try another photo.')
     } finally {
@@ -193,18 +197,34 @@ export default function AdminPosterGeneratorScreen() {
 
         <div className="admin-poster__sliders">
           <label htmlFor="poster-scale">Portrait size <output>{scalePercent}%</output></label>
-          <input id="poster-scale" type="range" min="70" max="140" step="5" value={scalePercent} onChange={event => setScalePercent(Number(event.target.value))} />
+          <input id="poster-scale" type="range" min="70" max="140" step="1" value={scalePercent} onChange={event => setPosition({ ...position, scalePercent: Number(event.target.value) })} />
           <label htmlFor="poster-horizontal">Move horizontally <output>{xOffsetPercent > 0 ? '+' : ''}{xOffsetPercent}%</output></label>
-          <input id="poster-horizontal" type="range" min="-16" max="16" step="1" value={xOffsetPercent} onChange={event => setXOffsetPercent(Number(event.target.value))} />
+          <input id="poster-horizontal" type="range" min="-16" max="16" step="1" value={xOffsetPercent} onChange={event => setPosition({ ...position, xOffsetPercent: Number(event.target.value) })} />
           <label htmlFor="poster-vertical">Move vertically <output>{yOffsetPercent > 0 ? '+' : ''}{yOffsetPercent}%</output></label>
-          <input id="poster-vertical" type="range" min="-13" max="13" step="1" value={yOffsetPercent} onChange={event => setYOffsetPercent(Number(event.target.value))} />
+          <input id="poster-vertical" type="range" min="-13" max="13" step="1" value={yOffsetPercent} onChange={event => setPosition({ ...position, yOffsetPercent: Number(event.target.value) })} />
           <button type="button" className="btn btn-outline" onClick={resetPhotoPosition}>RESET PHOTO POSITION</button>
         </div>
       </div>
 
-      <aside className="admin-poster__preview">
+      <aside className="admin-poster__preview"
+        onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) gestures.select(false) }}
+        onKeyDown={event => { if (event.key === 'Escape' && gestures.active) gestures.select(false) }}>
         <div className="admin-poster__preview-heading"><h2>LIVE PREVIEW</h2><span>Square 2048 × 2048 PNG</span></div>
-        <canvas ref={canvasRef} className="admin-poster__canvas" role="img" aria-label="Hyperion congratulatory poster preview" />
+        {portrait && !photoBusy && <div className="admin-poster__portrait-tools">
+          <button type="button" className="btn btn-outline" aria-pressed={gestures.active}
+            disabled={!artwork || Boolean(renderError)} onClick={() => gestures.select(!gestures.active)}>
+            Adjust portrait in preview
+          </button>
+          <p id="poster-gesture-help" className="admin-poster__hint">
+            {gestures.active ? 'Drag to move. Scroll or pinch to resize.' : 'Click or tap the portrait to select it.'}
+          </p>
+        </div>}
+        <canvas ref={canvasRef} className={`admin-poster__canvas${gestures.active ? ' admin-poster__canvas--editing' : ''}`}
+          tabIndex={gestures.active ? 0 : -1} role="img" aria-label="Hyperion congratulatory poster preview"
+          aria-describedby={portrait && !photoBusy ? 'poster-gesture-help' : undefined}
+          onPointerDown={gestures.onPointerDown} onPointerMove={gestures.onPointerMove}
+          onPointerUp={gestures.endPointer} onPointerCancel={gestures.endPointer}
+          onLostPointerCapture={gestures.endPointer} />
         {renderError && <p role="alert" className="admin-poster__error">{renderError}</p>}
         <button type="button" className="btn btn-primary admin-poster__download" disabled={!canDownload} onClick={() => { if (canvasRef.current) downloadPoster(canvasRef.current, fullPosterName(trackId, name)) }}>
           DOWNLOAD POSTER PNG
