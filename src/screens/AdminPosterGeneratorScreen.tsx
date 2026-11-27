@@ -5,6 +5,7 @@ import { usePosterPortraitGestures } from '../hooks/usePosterPortraitGestures'
 import { useAdminCheckoutAccess } from '../hooks/useAdminCheckoutAccess'
 import { supabase } from '../lib/supabase'
 import { POSTER_TRACKS, formatPosterDate, fullPosterName } from '../lib/posterTracks.mjs'
+import { createPosterCaption, POSTER_CAPTION_STYLES } from '../lib/posterCaptions.mjs'
 import type { PortraitFrame } from '../lib/posterAlpha.mjs'
 import { preparePortraitAssets, removePortraitBackground } from '../lib/posterPortrait'
 import { downloadPoster, loadPosterArtwork, renderPoster, type PosterArtwork } from '../lib/renderPoster'
@@ -33,6 +34,10 @@ export default function AdminPosterGeneratorScreen() {
   const [date, setDate] = useState(localDate)
   const [school, setSchool] = useState('')
   const [company, setCompany] = useState('')
+  const [captionStyle, setCaptionStyle] = useState(0)
+  const [captionStatus, setCaptionStatus] = useState<{ caption: string; message: string } | null>(null)
+  const caption = createPosterCaption(trackId, captionStyle, { name, date, school, company })
+  const captionRef = useRef<HTMLTextAreaElement>(null)
   const [artwork, setArtwork] = useState<PosterArtwork | null>(null)
   const [originalPhoto, setOriginalPhoto] = useState<HTMLImageElement | null>(null)
   const [cutoutPhoto, setCutoutPhoto] = useState<{ image: HTMLImageElement; frame: PortraitFrame } | null>(null)
@@ -149,6 +154,17 @@ export default function AdminPosterGeneratorScreen() {
     }
   }
 
+  async function copyCaption() {
+    try {
+      await navigator.clipboard.writeText(caption)
+      setCaptionStatus({ caption, message: 'Caption copied.' })
+    } catch {
+      captionRef.current?.focus({ preventScroll: true })
+      captionRef.current?.select()
+      setCaptionStatus({ caption, message: 'Use your device’s copy command to copy the selected caption.' })
+    }
+  }
+
   const canDownload = Boolean(access.allowed && artwork && name.trim() && school.trim() && formatPosterDate(date) && portrait && !photoBusy && !renderError)
 
   if ((online && !authReady) || !access.checked) return <section className="screen admin-poster"><p role="status">Checking administrator access...</p></section>
@@ -204,6 +220,19 @@ export default function AdminPosterGeneratorScreen() {
           <input id="poster-vertical" type="range" min="-13" max="13" step="1" value={yOffsetPercent} onChange={event => setPosition({ ...position, yOffsetPercent: Number(event.target.value) })} />
           <button type="button" className="btn btn-outline" onClick={resetPhotoPosition}>RESET PHOTO POSITION</button>
         </div>
+
+        <h2>CONGRATULATORY POST</h2>
+        <label htmlFor="poster-caption-style">Caption style</label>
+        <select id="poster-caption-style" value={captionStyle} onChange={event => setCaptionStyle(Number(event.target.value))}>
+          {POSTER_CAPTION_STYLES.map((style, index) => <option value={index} key={style}>{style}</option>)}
+        </select>
+        <label htmlFor="poster-caption">Caption</label>
+        <textarea id="poster-caption" ref={captionRef} rows={7} readOnly value={caption}
+          placeholder="Enter the candidate’s name to generate a caption." />
+        <button type="button" className="btn btn-outline admin-poster__copy-caption" disabled={!caption} onClick={() => void copyCaption()}>
+          Copy caption
+        </button>
+        <p className="admin-poster__hint" role="status">{captionStatus?.caption === caption ? captionStatus.message : ''}</p>
       </div>
 
       <aside className="admin-poster__preview"
