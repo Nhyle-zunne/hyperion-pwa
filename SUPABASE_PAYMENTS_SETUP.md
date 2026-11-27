@@ -1,11 +1,11 @@
 # Hyperion website payments: current flow and historical recovery
 
-As of November 25, 2026, new website purchases use **QR Ph or BPI/VYBE InstaPay bank transfer** and manual administrator verification. There is **no new hosted PayMongo checkout**. The Android app continues to use Google Play Billing independently.
+As of November 27, 2026, new website purchases use **QR Ph or MariBank InstaPay bank transfer** and manual administrator verification. There is **no new hosted PayMongo checkout**. The Android app continues to use Google Play Billing independently.
 
 ## Current customer checkout
 
 1. Sign in with Google and select the desired tracks and duration in the Bond Store.
-2. Open Checkout. Scan/save the official QR Ph image or copy the BPI/VYBE bank details and transfer the exact amount. For bank transfers, **use InstaPay, never PESONet** for faster confirmation.
+2. Open Checkout. Scan/save the official QR Ph image or copy the MariBank bank details and transfer the exact amount. For bank transfers, **use InstaPay, never PESONet** for faster confirmation.
 3. Tap **COPY DETAILS & OPEN MESSENGER**. The signed-in account creates/reuses one **awaiting proof** claim with a submission ID and server-verified items/total. Paste the copied details and attach the receipt in Messenger (or identify yourself with your signed-in Google email and receipt).
 4. An administrator matches the receipt in Messenger and independently verifies the actual incoming bank transfer before clicking **Approve & unlock** once. The server records the internal proof-received stage and completes the verified license grant; no separate admin click is needed. A claim or screenshot alone is not proof of payment. Allow **24–48 hours** for activation, then contact the Hyperion Facebook page if a follow-up is needed.
 

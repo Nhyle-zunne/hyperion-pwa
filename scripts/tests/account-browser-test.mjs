@@ -567,14 +567,15 @@ try {
   assert.equal(await saveQr.getAttribute('download'), 'hyperion-qr-ph.png', 'QR image saves with a meaningful filename')
   await adminQrPage.waitForFunction(() => {
     const qr = document.querySelector('.qr-checkout-image-wrap img')
-    return qr?.complete && qr.naturalWidth === 380 && qr.naturalHeight === 377
+    return qr?.complete && qr.naturalWidth === 1024 && qr.naturalHeight === 1024
   })
   const downloadedQr = adminQrPage.waitForEvent('download')
   await saveQr.click()
   assert.equal((await downloadedQr).suggestedFilename(), 'hyperion-qr-ph.png', 'The overlay icon downloads the original QR file')
   assert.equal(await adminQrPage.getByRole('button', { name: 'Bank transfer' }).count(), 0, 'QR and bank details appear together without tabs')
-  assert.equal(await adminQrPage.locator('.qr-checkout-bank dl > div').nth(1).locator('dd').innerText(), 'Hyperion')
-  assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI \/ VYBE by BPI.*4309192465/s)
+  assert.equal(await adminQrPage.locator('.qr-checkout-bank dl > div').nth(1).locator('dd').innerText(), 'HYPERION MARITIME')
+  assert.match(await adminQrPage.locator('.qr-checkout-bank').innerText(), /MARIBANK PHILIPPINES INC\..*14075599602/s)
+  assert.doesNotMatch(await adminQrPage.locator('.qr-checkout-bank').innerText(), /BPI/i)
   assert.match(await adminQrPage.locator('.qr-checkout-transfer-notice').filter({ hasText: 'Use InstaPay only' }).innerText(), /Use InstaPay only\. Never use PESONet\./)
   const activationNotice = adminQrPage.locator('.qr-checkout-activation-notice')
   assert.match(await activationNotice.innerText(), /allow 24–48 hours.*verification and license activation.*after 48 hours/s,
@@ -662,11 +663,11 @@ try {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedBankDetails = text } } })
   })
   await adminQrPage.getByRole('button', { name: 'Copy bank', exact: true }).click()
-  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'BPI / VYBE by BPI')
+  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'MARIBANK PHILIPPINES INC.')
   await adminQrPage.getByRole('button', { name: 'Copy account name', exact: true }).click()
-  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'Hyperion')
+  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), 'HYPERION MARITIME')
   await adminQrPage.getByRole('button', { name: 'Copy account number', exact: true }).click()
-  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '4309192465')
+  assert.equal(await adminQrPage.evaluate(() => window.copiedBankDetails), '14075599602')
   await adminQrPage.context().route('https://m.me/**', route => route.fulfill({ contentType: 'text/html', body: 'Synthetic Messenger page' }))
   const checkoutUrl = adminQrPage.url()
   const messengerPopupPromise = adminQrPage.waitForEvent('popup')

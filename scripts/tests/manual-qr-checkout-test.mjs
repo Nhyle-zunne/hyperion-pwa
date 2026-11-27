@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { PNG } from 'pngjs'
 import { BANK_TRANSFER, formatMessengerPaymentDetails, parseManualCheckoutItems } from '../../src/lib/manualQrCheckout.ts'
+import { decodeQrPixels } from '../../src/lib/qrImageEditor.mjs'
+import { listQrPhDataFields } from '../../src/lib/qrPhNameEditor.mjs'
 
 const products = [
   { code: 'oic_nw', label: 'Deck OIC-NW', weeklyPrice: 29, monthlyPrice: 79, annualPrice: 499, lifetimePrice: 999 },
@@ -42,13 +45,21 @@ test('Messenger text is copyable with exact email, tracks, durations, and total 
 
 test('bank transfer copy text contains the exact receiving account supplied by Hyperion', () => {
   assert.deepEqual(BANK_TRANSFER, {
-    bank: 'BPI / VYBE by BPI',
-    accountName: 'Hyperion',
-    accountNumber: '4309192465',
+    bank: 'MARIBANK PHILIPPINES INC.',
+    accountName: 'HYPERION MARITIME',
+    accountNumber: '14075599602',
   })
 })
 
-test('checkout keeps the supplied QR-only Hyperion image byte-for-byte', () => {
+test('checkout keeps the supplied Hyperion Maritime QR image byte-for-byte', () => {
   const qrImage = readFileSync(new URL('../../public/qr-ph.png', import.meta.url))
-  assert.equal(createHash('sha256').update(qrImage).digest('hex'), '806683055bed9e87124692566bf1d1150dbc4b03d32503767a78035d76626afe')
+  assert.equal(createHash('sha256').update(qrImage).digest('hex'), 'f874612442151198a3f7e950917fbd8445cdc686c5d310be964ff1a0e975e5ea')
+})
+
+test('QR payment recipient and account number match the displayed bank details', () => {
+  const qrImage = PNG.sync.read(readFileSync(new URL('../../public/qr-ph.png', import.meta.url)))
+  const data = decodeQrPixels({ data: new Uint8ClampedArray(qrImage.data), width: qrImage.width, height: qrImage.height })
+  const fields = listQrPhDataFields(data)
+  assert.equal(fields.find(field => field.tag === '59')?.value, BANK_TRANSFER.accountName)
+  assert.equal(fields.find(field => field.tag === '27.04')?.value, BANK_TRANSFER.accountNumber)
 })

@@ -312,7 +312,7 @@ export default function AdminQrCheckoutScreen() {
         <div className="qr-checkout-payment-options">
           <div className="qr-checkout-qr-content">
             <div className="qr-checkout-image-wrap">
-              <img src="/qr-ph.png" alt="Hyperion's official BPI QR Ph payment code" width="380" height="377" />
+              <img src="/qr-ph.png" alt="Hyperion Maritime QR Ph payment code" width="1024" height="1024" />
               <a className="qr-checkout-download" href="/qr-ph.png" download="hyperion-qr-ph.png" aria-label="Download QR Ph image" title="Download QR Ph image">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M12 3v12m-5-5 5 5 5-5M4 17v3h16v-3" />
@@ -322,7 +322,7 @@ export default function AdminQrCheckoutScreen() {
             <p className="qr-checkout-note">Scan this QR Ph image or download it to pay in your bank app.</p>
           </div>
           <div className="qr-checkout-bank" aria-label="Bank transfer details">
-            <p>Or transfer directly to this BPI account:</p>
+            <p>Or transfer directly to this bank account:</p>
             <dl>
               <div><dt>Bank</dt><dd>{BANK_TRANSFER.bank}</dd><button type="button" className="qr-checkout-bank-copy" aria-label="Copy bank" onClick={() => void copyBank(BANK_TRANSFER.bank, 'Bank')}>Copy</button></div>
               <div><dt>Account name</dt><dd>{BANK_TRANSFER.accountName}</dd><button type="button" className="qr-checkout-bank-copy" aria-label="Copy account name" onClick={() => void copyBank(BANK_TRANSFER.accountName, 'Account name')}>Copy</button></div>
