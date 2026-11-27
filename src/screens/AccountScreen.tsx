@@ -182,12 +182,6 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
     return () => { active = false }
   }, [hasSavedOfflineAccess, licenseOwnerId, entitlementExpiryRevision])
   useEffect(() => {
-    if (hasSavedOfflineAccess && pathname === '/account' && !params.has('tab')) {
-      setAccountTab('licenses')
-    }
-  }, [hasSavedOfflineAccess, pathname, params])
-
-  useEffect(() => {
     // Checkout owns cart persistence when this screen supplies only the profile layout.
     if (isLayout) return
     try {
