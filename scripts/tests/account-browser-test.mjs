@@ -573,6 +573,41 @@ try {
   assert.equal(await adminEnabledQrPage.locator('.qr-checkout-image-wrap img').getAttribute('src'), '/qr-ph.png')
   await adminEnabledQrPage.close()
 
+  const previewQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await previewQrPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+  })
+  await previewQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr-preview`)
+  await previewQrPage.getByRole('combobox', { name: 'Reviewer track' }).selectOption('oic_nw')
+  await previewQrPage.locator('.qr-checkout-image-wrap img').waitFor()
+  assert.equal(await previewQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), 0,
+    'Previewing a track does not silently create an unpaid request')
+  await previewQrPage.getByRole('button', { name: 'CONTINUE TO CHECKOUT' }).click()
+  await previewQrPage.waitForFunction(() => window.accountFixtureCalls.some(call => call.action === 'create-manual-checkout-claim:'))
+  await previewQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).waitFor()
+  await previewQrPage.close()
+
+  for (const { extraFlag, warning } of [
+    { extraFlag: 'fixture-renewal-play', warning: 'Google Play license already covers this period' },
+    { extraFlag: 'fixture-manual-price-mismatch', warning: 'saved request amount differs' },
+  ]) {
+    const guardedPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+    await guardedPage.addInitScript(flag => {
+      localStorage.setItem('fixture-admin', 'yes')
+      localStorage.setItem('fixture-checkout-enabled', 'yes')
+      localStorage.setItem('fixture-manual-claim', 'yes')
+      localStorage.setItem(flag, 'yes')
+    }, extraFlag)
+    await guardedPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+    await guardedPage.getByRole('alert').filter({ hasText: warning }).waitFor()
+    assert.equal(await guardedPage.locator('.qr-checkout-image-wrap img').count(), 0,
+      'A stored request cannot expose bank details after an entitlement or price mismatch')
+    assert.equal(await guardedPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), 0,
+      'Previously paid or mismatched checkouts must not create another request')
+    await guardedPage.close()
+  }
+
   const adminQrPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await adminQrPage.addInitScript(() => {
     localStorage.setItem('fixture-admin', 'yes')
@@ -581,6 +616,10 @@ try {
   await adminQrPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await adminQrPage.getByRole('heading', { name: 'QR Payment Checkout' }).waitFor()
   await adminQrPage.locator('.qr-checkout-image-wrap img').waitFor()
+  await adminQrPage.waitForFunction(() => window.accountFixtureCalls.some(call =>
+    call.action === 'create-manual-checkout-claim:' && call.data?.selection === 'oic_nw:month'))
+  assert.match(await adminQrPage.getByRole('status').filter({ hasText: 'Your payment request is already pending verification' }).innerText(),
+    /33333333-3333-4333-8333-333333333333/, 'Opening checkout immediately registers a pending request')
   const proofInstructions = adminQrPage.locator('.qr-checkout-grid > .qr-checkout-panel').nth(1)
   assert.equal(await proofInstructions.getByRole('heading', { level: 2 }).innerText(), '2. Send your payment receipt')
   const proofHelp = await proofInstructions.locator('p').first().innerText()
@@ -686,22 +725,23 @@ try {
   await adminQrPage.context().route('https://m.me/**', route => route.fulfill({ contentType: 'text/html', body: 'Synthetic Messenger page' }))
   const checkoutUrl = adminQrPage.url()
   const priorClaimCount = await adminQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length)
+  assert(priorClaimCount >= 1, 'Checkout records its payment request before the proof button is pressed')
   await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
   const confirmPayment = adminQrPage.getByRole('dialog', { name: 'Have you already sent the payment?' })
   await confirmPayment.waitFor()
   assert.match(await confirmPayment.innerText(), /completed.*transfer.*Messenger.*receipt/s)
   assert.equal(await adminQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), priorClaimCount,
-    'Opening confirmation does not create a pending request')
+    'Opening confirmation does not create a second pending request')
   await confirmPayment.getByRole('button', { name: 'NO', exact: true }).click()
   await confirmPayment.waitFor({ state: 'hidden' })
   assert.equal(await adminQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), priorClaimCount,
-    'NO leaves checkout untouched and creates no payment claim')
+    'NO leaves the existing payment request untouched')
   await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
   await adminQrPage.getByRole('dialog', { name: 'Have you already sent the payment?' }).waitFor()
   await adminQrPage.keyboard.press('Escape')
   await adminQrPage.getByRole('dialog', { name: 'Have you already sent the payment?' }).waitFor({ state: 'hidden' })
   assert.equal(await adminQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), priorClaimCount,
-    'Escape also dismisses without submitting a request')
+    'Escape also dismisses without creating a second request')
   await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
   const messengerPopupPromise = adminQrPage.waitForEvent('popup')
   await adminQrPage.getByRole('dialog', { name: 'Have you already sent the payment?' }).getByRole('button', { name: 'YES', exact: true }).click()
@@ -712,11 +752,15 @@ try {
     'Submitting proof does not copy a payment text to the clipboard')
   await messengerPopup.close()
   assert.equal(await adminQrPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0,
-    'The submit action disappears after recording the request')
+    'The proof button is available only once per pending checkout')
+  assert.equal(await adminQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), priorClaimCount,
+    'Opening Messenger never creates another pending request')
   assert(await adminQrPage.evaluate(() => window.accountFixtureCalls.some(call => call.action === 'create-manual-checkout-claim:' && call.data?.selection === 'oic_nw:month')),
-    'The action saves a signed-in, server-priced claim before opening Messenger')
+    'The server-priced claim was already saved on checkout entry')
   await adminQrPage.reload()
   await adminQrPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
+  assert.equal(await adminQrPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), 0,
+    'Reloading an existing pending checkout never inserts a second request')
   assert.match(await adminQrPage.locator('.qr-checkout-account-email').innerText(), /synthetic@example\.invalid/,
     'Returning customers can see which email to send with their Messenger receipt')
   assert.match(await adminQrPage.getByRole('status').filter({ hasText: 'Payment request pending verification' }).innerText(), /Request ID: 33333333-3333-4333-8333-333333333333.*Deck OIC-NW/s,
@@ -768,17 +812,68 @@ try {
   assert.equal(await blockedMessengerPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0)
   await blockedMessengerPage.close()
 
+  const staleClaimPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await staleClaimPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+  })
+  await staleClaimPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await staleClaimPage.locator('.qr-checkout-image-wrap img').waitFor()
+  await staleClaimPage.evaluate(() => { localStorage.setItem('fixture-manual-cancelled', 'yes'); window.open = () => null })
+  await staleClaimPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
+  await staleClaimPage.getByRole('dialog', { name: 'Have you already sent the payment?' }).getByRole('button', { name: 'YES' }).click()
+  await staleClaimPage.getByRole('alert').filter({ hasText: 'payment request is no longer active' }).waitFor()
+  assert.equal(await staleClaimPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Proof submission fails closed after another tab cancels the pending claim')
+  await staleClaimPage.close()
+
+  const expiredOnFocusPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await expiredOnFocusPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+  })
+  await expiredOnFocusPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await expiredOnFocusPage.locator('.qr-checkout-image-wrap img').waitFor()
+  await expiredOnFocusPage.evaluate(() => {
+    localStorage.setItem('fixture-manual-expired', 'yes')
+    window.dispatchEvent(new Event('focus'))
+  })
+  await expiredOnFocusPage.getByRole('alert').filter({ hasText: 'payment request is no longer valid' }).waitFor()
+  assert.equal(await expiredOnFocusPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'Returning to an expired checkout hides transfer instructions before payment')
+  await expiredOnFocusPage.close()
+
+  const licensedOnFocusPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
+  await licensedOnFocusPage.addInitScript(() => {
+    localStorage.setItem('fixture-admin', 'yes')
+    localStorage.setItem('fixture-checkout-enabled', 'yes')
+  })
+  await licensedOnFocusPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
+  await licensedOnFocusPage.locator('.qr-checkout-image-wrap img').waitFor()
+  await licensedOnFocusPage.evaluate(() => {
+    localStorage.setItem('fixture-renewal-play', 'yes')
+    window.dispatchEvent(new Event('focus'))
+  })
+  await licensedOnFocusPage.getByRole('alert').filter({ hasText: 'Google Play license already covers' }).waitFor()
+  assert.equal(await licensedOnFocusPage.locator('.qr-checkout-image-wrap img').count(), 0,
+    'A license granted in another tab hides the still-open payment QR on return')
+  await licensedOnFocusPage.close()
+
   const simultaneousCheckoutPage = await browser.newPage({ viewport: { width: 390, height: 900 } })
   await simultaneousCheckoutPage.addInitScript(() => {
     localStorage.setItem('fixture-admin', 'yes')
     localStorage.setItem('fixture-checkout-enabled', 'yes')
+    localStorage.setItem('fixture-duplicate-conflict', 'yes')
   })
   await simultaneousCheckoutPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await simultaneousCheckoutPage.locator('.qr-checkout-image-wrap img').waitFor()
-  await simultaneousCheckoutPage.evaluate(() => { localStorage.setItem('fixture-duplicate-conflict', 'yes'); window.open = () => null })
+  await simultaneousCheckoutPage.evaluate(() => { window.open = () => null })
+  const conflictRequests = await simultaneousCheckoutPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length)
   await simultaneousCheckoutPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
   await simultaneousCheckoutPage.getByRole('dialog', { name: 'Have you already sent the payment?' }).getByRole('button', { name: 'YES' }).click()
   await simultaneousCheckoutPage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
+  assert.equal(await simultaneousCheckoutPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), conflictRequests,
+    'A concurrent request discovered on checkout entry is never created again by the proof button')
   assert.match(await simultaneousCheckoutPage.locator('.qr-checkout-account-email').innerText(), /synthetic@example\.invalid/)
   assert.equal(await simultaneousCheckoutPage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0,
     'An already-open request discovered during submission removes the second submit action')
@@ -793,10 +888,13 @@ try {
   })
   await lostResponsePage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await lostResponsePage.locator('.qr-checkout-image-wrap img').waitFor()
+  const lostResponseRequests = await lostResponsePage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length)
   await lostResponsePage.evaluate(() => { window.open = () => null })
   await lostResponsePage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).click()
   await lostResponsePage.getByRole('dialog', { name: 'Have you already sent the payment?' }).getByRole('button', { name: 'YES' }).click()
   await lostResponsePage.getByRole('heading', { name: 'Payment request pending verification' }).waitFor()
+  assert.equal(await lostResponsePage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), lostResponseRequests,
+    'A claim persisted before the response was lost must not be recreated when submitting proof')
   assert.equal(await lostResponsePage.getByRole('button', { name: 'SUBMIT PAYMENT PROOF' }).count(), 0,
     'A saved request remains blocked even if the network loses the creation response')
   assert.equal(await lostResponsePage.locator('.qr-checkout-image-wrap img').count(), 0)
@@ -810,6 +908,8 @@ try {
   })
   await pendingCheckoutPage.goto(`${process.env.HYPERION_RECOVERY_TEST_URL}?section=qr`)
   await pendingCheckoutPage.getByRole('alert').filter({ hasText: /unresolved checkout/i }).waitFor()
+  assert.equal(await pendingCheckoutPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), 0,
+    'A prior unresolved payment blocks automatic request creation')
   assert.equal(await pendingCheckoutPage.locator('.qr-checkout-image-wrap img').count(), 0,
     'Unresolved PayMongo payment prevents a new QR transfer for the same track')
   await pendingCheckoutPage.close()

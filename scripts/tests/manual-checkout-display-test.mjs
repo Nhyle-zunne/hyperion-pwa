@@ -20,13 +20,40 @@ test('a clicked claim remains pending without treating the Messenger click as ve
   assert.equal(claimStatusLabel('cancelled'), 'CANCELLED')
 })
 
-test('payment proof confirmation has YES and NO choices before creating a request', () => {
+test('payment proof confirmation has YES and NO choices without creating a second request', () => {
   const checkout = readFileSync(new URL('../../src/screens/AdminQrCheckoutScreen.tsx', import.meta.url), 'utf8')
   assert.match(checkout, /Have you already sent the payment\?/)
   assert.match(checkout, /<button[^>]*>NO<\/button>/)
   assert.match(checkout, /<button[^>]*>YES<\/button>/)
   assert.match(checkout, /onClick=\{\(\) => setConfirmPaymentOpen\(true\)\}/)
   assert.match(checkout, /onConfirm=\{\(\) => \{ setConfirmPaymentOpen\(false\); void submitToMessenger\(\) \}\}/)
+})
+
+test('selected checkout creates its pending claim on entry, not when payment proof is submitted', () => {
+  const checkout = readFileSync(new URL('../../src/screens/AdminQrCheckoutScreen.tsx', import.meta.url), 'utf8')
+  const fixture = readFileSync(new URL('./account-supabase-fixture.ts', import.meta.url), 'utf8')
+  const readiness = checkout.split('const selectedCodes = items.map(item => item.code)')[1]?.split('const submitToMessenger')[0]
+  const proofAction = checkout.split('const submitToMessenger')[1]?.split('const copyBank')[0]
+  assert.match(readiness, /functions\.invoke\('create-manual-checkout-claim'/)
+  assert.match(checkout, /const confirmedCheckout = params\.has\('items'\)/)
+  assert.match(readiness, /!confirmedCheckout/, 'A track preview alone must not create a purchase')
+  assert.match(readiness, /itemQuery, confirmedCheckout, checkRevision/, 'Entering checkout after a preview must trigger request creation')
+  assert.match(readiness, /status: failed \? 'error' : reason \? 'blocked' : overlappingClaim \? 'pending'/,
+    'A newly detected lifetime license, Play entitlement or unresolved order must block even an older pending claim')
+  assert.match(checkout, /async function readBlockingPurchaseReason[\s\S]*?lifetime_entitlements[\s\S]*?google_play_entitlements[\s\S]*?pendingOrders\.data/,
+    'Initial checkout, focus, and proof confirmation share the same license and unsettled order checks')
+  assert.match(readiness, /total_amount_php/, 'An existing request must be checked against the displayed amount')
+  assert.match(proofAction, /\.from\('manual_checkout_claims'\)/,
+    'Before opening Messenger, recheck that the pending request is still active and owned')
+  assert.match(proofAction, /expires_at/, 'A request that expired in another tab cannot accept proof')
+  assert.match(proofAction, /readBlockingPurchaseReason\(/, 'Proof submission rechecks newly granted access and other unsettled orders')
+  assert.match(checkout, /const recheck = async \(\) => \{[\s\S]*?readBlockingPurchaseReason\(/,
+    'Returning to checkout must recheck newly granted access before displaying the payment QR')
+  assert.match(checkout, /window\.setTimeout\(expire, remaining\)/, 'A long-open checkout must hide QR instructions at expiry')
+  assert.match(checkout, /addEventListener\('visibilitychange', onVisible\)/, 'A returning checkout tab must refresh the stored request')
+  assert.match(fixture, /maybeSingle:/, 'The isolated checkout browser fixture supports safe request revalidation')
+  assert.doesNotMatch(proofAction, /create-manual-checkout-claim|\.from\('manual_checkout_claims'\)\.insert/)
+  assert.match(checkout, /pendingClaim\.status === 'awaiting_proof'/)
 })
 
 test('pending tracks block duplicate checkout until approval or expiry, without blocking unrelated tracks', () => {

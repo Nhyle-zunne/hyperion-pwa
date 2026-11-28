@@ -251,11 +251,13 @@ assert.ok(adminCheckoutAccess.includes('result?.userId === userId && result.allo
 assert.ok(adminCheckoutAccess.includes('!supabase?.functions?.invoke'), 'Missing Functions transport fails closed without unmounting purchase dialogs');
 assert.ok(adminQrScreen.includes("functions.invoke('create-manual-checkout-claim'") &&
   !adminQrScreen.includes('navigator.clipboard.writeText(message)') &&
-  adminQrScreen.includes('disabled={claimBusy || Boolean(claimId)') &&
+  adminQrScreen.includes('disabled={!canSubmitProof || !checkoutAvailability.enabled}') &&
+  adminQrScreen.includes('proofAlreadyOpened(pendingClaim.id)') &&
+  !adminQrScreen.split('const submitToMessenger')[1].split('const copyBank')[0].includes('create-manual-checkout-claim') &&
   adminQrScreen.includes("window.open('about:blank', '_blank')") &&
   adminQrScreen.includes('messengerTab.location.replace(messengerUrl)') &&
   !adminQrScreen.includes('window.location.assign(messengerUrl)') &&
-  adminQrScreen.includes('https://m.me/HyperionMaritime'), 'QR checkout records a claim and disables repeat submissions before opening Messenger');
+  adminQrScreen.includes('https://m.me/HyperionMaritime'), 'QR checkout auto-records one claim and prevents repeat proof submissions before opening Messenger');
 assert.ok(basketScreen.includes('fetchPendingLifetimeOrders(supabase, session.user.id)') &&
   basketScreen.includes('pendingLifetimeOrders.map(order =>') &&
   basketScreen.includes('RESUME UNAVAILABLE') &&

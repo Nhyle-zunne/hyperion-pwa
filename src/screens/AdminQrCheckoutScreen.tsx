@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { PAID_PRODUCTS, supabase } from '../lib/supabase'
 import { BANK_TRANSFER, parseManualCheckoutItems } from '../lib/manualQrCheckout'
 import type { ManualCheckoutTerm } from '../lib/manualQrCheckout'
@@ -14,6 +14,41 @@ import '../components/ManualCheckoutStatus.css'
 
 const messengerUrl = 'https://m.me/HyperionMaritime'
 const facebookPageUrl = 'https://www.facebook.com/HyperionMaritime/'
+const proofOpenedPrefix = 'hyperion-payment-proof-opened:'
+const proofOpenedKey = (claimId: string) => proofOpenedPrefix + claimId
+
+function proofAlreadyOpened(claimId: string): boolean {
+  try { return localStorage.getItem(proofOpenedKey(claimId)) === 'yes' } catch { return false }
+}
+
+async function readBlockingPurchaseReason(client: NonNullable<typeof supabase>, userId: string, selectedCodes: string[]): Promise<string | undefined> {
+  const [pendingOrders, failedProviderSessions, pendingLifetimeOrders, lifetimeOwned, playAccess, websiteAccess] = await Promise.all([
+    client.from('orders').select('id').eq('user_id', userId)
+      .in('product_code', selectedCodes).in('status', ['pending', 'submitted']).limit(1),
+    client.from('orders').select('id').eq('user_id', userId)
+      .in('product_code', selectedCodes).eq('status', 'failed')
+      .eq('payment_method', 'PayMongo Checkout')
+      .not('paymongo_checkout_session_id', 'is', null).limit(1),
+    client.from('lifetime_orders').select('id').eq('user_id', userId)
+      .in('product_code', selectedCodes).eq('status', 'pending').limit(1),
+    client.from('lifetime_entitlements').select('id').eq('user_id', userId)
+      .in('product_code', selectedCodes).eq('status', 'active').limit(1),
+    client.from('google_play_entitlements').select('product_code,expires_at').eq('user_id', userId)
+      .in('product_code', selectedCodes).eq('status', 'active').gt('expires_at', new Date().toISOString()),
+    client.from('entitlements').select('product_code,expires_at').eq('user_id', userId)
+      .in('product_code', selectedCodes).eq('status', 'active').gt('expires_at', new Date().toISOString()),
+  ])
+  if (pendingOrders.error || failedProviderSessions.error || pendingLifetimeOrders.error ||
+    lifetimeOwned.error || playAccess.error || websiteAccess.error) {
+    throw new Error('Could not verify other purchases. Do not transfer money; check payment history.')
+  }
+  const websiteExpiry = new Map((websiteAccess.data || []).map(row => [row.product_code, Date.parse(row.expires_at)]))
+  const overlappingPlay = (playAccess.data || []).some(row => Date.parse(row.expires_at) > (websiteExpiry.get(row.product_code) || Date.now()))
+  return lifetimeOwned.data?.length ? 'This reviewer track already has Lifetime Access. Do not pay again.'
+    : overlappingPlay ? 'Your Google Play license already covers this period. Do not make an overlapping website transfer.'
+    : pendingOrders.data?.length || failedProviderSessions.data?.length || pendingLifetimeOrders.data?.length
+      ? 'Resolve the earlier unresolved payment for this track before making another transfer.' : undefined
+}
 
 function ConfirmPaymentSent({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -42,6 +77,7 @@ function ConfirmPaymentSent({ onConfirm, onCancel }: { onConfirm: () => void; on
 
 export default function AdminQrCheckoutScreen() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const [userId, setUserId] = useState<string>()
   const [email, setEmail] = useState('')
@@ -49,16 +85,15 @@ export default function AdminQrCheckoutScreen() {
   const [checkoutChecked, setCheckoutChecked] = useState(false)
   const [previewCode, setPreviewCode] = useState('')
   const [previewTerm, setPreviewTerm] = useState<ManualCheckoutTerm>('month')
-  const [submissionStatus, setSubmissionStatus] = useState('')
-  const [submissionError, setSubmissionError] = useState(false)
-  const [claimId, setClaimId] = useState('')
-  const [claimBusy, setClaimBusy] = useState(false)
+  const [proofOpenedId, setProofOpenedId] = useState('')
+  const [recheckingClaimId, setRecheckingClaimId] = useState('')
   const [confirmPaymentOpen, setConfirmPaymentOpen] = useState(false)
   const [bankCopyStatus, setBankCopyStatus] = useState('')
   const [signingIn, setSigningIn] = useState(false)
   const [signInError, setSignInError] = useState('')
-  const [readiness, setReadiness] = useState<{ userId: string; selection: string | null; status: 'ready' | 'pending' | 'blocked' | 'error'; reason?: string; pendingClaim?: { id: string; status: ManualClaimStatus; items: { label: string; term: ManualCheckoutTerm }[] } }>()
+  const [readiness, setReadiness] = useState<{ userId: string; selection: string | null; status: 'ready' | 'pending' | 'blocked' | 'error'; reason?: string; pendingClaim?: { id: string; selectionKey: string; status: ManualClaimStatus; expiresAt: string; items: { label: string; term: ManualCheckoutTerm }[] } }>()
   const [checkRevision, setCheckRevision] = useState(0)
+  const openingProofRef = useRef('')
   const checkoutIdentityRef = useRef('')
   const access = useAdminCheckoutAccess(userId)
   const checkoutAvailability = useWebsiteCheckoutAvailability()
@@ -90,19 +125,85 @@ export default function AdminQrCheckoutScreen() {
     return () => { active = false; listener.subscription.unsubscribe() }
   }, [])
 
-  const itemQuery = params.has('items') ? params.get('items') : previewCode ? `${previewCode}:${previewTerm}` : null
-  checkoutIdentityRef.current = `${userId || ''}|${itemQuery || ''}`
+  const confirmedCheckout = params.has('items')
+  const itemQuery = confirmedCheckout ? params.get('items') : previewCode ? `${previewCode}:${previewTerm}` : null
+  checkoutIdentityRef.current = `${userId || ''}|${itemQuery || ''}|${confirmedCheckout}`
   const items = parseManualCheckoutItems(itemQuery, PAID_PRODUCTS)
   const totalPhp = items.reduce((sum, item) => sum + item.amountPhp, 0)
+  const selectionKey = items.map(item => `${item.code}:${item.term}`).sort().join(',')
   const paymentStatus = readiness && readiness.userId === userId && readiness.selection === itemQuery ? readiness.status : 'checking'
+  const pendingClaim = paymentStatus === 'pending' ? readiness?.pendingClaim : undefined
+  const hasOpenedProof = Boolean(pendingClaim && (proofOpenedId === pendingClaim.id || proofAlreadyOpened(pendingClaim.id)))
+  const canSubmitProof = paymentStatus === 'pending' && pendingClaim?.selectionKey === selectionKey &&
+    pendingClaim.status === 'awaiting_proof' && Date.parse(pendingClaim.expiresAt) > Date.now() &&
+    !hasOpenedProof && recheckingClaimId !== pendingClaim.id
+
+  useEffect(() => {
+    if (!pendingClaim || pendingClaim.status !== 'awaiting_proof') return
+    const remaining = Date.parse(pendingClaim.expiresAt) - Date.now()
+    const expire = () => setReadiness(current => current?.pendingClaim?.id === pendingClaim.id
+      ? { ...current, status: 'blocked', reason: 'This payment request has expired. Do not transfer money; check payment history.' } : current)
+    if (!Number.isFinite(remaining) || remaining <= 0) { expire(); return }
+    const timer = window.setTimeout(expire, remaining)
+    return () => window.clearTimeout(timer)
+  }, [pendingClaim?.id, pendingClaim?.expiresAt, pendingClaim?.status])
+
+  useEffect(() => {
+    if (!pendingClaim || !userId || !supabase || paymentStatus !== 'pending' || hasOpenedProof) return
+    const client = supabase
+    const requestId = pendingClaim.id
+    const checkoutIdentity = checkoutIdentityRef.current
+    let active = true
+    let checking = false
+    const recheck = async () => {
+      if (checking) return
+      checking = true
+      setRecheckingClaimId(requestId)
+      try {
+        const [{ data, error }, blockingReason] = await Promise.all([
+          client.from('manual_checkout_claims').select('selection_key,status,expires_at,total_amount_php')
+            .eq('user_id', userId).eq('id', requestId).maybeSingle(),
+          readBlockingPurchaseReason(client, userId, items.map(item => item.code)),
+        ])
+        if (!active || checkoutIdentityRef.current !== checkoutIdentity) return
+        if (blockingReason || error || !data || data.selection_key !== selectionKey || data.total_amount_php !== totalPhp ||
+          data.status !== 'awaiting_proof' || !(Date.parse(data.expires_at) > Date.now())) {
+          setReadiness(current => current?.pendingClaim?.id === requestId
+            ? { ...current, status: 'blocked', reason: blockingReason || 'This payment request is no longer valid. Do not transfer money; check payment history.' } : current)
+        }
+      } catch {
+        if (active && checkoutIdentityRef.current === checkoutIdentity) {
+          setReadiness(current => current?.pendingClaim?.id === requestId
+            ? { ...current, status: 'error', reason: 'Could not verify this payment request. Check payment history before transferring money.' } : current)
+        }
+      } finally {
+        checking = false
+        if (active) setRecheckingClaimId('')
+      }
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') void recheck() }
+    window.addEventListener('focus', recheck)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      active = false
+      window.removeEventListener('focus', recheck)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [pendingClaim?.id, userId, paymentStatus, hasOpenedProof])
+
+  useEffect(() => {
+    const syncProof = (event: StorageEvent) => {
+      if (event.key?.startsWith(proofOpenedPrefix) && event.newValue === 'yes') {
+        setProofOpenedId(event.key.slice(proofOpenedPrefix.length))
+      }
+    }
+    window.addEventListener('storage', syncProof)
+    return () => window.removeEventListener('storage', syncProof)
+  }, [])
 
   useEffect(() => {
     setConfirmPaymentOpen(false)
-    setClaimId('')
-    setSubmissionStatus('')
-    setSubmissionError(false)
-    setClaimBusy(false)
-  }, [userId, itemQuery])
+  }, [userId, itemQuery, confirmedCheckout])
 
   useEffect(() => {
     if (!userId || (!checkoutAvailability.enabled && !access.allowed) || !supabase || !items.length) return
@@ -112,102 +213,122 @@ export default function AdminQrCheckoutScreen() {
     setReadiness(undefined)
     void (async () => {
       try {
-        const [pendingOrders, failedProviderSessions, pendingLifetimeOrders, lifetimeOwned, playAccess, websiteAccess, openClaims] = await Promise.all([
-          client.from('orders').select('id').eq('user_id', userId)
-            .in('product_code', selectedCodes).in('status', ['pending', 'submitted']).limit(1),
-          client.from('orders').select('id').eq('user_id', userId)
-            .in('product_code', selectedCodes).eq('status', 'failed')
-            .eq('payment_method', 'PayMongo Checkout')
-            .not('paymongo_checkout_session_id', 'is', null).limit(1),
-          client.from('lifetime_orders').select('id').eq('user_id', userId)
-            .in('product_code', selectedCodes).eq('status', 'pending').limit(1),
-          client.from('lifetime_entitlements').select('id').eq('user_id',userId)
-            .in('product_code',selectedCodes).eq('status','active').limit(1),
-          client.from('google_play_entitlements').select('product_code,expires_at').eq('user_id',userId)
-            .in('product_code',selectedCodes).eq('status','active').gt('expires_at',new Date().toISOString()),
-          client.from('entitlements').select('product_code,expires_at').eq('user_id',userId)
-            .in('product_code',selectedCodes).eq('status','active').gt('expires_at',new Date().toISOString()),
-          client.from('manual_checkout_claims').select('id,selection_key,items,status,expires_at').eq('user_id',userId)
+        const [blockingReason, openClaims] = await Promise.all([
+          readBlockingPurchaseReason(client, userId, selectedCodes),
+          client.from('manual_checkout_claims').select('id,selection_key,items,status,expires_at,total_amount_php').eq('user_id',userId)
             .in('status',['awaiting_proof','pending_verification']),
         ])
         if (!active) return
-        const failed = pendingOrders.error || failedProviderSessions.error || pendingLifetimeOrders.error ||
-          lifetimeOwned.error || playAccess.error || websiteAccess.error || openClaims.error
-        const websiteExpiry = new Map((websiteAccess.data || []).map(row=>[row.product_code,Date.parse(row.expires_at)]))
-        const overlappingPlay = (playAccess.data || []).some(row=>Date.parse(row.expires_at)> (websiteExpiry.get(row.product_code) || Date.now()))
-        const selectionKey = items.map(item=>`${item.code}:${item.term}`).sort().join(',')
+        const failed = openClaims.error
         const existingClaims = (openClaims.data || []).filter(row=>isOpenManualClaim(row))
         const overlappingClaim = existingClaims.find(row => (row.items as {code: string}[]).some(item => selectedCodes.includes(item.code)))
+        const amountMismatch = overlappingClaim?.selection_key === selectionKey && overlappingClaim.total_amount_php !== totalPhp
         const full = existingClaims.length >= 3 && !existingClaims.some(row=>row.selection_key===selectionKey)
-        const reason = lifetimeOwned.data?.length ? 'This reviewer track already has Lifetime Access. Do not pay again.'
-          : overlappingPlay ? 'Your Google Play license already covers this period. Do not make an overlapping website transfer.'
+        const reason = blockingReason || (amountMismatch ? 'The saved request amount differs from this checkout. Do not transfer money; check payment history.'
           : full ? 'You already have three open payment submissions. Contact Hyperion on Messenger to resolve one before paying again.'
-          : pendingOrders.data?.length || failedProviderSessions.data?.length || pendingLifetimeOrders.data?.length
-            ? 'Resolve the earlier unresolved payment for this track before making another transfer.' : undefined
-        setReadiness({ userId, selection: itemQuery, status: failed ? 'error' : overlappingClaim ? 'pending' : reason ? 'blocked' : 'ready', reason,
-          pendingClaim: overlappingClaim ? { id: overlappingClaim.id, status: overlappingClaim.status as ManualClaimStatus, items: overlappingClaim.items as {label: string; term: ManualCheckoutTerm}[] } : undefined })
+          : undefined)
+        if (failed || overlappingClaim || reason || !confirmedCheckout) {
+          setReadiness({ userId, selection: itemQuery, status: failed ? 'error' : reason ? 'blocked' : overlappingClaim ? 'pending' : 'ready', reason,
+            pendingClaim: overlappingClaim ? { id: overlappingClaim.id, selectionKey: overlappingClaim.selection_key, status: overlappingClaim.status as ManualClaimStatus, expiresAt: overlappingClaim.expires_at, items: overlappingClaim.items as {label: string; term: ManualCheckoutTerm}[] } : undefined })
+          return
+        }
+        // Entering a selected checkout reserves its request immediately. The
+        // database reuses the same open cart and rejects overlapping tracks.
+        try {
+          const { data, error } = await client.functions.invoke('create-manual-checkout-claim', {
+            body: { selection: items.map(item => `${item.code}:${item.term}`).join(',') },
+          })
+          if (!active) return
+          if (error || data?.error || typeof data?.id !== 'string') throw new Error(data?.error || 'Request creation failed')
+          if (data.totalAmountPhp !== totalPhp) throw new Error('Price verification failed. Do not transfer funds; refresh checkout.')
+          const { data: savedClaim, error: savedError } = await client.from('manual_checkout_claims')
+            .select('selection_key,status,expires_at,total_amount_php')
+            .eq('user_id', userId).eq('id', data.id).maybeSingle()
+          if (!active) return
+          if (savedError || !savedClaim || savedClaim.selection_key !== selectionKey ||
+            savedClaim.total_amount_php !== totalPhp || savedClaim.status !== 'awaiting_proof' ||
+            !(Date.parse(savedClaim.expires_at) > Date.now())) {
+            throw new Error('Cannot verify the saved payment request. Do not transfer money; check payment history.')
+          }
+          setReadiness({ userId, selection: itemQuery, status: 'pending',
+            pendingClaim: { id: data.id, selectionKey, status: savedClaim.status, expiresAt: savedClaim.expires_at, items } })
+        } catch (error) {
+          if (!active) return
+          if (error instanceof Error && /^(Price verification failed|Cannot verify the saved payment request)/.test(error.message)) {
+            setReadiness({ userId, selection: itemQuery, status: 'error', reason: error.message })
+            return
+          }
+          // An interrupted response can still leave a saved request. Re-read
+          // it before ever allowing a second checkout attempt.
+          const { data: saved, error: lookupError } = await client.from('manual_checkout_claims')
+            .select('id,selection_key,items,status,expires_at,total_amount_php').eq('user_id', userId)
+            .in('status', ['awaiting_proof', 'pending_verification'])
+          if (!active) return
+          const matching = !lookupError && (saved || []).filter(row => isOpenManualClaim(row))
+            .find(row => (row.items as {code: string}[]).some(item => selectedCodes.includes(item.code)))
+          setReadiness(matching && matching.selection_key === selectionKey && matching.total_amount_php !== totalPhp
+            ? { userId, selection: itemQuery, status: 'error', reason: 'The saved request amount differs from this checkout. Do not transfer money; check payment history.' }
+            : matching ? { userId, selection: itemQuery, status: 'pending',
+              pendingClaim: { id: matching.id, selectionKey: matching.selection_key, status: matching.status as ManualClaimStatus, expiresAt: matching.expires_at,
+                items: matching.items as {label: string; term: ManualCheckoutTerm}[] } }
+            : { userId, selection: itemQuery, status: 'error', reason: 'Could not record your payment request. Check payment history before retrying.' })
+        }
       } catch {
         if (active) setReadiness({ userId, selection: itemQuery, status: 'error' })
       }
     })()
     return () => { active = false }
-  }, [userId, access.allowed, checkoutAvailability.enabled, itemQuery, checkRevision])
+  }, [userId, access.allowed, checkoutAvailability.enabled, itemQuery, confirmedCheckout, checkRevision])
 
   const submitToMessenger = async () => {
-    if (!supabase || !userId || claimBusy || paymentStatus !== 'ready' || !checkoutAvailability.enabled) return
+    if (!supabase || !userId || !canSubmitProof || !pendingClaim || !checkoutAvailability.enabled ||
+      openingProofRef.current === pendingClaim.id || proofAlreadyOpened(pendingClaim.id)) return
+    const requestId = pendingClaim.id
     const checkoutIdentity = checkoutIdentityRef.current
-    // Reserve the new tab during the tap; browsers may block popups opened after an async request.
+    openingProofRef.current = requestId
     let messengerTab: Window | null = null
+    let opened = false
     try {
+      // Reserve the tab during the user gesture so a post-check redirect is not blocked.
       messengerTab = window.open('about:blank', '_blank')
       if (messengerTab) {
         messengerTab.opener = null
-        messengerTab.document.title = 'Opening Messenger'
-        messengerTab.document.body.textContent = 'Preparing your payment request. Messenger will open shortly…'
+        messengerTab.document.title = 'Checking payment request'
+        messengerTab.document.body.textContent = 'Checking your pending payment request…'
       }
-    } catch { /* The link below is available if a new tab is blocked. */ }
-    let messengerOpened = false
-    setClaimBusy(true)
-    setSubmissionError(false)
-    setSubmissionStatus('Recording your request…')
+    } catch { /* The pending-request view retains a direct Messenger link. */ }
     try {
-      const selection = items.map(item => `${item.code}:${item.term}`).join(',')
-      const { data, error } = await supabase.functions.invoke('create-manual-checkout-claim', { body: { selection } })
+      const [{ data, error }, blockingReason] = await Promise.all([
+        supabase.from('manual_checkout_claims').select('selection_key,status,expires_at,total_amount_php')
+          .eq('id', requestId).eq('user_id', userId).maybeSingle(),
+        readBlockingPurchaseReason(supabase, userId, items.map(item => item.code)),
+      ])
       if (checkoutIdentityRef.current !== checkoutIdentity) return
-      if (error || data?.error || typeof data?.id !== 'string') {
-        let reason = data?.error
-        if (error && typeof error === 'object' && 'context' in error && error.context instanceof Response) {
-          try { reason = (await error.context.clone().json() as {error?: unknown}).error } catch { /* Use generic warning. */ }
-        }
-        throw new Error(typeof reason === 'string' ? reason : 'Could not record your payment request. Please try again.')
+      if (blockingReason) throw new Error(blockingReason)
+      if (error || !data) throw new Error('Could not confirm this payment request. Check payment history before retrying.')
+      if (data.selection_key !== selectionKey || data.total_amount_php !== totalPhp) {
+        throw new Error('The saved payment amount or reviewer selection has changed. Do not transfer money; check payment history.')
       }
-      if (data.totalAmountPhp !== totalPhp) throw new Error('Price verification failed. Do not transfer funds; refresh checkout.')
-      setClaimId(data.id)
-      setReadiness({ userId, selection: itemQuery, status: 'pending', pendingClaim: { id: data.id, status: data.status === 'pending_verification' ? 'pending_verification' : 'awaiting_proof', items } })
+      if (data.status !== 'awaiting_proof' || !(Date.parse(data.expires_at) > Date.now())) {
+        throw new Error('This payment request is no longer active. Do not transfer money; check payment history.')
+      }
+      // The request already exists; only now consume the one-time proof action.
+      setProofOpenedId(requestId)
+      try { localStorage.setItem(proofOpenedKey(requestId), 'yes') } catch { /* This visit still blocks repeat taps. */ }
       if (messengerTab && !messengerTab.closed) {
         try {
           messengerTab.location.replace(messengerUrl)
-          messengerOpened = true
-        } catch { /* Keep a direct Messenger link available. */ }
+          opened = true
+        } catch { /* The pending-request view retains the OPEN MESSENGER link. */ }
       }
     } catch (error) {
-      if (checkoutIdentityRef.current !== checkoutIdentity) return
-      const message = error instanceof Error ? error.message : ''
-      if (message.startsWith('You already have a pending request')) {
-        setReadiness(undefined)
-        setCheckRevision(value => value + 1)
-        return
+      if (checkoutIdentityRef.current === checkoutIdentity) {
+        setReadiness({ userId, selection: itemQuery, status: 'error',
+          reason: error instanceof Error ? error.message : 'Could not confirm this payment request. Check payment history before retrying.' })
       }
-      setSubmissionError(true)
-      setSubmissionStatus(/^(You have three open submissions|Checkout is temporarily unavailable|Invalid checkout selection|Price verification failed)/.test(message)
-        ? message : 'Could not record your request. Check Orders & payment history before retrying. No payment has been confirmed.')
-      // The server may have saved a claim before the response was lost. Check
-      // persisted status before making the QR and submit button available again.
-      setReadiness(undefined)
-      setCheckRevision(value => value + 1)
     } finally {
-      if (!messengerOpened) messengerTab?.close()
-      if (checkoutIdentityRef.current === checkoutIdentity) setClaimBusy(false)
+      if (!opened) messengerTab?.close()
+      if (openingProofRef.current === requestId) openingProofRef.current = ''
     }
   }
 
@@ -297,14 +418,14 @@ export default function AdminQrCheckoutScreen() {
     {items.length === 0 ? <section className="qr-checkout-panel" role="status">
       <h2>No valid checkout selection</h2>
       <p>Choose a reviewer track and duration to prepare the payment instructions. No payment has been started.</p>
-    </section> : paymentStatus !== 'ready' ? <section className="qr-checkout-panel" role={paymentStatus === 'checking' || paymentStatus === 'pending' ? 'status' : 'alert'}>
+    </section> : paymentStatus !== 'ready' && !canSubmitProof ? <section className="qr-checkout-panel" role={paymentStatus === 'checking' || paymentStatus === 'pending' ? 'status' : 'alert'}>
       <h2>{paymentStatus === 'pending' ? 'Payment request pending verification' : paymentStatus === 'blocked' ? 'Existing unresolved checkout' : paymentStatus === 'error' ? 'Unable to verify payment status' : 'Checking existing payments…'}</h2>
       <p>{paymentStatus === 'pending'
-        ? 'You have already pressed SUBMIT PAYMENT PROOF for this track. If you sent your receipt, allow 24–48 hours for verification and activation. Do not pay again.'
+        ? 'Your payment request has already been recorded. If you sent your receipt, allow 24–48 hours for verification and activation. Do not pay again.'
         : paymentStatus === 'blocked'
         ? readiness?.reason || 'Resolve or safely cancel the existing payment for this track before making another QR transfer. Do not pay twice.'
         : paymentStatus === 'error'
-          ? 'Hyperion could not check previous payments. No QR code is available until this check succeeds.'
+          ? readiness?.reason || 'Hyperion could not check previous payments. No QR code is available until this check succeeds.'
           : 'Verifying there is no pending earlier checkout or manual payment for the selected tracks.'}</p>
       {paymentStatus === 'blocked' && <Link className="btn btn-outline" to="/orders">VIEW ORDERS &amp; PAYMENT HISTORY</Link>}
       {paymentStatus === 'pending' && <>
@@ -353,16 +474,14 @@ export default function AdminQrCheckoutScreen() {
 
       <section className="qr-checkout-panel">
         <h2>2. Send your payment receipt</h2>
+        {pendingClaim && <p role="status" className="qr-checkout-note">Your payment request is already pending verification (Request ID: {pendingClaim.id}). If you have paid, do not transfer again. Send your receipt through Messenger.</p>}
         <p>After paying, tap <strong>SUBMIT PAYMENT PROOF</strong> to open Messenger. Send a screenshot or photo of your receipt and tell us the Google email linked to your Hyperion account so we can match your payment.</p>
         <p className="qr-checkout-account-email"><strong>Your account email:</strong> {email}</p>
         {!checkoutAvailability.enabled && <p role="status" className="qr-checkout-transfer-notice">Website checkout is disabled. Do not transfer money while purchases are paused.</p>}
-        <button type="button" className="btn btn-primary qr-checkout-messenger" disabled={claimBusy || Boolean(claimId) || !checkoutAvailability.enabled} onClick={() => setConfirmPaymentOpen(true)}>
-          {claimBusy ? 'OPENING MESSENGER…' : 'SUBMIT PAYMENT PROOF'}
-        </button>
+        {confirmedCheckout ? <button type="button" className="btn btn-primary qr-checkout-messenger" disabled={!canSubmitProof || !checkoutAvailability.enabled} onClick={() => setConfirmPaymentOpen(true)}>SUBMIT PAYMENT PROOF</button>
+          : <button type="button" className="btn btn-primary qr-checkout-messenger" disabled={!checkoutAvailability.enabled} onClick={() => navigate('/checkout/qr?items=' + encodeURIComponent(items.map(item => `${item.code}:${item.term}`).join(',')))}>CONTINUE TO CHECKOUT</button>}
         {confirmPaymentOpen && <ConfirmPaymentSent onCancel={() => setConfirmPaymentOpen(false)}
           onConfirm={() => { setConfirmPaymentOpen(false); void submitToMessenger() }} />}
-        {submissionStatus && <p role={submissionError ? 'alert' : 'status'} aria-live="polite" className={`qr-checkout-copy-status${submissionError ? ' is-error' : ''}`}>{submissionStatus}</p>}
-        {claimId && <p className="qr-checkout-note">Your request is pending verification. Pressing the button again is disabled. If you have not sent your receipt, use the Messenger link below.</p>}
         <p className="qr-checkout-activation-notice"><strong>Activation notice:</strong> Please allow 24–48 hours after submitting your payment receipt for verification and license activation. If still inactive after 48 hours, message our <a href={facebookPageUrl} target="_blank" rel="noopener noreferrer">Hyperion Facebook page</a> to follow up.</p>
         <p className="qr-checkout-note">Never send your password, OTP or full bank account credentials.</p>
       </section>

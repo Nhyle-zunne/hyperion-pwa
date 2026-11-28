@@ -31,9 +31,11 @@ const fixtureManualClaims = () => user.id === '11111111-1111-4111-8111-111111111
   id: '33333333-3333-4333-8333-333333333333', user_id: user.id,
   selection_key: 'oic_nw:month',
   items: [{ code: 'oic_nw', label: 'Deck OIC-NW', term: 'month', amountPhp: 79 }],
-  total_amount_php: 79, status: localStorage.getItem('fixture-manual-approved') === 'yes' ? 'approved'
+  total_amount_php: localStorage.getItem('fixture-manual-price-mismatch') === 'yes' ? 999 : 79,
+  status: localStorage.getItem('fixture-manual-approved') === 'yes' ? 'approved'
     : localStorage.getItem('fixture-manual-cancelled') === 'yes' ? 'cancelled' : 'awaiting_proof',
-  created_at: new Date(Date.now() - 10_000).toISOString(), expires_at: new Date(Date.now() + 72 * 3600_000).toISOString(),
+  created_at: new Date(Date.now() - 10_000).toISOString(),
+  expires_at: new Date(Date.now() + (localStorage.getItem('fixture-manual-expired') === 'yes' ? -1000 : 72 * 3600_000)).toISOString(),
   reviewed_at: localStorage.getItem('fixture-manual-approved') === 'yes' ? localStorage.getItem('fixture-manual-approved-at') : null,
 }] : []
 const session = () => localStorage.getItem('fixture-guest') === 'yes' ? null : { user, access_token: 'fixture-token' }
@@ -145,6 +147,10 @@ export const supabase = {
       single: async () => {
         const result = await query.then(value => value)
         return { data: result.data[0] ?? null, error: result.error || (result.data.length === 1 ? null : { message: 'Expected one row' }) }
+      },
+      maybeSingle: async () => {
+        const result = await query.then(value => value)
+        return { data: result.data[0] ?? null, error: result.error || (result.data.length <= 1 ? null : { message: 'Expected at most one row' }) }
       },
     }
     return query
