@@ -1,4 +1,6 @@
 export * from '../../src/lib/supabase'
+import { PAID_PRODUCTS } from '../../src/lib/supabase'
+import { parseManualCheckoutItems } from '../../src/lib/manualQrCheckout'
 
 // Synthetic account responses for the isolated browser fixture; no production services.
 export const supabaseConfigured = true
@@ -27,13 +29,16 @@ const fixtureOrders = () => user.id !== '11111111-1111-4111-8111-111111111111' ?
       payment_method: 'PayMongo Checkout', created_at: new Date(Date.now() - 60_000).toISOString(), checkout_batch_id: null },
   ] : []),
 ] : []
+const fixtureManualItems = () => parseManualCheckoutItems(localStorage.getItem('fixture-manual-selection') || 'oic_nw:month', PAID_PRODUCTS)
 const fixtureManualClaims = () => user.id === '11111111-1111-4111-8111-111111111111' && localStorage.getItem('fixture-manual-claim') === 'yes' ? [{
   id: '33333333-3333-4333-8333-333333333333', user_id: user.id,
-  selection_key: 'oic_nw:month',
-  items: [{ code: 'oic_nw', label: 'Deck OIC-NW', term: 'month', amountPhp: 79 }],
-  total_amount_php: 79, status: localStorage.getItem('fixture-manual-approved') === 'yes' ? 'approved'
+  selection_key: fixtureManualItems().map(item => `${item.code}:${item.term}`).sort().join(','),
+  items: fixtureManualItems(),
+  total_amount_php: localStorage.getItem('fixture-manual-price-mismatch') === 'yes' ? 999 : fixtureManualItems().reduce((sum, item) => sum + item.amountPhp, 0),
+  status: localStorage.getItem('fixture-manual-approved') === 'yes' ? 'approved'
     : localStorage.getItem('fixture-manual-cancelled') === 'yes' ? 'cancelled' : 'awaiting_proof',
-  created_at: new Date(Date.now() - 10_000).toISOString(), expires_at: new Date(Date.now() + 72 * 3600_000).toISOString(),
+  created_at: new Date(Date.now() - 10_000).toISOString(),
+  expires_at: new Date(Date.now() + (localStorage.getItem('fixture-manual-expired') === 'yes' ? -1000 : 72 * 3600_000)).toISOString(),
   reviewed_at: localStorage.getItem('fixture-manual-approved') === 'yes' ? localStorage.getItem('fixture-manual-approved-at') : null,
 }] : []
 const session = () => localStorage.getItem('fixture-guest') === 'yes' ? null : { user, access_token: 'fixture-token' }
@@ -146,6 +151,10 @@ export const supabase = {
         const result = await query.then(value => value)
         return { data: result.data[0] ?? null, error: result.error || (result.data.length === 1 ? null : { message: 'Expected one row' }) }
       },
+      maybeSingle: async () => {
+        const result = await query.then(value => value)
+        return { data: result.data[0] ?? null, error: result.error || (result.data.length <= 1 ? null : { message: 'Expected at most one row' }) }
+      },
     }
     return query
   },
@@ -164,7 +173,9 @@ export const supabase = {
       }
       if (name === 'create-manual-checkout-claim') {
         if (!user || localStorage.getItem('fixture-guest') === 'yes') return { data: { error: 'Sign in required' }, error: null }
-        if (request.body?.selection !== 'oic_nw:month') return { data: { error: 'Invalid selection' }, error: null }
+        const checkoutItems = parseManualCheckoutItems(request.body?.selection || null, PAID_PRODUCTS)
+        if (!checkoutItems.length) return { data: { error: 'Invalid selection' }, error: null }
+        localStorage.setItem('fixture-manual-selection', request.body!.selection!)
         if (localStorage.getItem('fixture-duplicate-conflict') === 'yes') {
           // Another checkout tab persisted the overlapping claim before this request arrived.
           localStorage.setItem('fixture-manual-claim', 'yes')
@@ -175,7 +186,9 @@ export const supabase = {
           return { data: null, error: new Error('Synthetic connection lost after saving request') }
         }
         localStorage.setItem('fixture-manual-claim', 'yes')
-        return { data: { id:'33333333-3333-4333-8333-333333333333',status:'awaiting_proof',totalAmountPhp:79 }, error: null }
+        // Cancelling an older request does not cancel the new checkout's claim.
+        localStorage.removeItem('fixture-manual-cancelled')
+        return { data: { id:'33333333-3333-4333-8333-333333333333',status:'awaiting_proof',totalAmountPhp:checkoutItems.reduce((sum, item) => sum + item.amountPhp, 0) }, error: null }
       }
       if (name === 'question-media') {
         const bytes = Uint8Array.from(atob(request.body?.base64 || ''), char => char.charCodeAt(0))
