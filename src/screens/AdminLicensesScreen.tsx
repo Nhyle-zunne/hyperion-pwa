@@ -209,14 +209,30 @@ export default function AdminLicensesScreen() {
       setBusyKey('')
     }
   }
-  const revoke = async (user: ManagedUser, track: typeof TRACKS[number], lifetime = false) => {
+  const revoke = async (
+    user: ManagedUser,
+    track: typeof TRACKS[number],
+    source: 'website' | 'admin-lifetime' | 'purchased-lifetime' = 'website'
+  ) => {
     const key = user.id + ':' + track.code
-    if (!window.confirm('Revoke ' + (lifetime ? 'the manual lifetime grant for ' : 'the website license for ') + track.label + ' for ' + user.email + '?')) return
+    const purchased = source === 'purchased-lifetime'
+    const label = purchased ? 'purchased lifetime access' : source === 'admin-lifetime' ? 'manual lifetime grant' : 'website license'
+    const confirmation = 'Revoke ' + label + ' for ' + track.label + ' for ' + user.email + '?'
+    const detail = purchased ? ' This changes reviewer access only. Any separate license for this track stays active.' : ''
+    if (!window.confirm(confirmation + detail)) return
     setBusyKey(key)
     setMessage('')
     try {
-      const result = await withPageLoading('Revoking license', () => call({ action: 'revoke', userId: user.id, productCode: track.code, ...(lifetime ? { term: 'lifetime' } : {}), note: notes[key] || '' }))
-      setMessage(track.label + (lifetime ? ' manual lifetime grant revoked for ' : ' website license revoked for ') + user.email + (result.warning ? ' Warning: ' + result.warning : ''))
+      const result = await withPageLoading('Revoking license', () => call({
+        action: purchased ? 'revoke-purchased-lifetime' : 'revoke',
+        userId: user.id,
+        productCode: track.code,
+        ...(source === 'admin-lifetime' ? { term: 'lifetime' } : {}),
+        note: notes[key] || ''
+      }))
+      setMessage(purchased && result.changed === false
+        ? 'No active lifetime purchase access remains for ' + track.label + ' for ' + user.email + '.'
+        : track.label + ' ' + label + ' revoked for ' + user.email + (result.warning ? ' Warning: ' + result.warning : ''))
       await load()
     } catch (error) {
       setMessage(safeMessage(error))
@@ -419,8 +435,8 @@ export default function AdminLicensesScreen() {
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: '.65rem' }}>
                       <button type="button" className="btn btn-primary" disabled={!!busyKey} onClick={() => void grant(user, track, term)} style={{ flex: '1 1 145px', fontSize: '.72rem' }}>{busy ? 'SAVING…' : term === 'lifetime' ? 'GRANT LIFETIME' : license.status === 'active' && license.license_term !== 'lifetime' ? 'EXTEND LICENSE' : 'ACTIVATE LICENSE'}</button>
                       {(license.has_revocable_website ?? (license.exists && license.status !== 'revoked')) && !license.has_active_google_play && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track)} style={{ flex: '1 1 95px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE</button>}
-                      {license.has_manual_lifetime && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track, true)} style={{ flex: '1 1 145px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE LIFETIME GRANT</button>}
-                      {license.has_purchased_lifetime && <div style={{ flexBasis: '100%', color: 'var(--text-muted)', fontSize: '.72rem' }}>This track also has access from a lifetime purchase.</div>}
+                      {license.has_manual_lifetime && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track, 'admin-lifetime')} style={{ flex: '1 1 145px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE LIFETIME GRANT</button>}
+                      {license.has_purchased_lifetime && <button type="button" className="btn btn-outline" disabled={!!busyKey} onClick={() => void revoke(user, track, 'purchased-lifetime')} style={{ flex: '1 1 145px', borderColor: 'var(--danger, #b91c1c)', color: 'var(--danger, #b91c1c)', fontSize: '.72rem' }}>REVOKE PURCHASED LIFETIME</button>}
                       {license.has_active_google_play && <div style={{ flexBasis: '100%', color: 'var(--text-muted)', fontSize: '.72rem', lineHeight: 1.4 }}>Google Play access is verified server-side. Cancel or revoke the subscription through Google Play; access remains until its verified entitlement ends.</div>}
                     </div>
                   </div>

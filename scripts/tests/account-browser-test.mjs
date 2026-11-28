@@ -46,6 +46,16 @@ try {
   await categoryDialog.getByRole('button', { name: 'SAVE TRACK CATEGORY' }).click()
   await categoryDialog.waitFor({ state: 'hidden' })
   assert.deepEqual(await categoryPage.getByTitle('Self-selected account category (not a license)').allTextContents(), ['DECK', 'GMDSS'])
+  for (const width of [1920, 390]) {
+    await categoryPage.setViewportSize({ width, height: 1080 })
+    const heading = await categoryPage.getByRole('heading', { name: 'Synthetic Member', exact: true }).boundingBox()
+    const tags = categoryPage.getByTitle('Self-selected account category (not a license)')
+    const deck = await tags.nth(0).boundingBox()
+    const gmdss = await tags.nth(1).boundingBox()
+    assert(heading && deck && gmdss, 'The name and both track tags are visible')
+    assert(deck.y >= heading.y + heading.height && gmdss.y >= heading.y + heading.height, 'Both track tags appear below the profile name')
+    assert.equal(deck.y, gmdss.y, 'Both track tags share the same row')
+  }
   assert.deepEqual(await categoryPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'update-profile').map(call => call.data)),
     [{ track_category: 'DECK+GMDSS' }], 'Saving the prompt records both tags without creating licenses')
   const editCategories = categoryPage.getByRole('group', { name: 'Your track categories' })

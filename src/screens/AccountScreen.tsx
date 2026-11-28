@@ -910,7 +910,10 @@ export default function AccountScreen({ children }: { children?: React.ReactNode
             <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', marginBottom: '.4rem' }}>
               <div className="profile-avatar">{(fullName || 'H').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase()}</div>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.35rem' }}><h2 style={{ margin: 0, fontSize: '1rem', overflowWrap: 'anywhere' }}>{fullName || 'Hyperion Member'}</h2><TrackCategoryBadge category={savedTrackCategory} /></div>
+                <h2 style={{ margin: 0, fontSize: '1rem', overflowWrap: 'anywhere' }}>{fullName || 'Hyperion Member'}</h2>
+                {savedTrackCategory && <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.35rem', marginTop: '.3rem' }}>
+                  <TrackCategoryBadge category={savedTrackCategory} />
+                </div>}
                 <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', overflowWrap: 'anywhere', marginTop: '.2rem' }}>{session.user.email}</div>
                 {(online ? isAdmin : offlineAdmin.allowed) && <button type="button" title="Open admin dashboard" aria-label="Admin" onClick={() => navigate(online ? '/admin/licenses' : '/admin/posters')} style={{ display: 'inline-flex', alignItems: 'center', marginTop: '.35rem', border: '1px solid #86cba0', borderRadius: 999, background: '#dcfce7', color: '#166534', padding: '.15rem .5rem', fontWeight: 800, fontSize: '.68rem', lineHeight: 1.2, cursor: 'pointer' }}>Admin</button>}
               </div>
