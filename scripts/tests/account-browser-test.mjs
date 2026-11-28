@@ -553,6 +553,8 @@ try {
   await lifetimeCheckoutButton.waitFor()
   await lifetimeCheckoutButton.click()
   await publicLifetimePage.locator('.qr-checkout-image-wrap img').waitFor()
+  assert.equal(await publicLifetimePage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), 1,
+    'Lifetime checkout creates one server-priced manual request before showing transfer instructions')
   assert.equal(await publicLifetimePage.evaluate(() =>
     window.accountFixtureCalls.filter(call => call.action === 'create-lifetime-checkout:create').length), 0,
     'Public Lifetime checkout also uses QR without initiating PayMongo')
