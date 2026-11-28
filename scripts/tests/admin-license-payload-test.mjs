@@ -20,6 +20,7 @@ const lifetime = ['admin', 'paymongo'].map(provider => ({
   provider, status: 'active', purchased_at: '2025-01-01T00:00:00Z'
 }))
 const manualChanges = []
+const purchasedRevocations = []
 const diagnosticErrors = []
 const diagnosticSteps = []
 let email = adminEmail, authFails = false, failDependency = false, explodeDependency = false, dbReads = 0, authReads = 0, writes = 0, handler
@@ -40,6 +41,13 @@ globalThis.fetch = async (input, init) => {
     manualChanges.push(change)
     lifetime[0].status = change.p_active ? 'active' : 'revoked'
     return json(true)
+  }
+  if (url.pathname.endsWith('/rpc/revoke_admin_purchased_lifetime') && req.method === 'POST') {
+    const change = await req.json()
+    purchasedRevocations.push(change)
+    const matching = lifetime.filter(row => row.user_id === change.p_user_id && row.product_code === change.p_product_code && row.provider !== 'admin' && row.status === 'active')
+    for (const row of matching) row.status = 'revoked'
+    return json(matching.length > 0)
   }
   if (req.method !== 'GET') { writes++; throw new Error('Unexpected mutation') }
   if (url.pathname === '/auth/v1/admin/users/' + userId) return json({ user: accounts[0] })
@@ -106,6 +114,7 @@ try {
   assert.deepEqual(JSON.parse(JSON.stringify(legacy.users.map(hydrate))), legacy.users, 'Updated UI accepts old backend responses')
   let hook = 0, storedUsers, editorUser
   const loads = [], calls = []
+  let confirmRevocation = false
   const react = {
     useState: initial => {
       const index = hook++
@@ -123,7 +132,7 @@ try {
     if (name.endsWith('/pageLoading')) return { withPageLoading: (_label, fn) => { const task = fn(); loads.push(task); return task } }
     if (name.endsWith('/supabase')) return { supabase: { functions: { invoke: async (_name, options) => { calls.push(options.body); return { data: compact, error: null } } } } }
     return {}
-  }, console, document: { body: {} } }
+  }, console, document: { body: {} }, window: { confirm: () => confirmRevocation } }
   vm.runInNewContext(compile('src/screens/AdminLicensesScreen.tsx'), mounted)
   mounted.exports.default()
   await Promise.all(loads)
@@ -138,7 +147,24 @@ try {
   const activeEditor = renderLicenseEditor(restored[0])
   assert.doesNotMatch(activeEditor, />GRANT LIFETIME<|<option value="lifetime"/)
   assert.match(activeEditor, />REVOKE LIFETIME GRANT</)
+  assert.match(activeEditor, />REVOKE PURCHASED LIFETIME</)
   assert.match(activeEditor, /<option value="month" selected="">1 Month<\/option>/)
+  const findPurchasedRevoke = element => {
+    if (Array.isArray(element)) return element.map(findPurchasedRevoke).find(Boolean)
+    if (element?.type === 'button' && element.props.children === 'REVOKE PURCHASED LIFETIME') return element.props.onClick
+    return element?.props ? findPurchasedRevoke(element.props.children) : undefined
+  }
+  hook = 0
+  const clickPurchasedRevoke = findPurchasedRevoke(mounted.exports.default())
+  assert.equal(typeof clickPurchasedRevoke, 'function')
+  await clickPurchasedRevoke()
+  assert.equal(calls.length, 1, 'Cancelling the confirmation sends no request')
+  confirmRevocation = true
+  await clickPurchasedRevoke()
+  await Promise.all(loads)
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[1])), {
+    action: 'revoke-purchased-lifetime', userId, productCode: 'oic_nw', note: ''
+  }, 'The purchased Lifetime button sends a separately scoped revocation')
   editorUser = null
   for (const value of [false, 'true', 1]) {
     assert.equal(Object.keys((await (await send({ action: 'list', compact: value })).json()).users[1].licenses).length, 5, 'Only boolean true opts in')
@@ -177,6 +203,26 @@ try {
     { p_user_id: userId, p_product_code: 'oic_nw', p_active: false, p_admin_user_id: 'admin-fixture', p_admin_email: adminEmail, p_note: null },
     { p_user_id: userId, p_product_code: 'oic_nw', p_active: true, p_admin_user_id: 'admin-fixture', p_admin_email: adminEmail, p_note: 'Test grant' },
   ])
+  const purchaseRequest = { action: 'revoke-purchased-lifetime', userId, productCode: 'oic_nw', note: 'Purchase review' }
+  email = 'nonadmin@fixture.invalid'
+  assert.equal((await send(purchaseRequest)).status, 403)
+  assert.equal(purchasedRevocations.length, 0, 'Only authorized admins can revoke purchased access')
+  email = adminEmail
+  assert.equal((await send({ ...purchaseRequest, productCode: 'all' })).status, 400)
+  const purchaseResponse = await send(purchaseRequest)
+  assert.equal(purchaseResponse.status, 200)
+  assert.equal((await purchaseResponse.json()).changed, true)
+  assert.deepEqual(purchasedRevocations, [
+    { p_user_id: userId, p_product_code: 'oic_nw', p_admin_user_id: 'admin-fixture', p_admin_email: adminEmail, p_note: 'Purchase review' }
+  ])
+  const purchaseAfter = (await (await send({ action: 'list', compact: true })).json()).users[0].licenses.oic_nw
+  assert.equal(purchaseAfter.has_purchased_lifetime, false)
+  assert.equal(purchaseAfter.has_manual_lifetime, true, 'A separate admin grant stays active')
+  assert.equal(purchaseAfter.has_active_google_play, true, 'A recurring Google Play license stays active')
+  assert.doesNotMatch(renderLicenseEditor(hydrate({
+    ...restored[0], licenses: { ...restored[0].licenses, oic_nw: purchaseAfter }
+  })), />REVOKE PURCHASED LIFETIME</)
+  editorUser = null
   assert.equal(writes, 0)
   failDependency = true
   assert.equal((await send({ action: 'list', compact: true })).status, 500)

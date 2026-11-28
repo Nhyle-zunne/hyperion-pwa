@@ -366,13 +366,21 @@ Deno.serve(async req => {
   }
 
   stage = 'write-license'
-  if (!['grant', 'revoke'].includes(body.action || '')) return json(req, { error: 'Invalid license action.' }, 400)
+  if (!['grant', 'revoke', 'revoke-purchased-lifetime'].includes(body.action || '')) return json(req, { error: 'Invalid license action.' }, 400)
   if (!body.userId || !uuidPattern.test(body.userId)) return json(req, { error: 'Choose a valid user.' }, 400)
   if (!body.productCode || !PRODUCTS.some(product => product.code === body.productCode)) return json(req, { error: 'Choose a valid track.' }, 400)
   const product = PRODUCT_MAP[body.productCode as ProductCode]
   const userResult = await admin.auth.admin.getUserById(body.userId)
   if (userResult.error || !userResult.data.user) return json(req, { error: 'Account not found.' }, 404)
   const note = String(body.note || '').trim().slice(0, 1000) || null
+  if (body.action === 'revoke-purchased-lifetime') {
+    const { data: changed, error } = await admin.rpc('revoke_admin_purchased_lifetime', {
+      p_user_id: body.userId, p_product_code: product.code,
+      p_admin_user_id: user.id, p_admin_email: user.email, p_note: note
+    })
+    if (error) return json(req, { error: 'Could not update this lifetime license.' }, 500)
+    return json(req, { ok: true, changed })
+  }
   if (body.term === 'lifetime') {
     const { data: changed, error } = await admin.rpc('set_admin_lifetime_entitlement', {
       p_user_id: body.userId, p_product_code: product.code, p_active: body.action === 'grant',
