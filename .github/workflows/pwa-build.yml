@@ -104,6 +104,7 @@ jobs:
           bun test scripts/tests/cloud-progress-access.test.ts
           bun test scripts/tests/local-progress-identity.test.ts
           bun test scripts/tests/question-bank-transport.test.ts
+          bun run test:question-loading
           bun test scripts/tests/retired-c10.test.ts
           bun test scripts/tests/question-bank-picker.test.ts
           bun test scripts/tests/question-bank-editor.test.ts

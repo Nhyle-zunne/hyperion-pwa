@@ -2,6 +2,7 @@ import type { SavedQuestionContext } from '../lib/savedQuestionSets';
 import { create } from 'zustand';
 import type { Question, UserAnswer, TrackId } from '../types/question';
 import { authorizeQuestionSetAccess, getQuestionsByCompetence } from '../lib/questionBank';
+import { practiceLoadErrorMessage } from '../lib/practiceLoadError';
 import { selectActiveQuestions } from '../lib/retiredQuestions';
 import { useLicenseStore } from './licenseStore';
 import { useHistoryStore, type SessionMode } from './historyStore';
@@ -424,8 +425,8 @@ export const usePracticeStore = create<PracticeState>((set, get) => ({
       set({ questions: delivered, track, competenceId: competenceId ?? null, part: part ?? null, isFreeSession, sessionId, loading: false, startedAt });
       // A hard refresh immediately after starting must find this exact session.
       await persistActiveSession(get());
-    } catch {
-      set({ loading: false, error: 'Failed to load questions.' });
+    } catch (error) {
+      set({ loading: false, sessionId: null, questions: [], error: practiceLoadErrorMessage(error) });
     }
   },
 

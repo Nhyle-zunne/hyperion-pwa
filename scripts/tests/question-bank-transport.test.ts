@@ -48,7 +48,7 @@ test('public catalog counts work without an account client while paid pages stil
   const received: any[] = []
   const fetcher = (async (url: any, options: any) => { received.push([url, options]); return Response.json({ counts: [] }) }) as typeof fetch
   await invokeBankTransport({ body: { action: 'catalog-counts', track: 'DECK_MGT' } }, null, '', true, fetcher)
-  const client: any = { auth: { getSession: async () => ({ data: { session: { access_token: 'user-token' } } }) } }
+  const client: any = { auth: { getSession: async () => ({ data: { session: { access_token: 'user-token', user: { id: 'test-account' } } } }) } }
   await invokeBankTransport({ body: { action: 'questions', track: 'DECK_MGT' } }, client, 'anon', true, fetcher)
   expect(received[0][0]).toContain('/api/question-bank/counts?')
   expect(received[1][0]).toBe('/api/question-bank/questions')
