@@ -976,6 +976,8 @@ try {
   await switchDurationPage.locator('.qr-checkout-image-wrap img').waitFor()
   assert.match(await switchDurationPage.locator('.qr-checkout-total').innerText(), /499\.00/)
   assert.equal(await switchDurationPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'cancel-manual-checkout-claim:').length), 1)
+  assert.equal(await switchDurationPage.evaluate(() => window.accountFixtureCalls.filter(call => call.action === 'create-manual-checkout-claim:').length), 1,
+    'Switching a cancelled monthly request to yearly automatically records one new pending request')
   await switchDurationPage.close()
 
   const distinctTrackPage = await browser.newPage({ viewport: { width: 390, height: 900 } })

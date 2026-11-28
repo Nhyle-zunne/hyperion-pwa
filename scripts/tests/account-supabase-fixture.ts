@@ -186,6 +186,8 @@ export const supabase = {
           return { data: null, error: new Error('Synthetic connection lost after saving request') }
         }
         localStorage.setItem('fixture-manual-claim', 'yes')
+        // Cancelling an older request does not cancel the new checkout's claim.
+        localStorage.removeItem('fixture-manual-cancelled')
         return { data: { id:'33333333-3333-4333-8333-333333333333',status:'awaiting_proof',totalAmountPhp:checkoutItems.reduce((sum, item) => sum + item.amountPhp, 0) }, error: null }
       }
       if (name === 'question-media') {
