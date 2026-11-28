@@ -227,7 +227,7 @@ export default function AdminPosterGeneratorScreen() {
           {POSTER_CAPTION_STYLES.map((style, index) => <option value={index} key={style}>{style}</option>)}
         </select>
         <label htmlFor="poster-caption">Caption</label>
-        <textarea id="poster-caption" ref={captionRef} rows={7} readOnly value={caption}
+        <textarea id="poster-caption" ref={captionRef} rows={12} readOnly value={caption}
           placeholder="Enter the candidate’s name to generate a caption." />
         <button type="button" className="btn btn-outline admin-poster__copy-caption" disabled={!caption} onClick={() => void copyCaption()}>
           Copy caption
