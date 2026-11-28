@@ -36,7 +36,7 @@ try {
     '20261116230813_add_lifetime_entitlement_foundation.sql',
     '20261117014902_verify_google_play_lifetime_receipts.sql',
     '20261122154019_admin_lifetime_track_grants.sql',
-    '20261128043534_admin_revoke_purchased_lifetime.sql',
+    '20261128044512_admin_revoke_purchased_lifetime.sql',
   ]) {
     await db.exec(await readFile(new URL('../../supabase/migrations/' + migration, import.meta.url), 'utf8'))
   }
