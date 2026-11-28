@@ -3,51 +3,102 @@ import assert from 'node:assert/strict'
 import { POSTER_TRACKS } from '../../src/lib/posterTracks.mjs'
 import { POSTER_CAPTION_STYLES, createPosterCaption } from '../../src/lib/posterCaptions.mjs'
 
-test('each poster label offers ten distinct, track-specific congratulations', () => {
-  assert.equal(new Set(POSTER_CAPTION_STYLES).size, 10)
+const expectedStyles = [
+  'Professional',
+  'Sincere',
+  'Taglish, Proud',
+  'Taglish, Heartfelt',
+  'Bold',
+  'Nautical',
+  'Inspirational',
+  'Taglish, Casual and Fun',
+  'Faith and Gratitude',
+  'Hyperion Brand',
+]
+
+const expectedHeadlines = [
+  '⚓ Congratulations, Officer! ⚓',
+  '💙 You Did It! 💙',
+  '🎉 PASADO, OFFICER! 🎉',
+  '🥹 Pangarap, Natupad! ⚓',
+  '⚓ NEW OFFICER ON DECK! ⚓',
+  '🧭 Course Well Steered! 🌊',
+  '✨ Dream Achieved! ✨',
+  '😎 Congrats, Officer! ⚓',
+  '🙏 To God Be the Glory! 🙏',
+  '💛 Proud of You! 💙',
+]
+
+test('the ten example styles have distinct long-form captions across all eight tracks', () => {
+  assert.deepEqual(POSTER_CAPTION_STYLES, expectedStyles)
   const all = new Set()
   for (const track of POSTER_TRACKS) {
     for (const [index] of POSTER_CAPTION_STYLES.entries()) {
-      const caption = createPosterCaption(track.id, index, { name: 'Alex Reyes' })
-      assert.ok(caption.includes(`${track.prefix} Alex Reyes`), track.label)
-      const exam = track.examTitle.split('\n')[1]
-      assert.ok(caption.toLowerCase().includes(exam.toLowerCase()), track.label)
-      assert.ok(!all.has(caption), `${track.label} option ${index + 1}`)
+      const caption = createPosterCaption(track.id, index, { name: 'Alex Reyes', date: '2026-11-27' })
+      assert.ok(caption.includes(`${track.prefix} Alex Reyes`), `${track.id}, style ${index}`)
+      assert.match(caption.toLowerCase(), new RegExp(track.examTitle.split('\n')[1].toLowerCase()), `${track.id}, style ${index}`)
+      assert.match(caption, /November 27, 2026 MARINA Licensure Examination/, `${track.id}, style ${index}`)
+      assert.ok(caption.length > 450, `${track.id}, style ${index} should provide a meaningful explanation`)
+      assert.ok(!all.has(caption), `${track.id}, style ${index} should be unique`)
+      assert.match(caption, /🌐 HyperionMaritime\.org\n📘 @HyperionMaritime\n#HyperionMaritime/, `${track.id}, style ${index}`)
+      assert.match(caption, /#MARINA .*#ProudSeafarer$/, `${track.id}, style ${index}`)
+      assert.doesNotMatch(caption, /\*\*|&#x20;|\\\n|\b(?:first take|1 take|100% passing)\b/i)
       all.add(caption)
     }
   }
   assert.equal(all.size, 80)
 })
 
-test('captions update from supplied details and omit blank fields', () => {
+test('OIC-NW presets preserve the provided headlines, school, degree, and canonical footer', () => {
+  const details = {
+    name: 'Patrick A. Abundo',
+    date: '2026-11-27',
+    school: 'University of Cebu - METC',
+  }
+  for (const [index, headline] of expectedHeadlines.entries()) {
+    const caption = createPosterCaption('oic_nw', index, details)
+    assert.ok(caption.startsWith(headline + '\n\n'), `style ${index}`)
+    assert.match(caption, /OIC-NW Patrick A\. Abundo/)
+    assert.match(caption, /🏫 University of Cebu - METC/)
+    assert.ok(caption.endsWith('🌐 HyperionMaritime.org\n📘 @HyperionMaritime\n#HyperionMaritime #OICNW #MARINA #MarineDeckOfficer #UniversityOfCebuMETC #ProudSeafarer'))
+  }
+  for (const index of [0, 9]) {
+    assert.match(createPosterCaption('oic_nw', index, details), /🎓 BS Marine Transportation/)
+  }
+  assert.match(createPosterCaption('oic_nw', 9, details), /Learning shouldn't be a luxury\. ⚓/)
+  assert.match(createPosterCaption('oic_nw', 2, details), /Nagbunga na ang lahat ng puyat, pagod, at sipag mo/)
+})
+
+test('captions update with live fields and omit unprovided details', () => {
   assert.equal(createPosterCaption('gmdss', 0, { name: ' ' }), '')
-  const values = { name: 'OIC-NW Alex Reyes', date: '2026-11-26', school: ' Maritime College ', company: ' ' }
+  assert.equal(createPosterCaption('unknown', 0, { name: 'Alex Reyes' }), '')
+  const values = { name: 'OIC-NW Alex Reyes', date: '2026-11-26', school: ' Maritime College ', company: ' Sample Maritime ' }
   const caption = createPosterCaption('gmdss', 0, values)
   assert.match(caption, /OIC-NW Alex Reyes/)
   assert.doesNotMatch(caption, /OIC-NW OIC-NW/)
   assert.match(caption, /November 26, 2026/)
-  assert.match(caption, /Maritime College/)
-  assert.doesNotMatch(caption, /Company/)
-  const updated = createPosterCaption('gmdss', 0, { ...values, date: '', school: '', company: 'Sample Maritime' })
-  assert.match(updated, /Sample Maritime/)
-  assert.doesNotMatch(updated, /Examination date|School/)
+  assert.match(caption, /🏫 Maritime College/)
+  assert.match(caption, /🚢 Sample Maritime/)
+  assert.match(caption, /#GMDSSGOC #MARINA #RadioOperator #MaritimeCollege #ProudSeafarer/)
+
+  const updated = createPosterCaption('gmdss', 0, { ...values, date: '', school: '', company: '' })
+  assert.doesNotMatch(updated, /November 26|🏫|🚢|#MaritimeCollege|Examination date:|School:|Company or sponsor:/)
+  assert.match(updated, /the MARINA Licensure Examination for GMDSS Radio Operators/)
+  assert.equal(createPosterCaption('oic_nw', 0, { name: 'Alex Reyes', date: '2026-02-30' }).includes('February'), false)
 })
 
-test('Facebook captions stay natural, concise and emoji-friendly without invented claims or em dashes', () => {
-  for (const track of POSTER_TRACKS) {
-    for (const [index] of POSTER_CAPTION_STYLES.entries()) {
-      const caption = createPosterCaption(track.id, index, { name: 'Alex Reyes' })
-      assert.doesNotMatch(caption, /[—–]|\*\*|\b(?:new chapter|milestone|journey|wishing you|hard-earned|family and mentors)\b/i)
-      assert.doesNotMatch(caption, /\b(?:first take|1 take|100% passing)\b/i)
-      assert.match(caption, /\p{Extended_Pictographic}/u, `${track.label}, style ${index + 1}`)
-      assert.ok(caption.length < 310, `${track.label}, style ${index + 1} is too long`)
-      assert.ok((caption.match(/\b(?:congratulations|congrats)\b/gi) || []).length <= 1, `${track.label}, style ${index + 1} repeats congratulations`)
-      assert.ok((caption.match(/\bpassers?\b/gi) || []).length <= 1, `${track.label}, style ${index + 1} repeats passer`)
-    }
-  }
-  const withDetails = createPosterCaption('oic_nw', 0, { name: 'Alex Reyes', date: '2026-11-26', school: 'Maritime College', company: 'Shipping Co.' })
-  assert.match(withDetails, /Examination date: November 26, 2026/)
-  assert.match(withDetails, /School: Maritime College/)
-  assert.match(withDetails, /Company or sponsor: Shipping Co\./)
-  assert.doesNotMatch(withDetails, /[—–]/)
+test('engine and management captions avoid deck-only titles and use matching metadata', () => {
+  const engineer = createPosterCaption('oic_ew', 0, { name: 'Alex Reyes', school: 'St. Mary’s College' })
+  assert.match(engineer, /^⚙️ Congratulations, Engineer! ⚙️/)
+  assert.match(engineer, /🎓 BS Marine Engineering/)
+  assert.match(engineer, /#OICEW #MARINA #MarineEngineer #StMarysCollege #ProudSeafarer/)
+  assert.doesNotMatch(engineer, /every watch|Officer on Deck/i)
+
+  const captain = createPosterCaption('master_mariner', 4, { name: 'Alex Reyes' })
+  assert.match(captain, /^⚓ NEW CAPTAIN ON DECK! ⚓/)
+  assert.match(captain, /#MasterMariner #MARINA #DeckManagement/)
+
+  const chief = createPosterCaption('chief_engineer', 4, { name: 'Alex Reyes' })
+  assert.match(chief, /NEW CHIEF ENGINEER ON BOARD/)
+  assert.match(chief, /#ChiefEngineer #MARINA #EngineManagement/)
 })
