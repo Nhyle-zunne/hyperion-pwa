@@ -624,7 +624,7 @@ try {
     /33333333-3333-4333-8333-333333333333/, 'Opening checkout immediately registers a pending request')
   const proofInstructions = adminQrPage.locator('.qr-checkout-grid > .qr-checkout-panel').nth(1)
   assert.equal(await proofInstructions.getByRole('heading', { level: 2 }).innerText(), '2. Send your payment receipt')
-  const proofHelp = await proofInstructions.locator('p').first().innerText()
+  const proofHelp = await proofInstructions.getByText(/^After paying, tap/).innerText()
   assert.match(proofHelp, /After paying.*SUBMIT PAYMENT PROOF.*Messenger.*receipt.*account/s,
     'Customers see simple instructions to submit a receipt without copying a text block')
   assert.doesNotMatch(proofHelp, /unverified|submission|administrator|\bID\b/i,
